@@ -1,0 +1,5 @@
+template = "home.tera"
+title = "Home"
+
+[content]
+main = "html/home.html"

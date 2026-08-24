@@ -1,0 +1,29 @@
+{% extends "base.tera" %}
+{% block header %}
+{% if page.extra.parent in pages %}
+  {% set up = pages[page.extra.parent] %}
+  {% set up_link = page(id=page.extra.parent) %}
+  <nav>
+    Up: <a href="{{ up_link.url }}">{{ up.title }}</a>
+  </nav>
+{% endif %}
+{% endblock %}
+{% block content %}
+
+{% if page.content.main %}
+  {{ page.content.main | markdown }}
+{% endif %}
+
+{% if page.siblings %}
+  <hr>
+  <nav>
+    <div class="link-stack">
+      {% for p in page.siblings %}
+        {% set sibling = pages[p] %}
+        {% set sibling_link = page(id=sibling.id) %}
+        <a href="{{ sibling_link.relative_url }}">{{ sibling.title or sibling.filename }}</a>
+      {% endfor %}
+    </div>
+  </nav>
+{% endif %}
+{% endblock %}

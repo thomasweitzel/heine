@@ -1,0 +1,15 @@
+name = "Heine Starter Site"
+language = "en"
+description = "A compact example site built with Heine."
+
+[[navigation]]
+label = "Home"
+page = "index"
+
+[[navigation]]
+label = "Blog"
+page = "blog/index"
+
+[[navigation]]
+label = "Quiz"
+page = "quiz/index"

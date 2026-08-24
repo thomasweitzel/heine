@@ -1,0 +1,26 @@
+# Misc
+logs/
+public/
+log.txt
+*.zip
+*~
+*\#
+*.log
+
+# Intellij
+.idea/*
+*.iws
+*.iml
+
+# VS Code
+.vscode/
+.history/
+
+# Mac
+.DS_Store
+
+# Rust
+target/
+
+# SSG
+ssg/

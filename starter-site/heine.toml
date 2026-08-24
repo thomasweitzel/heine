@@ -1,0 +1,19 @@
+[markdown]
+math = "mathml"
+
+[markdown.highlighting]
+stylesheet = "css/highlighting.css"
+
+[markdown.highlighting.theme]
+light = "github-light-default"
+dark = "ayu-dark"
+
+
+[site]
+base_path = "/my-project/"
+
+[build]
+output_dir = "public/my-project"
+
+[assets]
+integrity = "sha384"

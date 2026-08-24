@@ -1,0 +1,21 @@
+{% extends "base.tera" %}
+{% block content %}
+<div class="main-content">
+  {{ page.content.main }}
+</div>
+<div class="sections">
+  {% for dir in page.subdirs %}
+    {% set index = dir ~ "/index" %}
+    {% if index in pages %}
+      {% set section = pages[index] %}
+      {% set section_link = page(id=index) %}
+      <div class="section">
+        <h2>{{ section.title }}</h2>
+        <hr>
+        {{ section.summary | markdown }}
+        <a class="buttonlike" href="{{ section_link.url }}">Open</a>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}

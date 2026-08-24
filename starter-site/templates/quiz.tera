@@ -1,0 +1,26 @@
+{% extends "base.tera" %}
+{% block head_extra %}
+   {% set script = asset(id="quiz/script.js") %}
+   {% set styles = asset(id="quiz/styles.css") %}
+   <script src="{{ script.url }}"{% if script.integrity %} integrity="{{ script.integrity }}" crossorigin="anonymous"{% endif %}></script>
+   <link rel="stylesheet" type="text/css" href="{{ styles.url }}"{% if styles.integrity %} integrity="{{ styles.integrity }}" crossorigin="anonymous"{% endif %}>
+{% endblock %}
+{% block header %}
+<nav>
+  {% set quiz_index = page(id="quiz/index") %}
+  Up: <a href="{{ quiz_index.relative_url }}">Quiz Menu</a>
+</nav>
+{% endblock %}
+{% block content %}
+<h1>{{ page.title }}</h1>
+
+<div class="description">
+  {{ page.content.quiz.description }}
+</div>
+<hr>
+{% for q in page.content.quiz.q %}
+  <div class="question">
+    {{ q }}
+  </div>
+{% endfor %}
+{% endblock %}

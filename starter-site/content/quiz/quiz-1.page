@@ -1,0 +1,5 @@
+template = "quiz.tera"
+title = "Quiz 1"
+
+[content]
+quiz = "content/quiz-1.html"

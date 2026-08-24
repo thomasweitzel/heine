@@ -1,0 +1,8 @@
+title = "Blog"
+description = "Notes about building a small static-site generator."
+
+[pages]
+template = "post.tera"
+
+[pages.metadata]
+required = ["title", "date"]
