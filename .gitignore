@@ -21,6 +21,3 @@ log.txt
 
 # Rust
 target/
-
-# SSG
-ssg/
