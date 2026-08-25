@@ -80,6 +80,8 @@ cargo run -- serve --root /path/to/site
 The server performs a complete build before it starts, serves the generated
 `build.output_dir` directory, and watches `content/`, `data/`, `templates/`,
 and `heine.toml`. After a successful rebuild, open pages reload automatically.
+Its timestamp-seeded reload generation also refreshes a page that reconnects
+after the development server restarts.
 It never serves an in-memory representation or writes its reload client to the
 generated site; the client is injected only into HTML responses in development.
 The server publishes the output directory and base path from the same

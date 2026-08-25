@@ -13,6 +13,7 @@ use std::{
     net::{IpAddr, SocketAddr, TcpListener},
     path::{Path, PathBuf},
     sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use miette::Diagnostic;
@@ -169,7 +170,10 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
     } else {
         BuildOptions::new(BuildMode::Full)
     };
-    let initial = PublishedSite::from_build(build_at_with_publication(&root, build)?, 1);
+    let initial = PublishedSite::from_build(
+        build_at_with_publication(&root, build)?,
+        generation_from_start_time(SystemTime::now()),
+    );
     let listener = bind_available(options).map_err(miette::Report::new)?;
     let address = listener
         .local_addr()
@@ -230,6 +234,22 @@ fn display_url(address: SocketAddr, base_path: &str) -> String {
     format!("http://{address}{base_path}")
 }
 
+/// Gives each server process a distinct practical generation range. The value
+/// is carried by the development-only reload protocol, not written to output.
+pub(super) fn generation_from_start_time(started: SystemTime) -> u64 {
+    started
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+        .min(u128::from(u64::MAX)) as u64
+}
+
+pub(super) fn next_generation(generation: u64) -> u64 {
+    generation
+        .checked_add(1)
+        .unwrap_or_else(|| generation_from_start_time(SystemTime::now()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,6 +276,20 @@ mod tests {
             candidate_ports(1111).take(3).collect::<Vec<_>>(),
             [1111, 1112, 1113]
         );
+    }
+
+    #[test]
+    fn seeds_generations_from_the_server_start_time() {
+        let first = UNIX_EPOCH + std::time::Duration::from_nanos(10);
+        let second = UNIX_EPOCH + std::time::Duration::from_nanos(11);
+
+        assert_eq!(generation_from_start_time(first), 10);
+        assert_eq!(generation_from_start_time(second), 11);
+    }
+
+    #[test]
+    fn advances_the_generation_after_a_successful_rebuild() {
+        assert_eq!(next_generation(42), 43);
     }
 
     #[test]

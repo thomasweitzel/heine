@@ -14,7 +14,7 @@ use thiserror::Error;
 use time::{OffsetDateTime, format_description::FormatItem, macros::format_description};
 use tokio::sync::watch;
 
-use super::PublishedSite;
+use super::{PublishedSite, next_generation};
 use crate::{BuildMode, BuildOptions, build_at_with_publication, project::ProjectPaths};
 
 const DEBOUNCE: Duration = Duration::from_millis(150);
@@ -128,7 +128,7 @@ fn watch_loop(
         }
         match build_at_with_publication(&root, BuildOptions::new(BuildMode::Full)) {
             Ok(build) => {
-                generation += 1;
+                generation = next_generation(generation);
                 let _ = published.send(PublishedSite::from_build(build, generation));
                 println!(
                     "{}",
