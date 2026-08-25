@@ -4,7 +4,7 @@
   {% set up = pages[page.extra.parent] %}
   {% set up_link = page(id=page.extra.parent) %}
   <nav>
-    Up: <a href="{{ up_link.url }}">{{ up.title }}</a>
+    {{ t(id="up") }}: <a href="{{ up_link.url }}">{{ up.title }}</a>
   </nav>
 {% endif %}
 {% endblock %}
@@ -15,6 +15,9 @@
 {% endif %}
 
 {% if page.siblings %}
+  {% if page.extra.count_message %}
+    <p>{{ t(id=page.extra.count_message, count=page.siblings | length) }}</p>
+  {% endif %}
   <hr>
   <nav>
     <div class="link-stack">

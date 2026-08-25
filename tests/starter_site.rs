@@ -17,7 +17,7 @@ fn builds_the_documented_starter_site() {
     let root = temporary.path();
 
     copy_file(&source.join("heine.toml"), &root.join("heine.toml"));
-    for directory in ["content", "data", "templates"] {
+    for directory in ["content", "data", "locales", "templates"] {
         copy_tree(&source.join(directory), &root.join(directory));
     }
 
@@ -27,6 +27,30 @@ fn builds_the_documented_starter_site() {
     let index = fs::read_to_string(output.join("index.html")).expect("home page");
     assert!(index.contains("Heine Starter Site"), "{index}");
     assert!(index.contains("Quiz"), "{index}");
+    assert!(
+        index.contains("So far there are \u{2068}3\u{2069} posts."),
+        "{index}"
+    );
+
+    let german_home = fs::read_to_string(output.join("de/index.html")).expect("German home");
+    assert!(
+        german_home.contains("Bisher gibt es \u{2068}2\u{2069} Beiträge auf Deutsch."),
+        "{german_home}"
+    );
+
+    let german_blog = fs::read_to_string(output.join("de/blog/index.html")).expect("German blog");
+    assert!(
+        german_blog.contains("Bisher gibt es \u{2068}2\u{2069} Beiträge auf Deutsch."),
+        "{german_blog}"
+    );
+    assert!(!german_blog.contains("Quiz"), "{german_blog}");
+
+    let german_post =
+        fs::read_to_string(output.join("de/blog/2026-08-15.html")).expect("German post");
+    assert!(german_post.contains("Sprache:"), "{german_post}");
+    assert!(german_post.contains("hreflang=\"en\""), "{german_post}");
+    assert!(!german_post.contains(" lang=\"en\""), "{german_post}");
+    assert!(german_post.contains(">Englisch</a>"), "{german_post}");
 
     let post = fs::read_to_string(output.join("blog/2026-08-14.html")).expect("post page");
     assert!(post.contains("<img"), "{post}");

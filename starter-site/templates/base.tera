@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="{{ data.site.language }}">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="{{ locale.code }}">
   <head>
    <meta charset='UTF-8'>
    <title>{{ data.site.name }} - {{ page.title }}</title>
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-   {% set favicon = asset(id="favicon.svg") %}
+   {% set favicon = asset(id="assets/favicon.svg") %}
    <link rel="icon" href="{{ favicon.url }}" type="image/svg+xml"{% if favicon.integrity %} integrity="{{ favicon.integrity }}" crossorigin="anonymous"{% endif %}>
    <link rel="stylesheet" type="text/css" href="{{ highlight_css() }}">
-   {% set styles = asset(id="css/styles.css") %}
+   {% set styles = asset(id="assets/css/styles.css") %}
    <link rel="stylesheet" type="text/css" href="{{ styles.url }}"{% if styles.integrity %} integrity="{{ styles.integrity }}" crossorigin="anonymous"{% endif %}>
    {% block head_extra %}{% endblock %}
   </head>
@@ -16,10 +16,12 @@
       <div class="site-header">
         {% set home = page(id="index") %}
         <a class="site-name" href="{{ home.url }}">{{ data.site.name }}</a>
-        <nav class="site-navigation" aria-label="Primary">
+        <nav class="site-navigation" aria-label="{{ t(id="nav-label") }}">
           {% for item in data.site.navigation %}
-          {% set target = page(id=item.page) %}
-          <a href="{{ target.url }}">{{ item.label }}</a>
+          {% if item.page in pages %}
+            {% set target = page(id=item.page) %}
+            <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
+          {% endif %}
           {% endfor %}
         </nav>
       </div>
@@ -33,7 +35,7 @@
       {% endblock %}
     </main>
     <footer>
-      {% block footer %}{{ data.site.description }}{% endblock %}
+      {% block footer %}{{ t(id="footer-description") }}{% endblock %}
     </footer>
   </body>
 </html>

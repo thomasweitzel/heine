@@ -1,12 +1,6 @@
-[markdown]
-math = "mathml"
-
-[markdown.highlighting]
-stylesheet = "css/highlighting.css"
-
-[markdown.highlighting.theme]
-light = "github-light-default"
-dark = "ayu-dark"
+[i18n]
+default_locale = "en"
+locales = ["en", "de"]
 
 [site]
 base_path = "/my-project/"
@@ -16,3 +10,13 @@ output_dir = "public/my-project"
 
 [assets]
 integrity = "sha384"
+
+[markdown]
+math = "mathml"
+
+[markdown.highlighting]
+stylesheet = "css/highlighting.css"
+
+[markdown.highlighting.theme]
+light = "github-light-default"
+dark = "ayu-dark"

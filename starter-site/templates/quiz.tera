@@ -8,7 +8,7 @@
 {% block header %}
 <nav>
   {% set quiz_index = page(id="quiz/index") %}
-  Up: <a href="{{ quiz_index.relative_url }}">Quiz Menu</a>
+  {{ t(id="up") }}: <a href="{{ quiz_index.relative_url }}">{{ t(id="quiz-menu") }}</a>
 </nav>
 {% endblock %}
 {% block content %}

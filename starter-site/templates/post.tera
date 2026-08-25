@@ -2,23 +2,34 @@
 
 {% block header %}
 <nav>
-  {% set index = page(id=page.dir ~ "/index") %}
-  Up: <a href="{{ index.relative_url }}">Index</a>
+  {% set index_id = page.dir ~ "/index" %}
+  {% set index = pages[index_id] %}
+  {% set index_link = page(id=index_id) %}
+  {{ t(id="up") }}: <a href="{{ index_link.relative_url }}">{{ index.title }}</a>
   {% if page.lighter %}
     {% set p = pages[page.lighter] %}
     {% set previous = page(id=p.id) %}
-    | Prev: <a href="{{ previous.relative_url }}">{{ p.title }}</a>
+    | {{ t(id="previous") }}: <a href="{{ previous.relative_url }}">{{ p.title }}</a>
   {% endif %}
   {% if page.heavier %}
     {% set p = pages[page.heavier] %}
     {% set next = page(id=p.id) %}
-    | Next: <a href="{{ next.relative_url }}">{{ p.title }}</a>
+    | {{ t(id="next") }}: <a href="{{ next.relative_url }}">{{ p.title }}</a>
+  {% endif %}
+  {% if page.translations %}
+    | {{ t(id="language") }}:
+    {% for locale, translation in page.translations %}
+      {% set translated = page(locale=locale, id=translation.id) %}
+      {% set language_message = "language-" ~ locale %}
+      <a href="{{ translated.relative_url }}" hreflang="{{ locale }}">{{ t(id=language_message) }}</a>
+    {% endfor %}
   {% endif %}
 </nav>
 {% endblock %}
 
 {% block content %}
-<p><time datetime="{{ page.date }}">{{ page.date }}</time></p>
+{% set published = format_date(value=page.date, style="long") %}
+<p><time datetime="{{ page.date }}">{{ published }}</time></p>
 {% if page.extra.featured_image %}
   {% set image = asset(id=page.extra.featured_image.id) %}
   <figure class="featured-image">

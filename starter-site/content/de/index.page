@@ -1,5 +1,6 @@
 template = "home.tera"
-title = "Home"
+title = "Startseite"
+translationid = "home"
 
 [content]
 main = "html/home.html"

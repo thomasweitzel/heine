@@ -1,0 +1,14 @@
+template = "section-index.tera"
+title = "Blog"
+date = 2026-08-01
+summary = """
+An example blog with locale-specific posts.
+"""
+translationid = "blog"
+
+[extra]
+parent = "index"
+count_message = "blog-post-summary"
+
+[content]
+main = "md/index.md"

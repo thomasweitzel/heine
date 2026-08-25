@@ -2,14 +2,13 @@ template = "section-index.tera"
 title = "Blog"
 date = 2026-08-01
 summary = """
-An example of how one might do a blog.
-
-Only three posts so far…
+Ein Beispiel-Blog mit lokalisierten Beiträgen.
 """
+translationid = "blog"
 
 [extra]
 parent = "index"
-
+count_message = "blog-post-summary"
 
 [content]
 main = "md/index.md"
