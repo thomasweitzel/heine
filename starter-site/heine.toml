@@ -8,7 +8,6 @@ stylesheet = "css/highlighting.css"
 light = "github-light-default"
 dark = "ayu-dark"
 
-
 [site]
 base_path = "/my-project/"
 
