@@ -1,8 +1,6 @@
 {% extends "base.tera" %}
 {% block content %}
-<div class="main-content">
-  {{ page.content.main }}
-</div>
+{{ page.content.main }}
 <div class="sections">
   {% for dir in page.subdirs %}
     {% set index = dir ~ "/index" %}

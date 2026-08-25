@@ -26,7 +26,8 @@ h1 {
 
 .question {
     padding: var(--spacing-m);
-    margin: var(--spacing-m) var(--spacing-l);
+    margin-block: var(--spacing-m);
+    margin-inline: var(--spacing-l);
     border: var(--border);
     border-radius: var(--radius);
 }
@@ -37,7 +38,8 @@ h1 {
 
 quiz-q, quiz-a {
     padding: 1rem;
-    margin: 1rem 2rem;
+    margin-block: 1rem;
+    margin-inline: 2rem;
     display: block;
     color: var(--fg);
 }
@@ -45,13 +47,13 @@ quiz-q, quiz-a {
 quiz-a {
     border: var(--border);
     border-radius: var(--radius);
-    margin-left: 4rem;
+    margin-inline-start: 4rem;
     cursor: pointer;
 }
 
 quiz-a:hover {
     background-color: var(--color-1);
-    color: var(--color-1-text);
+    color: var(--fg);
 }
 
 quiz-a.clicked {

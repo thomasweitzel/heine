@@ -1,7 +1,7 @@
 {% extends "base.tera" %}
 
 {% block header %}
-<nav>
+<nav class="page-navigation">
   {% set index_id = page.dir ~ "/index" %}
   {% set index = pages[index_id] %}
   {% set index_link = page(id=index_id) %}

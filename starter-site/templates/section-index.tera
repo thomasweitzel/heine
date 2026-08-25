@@ -3,7 +3,7 @@
 {% if page.extra.parent in pages %}
   {% set up = pages[page.extra.parent] %}
   {% set up_link = page(id=page.extra.parent) %}
-  <nav>
+  <nav class="page-navigation">
     {{ t(id="up") }}: <a href="{{ up_link.url }}">{{ up.title }}</a>
   </nav>
 {% endif %}
@@ -19,14 +19,12 @@
     <p>{{ t(id=page.extra.count_message, count=page.siblings | length) }}</p>
   {% endif %}
   <hr>
-  <nav>
-    <div class="link-stack">
-      {% for p in page.siblings %}
-        {% set sibling = pages[p] %}
-        {% set sibling_link = page(id=sibling.id) %}
-        <a href="{{ sibling_link.relative_url }}">{{ sibling.title or sibling.filename }}</a>
-      {% endfor %}
-    </div>
+  <nav class="link-stack">
+    {% for p in page.siblings %}
+      {% set sibling = pages[p] %}
+      {% set sibling_link = page(id=sibling.id) %}
+      <a href="{{ sibling_link.relative_url }}">{{ sibling.title or sibling.filename }}</a>
+    {% endfor %}
   </nav>
 {% endif %}
 {% endblock %}
