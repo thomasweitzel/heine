@@ -3,12 +3,12 @@ use super::*;
 #[test]
 fn reports_the_page_location_for_a_missing_template() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'missing.tera'\n");
+    fixture.write("content/en/index.page", "template = 'missing.tera'\n");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("template should be missing");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("content/index.page:1"));
+    assert!(diagnostic.contains("content/en/index.page:1"));
     assert!(diagnostic.contains("template referenced here"));
     assert!(diagnostic.contains("missing.tera"));
 }
@@ -16,7 +16,7 @@ fn reports_the_page_location_for_a_missing_template() {
 #[test]
 fn reports_a_missing_templates_directory() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fs::remove_dir_all(fixture.path().join("templates")).expect("remove templates directory");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("templates are missing");
@@ -32,7 +32,7 @@ fn rejects_non_utf8_template_paths_instead_of_lossy_template_names() {
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "page");
     let invalid = fixture
         .path()
@@ -55,7 +55,7 @@ fn rejects_symbolic_links_anywhere_in_templates() {
     use std::os::unix::fs::symlink;
 
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "page");
     let external = fixture.path().join("external.tera");
     fs::write(&external, "outside template").expect("external template");
@@ -71,7 +71,7 @@ fn rejects_symbolic_links_anywhere_in_templates() {
 #[test]
 fn reports_the_template_location_for_a_template_syntax_error() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'broken.tera'\n");
+    fixture.write("content/en/index.page", "template = 'broken.tera'\n");
     fixture.write("templates/broken.tera", "{% extents 'base.tera' %}");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("template syntax should fail");
@@ -87,15 +87,18 @@ fn reports_the_template_location_for_a_template_syntax_error() {
 #[test]
 fn reports_the_template_location_for_a_missing_parent_template() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'broken.tera'\n");
-    fixture.write("templates/broken.tera", "{% extends 'missing.tera' %}");
+    fixture.write("content/en/index.page", "template = 'broken.tera'\n");
+    fixture.write(
+        "templates/broken.tera",
+        "{# missing.tera is mentioned in a comment #}\n{% extends 'missing.tera' %}",
+    );
 
     let error =
         build_at(fixture.path(), BuildMode::Full).expect_err("parent template should be missing");
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("templates/broken.tera:1"),
+        diagnostic.contains("templates/broken.tera:2"),
         "{diagnostic}"
     );
     assert!(

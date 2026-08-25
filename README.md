@@ -26,6 +26,7 @@ now.
 - [Build a site](#build-a-site)
 - [Serve a site locally](#serve-a-site-locally)
 - [Site layout](#site-layout)
+- [Internationalization and localization](#internationalization-and-localization)
 - [Global data](#global-data)
 - [Pages and content](#pages-and-content)
   - [Directory descriptors](#directory-descriptors)
@@ -47,8 +48,8 @@ cargo run -- --root /path/to/site
 ```
 
 If `--root` is omitted, Heine starts in the current directory and walks toward
-its parent directories until it finds one containing both `content/` and
-`templates/`.
+its parent directories until it finds one containing `heine.toml`, `content/`,
+and `templates/`.
 
 Heine treats a full-build output directory as generated and managed output. If
 you are adopting an existing non-empty directory for the first time, confirm
@@ -65,7 +66,8 @@ cargo run -- --root /path/to/site --quick
 ```
 
 Quick mode re-renders for changed page files, declared content, inherited
-directory descriptors, global `data/`, and present copied assets. It
+directory descriptors, shared or locale `data/`, Fluent resources, and present
+copied assets. It
 intentionally does not consider template, configuration, or page-relationship
 changes. Use a normal build after those changes.
 
@@ -135,14 +137,17 @@ compression, or conditional requests.
 
 ```text
 my-site/
-├── heine.toml          # optional configuration
-├── content/            # pages, content files, and copied assets
+├── heine.toml          # required configuration, including locales
+├── content/            # shared assets and one tree per configured locale
 ├── data/               # optional site-wide JSON and TOML
+├── locales/            # optional Fluent resources per configured locale
 ├── templates/          # Tera2 templates
 └── public/             # generated output
 ```
 
-`content/` deliberately holds both build inputs and published assets. A
+`content/` deliberately holds both build inputs and published assets. Its
+top-level directories are `assets/` and the locale codes configured in
+`heine.toml`; a source tree is required for every configured locale. A
 `.page` file and every file it declares in `[content]` are build inputs, so
 Heine reads them but never copies them to `public/`. Every other file below
 `content/` is a published asset and is copied in the matching place below
@@ -150,8 +155,8 @@ Heine reads them but never copies them to `public/`. Every other file below
 source-path components beneath `content/` and `templates/` must be valid
 UTF-8 and must not contain backslashes; Heine reports an invalid path instead
 of silently changing its generated URL or identifier.
-Template files, like content files, must be regular files: symbolic links are
-rejected rather than silently being skipped.
+Content, data, localization, and template files must be regular files:
+symbolic links are rejected rather than silently being skipped.
 
 `__heine/` is reserved in generated output for development-server endpoints.
 Do not use that directory for pages or copied assets.
@@ -186,6 +191,38 @@ identify the data file and source location. Symbolic links are rejected so the
 data tree has the same source-root boundary as content and templates. Data
 files are never copied to `public/`.
 
+## Internationalization and localization
+
+Every site explicitly declares its finite set of canonical BCP-47 locales.
+Use a locale source tree even for a single-language site. The default locale
+is unprefixed; every other locale receives its locale code as a URL prefix:
+
+```toml
+# heine.toml
+[i18n]
+default_locale = "en"
+locales = ["en", "de", "pl"]
+```
+
+```text
+content/en/about.page       -> /about.html
+content/de/ueber-uns.page   -> /de/ueber-uns.html
+```
+
+Put reusable UI text in Fluent `.ftl` files below `locales/<locale>/` and use
+`t()` in templates. Fluent select expressions provide the language-specific
+plural categories needed by languages such as Polish:
+
+```tera
+{{ t(id="quiz-count", count=quizzes | length) }}
+```
+
+Read the [internationalization and localization guide](docs/internationalization.md)
+before building a multilingual site. It explains source trees, shared and
+locale-specific assets and data, translation groups, fallback, localized date
+formatting, and validated page links. The [reference](docs/reference.md)
+lists every configuration field and template function.
+
 ## Pages and content
 
 A `.page` file is TOML. It can declare a template, explicit metadata, and
@@ -213,22 +250,24 @@ The page above renders to `post.html`. The page fields are:
 | `description` | none              | Short page description, exposed as `page.description`.                                                                           |
 | `summary`     | none              | Authored summary text, exposed as `page.summary`; Heine does not derive one from Markdown.                                       |
 | `date`        | none              | A TOML date or offset-aware date-time, exposed as `page.date`. Local date-times are rejected because their time zone is unclear. |
-| `content`     | empty             | Named content files, relative to the `.page` file.                                                                               |
+| `content`     | empty             | Named content files, relative to the `.page` file and inside its locale tree.                                                    |
 | `extra`       | empty table       | User-defined TOML values exposed as `page.extra`.                                                                                |
 | `tags`        | empty list        | Tags for the page.                                                                                                               |
 | `weight`      | `0`               | Sibling ordering weight. `index.page` has no weight by default and is excluded; use `weight = "None"` to exclude another page.   |
 | `suffix`      | `.html`           | Output extension, for example `.xml`. It cannot contain path separators.                                                         |
+| `translationid` | none            | Optional non-empty ID that explicitly relates known translated pages through `page.translations`.                                |
 
 ### Directory descriptors
 
-`content/**/_directory.toml` is a non-published TOML descriptor for a content
-directory. It gives that directory metadata and can set a recursive default
-template and metadata requirements for its pages. The closest descriptor with
-`pages.template` wins; a page can override it with a template name or use
-`template = false` to remain available through `pages` without rendering.
+`content/<locale>/**/_directory.toml` is a non-published TOML descriptor for a
+locale-owned content directory. It gives that directory metadata and can set a
+recursive default template and metadata requirements for its pages. The closest
+descriptor with `pages.template` wins; a page can override it with a template
+name or use `template = false` to remain available through `pages` without
+rendering.
 
 ```toml
-# content/blog/_directory.toml
+# content/en/blog/_directory.toml
 title = "Blog"
 description = "Notes from the project."
 
@@ -242,8 +281,8 @@ template = "post.tera"
 required = ["title", "date", "extra.author"]
 ```
 
-Requirements accumulate from `content/_directory.toml` to the page or nested
-descriptor. `[metadata].required` validates encountered directory descriptors;
+Requirements accumulate from `content/<locale>/_directory.toml` to the page or
+nested descriptor. `[metadata].required` validates encountered directory descriptors;
 `[pages.metadata].required` validates descendant pages. Each required name is
 one of `title`, `description`, `summary`, `date`, or a dot-addressable
 `extra.<name>` path. Errors identify both the incomplete page or descriptor and
@@ -263,8 +302,9 @@ fields, including misspelled policy names, rather than silently ignoring
 authored configuration.
 
 Content files are addressed relative to their `.page` file and must remain
-inside `content/`. Symbolic links are not permitted anywhere below `content/`;
-this keeps page inputs and copied assets inside the declared source tree:
+inside that page's `content/<locale>/` tree. Symbolic links are not permitted
+anywhere below `content/`; this keeps page inputs and copied assets inside the
+declared source tree:
 
 - `.toml` is parsed as structured TOML;
 - `.json` is parsed as structured JSON;
@@ -279,16 +319,17 @@ example:
 
 ```text
 content/
-└── blog/
-    ├── 2025-08-14.page
-    └── 2025-08-14/
-        ├── post.md
-        └── images/
-            └── sunset.jpg
+└── en/
+    └── blog/
+        ├── 2025-08-14.page
+        └── 2025-08-14/
+            ├── post.md
+            └── images/
+                └── sunset.jpg
 ```
 
 ```toml
-# blog/2025-08-14.page
+# content/en/blog/2025-08-14.page
 template = "post.tera"
 
 [content]
@@ -302,7 +343,7 @@ not a separate feature: flat sites work in exactly the same way.
 Ordinary Markdown URLs are relative to the rendered page, not to the Markdown
 file. Since this page renders to `blog/2025-08-14.html`, it can use
 `![Sunset](2025-08-14/images/sunset.jpg)`. For an internal copied asset that
-should be validated and version-resolved, use an explicit content-root-relative
+should be validated and version-resolved, use an explicit locale-root-relative
 asset ID instead:
 
 ```markdown
@@ -310,9 +351,9 @@ asset ID instead:
 ```
 
 `asset:` works in Markdown links and images. Its ID follows the same rules as
-Tera's `asset()` function: it has no leading `/`, stays under `content/`, and
-may omit the version from a versioned filename. Other Markdown URLs retain
-their normal, unmodified Markdown behavior.
+Tera's `asset()` function: it has no leading `/`, stays under the current
+locale's content tree, and may omit the version from a versioned filename.
+Other Markdown URLs retain their normal, unmodified Markdown behavior.
 
 ## Templates
 
@@ -322,17 +363,19 @@ template values are:
 | Value    | Meaning                                                   |
 |----------|-----------------------------------------------------------|
 | `page`   | The current page's render-facing fields and content       |
-| `pages`  | All pages, keyed by logical page ID                       |
-| `tags`   | Tags mapped to ordered page IDs                           |
-| `assets` | Copied asset paths, relative to `content/`                |
+| `pages`  | Rendered pages in the current locale, keyed by page ID    |
+| `tags`   | Current-locale tags mapped to ordered page IDs            |
+| `assets` | Copied asset paths available to the current locale         |
 | `data`   | Site-wide values loaded from the optional `data/` tree    |
+| `locale_data` | Values loaded from optional `data/<locale>/` for the current locale |
+| `locale` | Current locale identity; `locale.code` is its BCP-47 code |
 | `root`   | A relative prefix from the rendered page to the site root |
 
 `page` deliberately exposes only these fields:
 
 | Field                                        | Meaning                                                                    |
 |----------------------------------------------|----------------------------------------------------------------------------|
-| `id`                                         | Logical page ID, relative to `content/` without `.page`.                   |
+| `id`                                         | Logical page ID, relative to its locale tree without `.page`.              |
 | `path` / `filename`                          | Rendered output path / its filename; absent for a page without a template. |
 | `dir` / `subdirs`                            | The page's source directory and its immediate child directories.           |
 | `content`                                    | Values declared by `[content]` in the page file.                           |
@@ -341,6 +384,7 @@ template values are:
 | `tags` / `weight`                            | The page's tags and ordering weight.                                       |
 | `siblings`                                   | Other rendered, ordered pages in the same directory.                       |
 | `lighter` / `heavier`                        | Previous / next sibling IDs, when present.                                 |
+| `translations`                               | Explicitly known counterparts, keyed by locale code.                        |
 
 Heine provides these filters:
 
@@ -351,13 +395,13 @@ Heine provides these filters:
   `styles.v2.css` when that is the highest available version. Versioned asset
   names use `<name>.v<positive-integer><extension>`. Relative inputs are
   resolved from the current page directory and produce page-relative URLs. A
-  leading `/` is content-root-relative and produces an absolute site URL below
+  leading `/` is locale-root-relative and produces an absolute site URL below
   `site.base_path`.
   Its input must identify a copied asset; an invalid or missing asset fails at
   the filter call site.
 - `dimensions` returns `width` and `height` for discovered images. Its input
   is relative to the current page directory; a leading `/` is
-  content-root-relative. Its input must identify a copied asset; a known
+  locale-root-relative. Its input must identify a copied asset; a known
   non-image returns no dimensions, while an invalid or missing asset fails at
   the filter call site.
 
@@ -366,9 +410,9 @@ highlighting stylesheet. It is available only when highlighting is enabled;
 otherwise the call fails at its template call site.
 
 Use the `asset` function for an internal copied asset, identified by its
-canonical path relative to `content/`. It validates that ID, resolves a
-versioned file, and returns a URL, optional integrity metadata, and detected
-image dimensions when available:
+canonical path relative to the current locale's content tree. It validates that
+ID, resolves a versioned file, and returns a URL, optional integrity metadata,
+and detected image dimensions when available:
 
 ```tera
 {% set script = asset(id="quiz/script.js") %}
@@ -387,10 +431,12 @@ image dimensions when available:
 
 Use `asset(id="css/styles.css")` for copied assets and
 `page(id="blog/index")` for a rendered page. Asset IDs never begin with `/`:
-they are always relative to `content/`. Page IDs are the `.page` filename
-relative to `content/`, without the `.page` extension. Keeping asset and page
-lookups separate makes templates explicit and lets Heine validate each kind of
-internal link. Leave external URLs as ordinary template strings.
+they are always relative to the current locale's content tree. Page IDs are
+the `.page` filename relative to the current locale's tree, without the `.page`
+extension. Keeping asset and page lookups separate makes templates explicit and
+lets Heine validate each kind of internal link. Leave external URLs as ordinary
+template strings. See the [reference](docs/reference.md#template-contract) for
+the complete list of Heine functions and filters.
 
 Template inheritance, page-template references, and Tera syntax/rendering
 errors are reported with source file and line context. Invalid asset IDs and
@@ -439,11 +485,16 @@ collide with a page or copied asset. Fenced blocks without a language remain
 ordinary Markdown code blocks. `missing_language = "error"` rejects unknown
 fence languages; `"plain"` renders them without syntax-specific tokens.
 
-`heine.toml` is optional. Unknown configuration keys are rejected so mistakes
-are diagnosed early. Configure the deployment path and optional asset integrity
-hashes like this:
+`heine.toml` is required. Its `[i18n]` section declares the default locale and
+the complete finite locale set; unknown configuration keys are rejected so
+mistakes are diagnosed early. Configure the locale model, deployment path, and
+optional asset integrity hashes together:
 
 ```toml
+[i18n]
+default_locale = "en"
+locales = ["en", "de"]
+
 [site]
 base_path = "/my-project/"
 
@@ -470,8 +521,8 @@ root, and controls where generated files are written. It is independent of
 `site.base_path`: use `public/my-project` when a simple file server should
 serve the site below `/my-project/`, or keep `public` when a hosting platform
 or reverse proxy maps that URL path to the generated directory. Output cannot
-be placed inside `content/`, `data/`, or `templates/`. Its existing ancestor
-directories must not be symbolic links.
+be placed inside `content/`, `data/`, `locales/`, or `templates/`. Its existing
+ancestor directories must not be symbolic links.
 
 `assets.integrity` defaults to no integrity hashes. Allowed values are
 `sha256`, `sha384`, and `sha512`. When set, the `asset` function calculates and
@@ -524,8 +575,10 @@ cannot overwrite an unrelated copied asset with the same output path.
 
 `--quick` updates the managed output directory directly. It skips rendering a
 page whose page file, declared content files, and inherited directory
-descriptors are older than its existing output. A changed present asset also
-re-renders pages: asset URLs can select a new version and integrity values
+descriptors are older than its existing output. Changed data or Fluent
+resources also re-render affected pages; a default-locale Fluent change
+re-renders every locale because it may be a fallback. A changed present asset
+also re-renders pages: asset URLs can select a new version and integrity values
 depend on asset contents. It copies an asset only when its source is newer than
 the existing output asset or that output asset is missing. It does not notice
 template, configuration, or page-relationship changes, or renamed or deleted
@@ -539,6 +592,12 @@ shows pages, Markdown, segmented quiz data, template inheritance, copied assets,
 versioned CSS, browser-side quiz JavaScript, and shared site data. Its
 `data/site.toml` supplies the site identity and primary navigation while pages
 retain their own titles and content.
+
+It also has English and German source trees. Two translated blog posts use
+explicit `translationid` values, so their post navigation can link only to
+known counterparts. Fluent localizes navigation, the footer, post controls,
+and the singular/plural blog-post count; shared site assets live in
+`content/assets/`.
 
 The first blog post also demonstrates the starter's `featured_image` template
 convention. It resolves the declared asset and emits its detected intrinsic

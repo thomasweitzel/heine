@@ -1,6 +1,11 @@
 //! Tera is contained in this module; the rest of the application uses only
 //! render-facing serde values rather than template-engine types.
 
+mod content;
+mod localization;
+mod resources;
+mod runtime;
+
 use std::{
     collections::BTreeMap,
     fs,
@@ -14,8 +19,8 @@ use walkdir::WalkDir;
 
 use crate::{
     asset::AssetLinks,
-    markdown,
-    site::{PageId, PageView},
+    localization::Localization,
+    site::{PageId, PageLinks, PageView},
     source_diagnostic,
 };
 
@@ -60,8 +65,8 @@ pub(crate) enum Error {
 /// shape the internal domain model.
 pub(crate) struct TemplateResources {
     asset_links: AssetLinks,
-    base_path: String,
-    pages: BTreeMap<String, PathBuf>,
+    page_links: PageLinks,
+    localization: std::sync::Arc<Localization>,
     highlight_css: Option<String>,
 }
 
@@ -69,25 +74,46 @@ pub(crate) struct TemplateResources {
 /// between the resolved site model and Tera's serialization requirements.
 #[derive(Serialize)]
 pub(crate) struct RenderContext<'a> {
+    pub(crate) locale: LocaleView,
     pub(crate) page: &'a PageView,
     pub(crate) pages: &'a BTreeMap<PageId, PageView>,
     pub(crate) tags: &'a BTreeMap<String, Vec<PageId>>,
     pub(crate) assets: &'a [String],
     pub(crate) data: &'a serde_json::Value,
+    pub(crate) locale_data: &'a serde_json::Value,
+    pub(crate) root: &'a str,
+    #[serde(rename = "__heine_runtime")]
+    pub(crate) runtime: RuntimeContext<'a>,
+}
+
+/// The locale identity deliberately exposed to templates. It does not leak
+/// locale paths, bundles, or automatic direction guesses.
+#[derive(Serialize)]
+pub(crate) struct LocaleView {
+    pub(crate) code: String,
+}
+
+/// Values required by Heine's built-ins but not part of the public template
+/// model. Their reserved context key prevents ordinary template locals such as
+/// `locale`, `page`, or `root` from changing how built-ins resolve resources.
+#[derive(Serialize)]
+pub(crate) struct RuntimeContext<'a> {
+    pub(crate) locale: String,
+    pub(crate) page_dir: &'a str,
     pub(crate) root: &'a str,
 }
 
 impl TemplateResources {
     pub(crate) fn new(
         asset_links: AssetLinks,
-        base_path: String,
-        pages: BTreeMap<String, PathBuf>,
+        page_links: PageLinks,
+        localization: std::sync::Arc<Localization>,
         highlight_css: Option<String>,
     ) -> Self {
         Self {
             asset_links,
-            base_path,
-            pages,
+            page_links,
+            localization,
             highlight_css,
         }
     }
@@ -120,116 +146,10 @@ impl TemplateEngine {
         markdown_renderer: crate::markdown::Renderer,
     ) -> Result<Self, Error> {
         let mut tera = tera::Tera::default();
-        let page_targets = resources.pages;
-        let page_base = resources.base_path.clone();
-        let asset_function_links = resources.asset_links.clone();
-        let latest_links = resources.asset_links.clone();
-        let latest_base = resources.base_path.clone();
-        let dimensions_links = resources.asset_links.clone();
-        let markdown_asset_links = resources.asset_links;
-        let highlight_css = resources.highlight_css;
-        let markdown_renderer_for_filter = markdown_renderer;
-        tera.register_function(
-            "highlight_css",
-            move |_: tera::Kwargs, _: &tera::State| -> tera::TeraResult<tera::Value> {
-                highlight_css.clone().map(Into::into).ok_or_else(|| {
-                    tera::Error::message("syntax highlighting is not enabled; configure [markdown.highlighting] in heine.toml")
-                })
-            },
-        );
-        tera.register_function(
-            "asset",
-            move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
-                let asset = asset_function_links
-                    .resolve(kwargs.must_get::<&str>("id")?)
-                    .map_err(|error| tera::Error::message(error.to_string()))?;
-                let root = state.get::<String>("root")?.unwrap_or_default();
-                let mut result = tera::Map::new();
-                result.insert("url".into(), asset.url().into());
-                result.insert(
-                    "relative_url".into(),
-                    format!("{root}{}", asset.path().to_string_lossy()).into(),
-                );
-                result.insert(
-                    "integrity".into(),
-                    asset.integrity().map(str::to_owned).into(),
-                );
-                let (width, height) = asset.dimensions().unzip();
-                result.insert("width".into(), width.into());
-                result.insert("height".into(), height.into());
-                Ok(result.into())
-            },
-        );
-        tera.register_function(
-            "page",
-            move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
-                let id = kwargs.must_get::<&str>("id")?;
-                let path = page_targets.get(id).ok_or_else(|| {
-                    tera::Error::message(format!("rendered page {id:?} was not found"))
-                })?;
-                let root = state.get::<String>("root")?.unwrap_or_default();
-                let mut result = tera::Map::new();
-                result.insert(
-                    "url".into(),
-                    format!("{page_base}{}", path.to_string_lossy()).into(),
-                );
-                result.insert(
-                    "relative_url".into(),
-                    format!("{root}{}", path.to_string_lossy()).into(),
-                );
-                Ok(result.into())
-            },
-        );
-        tera.register_filter(
-            "latest",
-            move |input: &str, _: tera::Kwargs, state: &tera::State| -> tera::TeraResult<String> {
-                let page_dir = page_dir(state)?;
-                let page_dir = Path::new(&page_dir);
-                let (path, content_root_relative) = latest_links
-                    .resolve_template_path(page_dir, input)
-                    .map_err(|error| tera::Error::message(error.to_string()))?;
-                let path = if content_root_relative {
-                    crate::source_path::url(&path)
-                } else {
-                    crate::source_path::url(path.strip_prefix(page_dir).unwrap_or(&path))
-                };
-                Ok(if content_root_relative {
-                    format!("{latest_base}{path}")
-                } else {
-                    path
-                })
-            },
-        );
-        tera.register_filter(
-            "dimensions",
-            move |input: &str,
-                  _: tera::Kwargs,
-                  state: &tera::State|
-                  -> tera::TeraResult<tera::Value> {
-                let page_dir = page_dir(state)?;
-                let (key, _) = dimensions_links
-                    .resolve_template_path(Path::new(&page_dir), input)
-                    .map_err(|error| tera::Error::message(error.to_string()))?;
-                let mut result = tera::Map::new();
-                if let Some((width, height)) = dimensions_links.dimensions(&key) {
-                    result.insert("width".into(), width.into());
-                    result.insert("height".into(), height.into());
-                }
-                Ok(result.into())
-            },
-        );
-        tera.register_filter(
-            "markdown",
-            move |input: &str, _: tera::Kwargs, _: &tera::State| -> tera::TeraResult<tera::Value> {
-                markdown::render(
-                    input,
-                    &markdown_renderer_for_filter,
-                    Some(&markdown_asset_links),
-                )
-                .map(|output| tera::Value::safe_string(&output))
-                .map_err(|error| tera::Error::message(error.to_string()))
-            },
-        );
+        let runtime = runtime::TemplateRuntime::from(resources);
+        resources::register(&mut tera, &runtime);
+        content::register(&mut tera, &runtime, markdown_renderer);
+        localization::register(&mut tera, &runtime);
         let entries = WalkDir::new(templates)
             .sort_by_file_name()
             .into_iter()
@@ -376,25 +296,73 @@ impl Error {
             message,
             source_code: source_code.clone(),
             label: "referenced parent template here".into(),
-            span: named_reference_span(source_code.inner(), reference),
+            span: parent_reference_span(source_code.inner(), reference),
         })))
     }
 }
 
-fn named_reference_span(source: &str, reference: &str) -> miette::SourceSpan {
-    source
-        .find(reference)
-        .map(|offset| (offset, reference.len()).into())
-        .unwrap_or_else(|| (0, 0).into())
+/// Locates the string literal in an `extends` directive without mistaking a
+/// matching name in a comment or ordinary template text for the reference.
+/// Tera's missing-parent error does not retain its own span, so this small
+/// syntax-aware recovery preserves a useful authored location at that API
+/// boundary.
+fn parent_reference_span(source: &str, reference: &str) -> miette::SourceSpan {
+    let mut remaining = source;
+    let mut offset = 0;
+    let mut directive_span = None;
+    while let Some(open) = remaining.find("{%") {
+        offset += open;
+        let directive = &remaining[open + 2..];
+        let directive_offset = offset + 2;
+        let (directive, trimmed) = trim_template_whitespace(directive);
+        let directive_offset = directive_offset + trimmed;
+        let (directive, trim_marker) = match directive.strip_prefix('-') {
+            Some(directive) => (directive, 1),
+            None => (directive, 0),
+        };
+        let directive_offset = directive_offset + trim_marker;
+        let (directive, trimmed) = trim_template_whitespace(directive);
+        let directive_offset = directive_offset + trimmed;
+        if let Some(after_extends) = directive.strip_prefix("extends")
+            && after_extends
+                .chars()
+                .next()
+                .is_some_and(char::is_whitespace)
+        {
+            directive_span = Some(
+                (
+                    directive_offset,
+                    directive.find("%}").unwrap_or(directive.len()),
+                )
+                    .into(),
+            );
+            let extends_length = directive.len() - after_extends.len();
+            let (argument, trimmed) = trim_template_whitespace(after_extends);
+            let argument_offset = directive_offset + extends_length + trimmed;
+            if let Some((value, value_offset)) = quoted_template_string(argument)
+                && value == reference
+            {
+                return (argument_offset + value_offset, value.len()).into();
+            }
+        }
+        let consumed = open + 2;
+        remaining = &remaining[consumed..];
+        offset += 2;
+    }
+    directive_span.unwrap_or((0, 0).into())
 }
 
-fn page_dir(state: &tera::State) -> tera::TeraResult<String> {
-    Ok(state
-        .get::<tera::Value>("page")?
-        .and_then(|page| {
-            page.get_from_path("dir")
-                .and_then(tera::Value::as_str)
-                .map(str::to_owned)
-        })
-        .unwrap_or_default())
+fn trim_template_whitespace(value: &str) -> (&str, usize) {
+    let trimmed = value.trim_start_matches(char::is_whitespace);
+    (trimmed, value.len() - trimmed.len())
+}
+
+fn quoted_template_string(value: &str) -> Option<(&str, usize)> {
+    let quote = value.chars().next()?;
+    if !matches!(quote, '\'' | '"') {
+        return None;
+    }
+    let value = &value[quote.len_utf8()..];
+    let end = value.find(quote)?;
+    Some((&value[..end], quote.len_utf8()))
 }

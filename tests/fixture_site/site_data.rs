@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn exposes_structured_site_data_without_publishing_it() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("data/site.json", r#"{ "title": "Heine" }"#);
     fixture.write(
         "data/navigation/main.toml",
@@ -32,7 +32,7 @@ fn exposes_structured_site_data_without_publishing_it() {
 #[test]
 fn quick_builds_rerender_when_global_data_changes() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("data/site.json", r#"{ "title": "Before" }"#);
     fixture.write("templates/page.tera", "{{ data.site.title }}");
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
@@ -60,7 +60,7 @@ fn quick_builds_rerender_when_global_data_changes() {
 #[test]
 fn rejects_invalid_json_data_with_its_source_location() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("data/site.json", "{ invalid }");
     fixture.write("templates/page.tera", "{{ data.site }}");
 
@@ -74,7 +74,7 @@ fn rejects_invalid_json_data_with_its_source_location() {
 #[test]
 fn rejects_invalid_toml_data_with_its_source_location() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("data/site.toml", "title = [\n");
     fixture.write("templates/page.tera", "{{ data.site }}");
 
@@ -88,7 +88,7 @@ fn rejects_invalid_toml_data_with_its_source_location() {
 #[test]
 fn rejects_unsupported_data_files() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("data/site.yaml", "title: Heine\n");
     fixture.write("templates/page.tera", "page");
 
@@ -102,7 +102,7 @@ fn rejects_unsupported_data_files() {
 #[test]
 fn rejects_data_key_collisions() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("data/navigation.json", "[]");
     fixture.write("data/navigation/main.toml", "title = 'Home'\n");
     fixture.write("templates/page.tera", "page");
@@ -121,7 +121,7 @@ fn rejects_data_key_collisions() {
 #[test]
 fn rejects_data_files_that_map_to_the_same_key() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("data/site.json", "{}");
     fixture.write("data/site.toml", "title = 'Heine'\n");
     fixture.write("templates/page.tera", "page");
@@ -140,7 +140,7 @@ fn rejects_data_files_that_map_to_the_same_key() {
 #[test]
 fn rejects_data_paths_that_cannot_be_accessed_with_dot_notation() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("data/main-menu.json", "{}");
     fixture.write("templates/page.tera", "page");
 
@@ -157,7 +157,7 @@ fn rejects_symbolic_links_anywhere_in_global_data() {
     use std::os::unix::fs::symlink;
 
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "page");
     let external = fixture.path().join("external.json");
     fs::write(&external, "{}").expect("external data");

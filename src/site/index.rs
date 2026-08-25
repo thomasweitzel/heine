@@ -2,7 +2,96 @@
 
 use std::collections::BTreeMap;
 
-use crate::site::page::{Page, PageId};
+use miette::{Diagnostic, NamedSource, SourceSpan};
+use thiserror::Error;
+
+use crate::{
+    locale::Locale,
+    site::page::{Page, PageId, PageLink},
+};
+
+#[derive(Debug, Diagnostic, Error)]
+#[error("translation ID {translationid:?} is declared more than once for locale {locale}")]
+#[diagnostic(code(heine::i18n::duplicate_translationid))]
+pub(crate) struct DuplicateTranslation {
+    translationid: String,
+    locale: Locale,
+    #[source_code]
+    source_code: NamedSource<String>,
+    #[label("duplicate declaration here")]
+    span: SourceSpan,
+    #[related]
+    first: Vec<FirstTranslation>,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error("first declaration of this translation ID")]
+struct FirstTranslation {
+    #[source_code]
+    source_code: NamedSource<String>,
+    #[label("first declaration here")]
+    span: SourceSpan,
+}
+
+/// Relates explicitly authored pages across locales without guessing from
+/// paths. Missing locales are deliberately normal; duplicate locale members
+/// would make a language switcher ambiguous and therefore fail the build.
+pub(super) fn resolve_translations(
+    pages: &mut BTreeMap<Locale, BTreeMap<PageId, Page>>,
+) -> Result<(), Box<DuplicateTranslation>> {
+    let mut groups: BTreeMap<String, BTreeMap<Locale, PageId>> = BTreeMap::new();
+    for (locale, locale_pages) in pages.iter() {
+        for (id, page) in locale_pages {
+            let Some(translationid) = &page.translationid else {
+                continue;
+            };
+            if let Some(previous) = groups
+                .entry(translationid.clone())
+                .or_default()
+                .insert(locale.clone(), id.clone())
+            {
+                let first = &locale_pages[&previous];
+                return Err(Box::new(DuplicateTranslation {
+                    translationid: translationid.clone(),
+                    locale: locale.clone(),
+                    source_code: page.source.clone(),
+                    span: page.translationid_span.unwrap_or((0, 0).into()),
+                    first: vec![FirstTranslation {
+                        source_code: first.source.clone(),
+                        span: first.translationid_span.unwrap_or((0, 0).into()),
+                    }],
+                }));
+            }
+        }
+    }
+    for members in groups.values() {
+        let links = members
+            .iter()
+            .filter_map(|(locale, id)| {
+                let page = pages.get(locale)?.get(id)?;
+                page.path.as_ref().map(|path| {
+                    (
+                        locale.to_string(),
+                        PageLink {
+                            id: id.clone(),
+                            path: path.as_str().to_owned(),
+                        },
+                    )
+                })
+            })
+            .collect::<BTreeMap<_, _>>();
+        for (locale, id) in members {
+            if let Some(page) = pages.get_mut(locale).and_then(|pages| pages.get_mut(id)) {
+                page.translations = links
+                    .iter()
+                    .filter(|(other, _)| *other != &locale.to_string())
+                    .map(|(locale, link)| (locale.clone(), link.clone()))
+                    .collect();
+            }
+        }
+    }
+    Ok(())
+}
 
 pub(super) fn fix_siblings(pages: &mut BTreeMap<PageId, Page>) {
     let members: BTreeMap<String, Vec<PageId>> =

@@ -6,30 +6,33 @@ use std::time::{Duration, SystemTime};
 fn inherits_directory_page_policy_and_exposes_explicit_metadata() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/_directory.toml",
+        "content/en/_directory.toml",
         "[pages]\ntemplate = 'default.tera'\n[pages.metadata]\nrequired = ['title']\n",
     );
     fixture.write(
-        "content/blog/_directory.toml",
+        "content/en/blog/_directory.toml",
         "title = 'Blog'\n[pages]\ntemplate = 'post.tera'\n[pages.metadata]\nrequired = ['date', 'extra.author']\n",
     );
     fixture.write(
-        "content/blog/post.page",
+        "content/en/blog/post.page",
         "title = 'Post'\ndate = 2026-08-14\n[extra]\nauthor = 'Heine'\n",
     );
     fixture.write(
-        "content/blog/nested/_directory.toml",
+        "content/en/blog/nested/_directory.toml",
         "[pages]\ntemplate = 'nested.tera'\n",
     );
     fixture.write(
-        "content/blog/nested/inherited.page",
+        "content/en/blog/nested/inherited.page",
         "title = 'Nested'\ndate = 2026-08-15\n[extra]\nauthor = 'Heine'\n",
     );
     fixture.write(
-        "content/blog/nested/overridden.page",
+        "content/en/blog/nested/overridden.page",
         "template = 'override.tera'\ntitle = 'Override'\ndate = 2026-08-16\n[extra]\nauthor = 'Heine'\n",
     );
-    fixture.write("content/about.page", "title = 'About'\ntemplate = false\n");
+    fixture.write(
+        "content/en/about.page",
+        "title = 'About'\ntemplate = false\n",
+    );
     fixture.write(
         "templates/post.tera",
         "{{ page.title }}|{{ page.date }}|{{ page.extra.author }}|{{ page.directory.title }}",
@@ -63,11 +66,11 @@ fn inherits_directory_page_policy_and_exposes_explicit_metadata() {
 fn reports_missing_metadata_with_the_page_and_directory_policy_context() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/_directory.toml",
+        "content/en/_directory.toml",
         "[pages.metadata]\nrequired = ['title', 'extra.author']\n",
     );
     fixture.write(
-        "content/index.page",
+        "content/en/index.page",
         "template = 'page.tera'\ntitle = 'Home'\n",
     );
     fixture.write("templates/page.tera", "page");
@@ -75,9 +78,12 @@ fn reports_missing_metadata_with_the_page_and_directory_policy_context() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("metadata is required");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("content/index.page:1"), "{diagnostic}");
     assert!(
-        diagnostic.contains("content/_directory.toml:2"),
+        diagnostic.contains("content/en/index.page:1"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("content/en/_directory.toml:2"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("extra.author"), "{diagnostic}");
@@ -87,21 +93,21 @@ fn reports_missing_metadata_with_the_page_and_directory_policy_context() {
 fn validates_inherited_directory_metadata_requirements() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/_directory.toml",
+        "content/en/_directory.toml",
         "title = 'Root'\ndescription = 'Root directory'\n[metadata]\nrequired = ['title', 'description']\n",
     );
-    fixture.write("content/blog/_directory.toml", "title = 'Blog'\n");
+    fixture.write("content/en/blog/_directory.toml", "title = 'Blog'\n");
 
     let error =
         build_at(fixture.path(), BuildMode::Full).expect_err("directory metadata is required");
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("content/blog/_directory.toml:1"),
+        diagnostic.contains("content/en/blog/_directory.toml:1"),
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("content/_directory.toml:4"),
+        diagnostic.contains("content/en/_directory.toml:4"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("description"), "{diagnostic}");
@@ -110,14 +116,14 @@ fn validates_inherited_directory_metadata_requirements() {
 #[test]
 fn reports_invalid_directory_template_at_its_declaration() {
     let fixture = Fixture::new();
-    fixture.write("content/_directory.toml", "[pages]\ntemplate = true\n");
-    fixture.write("content/index.page", "title = 'Home'\n");
+    fixture.write("content/en/_directory.toml", "[pages]\ntemplate = true\n");
+    fixture.write("content/en/index.page", "title = 'Home'\n");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("template is invalid");
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("content/_directory.toml:2"),
+        diagnostic.contains("content/en/_directory.toml:2"),
         "{diagnostic}"
     );
     assert!(
@@ -130,7 +136,7 @@ fn reports_invalid_directory_template_at_its_declaration() {
 fn rejects_ambiguous_local_date_times() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/index.page",
+        "content/en/index.page",
         "template = 'page.tera'\ntitle = 'Home'\ndate = 2026-08-14T09:30:00\n",
     );
     fixture.write("templates/page.tera", "page");
@@ -138,8 +144,11 @@ fn rejects_ambiguous_local_date_times() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("date is ambiguous");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("content/index.page"), "{diagnostic}");
-    assert!(diagnostic.contains("content/index.page:3"), "{diagnostic}");
+    assert!(diagnostic.contains("content/en/index.page"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("content/en/index.page:3"),
+        "{diagnostic}"
+    );
     assert!(diagnostic.contains("offset-aware"), "{diagnostic}");
 }
 
@@ -147,7 +156,7 @@ fn rejects_ambiguous_local_date_times() {
 fn renders_offset_date_times_in_rfc_3339_form() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/index.page",
+        "content/en/index.page",
         "template = 'page.tera'\ntitle = 'Home'\ndate = 2026-08-14T09:30:00+02:00\n",
     );
     fixture.write("templates/page.tera", "{{ page.date }}");
@@ -164,7 +173,7 @@ fn renders_offset_date_times_in_rfc_3339_form() {
 fn rejects_extra_keys_that_templates_cannot_address_consistently() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/index.page",
+        "content/en/index.page",
         "template = 'page.tera'\ntitle = 'Home'\n[extra]\nnot-valid = true\n",
     );
     fixture.write("templates/page.tera", "page");
@@ -172,8 +181,11 @@ fn rejects_extra_keys_that_templates_cannot_address_consistently() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("extra key is invalid");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("content/index.page"), "{diagnostic}");
-    assert!(diagnostic.contains("content/index.page:4"), "{diagnostic}");
+    assert!(diagnostic.contains("content/en/index.page"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("content/en/index.page:4"),
+        "{diagnostic}"
+    );
     assert!(diagnostic.contains("not-valid"), "{diagnostic}");
     assert!(
         diagnostic.contains("simple template identifiers"),
@@ -184,13 +196,13 @@ fn rejects_extra_keys_that_templates_cannot_address_consistently() {
 #[test]
 fn rejects_unknown_page_and_directory_policy_fields() {
     let fixture = Fixture::new();
-    fixture.write("content/_directory.toml", "[pages]\nmetadta = {}\n");
+    fixture.write("content/en/_directory.toml", "[pages]\nmetadta = {}\n");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("policy field is misspelled");
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("content/_directory.toml:2"),
+        diagnostic.contains("content/en/_directory.toml:2"),
         "{diagnostic}"
     );
     assert!(
@@ -200,7 +212,7 @@ fn rejects_unknown_page_and_directory_policy_fields() {
 
     let fixture = Fixture::new();
     fixture.write(
-        "content/index.page",
+        "content/en/index.page",
         "template = 'page.tera'\n[data]\ntitle = 'Old'\n",
     );
     fixture.write("templates/page.tera", "page");
@@ -208,7 +220,10 @@ fn rejects_unknown_page_and_directory_policy_fields() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("old field is rejected");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("content/index.page:2"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
     assert!(diagnostic.contains("unknown field `data`"), "{diagnostic}");
 }
 
@@ -216,10 +231,10 @@ fn rejects_unknown_page_and_directory_policy_fields() {
 fn quick_builds_rerender_pages_after_a_descriptor_change() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/_directory.toml",
+        "content/en/_directory.toml",
         "title = 'Before'\n[pages]\ntemplate = 'page.tera'\n",
     );
-    fixture.write("content/index.page", "title = 'Home'\n");
+    fixture.write("content/en/index.page", "title = 'Home'\n");
     fixture.write("templates/page.tera", "{{ page.directory.title }}");
     build_at(fixture.path(), BuildMode::Full).expect("initial build");
 
@@ -230,9 +245,9 @@ fn quick_builds_rerender_pages_after_a_descriptor_change() {
         .expect("output file")
         .set_times(fs::FileTimes::new().set_modified(SystemTime::now()))
         .expect("set output modification time");
-    let descriptor = fixture.path().join("content/_directory.toml");
+    let descriptor = fixture.path().join("content/en/_directory.toml");
     fixture.write(
-        "content/_directory.toml",
+        "content/en/_directory.toml",
         "title = 'After'\n[pages]\ntemplate = 'page.tera'\n",
     );
     fs::File::options()
@@ -251,16 +266,16 @@ fn quick_builds_rerender_pages_after_a_descriptor_change() {
 fn reports_a_missing_inherited_template_at_its_directory_declaration() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/_directory.toml",
+        "content/en/_directory.toml",
         "[pages]\ntemplate = 'missing.tera'\n",
     );
-    fixture.write("content/index.page", "title = 'Home'\n");
+    fixture.write("content/en/index.page", "title = 'Home'\n");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("template is missing");
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("content/_directory.toml:2"),
+        diagnostic.contains("content/en/_directory.toml:2"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("missing.tera"), "{diagnostic}");

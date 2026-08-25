@@ -14,6 +14,7 @@ use walkdir::{DirEntry, WalkDir};
 
 use crate::{
     content,
+    locale::Locale,
     output::OutputPath,
     site::{
         Error,
@@ -112,6 +113,8 @@ pub(super) fn relative_path(root: &Path, path: &Path) -> Result<PathBuf, Error> 
 
 pub(super) fn load_page(
     content_root: &Path,
+    locale: &Locale,
+    output_prefix: &Path,
     path: &Path,
     relative: &Path,
     entries: &[DirEntry],
@@ -209,9 +212,26 @@ pub(super) fn load_page(
             .map(|requirement| (*descriptor, requirement))
     });
     validate_requirements("page", path, &text, &metadata, requirements)?;
+    let translationid_span = raw.translationid.as_ref().map(|value| value.span().into());
+    let translationid = raw
+        .translationid
+        .map(toml::Spanned::into_inner)
+        .map(|value| {
+            if value.trim().is_empty() {
+                Err(invalid(
+                    path,
+                    &text,
+                    translationid_span.unwrap_or((0, 0).into()),
+                    "field `translationid` must not be empty",
+                ))
+            } else {
+                Ok(value)
+            }
+        })
+        .transpose()?;
     let output_path = template
         .as_ref()
-        .map(|_| OutputPath::new(relative.with_extension(suffix.as_str())));
+        .map(|_| OutputPath::new(output_prefix.join(relative).with_extension(suffix.as_str())));
     let (path_value, filename) = match &output_path {
         Some(output) => (
             Some(UrlPath::from_output(output)),
@@ -249,6 +269,9 @@ pub(super) fn load_page(
         subdirs,
         content,
         metadata,
+        translationid,
+        translationid_span,
+        source: page_source.clone(),
         directory: descriptors
             .get(directory_path)
             .map(|descriptor| DirectoryView::new(directory.clone(), &descriptor.metadata))
@@ -258,9 +281,11 @@ pub(super) fn load_page(
         siblings: vec![],
         lighter: None,
         heavier: None,
+        translations: BTreeMap::new(),
     };
     let task = template.zip(output_path).map(
         |((template, template_span, template_source), output_path)| Task {
+            locale: locale.clone(),
             template_span,
             output_span: suffix_span.into(),
             page_id: id,

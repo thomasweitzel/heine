@@ -6,11 +6,12 @@
 
 mod index;
 mod loader;
+mod locales;
 mod page;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    io,
+    collections::BTreeMap,
+    fs, io,
     path::{Path, PathBuf},
 };
 
@@ -18,17 +19,103 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
 use crate::{
-    asset::AssetCatalog,
-    config::SiteConfig,
+    asset::{AssetCatalog, AssetSources, SharedAssets},
+    config::{I18nConfig, SiteConfig},
     content,
     data::SiteData,
+    locale::Locale,
+    localization::Localization,
     markdown::{self, Renderer as MarkdownRenderer},
     output::{GeneratedFile, OutputClaim, OutputPath, OutputPlan},
-    template::{RenderContext, TemplateEngine, TemplateResources},
+    template::{LocaleView, RenderContext, RuntimeContext, TemplateEngine, TemplateResources},
 };
 
 use page::{Page, Task};
 pub(crate) use page::{PageId, PageView};
+
+/// Locale-aware rendered-page lookup shared by Tera and Markdown. Page IDs
+/// remain locale-local; callers opt into another locale explicitly.
+#[derive(Clone)]
+pub(crate) struct PageLinks {
+    current_locale: Locale,
+    base_path: String,
+    targets: std::sync::Arc<BTreeMap<Locale, BTreeMap<String, PathBuf>>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PageLinkTarget {
+    pub(crate) output_path: PathBuf,
+    pub(crate) url: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PageResolveError {
+    #[error("page id must be a non-empty relative path without '.', '..', or backslashes")]
+    InvalidId,
+    #[error("locale {locale:?} is not configured")]
+    InvalidLocale { locale: String },
+    #[error("rendered page {id:?} was not found for locale {locale:?}")]
+    NotFound { locale: String, id: String },
+}
+
+impl PageLinks {
+    pub(crate) fn new(
+        current_locale: Locale,
+        base_path: String,
+        targets: BTreeMap<Locale, BTreeMap<String, PathBuf>>,
+    ) -> Self {
+        Self {
+            current_locale,
+            base_path,
+            targets: std::sync::Arc::new(targets),
+        }
+    }
+    pub(crate) fn with_locale(&self, current_locale: Locale) -> Self {
+        Self {
+            current_locale,
+            base_path: self.base_path.clone(),
+            targets: self.targets.clone(),
+        }
+    }
+    pub(crate) fn base_path(&self) -> &str {
+        &self.base_path
+    }
+    pub(crate) fn resolve(
+        &self,
+        id: &str,
+        locale: Option<&str>,
+    ) -> Result<PageLinkTarget, PageResolveError> {
+        let requested = PathBuf::from(id);
+        if !crate::source_path::is_logical_id(&requested) {
+            return Err(PageResolveError::InvalidId);
+        }
+        let locale = match locale {
+            Some(locale) => locale
+                .parse()
+                .map_err(|_| PageResolveError::InvalidLocale {
+                    locale: locale.into(),
+                })?,
+            None => self.current_locale.clone(),
+        };
+        if !self.targets.contains_key(&locale) {
+            return Err(PageResolveError::InvalidLocale {
+                locale: locale.to_string(),
+            });
+        }
+        let path = self
+            .targets
+            .get(&locale)
+            .and_then(|pages| pages.get(id))
+            .ok_or_else(|| PageResolveError::NotFound {
+                locale: locale.to_string(),
+                id: id.into(),
+            })?;
+        Ok(PageLinkTarget {
+            output_path: path.clone(),
+            url: format!("{}{}", self.base_path, crate::source_path::url(path)),
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildMode {
@@ -61,6 +148,15 @@ impl BuildOptions {
 pub(crate) enum Error {
     #[error("content directory {0} does not exist or is not a directory")]
     MissingContent(PathBuf),
+    #[error("configured locale {locale} has no content directory at {path}")]
+    MissingLocaleContent { locale: Locale, path: PathBuf },
+    #[error("content path {path} is not a directory")]
+    ContentNotDirectory { path: PathBuf },
+    #[error("content root entry {path} is neither `assets` nor a configured locale directory")]
+    UnexpectedContentRoot { path: PathBuf },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateTranslation(#[from] Box<index::DuplicateTranslation>),
     #[error("could not inspect {path}")]
     Io {
         path: PathBuf,
@@ -98,6 +194,9 @@ pub(crate) enum Error {
     Template(#[from] crate::template::Error),
     #[error(transparent)]
     #[diagnostic(transparent)]
+    Localization(#[from] crate::localization::Error),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     MissingTemplate(#[from] Box<MissingTemplate>),
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -122,58 +221,110 @@ pub(crate) struct MissingTemplate {
 /// Fully validated site data. This is deliberately independent of Tera.
 #[derive(Debug)]
 pub(crate) struct Site {
-    pages: BTreeMap<PageId, Page>,
+    pages: BTreeMap<Locale, BTreeMap<PageId, Page>>,
     tasks: Vec<Task>,
-    tags: BTreeMap<String, Vec<PageId>>,
-    assets: AssetCatalog,
+    tags: BTreeMap<Locale, BTreeMap<String, Vec<PageId>>>,
+    assets: std::sync::Arc<AssetCatalog>,
     data: SiteData,
+    locale_data: BTreeMap<Locale, SiteData>,
+    i18n: I18nConfig,
+    localization: std::sync::Arc<Localization>,
     output_plan: OutputPlan,
 }
 
 impl Site {
     pub(crate) fn load(
         content_root: &Path,
+        locales_root: &Path,
         data: SiteData,
+        locale_data: BTreeMap<Locale, SiteData>,
+        i18n: I18nConfig,
         markdown_renderer: &MarkdownRenderer,
     ) -> Result<Self, Error> {
-        if !content_root.is_dir() {
-            return Err(Error::MissingContent(content_root.into()));
-        }
-        let entries = loader::content_entries(content_root)?;
-        let descriptors = loader::load_descriptors(content_root, &entries)?;
-        let mut pages = BTreeMap::new();
-        let mut tasks = Vec::new();
-        let mut content_inputs = BTreeSet::new();
-        let mut markdown_sources = Vec::new();
-        for entry in &entries {
-            if !entry.file_type().is_file() {
-                continue;
+        match fs::symlink_metadata(content_root) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(Error::ContentSymlink {
+                    path: content_root.into(),
+                });
             }
-            let source = entry.path();
-            let relative = loader::relative_path(content_root, source)?;
-            if source
-                .extension()
-                .is_some_and(|extension| extension == "page")
-            {
-                let loaded =
-                    loader::load_page(content_root, source, &relative, &entries, &descriptors)?;
-                if let Some(task) = loaded.task {
-                    tasks.push(task);
-                }
-                content_inputs.extend(loaded.content_inputs);
-                markdown_sources.extend(loaded.markdown_sources);
-                pages.insert(loaded.page.id.clone(), loaded.page);
+            Ok(metadata) if !metadata.is_dir() => {
+                return Err(Error::MissingContent(content_root.into()));
+            }
+            Ok(_) => {}
+            Err(source) if source.kind() == io::ErrorKind::NotFound => {
+                return Err(Error::MissingContent(content_root.into()));
+            }
+            Err(source) => {
+                return Err(Error::Io {
+                    path: content_root.into(),
+                    source,
+                });
             }
         }
-        tasks.sort_by(|left, right| left.page_id.cmp(&right.page_id));
+        let localization = std::sync::Arc::new(Localization::load(
+            locales_root,
+            i18n.locales(),
+            i18n.default_locale().clone(),
+        )?);
+        let locales = locales::load(content_root, &i18n)?;
+        let mut pages = locales.pages;
+        let mut tasks = locales.tasks;
         if let Some(latest_data_input) = data.latest_input() {
             for task in &mut tasks {
                 task.latest_input = task.latest_input.max(latest_data_input);
             }
         }
-        index::fix_siblings(&mut pages);
-        let tags = index::tags_for(&pages);
-        let assets = AssetCatalog::discover(content_root, &entries, &content_inputs)?;
+        for task in &mut tasks {
+            if let Some(latest_input) = locale_data[&task.locale].latest_input() {
+                task.latest_input = task.latest_input.max(latest_input);
+            }
+            if let Some(latest_input) = localization.latest_input(&task.locale) {
+                task.latest_input = task.latest_input.max(latest_input);
+            }
+        }
+        let tags = pages
+            .iter()
+            .map(|(locale, pages)| (locale.clone(), index::tags_for(pages)))
+            .collect();
+        index::resolve_translations(&mut pages).map_err(Error::DuplicateTranslation)?;
+        let sources = i18n
+            .locales()
+            .iter()
+            .map(|locale| (locale.clone(), content_root.join(locale.to_string())))
+            .collect::<Vec<_>>();
+        let prefixes = i18n
+            .locales()
+            .iter()
+            .map(|locale| {
+                (
+                    locale.clone(),
+                    if locale == i18n.default_locale() {
+                        PathBuf::new()
+                    } else {
+                        PathBuf::from(locale.to_string())
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let asset_sources = sources
+            .iter()
+            .map(|(locale, root)| {
+                (
+                    locale.clone(),
+                    AssetSources {
+                        root,
+                        entries: &locales.entries[locale],
+                        content_inputs: &locales.content_inputs[locale],
+                        output_prefix: &prefixes[locale],
+                        shared: (!locales.shared_entries.is_empty()).then_some(SharedAssets {
+                            root: &locales.shared_root,
+                            entries: &locales.shared_entries,
+                        }),
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let assets = std::sync::Arc::new(AssetCatalog::discover_locales(&asset_sources)?);
         if let Some(latest_asset_input) = assets.latest_input() {
             for task in &mut tasks {
                 task.latest_input = task.latest_input.max(latest_asset_input);
@@ -198,13 +349,33 @@ impl Site {
         }));
         output_claims.extend(markdown_renderer.stylesheet_claim());
         let output_plan = OutputPlan::validate(&output_claims)?;
-        let asset_links = assets.links("/".into(), BTreeMap::new());
-        for source in &markdown_sources {
-            markdown::validate_source(
+        let page_targets: BTreeMap<Locale, BTreeMap<String, PathBuf>> = pages
+            .iter()
+            .map(|(locale, pages)| {
+                (
+                    locale.clone(),
+                    pages
+                        .iter()
+                        .filter_map(|(id, page)| {
+                            page.path
+                                .as_ref()
+                                .map(|path| (id.to_string(), PathBuf::from(path.as_str())))
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+        let asset_links = assets.links(i18n.default_locale().clone(), "/".into(), BTreeMap::new());
+        let page_links = PageLinks::new(i18n.default_locale().clone(), "/".into(), page_targets);
+        for (locale, source) in &locales.markdown_sources {
+            let asset_links = asset_links.with_locale(locale.clone());
+            let page_links = page_links.with_locale(locale.clone());
+            markdown::validate_source_with_links(
                 &source.path,
                 &source.source,
                 markdown_renderer,
                 Some(&asset_links),
+                Some(&page_links),
             )?;
         }
         Ok(Self {
@@ -213,6 +384,9 @@ impl Site {
             tags,
             assets,
             data,
+            locale_data,
+            i18n,
+            localization,
             output_plan,
         })
     }
@@ -228,17 +402,19 @@ impl Site {
         let integrities = self
             .assets
             .integrity_values(options.config().assets().integrity())?;
+        let page_targets = self.page_targets();
         let resources = TemplateResources::new(
-            self.assets.links(base_path.clone(), integrities),
-            base_path.clone(),
-            self.pages
-                .iter()
-                .filter_map(|(id, page)| {
-                    page.path
-                        .as_ref()
-                        .map(|path| (id.to_string(), PathBuf::from(path.as_str())))
-                })
-                .collect(),
+            self.assets.links(
+                self.i18n.default_locale().clone(),
+                base_path.clone(),
+                integrities,
+            ),
+            PageLinks::new(
+                self.i18n.default_locale().clone(),
+                base_path.clone(),
+                page_targets,
+            ),
+            self.localization.clone(),
             markdown_renderer
                 .stylesheet_path()
                 .map(|path| format!("{base_path}{}", crate::source_path::url(path.as_path()))),
@@ -251,19 +427,30 @@ impl Site {
             if !needs_render(task, existing_output, options.mode())? {
                 continue;
             }
-            let page = views
+            let locale_views = &views[&task.locale];
+            let page = locale_views
                 .get(&task.page_id)
                 .expect("tasks refer to loaded pages");
+            let page_dir = &self.pages[&task.locale][&task.page_id].dir;
             let root = root_for(task.output_path.as_path());
             let contents = engine.render(
                 task.template.as_str(),
                 RenderContext {
+                    locale: LocaleView {
+                        code: task.locale.to_string(),
+                    },
                     page,
-                    pages: &views,
-                    tags: &self.tags,
-                    assets: self.assets.paths(),
+                    pages: locale_views,
+                    tags: &self.tags[&task.locale],
+                    assets: self.assets.paths_for(&task.locale),
                     data: self.data.value(),
+                    locale_data: self.locale_data[&task.locale].value(),
                     root: &root,
+                    runtime: RuntimeContext {
+                        locale: task.locale.to_string(),
+                        page_dir,
+                        root: &root,
+                    },
                 },
             )?;
             let path = self
@@ -286,13 +473,40 @@ impl Site {
     }
 
     pub(crate) fn assets(&self) -> &AssetCatalog {
-        &self.assets
+        self.assets.as_ref()
     }
 
-    fn render_views(&self) -> BTreeMap<PageId, PageView> {
+    fn render_views(&self) -> BTreeMap<Locale, BTreeMap<PageId, PageView>> {
         self.pages
             .iter()
-            .map(|(id, page)| (id.clone(), page.view()))
+            .map(|(locale, pages)| {
+                (
+                    locale.clone(),
+                    pages
+                        .iter()
+                        .map(|(id, page)| (id.clone(), page.view()))
+                        .collect(),
+                )
+            })
+            .collect()
+    }
+
+    fn page_targets(&self) -> BTreeMap<Locale, BTreeMap<String, PathBuf>> {
+        self.pages
+            .iter()
+            .map(|(locale, pages)| {
+                (
+                    locale.clone(),
+                    pages
+                        .iter()
+                        .filter_map(|(id, page)| {
+                            page.path
+                                .as_ref()
+                                .map(|path| (id.to_string(), PathBuf::from(path.as_str())))
+                        })
+                        .collect(),
+                )
+            })
             .collect()
     }
 

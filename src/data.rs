@@ -6,7 +6,7 @@
 //! extension.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs, io,
     path::{Path, PathBuf},
     time::SystemTime,
@@ -17,7 +17,7 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use crate::{source_diagnostic, structured};
+use crate::{locale::Locale, source_diagnostic, structured};
 
 /// Validated site-wide template data and the latest source input that formed
 /// it. The timestamp lets quick builds re-render pages when shared data
@@ -30,7 +30,20 @@ pub(crate) struct SiteData {
 
 impl SiteData {
     pub(crate) fn load(root: &Path) -> Result<Self, Error> {
-        match fs::metadata(root) {
+        Self::load_excluding(root, &BTreeSet::new())
+    }
+
+    /// Loads shared data while reserving configured locale directories for
+    /// `locale_data`. This prevents one input from silently appearing in two
+    /// template namespaces.
+    pub(crate) fn load_excluding(
+        root: &Path,
+        excluded_top_level: &BTreeSet<String>,
+    ) -> Result<Self, Error> {
+        match fs::symlink_metadata(root) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(Error::DataSymlink { path: root.into() });
+            }
             Ok(metadata) if !metadata.is_dir() => return Err(Error::NotDirectory(root.into())),
             Ok(_) => {}
             Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(Self::empty()),
@@ -44,7 +57,18 @@ impl SiteData {
 
         let mut tree = BTreeMap::new();
         let mut latest_input: Option<SystemTime> = None;
-        for entry in WalkDir::new(root).sort_by_file_name() {
+        for entry in WalkDir::new(root)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_entry(|entry| {
+                entry.path() == root
+                    || !entry.path().parent().is_some_and(|parent| {
+                        parent == root
+                            && excluded_top_level
+                                .contains(&entry.file_name().to_string_lossy().into_owned())
+                    })
+            })
+        {
             let entry = entry.map_err(|source| Error::Walk {
                 path: root.into(),
                 source,
@@ -80,6 +104,22 @@ impl SiteData {
             value: Value::Object(to_json_map(tree)),
             latest_input,
         })
+    }
+
+    pub(crate) fn load_localized(
+        root: &Path,
+        locales: &BTreeSet<Locale>,
+    ) -> Result<(Self, BTreeMap<Locale, Self>), Error> {
+        let excluded = locales.iter().map(ToString::to_string).collect();
+        let shared = Self::load_excluding(root, &excluded)?;
+        let localized = locales
+            .iter()
+            .map(|locale| {
+                let locale_root = root.join(locale.to_string());
+                Self::load(&locale_root).map(|data| (locale.clone(), data))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        Ok((shared, localized))
     }
 
     pub(crate) fn value(&self) -> &Value {

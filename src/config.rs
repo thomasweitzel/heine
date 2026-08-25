@@ -2,6 +2,7 @@
 //! passed through the build pipeline as validated domain data.
 
 use std::{
+    collections::BTreeSet,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -13,24 +14,28 @@ use thiserror::Error;
 mod base_path;
 
 use crate::{
+    locale::Locale,
     output::{OutputClaim, OutputPath},
     source_path,
 };
 use base_path::BasePath;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct SiteConfig {
     site: SiteSettings,
     build: BuildConfig,
     assets: AssetConfig,
     markdown: MarkdownConfig,
+    i18n: I18nConfig,
 }
 
 impl SiteConfig {
     pub(crate) fn load(path: &Path) -> Result<Self, Error> {
         let source = match fs::read_to_string(path) {
             Ok(source) => source,
-            Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(source) if source.kind() == io::ErrorKind::NotFound => {
+                return Err(Error::Missing { path: path.into() });
+            }
             Err(source) => {
                 return Err(Error::Read {
                     path: path.into(),
@@ -72,6 +77,25 @@ impl SiteConfig {
 
     pub(crate) fn markdown(&self) -> &MarkdownConfig {
         &self.markdown
+    }
+
+    pub(crate) fn i18n(&self) -> &I18nConfig {
+        &self.i18n
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct I18nConfig {
+    default_locale: Locale,
+    locales: BTreeSet<Locale>,
+}
+
+impl I18nConfig {
+    pub(crate) fn default_locale(&self) -> &Locale {
+        &self.default_locale
+    }
+    pub(crate) fn locales(&self) -> &BTreeSet<Locale> {
+        &self.locales
     }
 }
 
@@ -263,7 +287,7 @@ pub(crate) enum IntegrityAlgorithm {
     Sha512,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawSiteConfig {
     #[serde(default)]
@@ -274,6 +298,14 @@ struct RawSiteConfig {
     assets: RawAssetConfig,
     #[serde(default)]
     markdown: RawMarkdownConfig,
+    i18n: RawI18nConfig,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawI18nConfig {
+    default_locale: toml::Spanned<String>,
+    locales: toml::Spanned<Vec<toml::Spanned<String>>>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -367,6 +399,61 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
     type Error = ConfigValueError;
 
     fn try_from(raw: RawSiteConfig) -> Result<Self, Self::Error> {
+        let default_locale_span = raw.i18n.default_locale.span();
+        let default_locale_value = raw.i18n.default_locale.into_inner();
+        let default_locale: Locale =
+            default_locale_value
+                .parse()
+                .map_err(|error| ConfigValueError {
+                    span: default_locale_span.clone().into(),
+                    message: format!("i18n.default_locale must be a valid BCP-47 locale: {error}"),
+                })?;
+        if default_locale.to_string() != default_locale_value {
+            return Err(ConfigValueError {
+                span: default_locale_span.into(),
+                message: format!(
+                    "i18n.default_locale must use canonical BCP-47 spelling {:?}",
+                    default_locale
+                ),
+            });
+        }
+        let locales_span = raw.i18n.locales.span();
+        let mut locales = BTreeSet::new();
+        for value in raw.i18n.locales.into_inner() {
+            let value_span = value.span();
+            let value = value.into_inner();
+            let locale: Locale = value.parse().map_err(|error| ConfigValueError {
+                span: value_span.clone().into(),
+                message: format!("i18n.locales must contain only valid BCP-47 locales: {error}"),
+            })?;
+            if locale.to_string() != value {
+                return Err(ConfigValueError {
+                    span: value_span.clone().into(),
+                    message: format!(
+                        "i18n.locales must use canonical BCP-47 spelling {:?}",
+                        locale
+                    ),
+                });
+            }
+            if !locales.insert(locale.clone()) {
+                return Err(ConfigValueError {
+                    span: value_span.into(),
+                    message: format!("i18n.locales contains duplicate locale {locale:?}"),
+                });
+            }
+        }
+        if locales.is_empty() {
+            return Err(ConfigValueError {
+                span: locales_span.clone().into(),
+                message: "i18n.locales must not be empty".into(),
+            });
+        }
+        if !locales.contains(&default_locale) {
+            return Err(ConfigValueError {
+                span: locales_span.into(),
+                message: "i18n.locales must include i18n.default_locale".into(),
+            });
+        }
         let base_path_span = raw.site.base_path.span();
         let base_path = raw
             .site
@@ -387,11 +474,11 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     span: output_dir_span.clone().into(),
                     message,
                 })?;
-        if matches!(output_dir.0.components().next(), Some(std::path::Component::Normal(name)) if matches!(name.to_str(), Some("content" | "data" | "templates")))
+        if matches!(output_dir.0.components().next(), Some(std::path::Component::Normal(name)) if matches!(name.to_str(), Some("content" | "data" | "templates" | "locales")))
         {
             return Err(ConfigValueError {
                 span: output_dir_span.into(),
-                message: "build.output_dir must not be content/, data/, or templates/, or a directory beneath an input directory".into(),
+                message: "build.output_dir must not be content/, data/, templates/, or locales/, or a directory beneath an input directory".into(),
             });
         }
         let extensions_span = raw.markdown.extensions.span();
@@ -451,6 +538,10 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 math: raw.markdown.math,
                 highlighting,
             },
+            i18n: I18nConfig {
+                default_locale,
+                locales,
+            },
         })
     }
 }
@@ -478,6 +569,9 @@ impl std::fmt::Display for ConfigValueError {
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
+    #[error("site configuration {path} does not exist")]
+    #[diagnostic(help("create heine.toml with an [i18n] default_locale and locales list"))]
+    Missing { path: PathBuf },
     #[error("could not read configuration file {path}")]
     Read {
         path: PathBuf,
@@ -506,7 +600,10 @@ mod tests {
 
     #[test]
     fn integrity_algorithm_deserializes_from_config() {
-        let raw: RawSiteConfig = toml::from_str("[assets]\nintegrity = 'sha384'\n").unwrap();
+        let raw: RawSiteConfig = toml::from_str(
+            "[assets]\nintegrity = 'sha384'\n[i18n]\ndefault_locale = 'en'\nlocales = ['en']\n",
+        )
+        .unwrap();
         assert_eq!(
             SiteConfig::try_from(raw).unwrap().assets().integrity(),
             Some(IntegrityAlgorithm::Sha384)
@@ -515,10 +612,34 @@ mod tests {
 
     #[test]
     fn base_path_must_be_an_absolute_directory_path() {
-        let raw: RawSiteConfig = toml::from_str("[site]\nbase_path = 'docs'\n").unwrap();
+        let raw: RawSiteConfig = toml::from_str(
+            "[site]\nbase_path = 'docs'\n[i18n]\ndefault_locale = 'en'\nlocales = ['en']\n",
+        )
+        .unwrap();
 
         let error = SiteConfig::try_from(raw).expect_err("relative base path is invalid");
 
         assert!(error.to_string().contains("must start"));
+    }
+
+    #[test]
+    fn locale_configuration_requires_canonical_unique_identifiers() {
+        let noncanonical: RawSiteConfig =
+            toml::from_str("[i18n]\ndefault_locale = 'en'\nlocales = ['en', 'de-at']\n").unwrap();
+        assert!(
+            SiteConfig::try_from(noncanonical)
+                .expect_err("noncanonical locale is invalid")
+                .to_string()
+                .contains("canonical BCP-47")
+        );
+
+        let duplicate: RawSiteConfig =
+            toml::from_str("[i18n]\ndefault_locale = 'en'\nlocales = ['en', 'en']\n").unwrap();
+        assert!(
+            SiteConfig::try_from(duplicate)
+                .expect_err("duplicate locale is invalid")
+                .to_string()
+                .contains("duplicate locale")
+        );
     }
 }

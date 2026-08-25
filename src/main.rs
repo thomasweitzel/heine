@@ -16,7 +16,7 @@ struct Cli {
     #[arg(long, conflicts_with = "quick")]
     clean_output: bool,
 
-    /// Site root; defaults to the nearest ancestor with content/ and templates/.
+    /// Site root; defaults to the nearest ancestor with heine.toml, content/, and templates/.
     #[arg(long)]
     root: Option<PathBuf>,
 }
@@ -29,7 +29,7 @@ enum Command {
 
 #[derive(clap::Args, Debug)]
 struct ServeArgs {
-    /// Site root; defaults to the nearest ancestor with content/ and templates/.
+    /// Site root; defaults to the nearest ancestor with heine.toml, content/, and templates/.
     #[arg(long)]
     root: Option<PathBuf>,
 
@@ -65,7 +65,7 @@ fn main() -> miette::Result<()> {
         Some(root) => root,
         None => {
             return Err(miette::miette!(
-                "could not find a site root containing content/ and templates/"
+                "could not find a site root containing heine.toml, content/, and templates/"
             ));
         }
     };

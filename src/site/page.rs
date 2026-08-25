@@ -13,7 +13,7 @@ use time::{Date, OffsetDateTime};
 
 use crate::{content::MarkdownSource, output::OutputPath, source_path};
 
-/// A stable logical page identifier, always relative to `content/` without `.page`.
+/// A stable logical page identifier, always relative to one locale tree without `.page`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub(crate) struct PageId(String);
@@ -70,6 +70,7 @@ impl UrlPath {
 
 #[derive(Debug, Clone)]
 pub(super) struct Task {
+    pub(super) locale: crate::locale::Locale,
     pub(super) page_id: PageId,
     pub(super) template: TemplateName,
     pub(super) page_source: NamedSource<String>,
@@ -98,6 +99,7 @@ pub(super) struct RawPage {
     pub(super) title: Option<toml::Spanned<String>>,
     pub(super) description: Option<toml::Spanned<String>>,
     pub(super) summary: Option<toml::Spanned<String>>,
+    pub(super) translationid: Option<toml::Spanned<String>>,
     pub(super) date: Option<toml::Spanned<toml::Value>>,
     pub(super) extra: Option<toml::Spanned<toml::Value>>,
     #[serde(default)]
@@ -212,12 +214,23 @@ pub(super) struct Page {
     pub(super) subdirs: Vec<String>,
     pub(super) content: BTreeMap<String, Value>,
     pub(super) metadata: Metadata,
+    pub(super) translationid: Option<String>,
+    pub(super) translationid_span: Option<SourceSpan>,
+    pub(super) source: NamedSource<String>,
     pub(super) directory: DirectoryView,
     pub(super) tags: Vec<String>,
     pub(super) weight: Option<i64>,
     pub(super) siblings: Vec<PageId>,
     pub(super) lighter: Option<PageId>,
     pub(super) heavier: Option<PageId>,
+    pub(super) translations: BTreeMap<String, PageLink>,
+}
+
+/// A resolved counterpart deliberately exposed through `page.translations`.
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct PageLink {
+    pub(super) id: PageId,
+    pub(super) path: String,
 }
 
 impl Page {
@@ -234,6 +247,7 @@ impl Page {
             summary: self.metadata.summary.clone(),
             date: self.metadata.date.as_ref().map(MetadataDate::render),
             extra: self.metadata.extra.clone(),
+            translations: self.translations.clone(),
             directory: self.directory.clone(),
             tags: self.tags.clone(),
             weight: self.weight,
@@ -258,6 +272,7 @@ pub(crate) struct PageView {
     summary: Option<String>,
     date: Option<String>,
     extra: Value,
+    translations: BTreeMap<String, PageLink>,
     directory: DirectoryView,
     tags: Vec<String>,
     weight: Option<i64>,

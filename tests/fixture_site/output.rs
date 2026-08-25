@@ -5,15 +5,15 @@ use std::time::{Duration, SystemTime};
 #[test]
 fn a_full_build_replaces_stale_managed_output() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/obsolete.txt", "obsolete asset");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/obsolete.txt", "obsolete asset");
     fixture.write("templates/page.tera", "first build");
 
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
     assert!(fixture.path().join("public/obsolete.txt").is_file());
     assert!(fixture.path().join("public/.heine-output").is_file());
 
-    fs::remove_file(fixture.path().join("content/obsolete.txt")).expect("remove source asset");
+    fs::remove_file(fixture.path().join("content/en/obsolete.txt")).expect("remove source asset");
     fixture.write("templates/page.tera", "second build");
     build_at(fixture.path(), BuildMode::Full).expect("replacement site builds");
 
@@ -27,7 +27,7 @@ fn a_full_build_replaces_stale_managed_output() {
 #[test]
 fn refuses_to_replace_unmanaged_output_without_explicit_adoption() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "generated");
     fixture.write("public/manual.txt", "keep me unless explicitly replaced");
 
@@ -51,7 +51,7 @@ fn refuses_to_replace_unmanaged_output_without_explicit_adoption() {
 #[test]
 fn rejects_an_unrecognized_output_ownership_marker() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "generated");
     fixture.write("public/.heine-output", "not a Heine marker\n");
 
@@ -73,7 +73,7 @@ fn rejects_an_unrecognized_output_ownership_marker() {
 #[test]
 fn a_failed_full_build_preserves_the_previous_published_site() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "published site");
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
 
@@ -90,12 +90,12 @@ fn a_failed_full_build_preserves_the_previous_published_site() {
 #[test]
 fn a_quick_build_keeps_stale_output_by_design() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/obsolete.txt", "obsolete asset");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/obsolete.txt", "obsolete asset");
     fixture.write("templates/page.tera", "rendered");
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
 
-    fs::remove_file(fixture.path().join("content/obsolete.txt")).expect("remove source asset");
+    fs::remove_file(fixture.path().join("content/en/obsolete.txt")).expect("remove source asset");
     build_at(fixture.path(), BuildMode::Quick).expect("quick build succeeds");
 
     assert!(fixture.path().join("public/obsolete.txt").is_file());
@@ -104,15 +104,15 @@ fn a_quick_build_keeps_stale_output_by_design() {
 #[test]
 fn a_quick_build_copies_assets_newer_than_their_output() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/app.js", "before");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/app.js", "before");
     fixture.write("templates/page.tera", "rendered");
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
 
-    fixture.write("content/app.js", "after");
+    fixture.write("content/en/app.js", "after");
     fs::File::options()
         .write(true)
-        .open(fixture.path().join("content/app.js"))
+        .open(fixture.path().join("content/en/app.js"))
         .expect("asset source")
         .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(1)))
         .expect("set asset modification time");
@@ -131,8 +131,8 @@ fn a_quick_build_refuses_a_symbolic_linked_asset_target() {
     use std::os::unix::fs::symlink;
 
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/app.js", "before");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/app.js", "before");
     fixture.write("templates/page.tera", "rendered");
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
 
@@ -140,7 +140,7 @@ fn a_quick_build_refuses_a_symbolic_linked_asset_target() {
     fs::write(&external, "protected").expect("external file");
     fs::remove_file(fixture.path().join("public/app.js")).expect("remove output asset");
     symlink(&external, fixture.path().join("public/app.js")).expect("asset symlink");
-    fixture.write("content/app.js", "after");
+    fixture.write("content/en/app.js", "after");
 
     let error = build_at(fixture.path(), BuildMode::Quick).expect_err("symlink is rejected");
     assert!(format!("{error:?}").contains("symbolic link"));
@@ -156,7 +156,7 @@ fn a_quick_build_refuses_a_symbolic_linked_page_target() {
     use std::os::unix::fs::symlink;
 
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "before");
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
 
@@ -166,7 +166,7 @@ fn a_quick_build_refuses_a_symbolic_linked_page_target() {
     symlink(&external, fixture.path().join("public/index.html")).expect("page symlink");
     fs::File::options()
         .write(true)
-        .open(fixture.path().join("content/index.page"))
+        .open(fixture.path().join("content/en/index.page"))
         .expect("page source")
         .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(1)))
         .expect("set page modification time");
@@ -182,8 +182,8 @@ fn a_quick_build_refuses_a_symbolic_linked_page_target() {
 #[test]
 fn reserves_the_output_marker_path() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/.heine-output", "not an output marker");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/.heine-output", "not an output marker");
     fixture.write("templates/page.tera", "rendered");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("marker path is reserved");
@@ -197,8 +197,8 @@ fn reserves_the_output_marker_path() {
 #[test]
 fn reserves_the_development_server_namespace_for_assets() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/__heine/client.js", "not a server endpoint");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/__heine/client.js", "not a server endpoint");
     fixture.write("templates/page.tera", "rendered");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("namespace is reserved");
@@ -213,7 +213,7 @@ fn reserves_the_development_server_namespace_for_assets() {
 #[test]
 fn reports_the_page_location_for_a_reserved_development_server_namespace() {
     let fixture = Fixture::new();
-    fixture.write("content/__heine/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/__heine/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "rendered");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("namespace is reserved");
@@ -232,7 +232,7 @@ fn rejects_a_symbolic_linked_output_directory() {
     use std::os::unix::fs::symlink;
 
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "rendered");
     fs::create_dir_all(fixture.path().join("outside")).expect("outside directory");
     symlink(
@@ -253,7 +253,7 @@ fn rejects_a_symbolic_linked_output_ancestor() {
 
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[build]\noutput_dir = 'redirect/public'\n");
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "rendered");
     let outside = fixture.path().join("outside");
     fs::create_dir_all(&outside).expect("outside directory");
@@ -291,13 +291,31 @@ fn rejects_an_output_directory_inside_global_data() {
 }
 
 #[test]
+fn rejects_an_output_directory_inside_localization_resources() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[build]\noutput_dir = 'locales/public'\n[i18n]\ndefault_locale = 'en'\nlocales = ['en']\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("output overlaps locales");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("locales/") && diagnostic.contains("build.output_dir"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn rejects_a_page_output_that_would_overwrite_a_copied_asset() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/index.page",
+        "content/en/index.page",
         "template = 'page.tera'\nsuffix = '.html'\n",
     );
-    fixture.write("content/index.html", "an asset");
+    fixture.write("content/en/index.html", "an asset");
     fixture.write("templates/page.tera", "a rendered page");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("output paths collide");
@@ -305,7 +323,10 @@ fn rejects_a_page_output_that_would_overwrite_a_copied_asset() {
 
     assert!(diagnostic.contains("index"), "{diagnostic}");
     assert!(diagnostic.contains("index.html"), "{diagnostic}");
-    assert!(diagnostic.contains("content/index.page:2"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
     assert!(diagnostic.contains("copied asset"), "{diagnostic}");
 }
 
@@ -313,11 +334,11 @@ fn rejects_a_page_output_that_would_overwrite_a_copied_asset() {
 fn reports_both_page_locations_for_an_output_collision() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/report.page",
+        "content/en/report.page",
         "template = 'page.tera'\nsuffix = '.a.xml'\n",
     );
     fixture.write(
-        "content/report.a.page",
+        "content/en/report.a.page",
         "template = 'page.tera'\nsuffix = '.xml'\n",
     );
     fixture.write("templates/page.tera", "a rendered page");
@@ -325,9 +346,12 @@ fn reports_both_page_locations_for_an_output_collision() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("output paths collide");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("content/report.page:2"), "{diagnostic}");
     assert!(
-        diagnostic.contains("content/report.a.page:2"),
+        diagnostic.contains("content/en/report.page:2"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("content/en/report.a.page:2"),
         "{diagnostic}"
     );
     assert!(

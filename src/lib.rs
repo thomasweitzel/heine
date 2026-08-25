@@ -6,6 +6,8 @@ mod asset;
 mod config;
 mod content;
 mod data;
+mod locale;
+mod localization;
 mod markdown;
 mod output;
 mod project;
@@ -62,7 +64,8 @@ impl BuildOptions {
     }
 }
 
-/// Finds the nearest ancestor containing both `content` and `templates`.
+/// Finds the nearest ancestor containing `heine.toml`, `content/`, and
+/// `templates/`.
 pub fn find_site_root(start: &Path) -> Option<PathBuf> {
     start
         .ancestors()
@@ -92,8 +95,17 @@ pub(crate) fn build_at_with_publication(
     let config = SiteConfig::load(paths.config()).map_err(miette::Report::new)?;
     let markdown = markdown::Renderer::new(config.markdown().clone())
         .map_err(|error| miette::Report::new(*error))?;
-    let data = data::SiteData::load(paths.data()).map_err(miette::Report::new)?;
-    let site = Site::load(paths.content(), data, &markdown).map_err(miette::Report::new)?;
+    let (data, locale_data) = data::SiteData::load_localized(paths.data(), config.i18n().locales())
+        .map_err(miette::Report::new)?;
+    let site = Site::load(
+        paths.content(),
+        paths.locales(),
+        data,
+        locale_data,
+        config.i18n().clone(),
+        &markdown,
+    )
+    .map_err(miette::Report::new)?;
     let output_dir = config.build().output_dir().to_path_buf();
     let output = paths.root().join(&output_dir);
     let publication = BuildPublication {

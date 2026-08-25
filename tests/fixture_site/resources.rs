@@ -4,8 +4,8 @@ use super::*;
 fn asset_helper_resolves_versioned_assets_and_integrity() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[assets]\nintegrity = 'sha256'\n");
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/css/styles.v2.css", "body {}");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/css/styles.v2.css", "body {}");
     fixture.write(
         "templates/page.tera",
         "{% set asset = asset(id='css/styles.css') %}{{ asset.url }}|{{ asset.integrity }}",
@@ -19,18 +19,18 @@ fn asset_helper_resolves_versioned_assets_and_integrity() {
 #[test]
 fn quick_builds_rerender_pages_when_asset_versions_change() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/css/styles.v2.css", "body { color: navy; }");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/css/styles.v2.css", "body { color: navy; }");
     fixture.write(
         "templates/page.tera",
         "{% set style = asset(id='css/styles.css') %}{{ style.url }}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
-    fixture.write("content/css/styles.v3.css", "body { color: teal; }");
+    fixture.write("content/en/css/styles.v3.css", "body { color: teal; }");
     fs::File::options()
         .write(true)
-        .open(fixture.path().join("content/css/styles.v3.css"))
+        .open(fixture.path().join("content/en/css/styles.v3.css"))
         .expect("new versioned asset")
         .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(1)))
         .expect("set asset modification time");
@@ -47,8 +47,8 @@ fn quick_builds_rerender_pages_when_asset_versions_change() {
 fn quick_builds_rerender_integrity_when_an_asset_changes() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[assets]\nintegrity = 'sha256'\n");
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/app.js", "before");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/app.js", "before");
     fixture.write(
         "templates/page.tera",
         "{% set script = asset(id='app.js') %}{{ script.integrity }}",
@@ -56,10 +56,10 @@ fn quick_builds_rerender_integrity_when_an_asset_changes() {
 
     build_at(fixture.path(), BuildMode::Full).expect("initial site builds");
     let before = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
-    fixture.write("content/app.js", "after");
+    fixture.write("content/en/app.js", "after");
     fs::File::options()
         .write(true)
-        .open(fixture.path().join("content/app.js"))
+        .open(fixture.path().join("content/en/app.js"))
         .expect("asset")
         .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(1)))
         .expect("set asset modification time");
@@ -74,8 +74,8 @@ fn quick_builds_rerender_integrity_when_an_asset_changes() {
 #[test]
 fn asset_helper_exposes_detected_image_dimensions() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    write_bytes(&fixture, "content/images/pixel.PNG", PIXEL_PNG);
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    write_bytes(&fixture, "content/en/images/pixel.PNG", PIXEL_PNG);
     fixture.write(
         "templates/page.tera",
         "{% set image = asset(id='images/pixel.PNG') %}{{ image.url }}|{{ image.width }}|{{ image.height }}",
@@ -96,9 +96,9 @@ fn resource_filters_accept_content_root_relative_paths() {
         "heine.toml",
         "[site]\nbase_path = '/guide/'\n\n[build]\noutput_dir = 'public/guide'\n",
     );
-    fixture.write("content/blog/post.page", "template = 'page.tera'\n");
-    fixture.write("content/css/styles.v2.css", "body {}");
-    write_bytes(&fixture, "content/images/pixel.png", PIXEL_PNG);
+    fixture.write("content/en/blog/post.page", "template = 'page.tera'\n");
+    fixture.write("content/en/css/styles.v2.css", "body {}");
+    write_bytes(&fixture, "content/en/images/pixel.png", PIXEL_PNG);
     fixture.write(
         "templates/page.tera",
         "{{ '/css/styles.css' | latest }}|{% set size = '/images/pixel.png' | dimensions %}{{ size.width }}x{{ size.height }}",
@@ -115,7 +115,7 @@ fn resource_filters_accept_content_root_relative_paths() {
 #[test]
 fn reports_a_missing_latest_asset_at_the_filter_call_site() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "{{ 'missing.css' | latest }}");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("asset is missing");
@@ -128,7 +128,7 @@ fn reports_a_missing_latest_asset_at_the_filter_call_site() {
 #[test]
 fn reports_a_missing_dimensions_asset_at_the_filter_call_site() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "{{ 'missing.png' | dimensions }}");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("asset is missing");
@@ -146,15 +146,15 @@ fn markdown_asset_references_resolve_versioned_assets_at_the_content_root() {
         "[site]\nbase_path = '/guide/'\n\n[build]\noutput_dir = 'public/guide'\n",
     );
     fixture.write(
-        "content/blog/post.page",
+        "content/en/blog/post.page",
         "template = 'page.tera'\ncontent.main = 'post/body.md'\n",
     );
     fixture.write(
-        "content/blog/post/body.md",
+        "content/en/blog/post/body.md",
         "![Sunset](asset:blog/post/images/sunset.jpg)\n\n[Local](images/relative.jpg)",
     );
     fixture.write(
-        "content/blog/post/images/sunset.v2.jpg",
+        "content/en/blog/post/images/sunset.v2.jpg",
         "not decoded as an image",
     );
     fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
@@ -174,16 +174,19 @@ fn markdown_asset_references_resolve_versioned_assets_at_the_content_root() {
 fn reports_an_invalid_markdown_asset_at_the_content_source() {
     let fixture = Fixture::new();
     fixture.write(
-        "content/index.page",
+        "content/en/index.page",
         "template = 'page.tera'\ncontent.main = 'index.md'\n",
     );
-    fixture.write("content/index.md", "![Missing](asset:images/missing.png)");
+    fixture.write(
+        "content/en/index.md",
+        "![Missing](asset:images/missing.png)",
+    );
     fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("asset should be missing");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("content/index.md:1"), "{diagnostic}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
     assert!(
         diagnostic.contains("invalid asset reference here"),
         "{diagnostic}"
@@ -194,7 +197,7 @@ fn reports_an_invalid_markdown_asset_at_the_content_source() {
 #[test]
 fn reports_an_invalid_markdown_asset_in_a_template_at_the_filter_call_site() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
         "{{ '![Missing](asset:images/missing.png)' | markdown }}",
@@ -214,9 +217,9 @@ fn resource_helpers_honor_the_configured_base_path() {
         "heine.toml",
         "[site]\nbase_path = '/guide/'\n\n[build]\noutput_dir = 'public/guide'\n",
     );
-    fixture.write("content/index.page", "template = 'page.tera'\n");
-    fixture.write("content/blog/post.page", "template = 'page.tera'\n");
-    fixture.write("content/css/styles.v2.css", "body {}\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/blog/post.page", "template = 'page.tera'\n");
+    fixture.write("content/en/css/styles.v2.css", "body {}\n");
     fixture.write(
         "templates/page.tera",
         "{% set style = asset(id='css/styles.css') %}{% set home = page(id='index') %}{{ style.url }}|{{ style.relative_url }}|{{ home.url }}|{{ home.relative_url }}",
@@ -240,7 +243,7 @@ fn resource_helpers_honor_the_configured_base_path() {
 #[test]
 fn reports_the_template_location_for_an_invalid_asset_id() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
         "{% set style = asset(id='/css/styles.css') %}",
@@ -256,7 +259,7 @@ fn reports_the_template_location_for_an_invalid_asset_id() {
 #[test]
 fn rejects_backslashes_in_asset_ids() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
         r"{% set style = asset(id='css\\styles.css') %}",
@@ -272,7 +275,7 @@ fn rejects_backslashes_in_asset_ids() {
 #[test]
 fn reports_the_template_location_for_an_unknown_page_id() {
     let fixture = Fixture::new();
-    fixture.write("content/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
         "{% set missing = page(id='does-not-exist') %}",

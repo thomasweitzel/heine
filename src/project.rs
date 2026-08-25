@@ -9,6 +9,7 @@ const CONFIG_FILE: &str = "heine.toml";
 const CONTENT_DIRECTORY: &str = "content";
 const DATA_DIRECTORY: &str = "data";
 const TEMPLATES_DIRECTORY: &str = "templates";
+const LOCALES_DIRECTORY: &str = "locales";
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProjectPaths {
@@ -17,6 +18,7 @@ pub(crate) struct ProjectPaths {
     content: PathBuf,
     data: PathBuf,
     templates: PathBuf,
+    locales: PathBuf,
 }
 
 impl ProjectPaths {
@@ -27,6 +29,7 @@ impl ProjectPaths {
             content: root.join(CONTENT_DIRECTORY),
             data: root.join(DATA_DIRECTORY),
             templates: root.join(TEMPLATES_DIRECTORY),
+            locales: root.join(LOCALES_DIRECTORY),
         }
     }
 
@@ -50,14 +53,18 @@ impl ProjectPaths {
         &self.templates
     }
 
+    pub(crate) fn locales(&self) -> &Path {
+        &self.locales
+    }
+
     pub(crate) fn is_site_root(&self) -> bool {
-        self.content().is_dir() && self.templates().is_dir()
+        self.config().is_file() && self.content().is_dir() && self.templates().is_dir()
     }
 
     /// Returns whether a path belongs to the inputs that can affect a build.
     pub(crate) fn is_build_input(&self, path: &Path) -> bool {
         path == self.config
-            || [&self.content, &self.data, &self.templates]
+            || [&self.content, &self.data, &self.templates, &self.locales]
                 .iter()
                 .any(|directory| path.starts_with(directory))
     }
@@ -72,6 +79,7 @@ mod tests {
         let paths = ProjectPaths::new(Path::new("/site"));
 
         assert!(paths.is_build_input(Path::new("/site/heine.toml")));
+        assert!(paths.is_build_input(Path::new("/site/locales/en/site.ftl")));
         assert!(paths.is_build_input(Path::new("/site/content/post.md")));
         assert!(paths.is_build_input(Path::new("/site/data/site.toml")));
         assert!(paths.is_build_input(Path::new("/site/templates/base.tera")));

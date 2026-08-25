@@ -17,6 +17,7 @@ use thiserror::Error;
 use crate::{
     asset::AssetLinks,
     config::{MarkdownConfig, MarkdownExtension, MathMode},
+    site::PageLinks,
 };
 
 mod highlighting;
@@ -112,6 +113,12 @@ pub(crate) enum RenderError {
         message: String,
         span: Range<usize>,
     },
+    #[error("could not resolve Markdown page {id:?}: {message}")]
+    Page {
+        id: String,
+        message: String,
+        span: Range<usize>,
+    },
     #[error("could not highlight fenced code as {language:?}: {message}")]
     Highlight {
         language: String,
@@ -137,16 +144,31 @@ pub(crate) struct SourceError {
 }
 
 /// Renders Markdown according to the validated site configuration.
+#[cfg(test)]
 pub(crate) fn render(
     input: &str,
     renderer: &Renderer,
     assets: Option<&AssetLinks>,
 ) -> Result<String, RenderError> {
+    render_with_links(input, renderer, assets, None)
+}
+
+pub(crate) fn render_with_links(
+    input: &str,
+    renderer: &Renderer,
+    assets: Option<&AssetLinks>,
+    pages: Option<&PageLinks>,
+) -> Result<String, RenderError> {
     let events = Parser::new_ext(input, options(renderer.config()))
         .into_offset_iter()
         .map(|(event, span)| {
-            transform_event((event, span.clone()), renderer.config().math(), assets)
-                .map(|event| (event, span))
+            transform_event(
+                (event, span.clone()),
+                renderer.config().math(),
+                assets,
+                pages,
+            )
+            .map(|event| (event, span))
         })
         .collect::<Result<Vec<_>, _>>()?;
     let events = highlight_code_blocks(events, renderer.highlighter.as_deref())?;
@@ -158,20 +180,21 @@ pub(crate) fn render(
 /// Validates Markdown transformations while a content-file source is still
 /// available. Rendering remains template-driven, preserving the established
 /// `markdown` filter contract.
-pub(crate) fn validate_source(
+pub(crate) fn validate_source_with_links(
     path: &Path,
     input: &str,
     renderer: &Renderer,
     assets: Option<&AssetLinks>,
+    pages: Option<&PageLinks>,
 ) -> Result<(), Box<SourceError>> {
     if !requires_source_validation(
         renderer.config().math(),
-        assets.is_some(),
+        assets.is_some() || pages.is_some(),
         renderer.highlighter.is_some(),
     ) {
         return Ok(());
     }
-    render(input, renderer, assets).map(|_| ()).map_err(|error| {
+    render_with_links(input, renderer, assets, pages).map(|_| ()).map_err(|error| {
         let (kind, label, help, span) = match &error {
             RenderError::Math { span, .. } => (
                 "math",
@@ -184,6 +207,10 @@ pub(crate) fn validate_source(
                 "invalid asset reference here",
                 "use an existing asset ID relative to content/, without a leading '/', or '.' or '..' path segments",
                 span.clone(),
+            ),
+            RenderError::Page { span, .. } => (
+                "page reference", "invalid page reference here",
+                "use page:<id> for the current locale or page:<locale>:<id> for an explicitly configured locale", span.clone(),
             ),
             RenderError::Highlight { span, .. } => (
                 "code fence",
@@ -280,6 +307,7 @@ fn transform_event(
     (event, span): (Event<'_>, Range<usize>),
     math: MathMode,
     assets: Option<&AssetLinks>,
+    pages: Option<&PageLinks>,
 ) -> Result<Event<'static>, RenderError> {
     match event {
         Event::InlineMath(tex) => match math {
@@ -299,7 +327,7 @@ fn transform_event(
             dest_url,
             title,
             id,
-        }) => resolve_asset_destination(&dest_url, span, assets).map(|url| {
+        }) => resolve_link_destination(&dest_url, span, assets, pages).map(|url| {
             Event::Start(Tag::Link {
                 link_type,
                 dest_url: url.into(),
@@ -312,7 +340,7 @@ fn transform_event(
             dest_url,
             title,
             id,
-        }) => resolve_asset_destination(&dest_url, span, assets).map(|url| {
+        }) => resolve_image_destination(&dest_url, span, assets).map(|url| {
             Event::Start(Tag::Image {
                 link_type,
                 dest_url: url.into(),
@@ -322,6 +350,47 @@ fn transform_event(
         }),
         event => Ok(event.into_static()),
     }
+}
+
+fn resolve_link_destination(
+    destination: &str,
+    span: Range<usize>,
+    assets: Option<&AssetLinks>,
+    pages: Option<&PageLinks>,
+) -> Result<String, RenderError> {
+    if let Some(destination) = destination.strip_prefix("page:") {
+        let Some(pages) = pages else {
+            return Ok(format!("page:{destination}"));
+        };
+        let (reference, suffix) = split_link_suffix(destination);
+        let (locale, id) = reference
+            .split_once(':')
+            .map_or((None, reference), |(locale, id)| (Some(locale), id));
+        return pages
+            .resolve(id, locale)
+            .map(|target| format!("{}{suffix}", target.url))
+            .map_err(|error| RenderError::Page {
+                id: destination.into(),
+                message: error.to_string(),
+                span,
+            });
+    }
+    resolve_asset_destination(destination, span, assets)
+}
+
+fn resolve_image_destination(
+    destination: &str,
+    span: Range<usize>,
+    assets: Option<&AssetLinks>,
+) -> Result<String, RenderError> {
+    if let Some(id) = destination.strip_prefix("page:") {
+        return Err(RenderError::Page {
+            id: id.into(),
+            message: "a page reference cannot be used as an image source".into(),
+            span,
+        });
+    }
+    resolve_asset_destination(destination, span, assets)
 }
 
 fn resolve_asset_destination(
@@ -343,6 +412,13 @@ fn resolve_asset_destination(
             message: error.to_string(),
             span,
         })
+}
+
+fn split_link_suffix(destination: &str) -> (&str, &str) {
+    destination
+        .find(['?', '#'])
+        .map(|index| destination.split_at(index))
+        .unwrap_or((destination, ""))
 }
 
 fn render_math(
