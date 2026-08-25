@@ -148,7 +148,7 @@ pub(crate) struct AssetConfig {
 }
 
 /// Markdown parsing and rendering choices. The defaults retain CommonMark
-/// behavior; extensions and MathML rendering must be selected explicitly.
+/// behavior; extensions and math handling must be selected explicitly.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MarkdownConfig {
     extensions: Vec<MarkdownExtension>,
@@ -246,6 +246,7 @@ pub(crate) enum MathMode {
     #[default]
     Off,
     Mathml,
+    Tex,
 }
 
 impl AssetConfig {

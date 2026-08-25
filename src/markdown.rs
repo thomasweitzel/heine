@@ -145,7 +145,8 @@ pub(crate) fn render(
     let events = Parser::new_ext(input, options(renderer.config()))
         .into_offset_iter()
         .map(|(event, span)| {
-            transform_event((event, span.clone()), assets).map(|event| (event, span))
+            transform_event((event, span.clone()), renderer.config().math(), assets)
+                .map(|event| (event, span))
         })
         .collect::<Result<Vec<_>, _>>()?;
     let events = highlight_code_blocks(events, renderer.highlighter.as_deref())?;
@@ -154,7 +155,7 @@ pub(crate) fn render(
     Ok(output)
 }
 
-/// Validates MathML-enabled Markdown while its content-file source is still
+/// Validates Markdown transformations while a content-file source is still
 /// available. Rendering remains template-driven, preserving the established
 /// `markdown` filter contract.
 pub(crate) fn validate_source(
@@ -163,10 +164,11 @@ pub(crate) fn validate_source(
     renderer: &Renderer,
     assets: Option<&AssetLinks>,
 ) -> Result<(), Box<SourceError>> {
-    if renderer.config().math() == MathMode::Off
-        && assets.is_none()
-        && renderer.highlighter.is_none()
-    {
+    if !requires_source_validation(
+        renderer.config().math(),
+        assets.is_some(),
+        renderer.highlighter.is_some(),
+    ) {
         return Ok(());
     }
     render(input, renderer, assets).map(|_| ()).map_err(|error| {
@@ -200,6 +202,13 @@ pub(crate) fn validate_source(
             help: help.into(),
         })
     })
+}
+
+/// Markdown only needs an early pass when it can report a problem against the
+/// authored source. Ordinary and client-rendered TeX are rendered later by the
+/// template; MathML, asset URLs, and highlighting need source-aware errors.
+fn requires_source_validation(math: MathMode, has_assets: bool, has_highlighter: bool) -> bool {
+    math == MathMode::Mathml || has_assets || has_highlighter
 }
 
 fn highlight_code_blocks(
@@ -261,7 +270,7 @@ fn options(config: &MarkdownConfig) -> Options {
             MarkdownExtension::Footnotes => Options::ENABLE_FOOTNOTES,
         });
     }
-    if config.math() == MathMode::Mathml {
+    if config.math() != MathMode::Off {
         options.insert(Options::ENABLE_MATH);
     }
     options
@@ -269,13 +278,22 @@ fn options(config: &MarkdownConfig) -> Options {
 
 fn transform_event(
     (event, span): (Event<'_>, Range<usize>),
+    math: MathMode,
     assets: Option<&AssetLinks>,
 ) -> Result<Event<'static>, RenderError> {
     match event {
-        Event::InlineMath(tex) => render_math(&tex, DisplayMode::Inline, "inline", span)
-            .map(|mathml| Event::InlineHtml(mathml.into())),
-        Event::DisplayMath(tex) => render_math(&tex, DisplayMode::Block, "display", span)
-            .map(|mathml| Event::Html(mathml.into())),
+        Event::InlineMath(tex) => match math {
+            MathMode::Mathml => render_math(&tex, DisplayMode::Inline, "inline", span)
+                .map(|mathml| Event::InlineHtml(mathml.into())),
+            MathMode::Tex => Ok(Event::Text(format!("${tex}$").into())),
+            MathMode::Off => Ok(Event::Text(format!("${tex}$").into())),
+        },
+        Event::DisplayMath(tex) => match math {
+            MathMode::Mathml => render_math(&tex, DisplayMode::Block, "display", span)
+                .map(|mathml| Event::Html(mathml.into())),
+            MathMode::Tex => Ok(Event::Text(format!("$${tex}$$").into())),
+            MathMode::Off => Ok(Event::Text(format!("$${tex}$$").into())),
+        },
         Event::Start(Tag::Link {
             link_type,
             dest_url,
@@ -379,10 +397,19 @@ mod tests {
     }
 
     #[test]
-    fn math_is_plain_text_when_mathml_is_disabled() {
+    fn dollar_delimited_text_uses_commonmark_when_math_is_off() {
         let renderer = Renderer::new(MarkdownConfig::default()).unwrap();
-        let rendered = render("$x^2$", &renderer, None).unwrap();
+        let rendered = render("$_emphasis_$", &renderer, None).unwrap();
 
-        assert_eq!(rendered, "<p>$x^2$</p>\n");
+        assert_eq!(rendered, "<p>$<em>emphasis</em>$</p>\n");
+    }
+
+    #[test]
+    fn validates_sources_only_for_source_aware_transformations() {
+        assert!(!requires_source_validation(MathMode::Off, false, false));
+        assert!(!requires_source_validation(MathMode::Tex, false, false));
+        assert!(requires_source_validation(MathMode::Mathml, false, false));
+        assert!(requires_source_validation(MathMode::Off, true, false));
+        assert!(requires_source_validation(MathMode::Off, false, true));
     }
 }

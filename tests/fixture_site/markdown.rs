@@ -29,6 +29,31 @@ fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
 }
 
 #[test]
+fn tex_math_preserves_delimiters_without_markdown_or_html_interpretation() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nmath = 'tex'\n");
+    fixture.write(
+        "content/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/index.md",
+        "Inline $a_b * c <tag>$.\n\n$$\\unknown{a_b} * <tag>$$\n",
+    );
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds without TeX validation");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+
+    assert!(output.contains("$a_b * c &lt;tag&gt;$"), "{output}");
+    assert!(
+        output.contains("$$\\unknown{a_b} * &lt;tag&gt;$$"),
+        "{output}"
+    );
+    assert!(!output.contains("<math"), "{output}");
+}
+
+#[test]
 fn reports_invalid_math_in_markdown_content_at_its_source() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[markdown]\nmath = 'mathml'\n");

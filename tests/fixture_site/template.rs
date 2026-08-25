@@ -164,6 +164,7 @@ fn rejects_an_unknown_markdown_math_mode_at_the_configuration_value() {
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
     assert!(diagnostic.contains("katex"), "{diagnostic}");
     assert!(diagnostic.contains("mathml"), "{diagnostic}");
+    assert!(diagnostic.contains("tex"), "{diagnostic}");
 }
 
 #[test]

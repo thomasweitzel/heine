@@ -479,12 +479,20 @@ returns Subresource Integrity values for referenced copied assets.
 behavior. Its allowed values are `tables`, `strikethrough`, `task_lists`, and
 `footnotes`; duplicate and unknown values are rejected.
 
-`markdown.math` defaults to `off`. Set it to `mathml` to render inline TeX
-between `$...$` and display TeX between `$$...$$` as MathML during the build.
+`markdown.math` defaults to `off`, which leaves text between `$...$` and
+`$$...$$` to ordinary Markdown parsing. Set it to `mathml` to render inline
+TeX between `$...$` and display TeX between `$$...$$` as MathML during the build.
 Invalid TeX in a `.md` content file is reported at that file and expression;
 invalid TeX written directly in a template is reported at its `markdown`
 filter call. MathML rendering is self-contained and does not require
 browser-side JavaScript or a TeX installation.
+
+Set `markdown.math` to `tex` when a browser-side renderer such as KaTeX or
+MathJax should handle the TeX instead. Heine recognizes the delimiters before
+ordinary Markdown can interpret TeX characters such as `_` or `*`, then emits
+the original delimited TeX as escaped text. It does not validate TeX or bundle
+a client-side renderer in this mode; add the renderer and its styles through
+your own templates, assets, or a future theme.
 
 ## Build behavior
 
