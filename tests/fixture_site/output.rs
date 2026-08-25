@@ -295,7 +295,7 @@ fn rejects_an_output_directory_inside_localization_resources() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[build]\noutput_dir = 'locales/public'\n[i18n]\ndefault_locale = 'en'\nlocales = ['en']\n",
+        "[build]\noutput_dir = 'locales/public'\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
     );
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "page");

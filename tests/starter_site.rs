@@ -25,6 +25,10 @@ fn builds_the_documented_starter_site() {
 
     let output = root.join("public/my-project");
     let index = fs::read_to_string(output.join("index.html")).expect("home page");
+    assert!(
+        index.contains("<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\" dir=\"ltr\">"),
+        "{index}"
+    );
     assert!(index.contains("Heine Starter Site"), "{index}");
     assert!(index.contains("Quiz"), "{index}");
     assert!(
@@ -33,6 +37,11 @@ fn builds_the_documented_starter_site() {
     );
 
     let german_home = fs::read_to_string(output.join("de/index.html")).expect("German home");
+    assert!(
+        german_home
+            .contains("<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"de\" dir=\"ltr\">"),
+        "{german_home}"
+    );
     assert!(
         german_home.contains("Bisher gibt es \u{2068}2\u{2069} Beiträge auf Deutsch."),
         "{german_home}"
@@ -63,6 +72,11 @@ fn builds_the_documented_starter_site() {
         post.contains("src=\"md/audio/heine-introduction.mp3\""),
         "{post}"
     );
+    assert!(
+        post.contains("<blockquote lang=\"ar\" dir=\"rtl\">"),
+        "{post}"
+    );
+    assert!(post.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."), "{post}");
     assert!(
         output
             .join("blog/md/audio/heine-introduction.mp3")

@@ -106,10 +106,11 @@ impl SiteData {
         })
     }
 
-    pub(crate) fn load_localized(
+    pub(crate) fn load_localized<'a>(
         root: &Path,
-        locales: &BTreeSet<Locale>,
+        locales: impl IntoIterator<Item = &'a Locale>,
     ) -> Result<(Self, BTreeMap<Locale, Self>), Error> {
+        let locales = locales.into_iter().cloned().collect::<Vec<_>>();
         let excluded = locales.iter().map(ToString::to_string).collect();
         let shared = Self::load_excluding(root, &excluded)?;
         let localized = locales

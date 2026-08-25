@@ -2,7 +2,7 @@
 //! passed through the build pipeline as validated domain data.
 
 use std::{
-    collections::BTreeSet,
+    collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -14,7 +14,7 @@ use thiserror::Error;
 mod base_path;
 
 use crate::{
-    locale::Locale,
+    locale::{Locale, TextDirection},
     output::{OutputClaim, OutputPath},
     source_path,
 };
@@ -87,15 +87,30 @@ impl SiteConfig {
 #[derive(Debug, Clone)]
 pub(crate) struct I18nConfig {
     default_locale: Locale,
-    locales: BTreeSet<Locale>,
+    locales: BTreeMap<Locale, LocaleSettings>,
+}
+
+#[derive(Debug, Clone)]
+struct LocaleSettings {
+    direction: TextDirection,
+}
+
+impl LocaleSettings {
+    pub(crate) fn direction(&self) -> TextDirection {
+        self.direction
+    }
 }
 
 impl I18nConfig {
     pub(crate) fn default_locale(&self) -> &Locale {
         &self.default_locale
     }
-    pub(crate) fn locales(&self) -> &BTreeSet<Locale> {
-        &self.locales
+    pub(crate) fn locales(&self) -> impl Iterator<Item = &Locale> {
+        self.locales.keys()
+    }
+
+    pub(crate) fn direction(&self, locale: &Locale) -> TextDirection {
+        self.locales[locale].direction()
     }
 }
 
@@ -305,7 +320,13 @@ struct RawSiteConfig {
 #[serde(deny_unknown_fields)]
 struct RawI18nConfig {
     default_locale: toml::Spanned<String>,
-    locales: toml::Spanned<Vec<toml::Spanned<String>>>,
+    locales: BTreeMap<toml::Spanned<String>, RawLocaleSettings>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLocaleSettings {
+    direction: toml::Spanned<TextDirection>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -417,40 +438,41 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 ),
             });
         }
-        let locales_span = raw.i18n.locales.span();
-        let mut locales = BTreeSet::new();
-        for value in raw.i18n.locales.into_inner() {
+        let mut locales = BTreeMap::new();
+        for (value, settings) in raw.i18n.locales {
             let value_span = value.span();
             let value = value.into_inner();
             let locale: Locale = value.parse().map_err(|error| ConfigValueError {
                 span: value_span.clone().into(),
-                message: format!("i18n.locales must contain only valid BCP-47 locales: {error}"),
+                message: format!(
+                    "i18n.locales key {value:?} must be a valid BCP-47 locale: {error}"
+                ),
             })?;
             if locale.to_string() != value {
                 return Err(ConfigValueError {
                     span: value_span.clone().into(),
                     message: format!(
-                        "i18n.locales must use canonical BCP-47 spelling {:?}",
-                        locale
+                        "i18n.locales key {value:?} must use canonical BCP-47 spelling {:?}",
+                        locale.to_string()
                     ),
                 });
             }
-            if !locales.insert(locale.clone()) {
-                return Err(ConfigValueError {
-                    span: value_span.into(),
-                    message: format!("i18n.locales contains duplicate locale {locale:?}"),
-                });
-            }
+            locales.insert(
+                locale,
+                LocaleSettings {
+                    direction: settings.direction.into_inner(),
+                },
+            );
         }
         if locales.is_empty() {
             return Err(ConfigValueError {
-                span: locales_span.clone().into(),
-                message: "i18n.locales must not be empty".into(),
+                span: default_locale_span.clone().into(),
+                message: "i18n.locales must declare at least one locale table".into(),
             });
         }
-        if !locales.contains(&default_locale) {
+        if !locales.contains_key(&default_locale) {
             return Err(ConfigValueError {
-                span: locales_span.into(),
+                span: default_locale_span.into(),
                 message: "i18n.locales must include i18n.default_locale".into(),
             });
         }
@@ -570,7 +592,9 @@ impl std::fmt::Display for ConfigValueError {
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
     #[error("site configuration {path} does not exist")]
-    #[diagnostic(help("create heine.toml with an [i18n] default_locale and locales list"))]
+    #[diagnostic(help(
+        "create heine.toml with [i18n], default_locale, and locale direction tables"
+    ))]
     Missing { path: PathBuf },
     #[error("could not read configuration file {path}")]
     Read {
@@ -601,7 +625,7 @@ mod tests {
     #[test]
     fn integrity_algorithm_deserializes_from_config() {
         let raw: RawSiteConfig = toml::from_str(
-            "[assets]\nintegrity = 'sha384'\n[i18n]\ndefault_locale = 'en'\nlocales = ['en']\n",
+            "[assets]\nintegrity = 'sha384'\n[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n",
         )
         .unwrap();
         assert_eq!(
@@ -613,7 +637,7 @@ mod tests {
     #[test]
     fn base_path_must_be_an_absolute_directory_path() {
         let raw: RawSiteConfig = toml::from_str(
-            "[site]\nbase_path = 'docs'\n[i18n]\ndefault_locale = 'en'\nlocales = ['en']\n",
+            "[site]\nbase_path = 'docs'\n[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n",
         )
         .unwrap();
 
@@ -623,23 +647,14 @@ mod tests {
     }
 
     #[test]
-    fn locale_configuration_requires_canonical_unique_identifiers() {
+    fn locale_configuration_requires_canonical_identifiers() {
         let noncanonical: RawSiteConfig =
-            toml::from_str("[i18n]\ndefault_locale = 'en'\nlocales = ['en', 'de-at']\n").unwrap();
+            toml::from_str("[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de-at]\ndirection = 'ltr'\n").unwrap();
         assert!(
             SiteConfig::try_from(noncanonical)
                 .expect_err("noncanonical locale is invalid")
                 .to_string()
                 .contains("canonical BCP-47")
-        );
-
-        let duplicate: RawSiteConfig =
-            toml::from_str("[i18n]\ndefault_locale = 'en'\nlocales = ['en', 'en']\n").unwrap();
-        assert!(
-            SiteConfig::try_from(duplicate)
-                .expect_err("duplicate locale is invalid")
-                .to_string()
-                .contains("duplicate locale")
         );
     }
 }

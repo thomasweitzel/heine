@@ -23,7 +23,15 @@ BCP-47 locales. A source directory is required for every configured locale.
 ```toml
 [i18n]
 default_locale = "en"
-locales = ["en", "de", "pl"]
+
+[i18n.locales.en]
+direction = "ltr"
+
+[i18n.locales.de]
+direction = "ltr"
+
+[i18n.locales.pl]
+direction = "ltr"
 ```
 
 The default locale is unprefixed. Every other locale has its locale code as a
@@ -36,6 +44,37 @@ content/de/ueber-uns.page    -> /de/ueber-uns.html
 
 Rendered routes continue to derive from validated source-relative paths. There
 is no i18n-specific route override.
+
+## Text direction
+
+Each locale table requires `direction = "ltr"` or `direction = "rtl"`. The
+choice is explicit because a BCP-47 locale alone does not reliably establish a
+writing direction: a language can be written in more than one script. Heine
+exposes the configured identity as `locale.code` and `locale.direction`:
+
+```tera
+<html lang="{{ locale.code }}" dir="{{ locale.direction }}">
+```
+
+An RTL locale can therefore render alongside LTR locales in one site without
+changing routes, content lookup, assets, translated-page links, or Fluent
+message lookup. Heine sets no CSS direction rules and does not rewrite authored
+content. Themes and sites should use logical CSS properties such as
+`margin-inline`, `padding-inline`, `border-inline-start`, and `text-align: end`
+for direction-neutral layout. Their font stack must cover every script they
+publish.
+
+For an embedded fragment whose direction differs from its page, mark the
+fragment in authored HTML or Markdown:
+
+```html
+<blockquote lang="ar" dir="rtl">
+  <p>…</p>
+</blockquote>
+```
+
+Use a nested `dir` only for a genuine directional boundary. Source-code blocks
+normally remain LTR regardless of their containing locale.
 
 ## Source trees
 

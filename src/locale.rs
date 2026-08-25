@@ -2,7 +2,29 @@
 
 use std::{fmt, str::FromStr};
 
+use serde::Deserialize;
 use unic_langid::LanguageIdentifier;
+
+/// The base writing direction configured for one locale.
+///
+/// A BCP-47 identifier does not reliably establish direction: a language can
+/// be written in more than one script. Sites therefore choose it explicitly
+/// instead of relying on a heuristic.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum TextDirection {
+    Ltr,
+    Rtl,
+}
+
+impl TextDirection {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Ltr => "ltr",
+            Self::Rtl => "rtl",
+        }
+    }
+}
 
 /// A canonical BCP-47 locale configured by a Heine site.
 ///
@@ -38,5 +60,11 @@ mod tests {
     #[test]
     fn rejects_invalid_bcp47_identifiers() {
         assert!("not a locale".parse::<Locale>().is_err());
+    }
+
+    #[test]
+    fn text_directions_have_html_values() {
+        assert_eq!(TextDirection::Ltr.as_str(), "ltr");
+        assert_eq!(TextDirection::Rtl.as_str(), "rtl");
     }
 }

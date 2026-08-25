@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="{{ locale.code }}">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="{{ locale.code }}" dir="{{ locale.direction }}">
   <head>
    <meta charset='UTF-8'>
    <title>{{ data.site.name }} - {{ page.title }}</title>

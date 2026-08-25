@@ -87,10 +87,12 @@ pub(crate) struct RenderContext<'a> {
 }
 
 /// The locale identity deliberately exposed to templates. It does not leak
-/// locale paths, bundles, or automatic direction guesses.
+/// locale paths or bundles; direction remains explicit site configuration,
+/// never an automatic BCP-47 guess.
 #[derive(Serialize)]
 pub(crate) struct LocaleView {
     pub(crate) code: String,
+    pub(crate) direction: String,
 }
 
 /// Values required by Heine's built-ins but not part of the public template

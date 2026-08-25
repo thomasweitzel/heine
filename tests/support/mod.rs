@@ -13,7 +13,7 @@ impl Fixture {
         fs::create_dir_all(root.path().join("templates")).expect("fixture template directory");
         fs::write(
             root.path().join("heine.toml"),
-            "[i18n]\ndefault_locale = 'en'\nlocales = ['en']\n",
+            "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
         )
         .expect("fixture configuration");
         Self(root)
@@ -29,7 +29,9 @@ impl Fixture {
         fs::create_dir_all(path.parent().expect("fixture file has a parent"))
             .expect("fixture parent directory");
         let contents = if relative == Path::new("heine.toml") && !contents.contains("[i18n]") {
-            format!("{contents}\n[i18n]\ndefault_locale = 'en'\nlocales = ['en']\n")
+            format!(
+                "{contents}\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n"
+            )
         } else {
             contents.to_owned()
         };

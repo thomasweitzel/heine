@@ -289,12 +289,10 @@ impl Site {
         index::resolve_translations(&mut pages).map_err(Error::DuplicateTranslation)?;
         let sources = i18n
             .locales()
-            .iter()
             .map(|locale| (locale.clone(), content_root.join(locale.to_string())))
             .collect::<Vec<_>>();
         let prefixes = i18n
             .locales()
-            .iter()
             .map(|locale| {
                 (
                     locale.clone(),
@@ -438,6 +436,7 @@ impl Site {
                 RenderContext {
                     locale: LocaleView {
                         code: task.locale.to_string(),
+                        direction: self.i18n.direction(&task.locale).as_str().into(),
                     },
                     page,
                     pages: locale_views,

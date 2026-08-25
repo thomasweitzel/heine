@@ -11,9 +11,9 @@ fn multilingual_fixture() -> Fixture {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\nlocales = ['en', 'de', 'pl']\n",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[i18n.locales.pl]\ndirection = 'ltr'\n",
     );
-    fixture.write("templates/page.tera", "{{ locale.code }}|{{ page.id }}|{{ page.path }}|{{ data.site.name }}|{{ locale_data.navigation.label }}|{{ t(id='items', count=2) }}|{{ page.translations | length }}");
+    fixture.write("templates/page.tera", "{{ locale.code }}|{{ locale.direction }}|{{ page.id }}|{{ page.path }}|{{ data.site.name }}|{{ locale_data.navigation.label }}|{{ t(id='items', count=2) }}|{{ page.translations | length }}");
     fixture.write("data/site.toml", "name = 'Heine'\n");
     fixture.write("data/en/navigation.toml", "label = 'English'\n");
     fixture.write("data/de/navigation.toml", "label = 'Deutsch'\n");
@@ -46,15 +46,78 @@ fn builds_explicit_locale_trees_with_data_fallback_and_translation_groups() {
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
-        "en|index|index.html|Heine|English|\u{2068}2\u{2069} items|1"
+        "en|ltr|index|index.html|Heine|English|\u{2068}2\u{2069} items|1"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/de/start.html")).unwrap(),
-        "de|start|de/start.html|Heine|Deutsch|\u{2068}2\u{2069} Elemente|1"
+        "de|ltr|start|de/start.html|Heine|Deutsch|\u{2068}2\u{2069} Elemente|1"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/pl/index.html")).unwrap(),
-        "pl|index|pl/index.html|Heine|Polski|\u{2068}2\u{2069} items|0"
+        "pl|ltr|index|pl/index.html|Heine|Polski|\u{2068}2\u{2069} items|0"
+    );
+}
+
+#[test]
+fn renders_each_locale_with_its_configured_text_direction() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.ar]\ndirection = 'rtl'\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "<html lang=\"{{ locale.code }}\" dir=\"{{ locale.direction }}\"></html>",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/ar/index.page", "template = 'page.tera'\n");
+
+    build_at(fixture.path(), BuildMode::Full).expect("localized build");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
+        "<html lang=\"en\" dir=\"ltr\"></html>"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/ar/index.html")).unwrap(),
+        "<html lang=\"ar\" dir=\"rtl\"></html>"
+    );
+}
+
+#[test]
+fn reports_an_invalid_locale_direction_at_its_configuration_value() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'sideways'\n",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid direction");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("heine.toml:5:13")
+            && diagnostic.contains("sideways")
+            && diagnostic.contains("ltr")
+            && diagnostic.contains("rtl"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_a_missing_locale_direction_at_its_locale_table() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\n",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("missing direction");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("heine.toml") && diagnostic.contains("missing field `direction`"),
+        "{diagnostic}"
     );
 }
 
@@ -119,7 +182,7 @@ fn locale_aware_resource_urls_honor_the_base_path() {
     let fixture = multilingual_fixture();
     fixture.write(
         "heine.toml",
-        "[site]\nbase_path = '/guide/'\n\n[i18n]\ndefault_locale = 'en'\nlocales = ['en', 'de', 'pl']\n",
+        "[site]\nbase_path = '/guide/'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[i18n.locales.pl]\ndirection = 'ltr'\n",
     );
     fixture.write(
         "templates/page.tera",
@@ -457,17 +520,17 @@ fn reports_invalid_date_formatting_options_at_the_template_call_site() {
 }
 
 #[test]
-fn reports_an_invalid_locale_at_the_specific_configuration_item() {
+fn reports_an_invalid_locale_at_its_table_key() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\nlocales = ['en', 'de-at']\n",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de-at]\ndirection = 'ltr'\n",
     );
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("non-canonical locale");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("heine.toml:3:18")
+        diagnostic.contains("heine.toml:7:15")
             && diagnostic.contains("de-at")
             && diagnostic.contains("canonical BCP-47 spelling"),
         "{diagnostic}"
@@ -475,18 +538,18 @@ fn reports_an_invalid_locale_at_the_specific_configuration_item() {
 }
 
 #[test]
-fn reports_an_empty_locale_set_at_the_configuration_array() {
+fn reports_an_empty_locale_table_at_the_configuration_location() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\nlocales = []\n",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales]\n",
     );
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("empty locale set");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("heine.toml:3")
-            && diagnostic.contains("i18n.locales must not be empty"),
+        diagnostic.contains("heine.toml:2:18")
+            && diagnostic.contains("i18n.locales must declare at least one locale table"),
         "{diagnostic}"
     );
 }

@@ -121,9 +121,9 @@ impl std::fmt::Debug for Localization {
 }
 
 impl Localization {
-    pub(crate) fn load(
+    pub(crate) fn load<'a>(
         root: &Path,
-        locales: &std::collections::BTreeSet<Locale>,
+        locales: impl IntoIterator<Item = &'a Locale>,
         default_locale: Locale,
     ) -> Result<Self, Error> {
         match fs::symlink_metadata(root) {

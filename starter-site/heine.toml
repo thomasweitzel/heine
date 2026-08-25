@@ -1,6 +1,11 @@
 [i18n]
 default_locale = "en"
-locales = ["en", "de"]
+
+[i18n.locales.en]
+direction = "ltr"
+
+[i18n.locales.de]
+direction = "ltr"
 
 [site]
 base_path = "/my-project/"

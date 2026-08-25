@@ -128,7 +128,6 @@ fn validate_root(content_root: &Path, i18n: &I18nConfig) -> Result<(), Error> {
         if name == "assets"
             || i18n
                 .locales()
-                .iter()
                 .any(|locale| name == std::ffi::OsStr::new(&locale.to_string()))
         {
             continue;

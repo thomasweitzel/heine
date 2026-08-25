@@ -201,13 +201,44 @@ is unprefixed; every other locale receives its locale code as a URL prefix:
 # heine.toml
 [i18n]
 default_locale = "en"
-locales = ["en", "de", "pl"]
+
+[i18n.locales.en]
+direction = "ltr"
+
+[i18n.locales.de]
+direction = "ltr"
+
+[i18n.locales.ar]
+direction = "rtl"
 ```
 
 ```text
 content/en/about.page       -> /about.html
 content/de/ueber-uns.page   -> /de/ueber-uns.html
 ```
+
+Every locale declares its base writing direction explicitly: `"ltr"` or
+`"rtl"`. Heine does not infer direction from a BCP-47 code because one
+language can use more than one script. Templates receive `locale.code` and
+`locale.direction`; use both on the document element:
+
+```tera
+<html lang="{{ locale.code }}" dir="{{ locale.direction }}">
+```
+
+An LTR page may contain a separate RTL fragment, or the reverse. Mark the
+authored fragment itself so the browser has an unambiguous boundary:
+
+```html
+<blockquote lang="ar" dir="rtl">
+  <p>…</p>
+</blockquote>
+```
+
+Heine owns document direction; site or theme CSS owns layout. Use logical CSS
+properties such as `margin-inline`, `padding-inline`, and `text-align: end`
+when a layout should follow its locale direction. Fonts must provide suitable
+glyphs for every script a site uses.
 
 Put reusable UI text in Fluent `.ftl` files below `locales/<locale>/` and use
 `t()` in templates. Fluent select expressions provide the language-specific
@@ -493,7 +524,12 @@ optional asset integrity hashes together:
 ```toml
 [i18n]
 default_locale = "en"
-locales = ["en", "de"]
+
+[i18n.locales.en]
+direction = "ltr"
+
+[i18n.locales.de]
+direction = "ltr"
 
 [site]
 base_path = "/my-project/"
