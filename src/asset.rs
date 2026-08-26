@@ -72,7 +72,6 @@ struct AssetEntry {
 pub(crate) struct AssetCatalog {
     entries: BTreeMap<PathBuf, AssetEntry>,
     paths: Vec<String>,
-    locale_paths: BTreeMap<Locale, Vec<String>>,
     locale_entries: BTreeMap<Locale, BTreeMap<PathBuf, PathBuf>>,
     versions: BTreeMap<(Locale, PathBuf), u64>,
     latest_input: Option<SystemTime>,
@@ -106,7 +105,6 @@ impl AssetCatalog {
         let mut catalog = Self {
             entries: BTreeMap::new(),
             paths: Vec::new(),
-            locale_paths: BTreeMap::new(),
             locale_entries: BTreeMap::new(),
             versions: BTreeMap::new(),
             latest_input: None,
@@ -118,19 +116,6 @@ impl AssetCatalog {
             .entries
             .keys()
             .map(|path| source_path::url(path))
-            .collect();
-        catalog.locale_paths = catalog
-            .locale_entries
-            .iter()
-            .map(|(locale, entries)| {
-                (
-                    locale.clone(),
-                    entries
-                        .values()
-                        .map(|path| source_path::url(path))
-                        .collect(),
-                )
-            })
             .collect();
         Ok(catalog)
     }
@@ -234,14 +219,6 @@ impl AssetCatalog {
         &self.paths
     }
 
-    /// Paths resolvable from one locale's template context. Locale overlays
-    /// replace their shared counterpart rather than exposing both IDs.
-    pub(crate) fn paths_for(&self, locale: &Locale) -> &[String] {
-        self.locale_paths
-            .get(locale)
-            .map(Vec::as_slice)
-            .unwrap_or_default()
-    }
     pub(crate) fn latest_input(&self) -> Option<SystemTime> {
         self.latest_input
     }

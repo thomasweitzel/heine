@@ -133,6 +133,306 @@ fn reports_invalid_directory_template_at_its_declaration() {
 }
 
 #[test]
+fn resolves_explicit_collections_with_inherited_membership_and_page_opt_out() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'date-desc'\n");
+    fixture.write(
+        "content/en/blog/_directory.toml",
+        "[pages]\ntemplate = 'post.tera'\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "content/en/blog/index.page",
+        "template = 'index.tera'\ncollections = []\n",
+    );
+    fixture.write(
+        "content/en/blog/older.page",
+        "title = 'Older'\ndate = 2026-08-14\n",
+    );
+    fixture.write(
+        "content/en/blog/newer.page",
+        "title = 'Newer'\ndate = 2026-08-16\n",
+    );
+    fixture.write("templates/post.tera", "{{ page.title }}");
+    fixture.write(
+        "templates/index.tera",
+        "{% set posts = collection(name='posts') %}{{ posts.name }}:{{ posts.count }}:{% for id in posts.page_ids %}{% set post = page(id=id) %}{{ post.title }};{% endfor %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/blog/index.html")).expect("listing output"),
+        "posts:2:Newer;Older;"
+    );
+}
+
+#[test]
+fn applies_each_collection_order_with_page_id_tie_breaking() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[collections.date_asc]\norder = 'date-asc'\n[collections.date_desc]\norder = 'date-desc'\n[collections.weight_asc]\norder = 'weight-asc'\n[collections.weight_desc]\norder = 'weight-desc'\n[collections.id_asc]\norder = 'id-asc'\n[collections.id_desc]\norder = 'id-desc'\n",
+    );
+    fixture.write(
+        "content/en/alpha.page",
+        "template = 'page.tera'\ndate = 2026-08-14\nweight = 2\ncollections = ['date_asc', 'date_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
+    );
+    fixture.write(
+        "content/en/beta.page",
+        "template = 'page.tera'\ndate = 2026-08-16\nweight = 1\ncollections = ['date_asc', 'date_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'index.tera'\ncollections = []\n",
+    );
+    fixture.write("templates/page.tera", "page");
+    fixture.write(
+        "templates/index.tera",
+        "{% for name in ['date_asc', 'date_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc'] %}{% set entries = collection(name=name) %}{% for id in entries.page_ids %}{{ id }};{% endfor %}{% if name != 'id_desc' %}|{% endif %}{% endfor %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("listing output"),
+        "alpha;beta;|beta;alpha;|beta;alpha;|alpha;beta;|alpha;beta;|beta;alpha;"
+    );
+}
+
+#[test]
+fn exposes_empty_collections_in_every_locale() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n[collections.posts]\norder = 'id-asc'\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/de/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "templates/page.tera",
+        "{{ locale.code }}:{% set posts = collection(name='posts') %}{{ posts.count }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("English output"),
+        "en:0"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/de/index.html")).expect("German output"),
+        "de:0"
+    );
+}
+
+#[test]
+fn reports_an_unknown_collection_at_the_template_call_site() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "templates/page.tera",
+        "{% set entries = collection(name='missing') %}",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("collection must exist");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("missing"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("no collections are configured"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_invalid_collection_membership_at_its_authored_value() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncollections = ['posts']\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("collection must exist");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("posts"), "{diagnostic}");
+    assert!(diagnostic.contains("not configured"), "{diagnostic}");
+}
+
+#[test]
+fn reports_collection_ordering_requirements_at_membership() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'date-desc'\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncollections = ['posts']\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("date is required");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("orders by date"), "{diagnostic}");
+    assert!(diagnostic.contains("add a TOML date"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+}
+
+#[test]
+fn reports_a_non_numeric_weight_at_the_weight_and_collection_order() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'weight-asc'\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\nweight = 'None'\ncollections = ['posts']\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("weight is required");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("content/en/index.page:3"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("not a numeric collection weight"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_duplicate_collection_membership_with_both_declarations() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'id-asc'\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncollections = ['posts', 'posts']\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("duplicate must fail");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("declared more than once"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("first membership"), "{diagnostic}");
+}
+
+#[test]
+fn rejects_collection_membership_for_a_non_rendered_page() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'id-asc'\n");
+    fixture.write("content/en/index.page", "collections = ['posts']\n");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("member must render");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("content/en/index.page:1"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("is not rendered"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("give this page a template"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_mixed_date_precision_with_both_membership_locations() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'date-desc'\n");
+    fixture.write(
+        "content/en/first.page",
+        "template = 'page.tera'\ndate = 2026-08-14\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "content/en/second.page",
+        "template = 'page.tera'\ndate = 2026-08-15T10:00:00Z\ncollections = ['posts']\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("precision must match");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("content/en/first.page:2"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("content/en/second.page:2"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(diagnostic.contains("mixes date-only"), "{diagnostic}");
+}
+
+#[test]
+fn quick_build_keeps_a_collection_listing_stale_after_membership_changes() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'id-asc'\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'index.tera'\ncollections = []\n",
+    );
+    fixture.write(
+        "content/en/post.page",
+        "template = 'post.tera'\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "templates/index.tera",
+        "{% set posts = collection(name='posts') %}{{ posts.count }}",
+    );
+    fixture.write("templates/post.tera", "post");
+    build_at(fixture.path(), BuildMode::Full).expect("initial build");
+
+    let post = fixture.path().join("content/en/post.page");
+    fixture.write(
+        "content/en/post.page",
+        "template = 'post.tera'\ncollections = []\n",
+    );
+    fs::File::options()
+        .write(true)
+        .open(post)
+        .expect("post source")
+        .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(1)))
+        .expect("set post modification time");
+
+    build_at(fixture.path(), BuildMode::Quick).expect("quick build");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("listing output"),
+        "1"
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("full build");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("listing output"),
+        "0"
+    );
+}
+
+#[test]
 fn rejects_ambiguous_local_date_times() {
     let fixture = Fixture::new();
     fixture.write(

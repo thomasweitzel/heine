@@ -8,7 +8,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{locale::Locale, localization::Arguments};
 
-use super::runtime::TemplateRuntime;
+use super::{arguments, runtime::TemplateRuntime};
 
 pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
     let translation_runtime = runtime.clone();
@@ -58,6 +58,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
     tera.register_function(
         "format_date",
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("format_date", &kwargs, &["value", "style"])?;
             let value = kwargs.must_get::<&str>("value")?;
             let style = kwargs.get::<&str>("style")?.unwrap_or("medium");
             let locale = date_runtime.locale(state)?;

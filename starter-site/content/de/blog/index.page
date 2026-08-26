@@ -5,10 +5,12 @@ summary = """
 Ein Beispiel-Blog mit lokalisierten Beiträgen.
 """
 translationid = "blog"
+collections = []
 
 [extra]
 parent = "index"
 count_message = "blog-post-summary"
+collection = "posts"
 
 [content]
 main = "md/index.md"

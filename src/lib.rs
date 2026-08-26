@@ -103,6 +103,7 @@ pub(crate) fn build_at_with_publication(
         data,
         locale_data,
         config.i18n().clone(),
+        config.collections().clone(),
         &markdown,
     )
     .map_err(miette::Report::new)?;

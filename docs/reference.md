@@ -35,12 +35,25 @@ fields use the following defaults.
 | `i18n.default_locale`                    | string           | required                              | Canonical BCP-47 locale declared by an `i18n.locales.<code>` table                                                                  | Locale with unprefixed generated URLs                                    |
 | `i18n.locales`                           | table            | required                              | Non-empty table keyed by canonical BCP-47 locale codes                                                                              | Finite locale source trees to render                                     |
 | `i18n.locales.<code>.direction`          | string           | required                              | `"ltr"` or `"rtl"`                                                                                                               | Base HTML writing direction for that locale                              |
+| `collections.<name>.order`               | string           | required                              | `"date-asc"`, `"date-desc"`, `"weight-asc"`, `"weight-desc"`, `"id-asc"`, or `"id-desc"`; `<name>` is a simple identifier | Defines a named, locale-local ordered set of rendered pages              |
 | `markdown.extensions`                    | array of strings | `[]`                                  | Unique subset of `"tables"`, `"strikethrough"`, `"task_lists"`, `"footnotes"`                                                      | Enables Markdown extensions                                              |
 | `markdown.math`                          | string           | `"off"`                               | `"off"`, `"mathml"`, `"tex"`                                                                                                       | Selects ordinary Markdown, build-time MathML, or escaped TeX passthrough |
 | `markdown.highlighting.stylesheet`       | string           | absent                                | Safe site-output-relative path ending in `.css`; cannot use `__heine/`                                                             | Generated class-based syntax stylesheet                                  |
 | `markdown.highlighting.missing_language` | string           | `"error"`                             | `"error"`, `"plain"`                                                                                                               | Unknown fenced-language policy                                           |
-| `markdown.highlighting.theme.light`      | string           | required when highlighting is enabled | Bundled Giallo theme name                                                                                                          | Light syntax palette                                                     |
-| `markdown.highlighting.theme.dark`       | string           | required when highlighting is enabled | Bundled Giallo theme name                                                                                                          | Dark syntax palette                                                      |
+| `markdown.highlighting.theme.light`      | string           | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                              | Light syntax palette                                                     |
+| `markdown.highlighting.theme.dark`       | string           | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                              | Dark syntax palette                                                      |
+
+Collection definitions establish relationships only; they do not write output.
+Every configured collection exists in every locale, including when it is
+empty. Page IDs break ties in ascending order. Date orders require every member
+to have the same explicit date precision (all TOML dates or all offset-aware
+date-times), and weight orders require numeric weights on every member.
+
+The complete set of accepted theme names is in
+[Giallo's source README](https://docs.rs/crate/giallo/0.5.2/source/README.md)
+under “Themes”; the linked source matches Heine's bundled registry.
+Use those exact names; Heine reports an unknown name at its configuration
+location.
 
 ## `_directory.toml`
 
@@ -68,13 +81,14 @@ required = ["title", "date", "extra.author"]
 | `extra`                   | TOML table                          | empty table | Dot-addressable keys; rules below                            | `page.directory.extra`                                |
 | `metadata.required`       | array of strings                    | `[]`        | `title`, `description`, `summary`, `date`, or `extra.<name>` | Adds requirements for this and nested descriptors     |
 | `pages.template`          | string or boolean                   | absent      | Template below `templates/`, or `false`                      | Recursive default; closest descriptor wins            |
+| `pages.collections`       | array of strings                    | inherited   | Unique configured collection names; an empty array opts out  | Recursive default membership for descendant pages     |
 | `pages.metadata.required` | array of strings                    | `[]`        | Same values as `metadata.required`                           | Adds requirements for descendant pages                |
 
 Requirements accumulate from `content/<locale>/_directory.toml` to a page or nested descriptor. A page template overrides its inherited default; `template = false` explicitly disables rendering.
 
 ## `*.page`
 
-Each `.page` defines a page. Its ID is its path below its `content/<locale>/` tree without `.page`. Without a template, it remains available through `pages` but has no output path.
+Each `.page` defines a page. Its ID is its path below its `content/<locale>/` tree without `.page`. Without a template, it has no output path and cannot be resolved with `page()`.
 
 | Field            | Type                                | Default                 | Allowed values and constraints                                                                       | Template field / effect                                               |
 |------------------|-------------------------------------|-------------------------|------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
@@ -83,10 +97,11 @@ Each `.page` defines a page. Its ID is its path below its `content/<locale>/` tr
 | `description`    | string                              | absent                  | TOML string                                                                                          | `page.description`                                                    |
 | `summary`        | string                              | absent                  | Authored TOML string; never derived from Markdown                                                    | `page.summary`                                                        |
 | `date`           | TOML date or offset-aware date-time | absent                  | `2026-08-14` or `2026-08-14T09:30:00+02:00`; local date-times rejected                               | `page.date` as ISO 8601/RFC 3339 text                                 |
-| `tags`           | array of strings                    | `[]`                    | TOML strings                                                                                         | `page.tags`; site mapping is `tags`                                   |
+| `tags`           | array of strings                    | `[]`                    | TOML strings                                                                                         | `page.tags`; use `tag(name="…")` for the locale's ordered members    |
 | `weight`         | integer or string                   | `0`, except index pages | Integer, or exactly `"None"`                                                                         | `page.weight`; `"None"` excludes non-index page from sibling ordering |
 | `suffix`         | string                              | `".html"`               | Non-empty extension without `/`, `\`, NUL, `.`, or `..`                                              | Rendered filename extension                                           |
 | `translationid`  | string                              | absent                  | Non-empty opaque identifier; at most once per locale                                                 | Explicitly joins pages across locales as `page.translations`          |
+| `collections`    | array of strings                    | inherited, or `[]`       | Unique configured collection names; only rendered pages may belong                                    | Replaces the inherited membership default; `[]` opts out              |
 | `content.<name>` | string                              | absent                  | `<name>` is a simple template identifier; path is relative to page and remains under its locale tree | `page.content.<name>`; input is not copied                            |
 | `extra`          | TOML table                          | empty table             | Nested keys begin with ASCII letter or `_`, then letters, digits, or `_`                             | `page.extra`                                                          |
 
@@ -107,20 +122,41 @@ for a validated copied asset; ordinary Markdown URLs are unchanged.
 
 ## Template contract
 
-Templates use Tera2. Heine supplies `locale.code`, `locale.direction`, `page`, current-locale `pages`, current-locale `tags`, current-locale-resolvable `assets`, `data`, `locale_data`, and `root`. `locale.direction` is the configured `"ltr"` or `"rtl"` value; use it with `locale.code` on the document element. A `page` has `id`, `path`, `filename`, `dir`, `subdirs`, `content`, `title`, `description`, `summary`, `date`, `extra`, `directory`, `tags`, `weight`, `siblings`, `lighter`, `heavier`, and `translations`. `page.directory` has `id`, `title`, `description`, `summary`, and `extra`. `page.translations` is a map from configured locale code to known counterpart; each value has `id` and output-relative `path`. Combine `root` with `path` for a relative language-switcher link, or pass the locale and ID to `page()` for its base-path-aware `url`.
+Templates use Tera2. Heine provides only the following render-facing values;
+they are scoped to the locale currently being rendered unless noted otherwise.
 
-All Heine functions validate their authored inputs at the template call site.
+| Value | Fields and meaning |
+|-------|--------------------|
+| `locale` | `code` is the configured BCP-47 locale; `direction` is its configured `"ltr"` or `"rtl"` value. Use both on the document element. |
+| `page` | `id`, `path`, `filename`, `dir`, `subdirs`, `content`, `title`, `description`, `summary`, `date`, `extra`, `directory`, `tags`, `weight`, `lighter`, `heavier`, and `translations`. `path` and `filename` are absent without rendering. |
+| `page.directory` | `id`, `title`, `description`, `summary`, and `extra` from the immediate directory descriptor. |
+| `page.translations` | Known counterparts keyed by locale code; each has `id` and output-relative `path`. |
+| `data` | Shared values from `data/`. |
+| `locale_data` | Values from `data/<locale>/`; it never falls back to shared data. |
+| `root` | Relative prefix from the rendered page to the site root. |
+
+Combine `root` with a counterpart's `path` for a relative language-switcher
+link, or pass an exact locale and ID to `page()` for its base-path-aware URL.
+All Heine functions validate their authored inputs and fixed keyword names at
+the template call site. The additional keyword names accepted by `t()` are
+Fluent message arguments. Heine validates their value types while Fluent
+formats the selected message; a message may deliberately ignore an argument
+it does not use.
 
 | Function        | Use                                           | Result                                                                                                                                                                                                                                               |
 |-----------------|-----------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `asset`         | `asset(id="assets/logo.svg")`                 | A copied asset in the current locale: `url`, `relative_url`, optional `integrity`, `width`, and `height`. Shared assets use the `assets/` prefix.                                                                                                    |
-| `page`          | `page(id="guide/install")`                    | A rendered page in the current locale: `url` and `relative_url`.                                                                                                                                                                                     |
+| `page`          | `page(id="guide/install")`                    | A rendered page in the current locale, including its render-facing metadata, content, and `url` / `relative_url`.                                                                                                                                    |
 | `page`          | `page(locale="de", id="hilfe/installieren")`  | An exact rendered page in the named configured locale; this never guesses a translation counterpart.                                                                                                                                                 |
+| `page_exists`   | `page_exists(id="quiz/index")`                 | Whether a rendered page exists in the current locale. It returns `false` for a missing page, but invalid IDs and locales still fail at the call site.                                                                                                  |
+| `collection`    | `collection(name="posts")`                     | A configured current-locale collection with `name`, `count`, and ordered `page_ids`.                                                                                                                                                                  |
+| `tag`           | `tag(name="news")`                              | A current-locale tag with `name`, `count`, and rendered `page_ids` in ascending page-ID order. It fails for an unknown tag.                                                                                                                              |
+| `siblings`      | `siblings()` or `siblings(id="blog/index")`    | Ordered IDs for the other rendered pages in the same directory that participate in sibling ordering. `locale=` is allowed only with `id=`.                                                                                                             |
 | `t`             | `t(id="quiz-count", count=quizzes \| length)` | Escaped Fluent text for the current locale. It falls back to the default locale only when the message or requested attribute is absent. Use `attribute="label"` for a Fluent attribute; other named arguments must be strings, numbers, or booleans. |
 | `format_date`   | `format_date(value=page.date, style="long")`  | A locale-formatted calendar date. Values are `YYYY-MM-DD` or RFC 3339 offset-aware date-times; styles are `short`, `medium` (default), and `long`.                                                                                                   |
 | `highlight_css` | `highlight_css()`                             | The base-path-aware URL for the configured generated highlighting stylesheet. It fails if highlighting is disabled.                                                                                                                                  |
 
-`asset()` IDs and `page()` IDs are relative to the current locale tree and never begin with `/`. `asset()` can resolve a shared asset such as `assets/logo.svg`; a non-default locale can override it below its own `assets/` directory. `page()` resolves only rendered pages.
+`asset()` IDs and `page()` IDs are relative to the current locale tree and never begin with `/`. Assign a function result with `{% set guide = page(id="guide") %}` before reading a field such as `guide.url`; Tera does not support a field access directly on a function call. `asset()` can resolve a shared asset such as `assets/logo.svg`; a non-default locale can override it below its own `assets/` directory. `page()` resolves only rendered pages.
 
 `highlight_css()` returns the base-path-aware URL for the configured generated
 syntax stylesheet. It is available only when `[markdown.highlighting]` is

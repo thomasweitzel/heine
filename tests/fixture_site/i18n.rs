@@ -155,9 +155,12 @@ fn locale_assets_overlay_shared_assets_at_locale_urls() {
 }
 
 #[test]
-fn assets_template_value_contains_only_current_locale_resolvable_assets() {
+fn asset_function_resolves_current_locale_assets() {
     let fixture = multilingual_fixture();
-    fixture.write("templates/page.tera", "{{ assets | join(sep=',') }}");
+    fixture.write(
+        "templates/page.tera",
+        "{% set logo = asset(id='assets/logo.svg') %}{{ logo.url }}|{% if locale.code == 'en' %}{% set local = asset(id='english.svg') %}{{ local.url }}{% else %}{% set local = asset(id='german.svg') %}{{ local.url }}{% endif %}",
+    );
     fixture.write("content/assets/logo.svg", "shared");
     fixture.write("content/en/english.svg", "english");
     fixture.write("content/de/assets/logo.svg", "deutsch logo");
@@ -169,11 +172,11 @@ fn assets_template_value_contains_only_current_locale_resolvable_assets() {
     build_at(fixture.path(), BuildMode::Full).expect("localized build");
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
-        "assets/logo.svg,english.svg"
+        "/assets/logo.svg|/english.svg"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap(),
-        "de/assets/logo.svg,de/german.svg"
+        "/de/assets/logo.svg|/de/german.svg"
     );
 }
 
@@ -201,23 +204,55 @@ fn locale_aware_resource_urls_honor_the_base_path() {
 }
 
 #[test]
+fn siblings_can_select_an_explicit_locale_for_an_explicit_page() {
+    let fixture = multilingual_fixture();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+    fixture.write(
+        "content/en/blog/first.page",
+        "template = 'page.tera'\nweight = 1\n",
+    );
+    fixture.write(
+        "content/en/blog/second.page",
+        "template = 'page.tera'\nweight = 2\n",
+    );
+    fixture.write(
+        "content/de/blog/first.page",
+        "template = 'page.tera'\nweight = 1\n",
+    );
+    fixture.write(
+        "content/de/blog/second.page",
+        "template = 'page.tera'\nweight = 2\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{% if page.id == 'blog/first' %}{% for id in siblings(id='blog/first', locale='de') %}{{ id }}{% endfor %}{% endif %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("localized build");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/blog/first.html")).unwrap(),
+        "blog/second"
+    );
+}
+
+#[test]
 fn explicit_template_page_links_select_the_requested_locale() {
     let fixture = multilingual_fixture();
     fixture.write(
         "templates/page.tera",
-        "{% set install = page(locale='de', id='hilfe/installieren') %}{{ install.url }}",
+        "{% set install = page(locale='de', id='hilfe/installieren') %}{{ install.title }}|{{ install.url }}|{{ install.relative_url }}",
     );
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "content/de/hilfe/installieren.page",
-        "template = 'page.tera'\n",
+        "template = 'page.tera'\ntitle = 'Installation'\n",
     );
     fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
 
     build_at(fixture.path(), BuildMode::Full).expect("localized build");
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
-        "/de/hilfe/installieren.html"
+        "Installation|/de/hilfe/installieren.html|./de/hilfe/installieren.html"
     );
 }
 

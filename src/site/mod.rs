@@ -4,6 +4,7 @@
 //! in dedicated child modules. `Site` coordinates those stages without owning
 //! template-engine or output filesystem implementation details.
 
+pub(crate) mod collection;
 mod index;
 mod loader;
 mod locales;
@@ -20,18 +21,78 @@ use thiserror::Error;
 
 use crate::{
     asset::{AssetCatalog, AssetSources, SharedAssets},
-    config::{I18nConfig, SiteConfig},
+    config::{CollectionsConfig, I18nConfig, SiteConfig},
     content,
     data::SiteData,
     locale::Locale,
     localization::Localization,
     markdown::{self, Renderer as MarkdownRenderer},
     output::{GeneratedFile, OutputClaim, OutputPath, OutputPlan},
-    template::{LocaleView, RenderContext, RuntimeContext, TemplateEngine, TemplateResources},
+    template::{
+        LocaleView, RenderContext, RuntimeContext, TemplateEngine, TemplateRelationships,
+        TemplateResources,
+    },
 };
 
-use page::{Page, Task};
+pub(crate) use index::{SiblingIndex, TagIndex, TagView};
+use page::Task;
 pub(crate) use page::{PageId, PageView};
+
+/// The complete, locale-aware catalog of rendered pages.
+///
+/// Keeping template views and their output targets together makes it
+/// impossible for the template boundary to observe two independently-built
+/// page indexes. The catalog is constructed only after page relationships
+/// have been resolved and is immutable for the lifetime of a build.
+#[derive(Debug, Clone)]
+pub(crate) struct PageCatalog {
+    views: std::sync::Arc<BTreeMap<Locale, BTreeMap<PageId, PageView>>>,
+    targets: std::sync::Arc<BTreeMap<Locale, BTreeMap<String, PathBuf>>>,
+}
+
+impl PageCatalog {
+    fn from_pages(pages: BTreeMap<Locale, BTreeMap<PageId, page::Page>>) -> Self {
+        let views = pages
+            .into_iter()
+            .map(|(locale, pages)| {
+                (
+                    locale,
+                    pages
+                        .into_iter()
+                        .map(|(id, page)| (id, page.into_view()))
+                        .collect::<BTreeMap<_, _>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let targets = views
+            .iter()
+            .map(|(locale, pages)| {
+                (
+                    locale.clone(),
+                    pages
+                        .iter()
+                        .filter_map(|(id, page)| {
+                            page.output_path()
+                                .map(|path| (id.to_string(), PathBuf::from(path)))
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+        Self {
+            views: std::sync::Arc::new(views),
+            targets: std::sync::Arc::new(targets),
+        }
+    }
+
+    pub(crate) fn links(&self, current_locale: Locale, base_path: String) -> PageLinks {
+        PageLinks::from_targets(current_locale, base_path, self.targets.clone())
+    }
+
+    pub(crate) fn view(&self, locale: &Locale, id: &PageId) -> Option<&PageView> {
+        self.views.get(locale)?.get(id)
+    }
+}
 
 /// Locale-aware rendered-page lookup shared by Tera and Markdown. Page IDs
 /// remain locale-local; callers opt into another locale explicitly.
@@ -44,6 +105,7 @@ pub(crate) struct PageLinks {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PageLinkTarget {
+    pub(crate) locale: Locale,
     pub(crate) output_path: PathBuf,
     pub(crate) url: String,
 }
@@ -59,15 +121,15 @@ pub(crate) enum PageResolveError {
 }
 
 impl PageLinks {
-    pub(crate) fn new(
+    pub(crate) fn from_targets(
         current_locale: Locale,
         base_path: String,
-        targets: BTreeMap<Locale, BTreeMap<String, PathBuf>>,
+        targets: std::sync::Arc<BTreeMap<Locale, BTreeMap<String, PathBuf>>>,
     ) -> Self {
         Self {
             current_locale,
             base_path,
-            targets: std::sync::Arc::new(targets),
+            targets,
         }
     }
     pub(crate) fn with_locale(&self, current_locale: Locale) -> Self {
@@ -111,6 +173,7 @@ impl PageLinks {
                 id: id.into(),
             })?;
         Ok(PageLinkTarget {
+            locale,
             output_path: path.clone(),
             url: format!("{}{}", self.base_path, crate::source_path::url(path)),
         })
@@ -157,6 +220,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateTranslation(#[from] Box<index::DuplicateTranslation>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Collection(#[from] collection::Error),
     #[error("could not inspect {path}")]
     Io {
         path: PathBuf,
@@ -180,6 +246,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingMetadata(#[from] Box<loader::MissingMetadata>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateCollectionMembership(#[from] Box<loader::DuplicateCollectionMembership>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     Content(#[from] content::Error),
@@ -221,9 +290,11 @@ pub(crate) struct MissingTemplate {
 /// Fully validated site data. This is deliberately independent of Tera.
 #[derive(Debug)]
 pub(crate) struct Site {
-    pages: BTreeMap<Locale, BTreeMap<PageId, Page>>,
+    pages: PageCatalog,
+    siblings: std::sync::Arc<BTreeMap<Locale, index::SiblingIndex>>,
     tasks: Vec<Task>,
-    tags: BTreeMap<Locale, BTreeMap<String, Vec<PageId>>>,
+    tags: std::sync::Arc<BTreeMap<Locale, TagIndex>>,
+    collections: std::sync::Arc<BTreeMap<Locale, BTreeMap<String, collection::CollectionView>>>,
     assets: std::sync::Arc<AssetCatalog>,
     data: SiteData,
     locale_data: BTreeMap<Locale, SiteData>,
@@ -239,6 +310,7 @@ impl Site {
         data: SiteData,
         locale_data: BTreeMap<Locale, SiteData>,
         i18n: I18nConfig,
+        collection_config: CollectionsConfig,
         markdown_renderer: &MarkdownRenderer,
     ) -> Result<Self, Error> {
         match fs::symlink_metadata(content_root) {
@@ -266,8 +338,9 @@ impl Site {
             i18n.locales(),
             i18n.default_locale().clone(),
         )?);
-        let locales = locales::load(content_root, &i18n)?;
+        let locales = locales::load(content_root, &i18n, &collection_config)?;
         let mut pages = locales.pages;
+        let siblings = locales.siblings;
         let mut tasks = locales.tasks;
         if let Some(latest_data_input) = data.latest_input() {
             for task in &mut tasks {
@@ -282,10 +355,13 @@ impl Site {
                 task.latest_input = task.latest_input.max(latest_input);
             }
         }
-        let tags = pages
-            .iter()
-            .map(|(locale, pages)| (locale.clone(), index::tags_for(pages)))
-            .collect();
+        let tags = std::sync::Arc::new(
+            pages
+                .iter()
+                .map(|(locale, pages)| (locale.clone(), index::tags_for(pages)))
+                .collect(),
+        );
+        let collections = collection::resolve(&pages, &collection_config)?;
         index::resolve_translations(&mut pages).map_err(Error::DuplicateTranslation)?;
         let sources = i18n
             .locales()
@@ -347,24 +423,9 @@ impl Site {
         }));
         output_claims.extend(markdown_renderer.stylesheet_claim());
         let output_plan = OutputPlan::validate(&output_claims)?;
-        let page_targets: BTreeMap<Locale, BTreeMap<String, PathBuf>> = pages
-            .iter()
-            .map(|(locale, pages)| {
-                (
-                    locale.clone(),
-                    pages
-                        .iter()
-                        .filter_map(|(id, page)| {
-                            page.path
-                                .as_ref()
-                                .map(|path| (id.to_string(), PathBuf::from(path.as_str())))
-                        })
-                        .collect(),
-                )
-            })
-            .collect();
         let asset_links = assets.links(i18n.default_locale().clone(), "/".into(), BTreeMap::new());
-        let page_links = PageLinks::new(i18n.default_locale().clone(), "/".into(), page_targets);
+        let pages = PageCatalog::from_pages(pages);
+        let page_links = pages.links(i18n.default_locale().clone(), "/".into());
         for (locale, source) in &locales.markdown_sources {
             let asset_links = asset_links.with_locale(locale.clone());
             let page_links = page_links.with_locale(locale.clone());
@@ -376,10 +437,26 @@ impl Site {
                 Some(&page_links),
             )?;
         }
+        let collections = std::sync::Arc::new(
+            collections
+                .into_iter()
+                .map(|(locale, collections)| {
+                    (
+                        locale,
+                        collections
+                            .into_iter()
+                            .map(|(name, collection)| (name.to_string(), collection.view()))
+                            .collect(),
+                    )
+                })
+                .collect(),
+        );
         Ok(Self {
             pages,
+            siblings: std::sync::Arc::new(siblings),
             tasks,
             tags,
+            collections,
             assets,
             data,
             locale_data,
@@ -400,17 +477,19 @@ impl Site {
         let integrities = self
             .assets
             .integrity_values(options.config().assets().integrity())?;
-        let page_targets = self.page_targets();
         let resources = TemplateResources::new(
             self.assets.links(
                 self.i18n.default_locale().clone(),
                 base_path.clone(),
                 integrities,
             ),
-            PageLinks::new(
+            TemplateRelationships::new(
+                self.pages.clone(),
                 self.i18n.default_locale().clone(),
                 base_path.clone(),
-                page_targets,
+                self.collections.clone(),
+                self.siblings.clone(),
+                self.tags.clone(),
             ),
             self.localization.clone(),
             markdown_renderer
@@ -419,17 +498,16 @@ impl Site {
         );
         let engine = TemplateEngine::load(templates, resources, markdown_renderer.clone())?;
         self.validate_templates(&engine)?;
-        let views = self.render_views();
         let mut rendered = Vec::new();
         for task in &self.tasks {
             if !needs_render(task, existing_output, options.mode())? {
                 continue;
             }
-            let locale_views = &views[&task.locale];
-            let page = locale_views
-                .get(&task.page_id)
+            let page = self
+                .pages
+                .view(&task.locale, &task.page_id)
                 .expect("tasks refer to loaded pages");
-            let page_dir = &self.pages[&task.locale][&task.page_id].dir;
+            let page_dir = page.directory();
             let root = root_for(task.output_path.as_path());
             let contents = engine.render(
                 task.template.as_str(),
@@ -439,15 +517,13 @@ impl Site {
                         direction: self.i18n.direction(&task.locale).as_str().into(),
                     },
                     page,
-                    pages: locale_views,
-                    tags: &self.tags[&task.locale],
-                    assets: self.assets.paths_for(&task.locale),
                     data: self.data.value(),
                     locale_data: self.locale_data[&task.locale].value(),
                     root: &root,
                     runtime: RuntimeContext {
                         locale: task.locale.to_string(),
                         page_dir,
+                        page_id: &task.page_id,
                         root: &root,
                     },
                 },
@@ -473,40 +549,6 @@ impl Site {
 
     pub(crate) fn assets(&self) -> &AssetCatalog {
         self.assets.as_ref()
-    }
-
-    fn render_views(&self) -> BTreeMap<Locale, BTreeMap<PageId, PageView>> {
-        self.pages
-            .iter()
-            .map(|(locale, pages)| {
-                (
-                    locale.clone(),
-                    pages
-                        .iter()
-                        .map(|(id, page)| (id.clone(), page.view()))
-                        .collect(),
-                )
-            })
-            .collect()
-    }
-
-    fn page_targets(&self) -> BTreeMap<Locale, BTreeMap<String, PathBuf>> {
-        self.pages
-            .iter()
-            .map(|(locale, pages)| {
-                (
-                    locale.clone(),
-                    pages
-                        .iter()
-                        .filter_map(|(id, page)| {
-                            page.path
-                                .as_ref()
-                                .map(|path| (id.to_string(), PathBuf::from(path.as_str())))
-                        })
-                        .collect(),
-                )
-            })
-            .collect()
     }
 
     fn validate_templates(&self, engine: &TemplateEngine) -> Result<(), Error> {

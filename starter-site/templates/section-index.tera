@@ -1,10 +1,9 @@
 {% extends "base.tera" %}
 {% block header %}
-{% if page.extra.parent in pages %}
-  {% set up = pages[page.extra.parent] %}
-  {% set up_link = page(id=page.extra.parent) %}
+{% if page.extra.parent %}
+  {% set up = page(id=page.extra.parent) %}
   <nav class="page-navigation">
-    {{ t(id="up") }}: <a href="{{ up_link.url }}">{{ up.title }}</a>
+    {{ t(id="up") }}: <a href="{{ up.url }}">{{ up.title }}</a>
   </nav>
 {% endif %}
 {% endblock %}
@@ -14,17 +13,31 @@
   {{ page.content.main | markdown }}
 {% endif %}
 
-{% if page.siblings %}
+{% if page.extra.collection %}
+  {% set entries = collection(name=page.extra.collection) %}
   {% if page.extra.count_message %}
-    <p>{{ t(id=page.extra.count_message, count=page.siblings | length) }}</p>
+    <p>{{ t(id=page.extra.count_message, count=entries.count) }}</p>
   {% endif %}
   <hr>
   <nav class="link-stack">
-    {% for p in page.siblings %}
-      {% set sibling = pages[p] %}
-      {% set sibling_link = page(id=sibling.id) %}
-      <a href="{{ sibling_link.relative_url }}">{{ sibling.title or sibling.filename }}</a>
+    {% for p in entries.page_ids %}
+      {% set sibling = page(id=p) %}
+      <a href="{{ sibling.relative_url }}">{{ sibling.title or sibling.filename }}</a>
     {% endfor %}
   </nav>
+{% else %}
+  {% set entries = siblings() %}
+  {% if entries %}
+    {% if page.extra.count_message %}
+      <p>{{ t(id=page.extra.count_message, count=entries | length) }}</p>
+    {% endif %}
+    <hr>
+    <nav class="link-stack">
+      {% for p in entries %}
+        {% set sibling = page(id=p) %}
+        <a href="{{ sibling.relative_url }}">{{ sibling.title or sibling.filename }}</a>
+      {% endfor %}
+    </nav>
+  {% endif %}
 {% endif %}
 {% endblock %}

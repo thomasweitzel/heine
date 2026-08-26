@@ -18,7 +18,7 @@
         <a class="site-name" href="{{ home.url }}">{{ data.site.name }}</a>
         <nav class="site-navigation" aria-label="{{ t(id="nav-label") }}">
           {% for item in data.site.navigation %}
-          {% if item.page in pages %}
+          {% if page_exists(id=item.page) %}
             {% set target = page(id=item.page) %}
             <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
           {% endif %}

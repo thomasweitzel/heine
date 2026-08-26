@@ -287,3 +287,114 @@ fn reports_the_template_location_for_an_unknown_page_id() {
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(diagnostic.contains("does-not-exist"), "{diagnostic}");
 }
+
+#[test]
+fn page_exists_only_suppresses_a_missing_rendered_page() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "templates/page.tera",
+        "{% if page_exists(id='does-not-exist') %}present{% else %}missing{% endif %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("missing page is a normal false result");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
+        "missing"
+    );
+
+    fixture.write(
+        "templates/page.tera",
+        "{% if page_exists(locale='not a locale', id='does-not-exist') %}present{% endif %}",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid locale must fail");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("not a locale"), "{diagnostic}");
+}
+
+#[test]
+fn page_function_exposes_page_fields_and_links() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'index.tera'\n");
+    fixture.write(
+        "content/en/guide.page",
+        "template = 'page.tera'\ntitle = 'Guide'\ncontent.main = 'guide.txt'\n",
+    );
+    fixture.write("content/en/guide.txt", "Useful details");
+    fixture.write(
+        "templates/index.tera",
+        "{% set guide = page(id='guide') %}{{ guide.title }}|{{ guide.content.main }}|{{ guide.url }}|{{ guide.relative_url }}",
+    );
+    fixture.write("templates/page.tera", "guide");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
+        "Guide|Useful details|/guide.html|./guide.html"
+    );
+}
+
+#[test]
+fn tag_function_exposes_only_the_requested_locale_tag() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'index.tera'\n");
+    fixture.write(
+        "content/en/guide.page",
+        "template = 'page.tera'\ntags = ['news']\n",
+    );
+    fixture.write(
+        "content/en/alpha.page",
+        "template = 'page.tera'\ntags = ['news']\n",
+    );
+    fixture.write("content/en/draft.page", "tags = ['news']\n");
+    fixture.write(
+        "templates/index.tera",
+        "{% set news = tag(name='news') %}{{ news.name }}|{{ news.count }}|{{ news.page_ids | join(sep=',') }}",
+    );
+    fixture.write("templates/page.tera", "guide");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
+        "news|2|alpha,guide"
+    );
+
+    fixture.write(
+        "templates/index.tera",
+        "{% set missing = tag(name='missing') %}{{ missing.count }}",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown tag must fail");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("templates/index.tera:1"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("missing"), "{diagnostic}");
+    assert!(diagnostic.contains("available tags: news"), "{diagnostic}");
+}
+
+#[test]
+fn rejects_invalid_or_ambiguous_resource_function_arguments_at_the_call_site() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "templates/page.tera",
+        "{% set page = page(id='index', local='en') %}",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown keyword fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("local"), "{diagnostic}");
+    assert!(diagnostic.contains("does not accept"), "{diagnostic}");
+
+    fixture.write(
+        "templates/page.tera",
+        "{{ siblings(locale='de') | length }}",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("locale needs an ID");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("together with id"), "{diagnostic}");
+}

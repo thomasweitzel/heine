@@ -1,6 +1,7 @@
 //! Tera is contained in this module; the rest of the application uses only
 //! render-facing serde values rather than template-engine types.
 
+mod arguments;
 mod content;
 mod localization;
 mod resources;
@@ -19,8 +20,9 @@ use walkdir::WalkDir;
 
 use crate::{
     asset::AssetLinks,
+    locale::Locale,
     localization::Localization,
-    site::{PageId, PageLinks, PageView},
+    site::{PageCatalog, PageId, PageLinks, PageView, TagIndex},
     source_diagnostic,
 };
 
@@ -65,9 +67,21 @@ pub(crate) enum Error {
 /// shape the internal domain model.
 pub(crate) struct TemplateResources {
     asset_links: AssetLinks,
-    page_links: PageLinks,
+    relationships: TemplateRelationships,
     localization: std::sync::Arc<Localization>,
     highlight_css: Option<String>,
+}
+
+/// Immutable site relationships needed by template built-ins. This has no
+/// Tera values itself; it keeps the validated page catalog and focused indexes
+/// together at the template boundary.
+pub(crate) struct TemplateRelationships {
+    page_links: PageLinks,
+    page_catalog: PageCatalog,
+    collections:
+        std::sync::Arc<BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>>,
+    siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
+    tags: std::sync::Arc<BTreeMap<Locale, TagIndex>>,
 }
 
 /// Values deliberately exposed to one template render. This is the boundary
@@ -76,9 +90,6 @@ pub(crate) struct TemplateResources {
 pub(crate) struct RenderContext<'a> {
     pub(crate) locale: LocaleView,
     pub(crate) page: &'a PageView,
-    pub(crate) pages: &'a BTreeMap<PageId, PageView>,
-    pub(crate) tags: &'a BTreeMap<String, Vec<PageId>>,
-    pub(crate) assets: &'a [String],
     pub(crate) data: &'a serde_json::Value,
     pub(crate) locale_data: &'a serde_json::Value,
     pub(crate) root: &'a str,
@@ -102,21 +113,43 @@ pub(crate) struct LocaleView {
 pub(crate) struct RuntimeContext<'a> {
     pub(crate) locale: String,
     pub(crate) page_dir: &'a str,
+    pub(crate) page_id: &'a PageId,
     pub(crate) root: &'a str,
 }
 
 impl TemplateResources {
     pub(crate) fn new(
         asset_links: AssetLinks,
-        page_links: PageLinks,
+        relationships: TemplateRelationships,
         localization: std::sync::Arc<Localization>,
         highlight_css: Option<String>,
     ) -> Self {
         Self {
             asset_links,
-            page_links,
+            relationships,
             localization,
             highlight_css,
+        }
+    }
+}
+
+impl TemplateRelationships {
+    pub(crate) fn new(
+        page_catalog: PageCatalog,
+        default_locale: Locale,
+        base_path: String,
+        collections: std::sync::Arc<
+            BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>,
+        >,
+        siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
+        tags: std::sync::Arc<BTreeMap<Locale, TagIndex>>,
+    ) -> Self {
+        Self {
+            page_links: page_catalog.links(default_locale, base_path),
+            page_catalog,
+            collections,
+            siblings,
+            tags,
         }
     }
 }

@@ -44,6 +44,15 @@ pub(crate) fn is_logical_id(path: &Path) -> bool {
         )
 }
 
+/// Returns whether a value can be addressed predictably through Tera dot
+/// notation. Configuration and authored metadata use this for names that
+/// become template-map keys.
+pub(crate) fn is_simple_identifier(value: &str) -> bool {
+    let mut characters = value.chars();
+    matches!(characters.next(), Some(character) if character.is_ascii_alphabetic() || character == '_')
+        && characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -54,5 +63,14 @@ mod tests {
 
         assert!(!has_safe_components(path));
         assert!(!is_logical_id(path));
+    }
+
+    #[test]
+    fn simple_identifiers_remain_dot_addressable() {
+        assert!(is_simple_identifier("posts"));
+        assert!(is_simple_identifier("_internal2"));
+        assert!(!is_simple_identifier("blog-posts"));
+        assert!(!is_simple_identifier("2posts"));
+        assert!(!is_simple_identifier(""));
     }
 }

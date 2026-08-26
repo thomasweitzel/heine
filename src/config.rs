@@ -5,6 +5,7 @@ use std::{
     collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
@@ -27,6 +28,7 @@ pub(crate) struct SiteConfig {
     assets: AssetConfig,
     markdown: MarkdownConfig,
     i18n: I18nConfig,
+    collections: CollectionsConfig,
 }
 
 impl SiteConfig {
@@ -81,6 +83,79 @@ impl SiteConfig {
 
     pub(crate) fn i18n(&self) -> &I18nConfig {
         &self.i18n
+    }
+
+    pub(crate) fn collections(&self) -> &CollectionsConfig {
+        &self.collections
+    }
+}
+
+/// Validated, site-wide collection definitions. Membership remains authored in
+/// page metadata and is resolved separately for every locale.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CollectionsConfig {
+    definitions: BTreeMap<CollectionName, CollectionDefinition>,
+}
+
+impl CollectionsConfig {
+    pub(crate) fn definitions(&self) -> &BTreeMap<CollectionName, CollectionDefinition> {
+        &self.definitions
+    }
+
+    pub(crate) fn contains(&self, name: &CollectionName) -> bool {
+        self.definitions.contains_key(name)
+    }
+}
+
+/// A collection name that is safe to expose as a template-map key.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct CollectionName(String);
+
+impl CollectionName {
+    pub(crate) fn parse(value: String) -> Result<Self, String> {
+        if crate::source_path::is_simple_identifier(&value) {
+            Ok(Self(value))
+        } else {
+            Err(format!(
+                "collection name {value:?} must be a simple template identifier"
+            ))
+        }
+    }
+}
+
+impl std::fmt::Display for CollectionName {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum CollectionOrder {
+    DateAsc,
+    DateDesc,
+    WeightAsc,
+    WeightDesc,
+    IdAsc,
+    IdDesc,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CollectionDefinition {
+    order: CollectionOrder,
+    order_span: SourceSpan,
+    source: Option<Arc<NamedSource<String>>>,
+}
+
+impl CollectionDefinition {
+    pub(crate) fn order(&self) -> CollectionOrder {
+        self.order
+    }
+
+    pub(crate) fn order_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.source
+            .as_ref()
+            .map(|source| (source.clone(), self.order_span))
     }
 }
 
@@ -314,6 +389,14 @@ struct RawSiteConfig {
     #[serde(default)]
     markdown: RawMarkdownConfig,
     i18n: RawI18nConfig,
+    #[serde(default)]
+    collections: BTreeMap<toml::Spanned<String>, RawCollectionDefinition>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCollectionDefinition {
+    order: toml::Spanned<CollectionOrder>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -549,6 +632,24 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 stylesheet_source: None,
             })
         }).transpose()?;
+        let mut collections = BTreeMap::new();
+        for (name, definition) in raw.collections {
+            let span = name.span();
+            let name =
+                CollectionName::parse(name.into_inner()).map_err(|message| ConfigValueError {
+                    span: span.into(),
+                    message,
+                })?;
+            let order_span = definition.order.span().into();
+            collections.insert(
+                name,
+                CollectionDefinition {
+                    order: definition.order.into_inner(),
+                    order_span,
+                    source: None,
+                },
+            );
+        }
         Ok(Self {
             site: SiteSettings { base_path },
             build: BuildConfig { output_dir },
@@ -564,6 +665,9 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 default_locale,
                 locales,
             },
+            collections: CollectionsConfig {
+                definitions: collections,
+            },
         })
     }
 }
@@ -573,6 +677,11 @@ impl SiteConfig {
         if let Some(highlighting) = &mut self.markdown.highlighting {
             highlighting.stylesheet_source =
                 Some(crate::source_diagnostic::named_source(path, source, "TOML"));
+        }
+        let collection_source =
+            Arc::new(crate::source_diagnostic::named_source(path, source, "TOML"));
+        for definition in self.collections.definitions.values_mut() {
+            definition.source = Some(collection_source.clone());
         }
     }
 }

@@ -16,6 +16,9 @@ output_dir = "public/my-project"
 [assets]
 integrity = "sha384"
 
+[collections.posts]
+order = "date-desc"
+
 [markdown]
 math = "mathml"
 

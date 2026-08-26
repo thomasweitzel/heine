@@ -23,6 +23,7 @@ now.
 
 ## Contents
 
+- [First site](#first-site)
 - [Build a site](#build-a-site)
 - [Serve a site locally](#serve-a-site-locally)
 - [Site layout](#site-layout)
@@ -30,6 +31,7 @@ now.
 - [Global data](#global-data)
 - [Pages and content](#pages-and-content)
   - [Directory descriptors](#directory-descriptors)
+- [Collections](#collections)
 - [Templates](#templates)
 - [Configuration](#configuration)
 - [Build behavior](#build-behavior)
@@ -38,6 +40,50 @@ now.
 
 For the complete, field-by-field contract for every authored site file and
 command-line option, see the [Heine reference](docs/reference.md).
+
+## First site
+
+A minimal site has a configuration file, one locale tree, and one template:
+
+```text
+my-site/
+├── heine.toml
+├── content/
+│   └── en/
+│       └── index.page
+└── templates/
+    └── page.tera
+```
+
+```toml
+# heine.toml
+[i18n]
+default_locale = "en"
+
+[i18n.locales.en]
+direction = "ltr"
+```
+
+```toml
+# content/en/index.page
+template = "page.tera"
+title = "Hello, Heine"
+```
+
+```tera
+{# templates/page.tera #}
+<!doctype html>
+<html lang="{{ locale.code }}" dir="{{ locale.direction }}">
+  <head><title>{{ page.title }}</title></head>
+  <body><h1>{{ page.title }}</h1></body>
+</html>
+```
+
+This builds `content/en/index.page` as `public/index.html`. The default locale
+is unprefixed; add another configured locale and its source tree when the site
+needs another language. The working [`starter-site/`](starter-site/) is the
+best next example for pages with Markdown, data, assets, localization, and
+collections.
 
 ## Build a site
 
@@ -67,9 +113,8 @@ cargo run -- --root /path/to/site --quick
 
 Quick mode re-renders for changed page files, declared content, inherited
 directory descriptors, shared or locale `data/`, Fluent resources, and present
-copied assets. It
-intentionally does not consider template, configuration, or page-relationship
-changes. Use a normal build after those changes.
+copied assets. It intentionally does not consider template, configuration, or
+page-relationship changes. Use a normal build after those changes.
 
 ## Serve a site locally
 
@@ -272,21 +317,11 @@ featured = true
 main = "post.md"
 ```
 
-The page above renders to `post.html`. The page fields are:
-
-| Field         | Default           | Meaning                                                                                                                          |
-|---------------|-------------------|----------------------------------------------------------------------------------------------------------------------------------|
-| `template`    | inherited or none | Template below `templates/`; `false` explicitly disables an inherited template.                                                  |
-| `title`       | none              | Page title, exposed as `page.title`.                                                                                             |
-| `description` | none              | Short page description, exposed as `page.description`.                                                                           |
-| `summary`     | none              | Authored summary text, exposed as `page.summary`; Heine does not derive one from Markdown.                                       |
-| `date`        | none              | A TOML date or offset-aware date-time, exposed as `page.date`. Local date-times are rejected because their time zone is unclear. |
-| `content`     | empty             | Named content files, relative to the `.page` file and inside its locale tree.                                                    |
-| `extra`       | empty table       | User-defined TOML values exposed as `page.extra`.                                                                                |
-| `tags`        | empty list        | Tags for the page.                                                                                                               |
-| `weight`      | `0`               | Sibling ordering weight. `index.page` has no weight by default and is excluded; use `weight = "None"` to exclude another page.   |
-| `suffix`      | `.html`           | Output extension, for example `.xml`. It cannot contain path separators.                                                         |
-| `translationid` | none            | Optional non-empty ID that explicitly relates known translated pages through `page.translations`.                                |
+The page above renders to `post.html`. The core page fields are `template`,
+`title`, `description`, `summary`, `date`, `tags`, `weight`, `suffix`,
+`translationid`, `collections`, `[content]`, and `[extra]`. Their defaults,
+exact value rules, and render-facing fields are in the
+[page reference](docs/reference.md#page).
 
 ### Directory descriptors
 
@@ -294,8 +329,9 @@ The page above renders to `post.html`. The page fields are:
 locale-owned content directory. It gives that directory metadata and can set a
 recursive default template and metadata requirements for its pages. The closest
 descriptor with `pages.template` wins; a page can override it with a template
-name or use `template = false` to remain available through `pages` without
-rendering.
+name or use `template = false` to keep its authored content without rendering
+an output page. Such a page cannot be resolved with `page()` or belong to a
+collection.
 
 ```toml
 # content/en/blog/_directory.toml
@@ -331,6 +367,52 @@ dot notation such as `page.extra.author.name`.
 Page files and directory descriptors use strict schemas. Heine rejects unknown
 fields, including misspelled policy names, rather than silently ignoring
 authored configuration.
+
+## Collections
+
+Collections are explicit, named, locale-local ordered sets of rendered pages.
+Define an ordering policy in `heine.toml`, then put membership where it belongs:
+on the pages themselves or as a recursive directory default.
+
+```toml
+# heine.toml
+[collections.posts]
+order = "date-desc"
+```
+
+```toml
+# content/en/blog/_directory.toml
+[pages]
+template = "post.tera"
+collections = ["posts"]
+
+# content/en/blog/index.page
+template = "blog-index.tera"
+collections = [] # do not list the index in its own collection
+```
+
+The available orders are `date-asc`, `date-desc`, `weight-asc`,
+`weight-desc`, `id-asc`, and `id-desc`. Page ID breaks ties deterministically.
+Date ordering requires a date on every member and does not allow date-only and
+offset-aware date-times to be mixed; Heine will not invent a time zone or time
+of day. Weight ordering requires a numeric weight on every member.
+
+Use `collection()` to read a named collection in the current locale. Every
+configured collection is available, even if it has no members:
+
+```tera
+{% set posts = collection(name="posts") %}
+<p>{{ posts.count }} posts</p>
+{% for id in posts.page_ids %}
+  {% set post = page(id=id) %}
+  <a href="{{ post.url }}">{{ post.title }}</a>
+{% endfor %}
+```
+
+Collections only resolve relationships; they do not generate listing pages or
+write output. Pagination and taxonomies will be explicit consumers of this
+same validated model. See the [collection design](docs/collections.md) for the
+full rationale and explicitly marked future extension boundaries.
 
 Content files are addressed relative to their `.page` file and must remain
 inside that page's `content/<locale>/` tree. Symbolic links are not permitted
@@ -394,9 +476,6 @@ template values are:
 | Value    | Meaning                                                   |
 |----------|-----------------------------------------------------------|
 | `page`   | The current page's render-facing fields and content       |
-| `pages`  | Rendered pages in the current locale, keyed by page ID    |
-| `tags`   | Current-locale tags mapped to ordered page IDs            |
-| `assets` | Copied asset paths available to the current locale         |
 | `data`   | Site-wide values loaded from the optional `data/` tree    |
 | `locale_data` | Values loaded from optional `data/<locale>/` for the current locale |
 | `locale` | Current locale identity; `locale.code` is its BCP-47 code |
@@ -413,9 +492,24 @@ template values are:
 | `title` / `description` / `summary` / `date` | Explicit page metadata.                                                    |
 | `extra` / `directory`                        | User metadata and the immediate directory’s metadata view.                 |
 | `tags` / `weight`                            | The page's tags and ordering weight.                                       |
-| `siblings`                                   | Other rendered, ordered pages in the same directory.                       |
 | `lighter` / `heavier`                        | Previous / next sibling IDs, when present.                                 |
 | `translations`                               | Explicitly known counterparts, keyed by locale code.                        |
+
+The global page, collection, and asset inventories are intentionally not
+serialized into every render. Use the validating `page()`, `page_exists()`,
+`collection()`, `tag()`, `siblings()`, and `asset()` functions for the item a template
+needs. This keeps large sites predictable without making relationships
+implicit.
+
+`siblings()` returns only rendered pages that participate in sibling ordering:
+pages with a numeric `weight`. An index page and a page using `weight =
+"None"` can use `siblings()` but are not themselves included in that ordered
+set.
+
+`tag(name="news")` returns the current locale's named tag with `name`,
+`count`, and rendered `page_ids` in ascending page-ID order. Like
+`collection()`, it fails at the template call site for an unknown name, which
+catches misspelled internal relationships during a build.
 
 Heine provides these filters:
 
@@ -469,9 +563,16 @@ lets Heine validate each kind of internal link. Leave external URLs as ordinary
 template strings. See the [reference](docs/reference.md#template-contract) for
 the complete list of Heine functions and filters.
 
+When a navigation item or other optional link may be absent in a locale, guard
+the strict lookup with `page_exists(id="quiz/index")`. It returns `false` only
+for a missing rendered page; malformed IDs and unknown locales still produce a
+template diagnostic at the call site.
+
 Template inheritance, page-template references, and Tera syntax/rendering
 errors are reported with source file and line context. Invalid asset IDs and
 unknown rendered page IDs are reported at their template call site as well.
+Misspelled keyword names in Heine's fixed template functions are rejected at
+that same location instead of being silently ignored.
 For a missing field in ordinary Tera dotted access such as
 `data.site.description`, Tera can identify the template expression but does
 not expose the data lookup in a form that Heine can reliably trace back to its
@@ -503,7 +604,8 @@ stylesheet that supplies any desired overrides:
 
 ```tera
 <link rel="stylesheet" href="{{ highlight_css() }}">
-<link rel="stylesheet" href="{{ asset(id=\"css/styles.css\").url }}">
+{% set styles = asset(id="css/styles.css") %}
+<link rel="stylesheet" href="{{ styles.url }}">
 ```
 
 Heine generates the configured output file on every full build. It contains
@@ -511,7 +613,8 @@ Giallo's code-token rules and the small structural rule that lets the themed
 code-block background show through the nested `<code>` element. The light theme
 is the default and the dark theme is selected with `prefers-color-scheme`. Do not edit that generated file;
 choose another bundled theme pair or override its classes from your authored
-stylesheet. `stylesheet` is a safe output-relative `.css` path and cannot
+stylesheet. The [reference](docs/reference.md#heinetoml) links the exact
+theme-name list for the bundled Giallo registry. `stylesheet` is a safe output-relative `.css` path and cannot
 collide with a page or copied asset. Fenced blocks without a language remain
 ordinary Markdown code blocks. `missing_language = "error"` rejects unknown
 fence languages; `"plain"` renders them without syntax-specific tokens.

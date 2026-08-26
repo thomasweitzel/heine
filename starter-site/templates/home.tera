@@ -4,17 +4,21 @@
 <div class="sections">
   {% for dir in page.subdirs %}
     {% set index = dir ~ "/index" %}
-    {% if index in pages %}
-      {% set section = pages[index] %}
-      {% set section_link = page(id=index) %}
+    {% if page_exists(id=index) %}
+      {% set section = page(id=index) %}
       <div class="section">
         <h2>{{ section.title }}</h2>
         <hr>
         {{ section.summary | markdown }}
         {% if section.extra.count_message %}
-          <p>{{ t(id=section.extra.count_message, count=section.siblings | length) }}</p>
+          {% if section.extra.collection %}
+            {% set entries = collection(name=section.extra.collection) %}
+            <p>{{ t(id=section.extra.count_message, count=entries.count) }}</p>
+          {% else %}
+            <p>{{ t(id=section.extra.count_message, count=siblings(id=index) | length) }}</p>
+          {% endif %}
         {% endif %}
-        <a class="buttonlike" href="{{ section_link.url }}">{{ t(id="open") }}</a>
+        <a class="buttonlike" href="{{ section.url }}">{{ t(id="open") }}</a>
       </div>
     {% endif %}
   {% endfor %}

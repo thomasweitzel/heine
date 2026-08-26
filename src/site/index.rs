@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
@@ -93,51 +94,86 @@ pub(super) fn resolve_translations(
     Ok(())
 }
 
-pub(super) fn fix_siblings(pages: &mut BTreeMap<PageId, Page>) {
-    let members: BTreeMap<String, Vec<PageId>> =
-        pages
-            .iter()
-            .fold(BTreeMap::new(), |mut directories, (id, page)| {
-                directories
-                    .entry(page.dir.clone())
-                    .or_default()
-                    .push(id.clone());
-                directories
-            });
-    let eligible: BTreeMap<String, Vec<PageId>> = pages
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SiblingIndex {
+    eligible: BTreeMap<String, Vec<PageId>>,
+}
+
+impl SiblingIndex {
+    pub(crate) fn for_page(&self, directory: &str, page: &str) -> Vec<PageId> {
+        let page = PageId::from_source_path(std::path::Path::new(page));
+        self.eligible
+            .get(directory)
+            .into_iter()
+            .flatten()
+            .filter(|id| *id != &page)
+            .cloned()
+            .collect()
+    }
+}
+
+pub(super) fn fix_siblings(pages: &mut BTreeMap<PageId, Page>) -> SiblingIndex {
+    let mut eligible: BTreeMap<String, Vec<PageId>> = pages
         .iter()
         .filter(|(_, page)| page.path.is_some() && page.weight.is_some())
         .fold(BTreeMap::new(), |mut dirs, (id, page)| {
             dirs.entry(page.dir.clone()).or_default().push(id.clone());
             dirs
         });
-    for (directory, ids) in eligible {
-        let mut ids = ids.clone();
+    for ids in eligible.values_mut() {
         ids.sort_by_key(|id| (pages[id].weight, id.clone()));
-        for id in &members[&directory] {
-            let page = &mut pages.get_mut(id).expect("page exists");
-            if let Some(index) = ids.iter().position(|other| other == id) {
-                page.siblings = ids.iter().filter(|other| *other != id).cloned().collect();
+        for (index, id) in ids.iter().enumerate() {
+            if let Some(page) = pages.get_mut(id) {
                 page.lighter = index.checked_sub(1).map(|index| ids[index].clone());
                 page.heavier = ids.get(index + 1).cloned();
-            } else {
-                page.siblings = ids.clone();
-                page.lighter = None;
-                page.heavier = None;
             }
         }
     }
+    SiblingIndex { eligible }
 }
 
-pub(super) fn tags_for(pages: &BTreeMap<PageId, Page>) -> BTreeMap<String, Vec<PageId>> {
+/// A deterministic, locale-local tag index of rendered pages. Like
+/// collections, it retains IDs rather than duplicating page views for every
+/// render.
+#[derive(Debug, Default)]
+pub(crate) struct TagIndex {
+    pages: BTreeMap<String, Vec<PageId>>,
+}
+
+impl TagIndex {
+    pub(crate) fn tag(&self, name: &str) -> Option<TagView> {
+        self.pages.get(name).map(|page_ids| TagView {
+            name: name.into(),
+            count: page_ids.len(),
+            page_ids: page_ids.clone(),
+        })
+    }
+
+    pub(crate) fn names(&self) -> Vec<String> {
+        self.pages.keys().cloned().collect()
+    }
+}
+
+/// The focused render-facing view returned by `tag()`.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct TagView {
+    name: String,
+    count: usize,
+    page_ids: Vec<PageId>,
+}
+
+pub(super) fn tags_for(pages: &BTreeMap<PageId, Page>) -> TagIndex {
     let mut tags: BTreeMap<_, Vec<_>> = BTreeMap::new();
     for (id, page) in pages {
+        if page.path.is_none() {
+            continue;
+        }
         for tag in &page.tags {
             tags.entry(tag.clone()).or_default().push(id.clone());
         }
     }
     for ids in tags.values_mut() {
-        ids.sort_by_key(|id| (pages[id].weight, id.clone()));
+        ids.sort();
     }
-    tags
+    TagIndex { pages: tags }
 }

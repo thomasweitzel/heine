@@ -3,18 +3,15 @@
 {% block header %}
 <nav class="page-navigation">
   {% set index_id = page.dir ~ "/index" %}
-  {% set index = pages[index_id] %}
-  {% set index_link = page(id=index_id) %}
-  {{ t(id="up") }}: <a href="{{ index_link.relative_url }}">{{ index.title }}</a>
+  {% set index = page(id=index_id) %}
+  {{ t(id="up") }}: <a href="{{ index.relative_url }}">{{ index.title }}</a>
   {% if page.lighter %}
-    {% set p = pages[page.lighter] %}
-    {% set previous = page(id=p.id) %}
-    | {{ t(id="previous") }}: <a href="{{ previous.relative_url }}">{{ p.title }}</a>
+    {% set p = page(id=page.lighter) %}
+    | {{ t(id="previous") }}: <a href="{{ p.relative_url }}">{{ p.title }}</a>
   {% endif %}
   {% if page.heavier %}
-    {% set p = pages[page.heavier] %}
-    {% set next = page(id=p.id) %}
-    | {{ t(id="next") }}: <a href="{{ next.relative_url }}">{{ p.title }}</a>
+    {% set p = page(id=page.heavier) %}
+    | {{ t(id="next") }}: <a href="{{ p.relative_url }}">{{ p.title }}</a>
   {% endif %}
   {% if page.translations %}
     | {{ t(id="language") }}:

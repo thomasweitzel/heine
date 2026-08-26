@@ -145,6 +145,16 @@ validated `page()` helper, to create a link. A language switcher therefore
 offers only existing pages; Heine never guesses a URL, redirects to an
 unrelated language, or requires matching source-tree structures.
 
+For example, this renders links only for the page's known counterparts. The
+link text is deliberately just the locale code here; a site can use its own
+localized labels when it has them.
+
+```tera
+{% for code, translation in page.translations %}
+  <a href="{{ root }}{{ translation.path }}" lang="{{ code }}">{{ code }}</a>
+{% endfor %}
+```
+
 `page(id="...")` addresses an exact page ID in the locale currently being
 rendered. Its optional `locale` argument addresses an exact page ID in that
 named locale; it never resolves a translation group implicitly. Markdown has
@@ -161,9 +171,18 @@ Fluent resources under `locales/<locale>/` provide reusable localized text.
 The `t()` template function uses the locale currently being rendered and
 returns escaped text.
 
+```ftl
+# locales/en/site.ftl
+welcome = Welcome, { $name }.
+post-count = { $count ->
+    [one] One post
+   *[other] { $count } posts
+}
+```
+
 ```tera
-{{ t(id="welcome", name=user.name) }}
-{{ t(id="quiz-count", count=quizzes | length) }}
+{{ t(id="welcome", name=data.site.name) }}
+{{ t(id="post-count", count=posts.count) }}
 ```
 
 Fluent messages may use named values, terms, attributes, message references,
@@ -177,6 +196,15 @@ matching `page.date`, and formats its calendar date for the current locale
 with `short`, `medium`, or `long` styles; time and time-zone presentation
 remain a later extension. The template boundary does not expose arbitrary
 objects, arrays, raw HTML, Fluent internals, or filesystem access.
+
+Keep the machine-readable value in `datetime` and format only the visible
+text:
+
+```tera
+<time datetime="{{ page.date }}">
+  {{ format_date(value=page.date, style="long") }}
+</time>
+```
 
 Long-form prose belongs in locale-specific content files, rather than being
 assembled from message fragments. A template may safely place `t()` output

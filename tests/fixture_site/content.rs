@@ -25,7 +25,7 @@ fn builds_a_site_with_pages_segments_markdown_and_versioned_assets() {
     fixture.write("content/en/style.v2.css", "body {}");
     fixture.write(
         "templates/page.html",
-        "{{ page.id }}|{{ page.siblings | length }}|{% if page.id == 'index' %}{{ page.content.main | markdown }}{% elif page.id == 'quiz/quiz-1' %}{{ 'styles.css' | latest }}{% else %}{{ page.content.main.summary[0] }}{% endif %}|{{ '/style.css' | latest }}",
+        "{{ page.id }}|{{ siblings() | length }}|{% if page.id == 'index' %}{{ page.content.main | markdown }}{% elif page.id == 'quiz/quiz-1' %}{{ 'styles.css' | latest }}{% else %}{{ page.content.main.summary[0] }}{% endif %}|{{ '/style.css' | latest }}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");

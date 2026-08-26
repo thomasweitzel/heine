@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn rejects_unknown_keywords_for_fixed_template_function_contracts() {
+    let cases = [
+        ("{{ highlight_css(unknown=true) }}", true),
+        ("{{ 'text' | markdown(unknown=true) }}", false),
+        ("{{ 'missing.css' | latest(unknown=true) }}", false),
+        ("{{ 'missing.png' | dimensions(unknown=true) }}", false),
+        ("{{ format_date(value='2026-08-26', unknown=true) }}", false),
+        ("{{ tag(name='news', unknown=true) }}", false),
+    ];
+
+    for (template, highlighting) in cases {
+        let fixture = Fixture::new();
+        fixture.write("content/en/index.page", "template = 'page.tera'\n");
+        if highlighting {
+            fixture.write(
+                "heine.toml",
+                "[markdown.highlighting]\nstylesheet = 'styles/highlighting.css'\n\n[markdown.highlighting.theme]\nlight = 'github-light'\ndark = 'github-dark'\n",
+            );
+        }
+        fixture.write("templates/page.tera", template);
+
+        let error = build_at(fixture.path(), BuildMode::Full)
+            .expect_err("unknown keyword must fail before function-specific work");
+        let diagnostic = format!("{error:?}");
+        assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+        assert!(diagnostic.contains("unknown"), "{diagnostic}");
+        assert!(diagnostic.contains("does not accept"), "{diagnostic}");
+        assert!(diagnostic.contains("keyword"), "{diagnostic}");
+        assert!(diagnostic.contains("argument"), "{diagnostic}");
+    }
+}
+
+#[test]
 fn reports_the_page_location_for_a_missing_template() {
     let fixture = Fixture::new();
     fixture.write("content/en/index.page", "template = 'missing.tera'\n");
@@ -205,4 +238,36 @@ fn rejects_an_unknown_configuration_key_at_its_source_location() {
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
     assert!(diagnostic.contains("base_peth"), "{diagnostic}");
     assert!(diagnostic.contains("unknown field"), "{diagnostic}");
+}
+
+#[test]
+fn rejects_invalid_collection_configuration_at_the_authored_value() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[collections.blog-posts]\norder = 'date-desc'\n",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("collection is invalid");
+    let diagnostic = format!("{error:?}");
+
+    assert!(diagnostic.contains("heine.toml:1"), "{diagnostic}");
+    assert!(diagnostic.contains("blog-posts"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("simple template identifier"),
+        "{diagnostic}"
+    );
+
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[collections.posts]\norder = 'published-desc'\n",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("order is invalid");
+    let diagnostic = format!("{error:?}");
+
+    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(diagnostic.contains("published-desc"), "{diagnostic}");
+    assert!(diagnostic.contains("date-desc"), "{diagnostic}");
 }

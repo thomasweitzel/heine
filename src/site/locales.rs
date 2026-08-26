@@ -7,7 +7,11 @@ use std::{
 
 use walkdir::DirEntry;
 
-use crate::{config::I18nConfig, content::MarkdownSource, locale::Locale};
+use crate::{
+    config::{CollectionsConfig, I18nConfig},
+    content::MarkdownSource,
+    locale::Locale,
+};
 
 use super::{
     Error, index, loader,
@@ -19,6 +23,7 @@ use super::{
 /// semantic and render orchestration boundary.
 pub(super) struct LocalizedContent {
     pub(super) pages: BTreeMap<Locale, BTreeMap<PageId, Page>>,
+    pub(super) siblings: BTreeMap<Locale, index::SiblingIndex>,
     pub(super) tasks: Vec<Task>,
     pub(super) entries: BTreeMap<Locale, Vec<DirEntry>>,
     pub(super) content_inputs: BTreeMap<Locale, BTreeSet<PathBuf>>,
@@ -27,7 +32,11 @@ pub(super) struct LocalizedContent {
     pub(super) shared_entries: Vec<DirEntry>,
 }
 
-pub(super) fn load(content_root: &Path, i18n: &I18nConfig) -> Result<LocalizedContent, Error> {
+pub(super) fn load(
+    content_root: &Path,
+    i18n: &I18nConfig,
+    collections: &CollectionsConfig,
+) -> Result<LocalizedContent, Error> {
     validate_root(content_root, i18n)?;
     let shared_root = content_root.join("assets");
     let shared_entries = if directory_exists(&shared_root)? {
@@ -36,6 +45,7 @@ pub(super) fn load(content_root: &Path, i18n: &I18nConfig) -> Result<LocalizedCo
         Vec::new()
     };
     let mut pages = BTreeMap::new();
+    let mut siblings = BTreeMap::new();
     let mut tasks = Vec::new();
     let mut entries_by_locale = BTreeMap::new();
     let mut content_inputs = BTreeMap::new();
@@ -50,7 +60,8 @@ pub(super) fn load(content_root: &Path, i18n: &I18nConfig) -> Result<LocalizedCo
             });
         }
         let entries = loader::content_entries(&root)?;
-        let descriptors = loader::load_descriptors(&root, &entries)?;
+        let descriptors = loader::load_descriptors(&root, &entries, collections)?;
+        let subdirectories = loader::subdirectories(&entries);
         let output_prefix = if locale == i18n.default_locale() {
             PathBuf::new()
         } else {
@@ -70,13 +81,16 @@ pub(super) fn load(content_root: &Path, i18n: &I18nConfig) -> Result<LocalizedCo
             let source = entry.path();
             let relative = loader::relative_path(&root, source)?;
             let loaded = loader::load_page(
-                &root,
-                locale,
-                &output_prefix,
                 source,
                 &relative,
-                &entries,
-                &descriptors,
+                loader::PageLoadContext {
+                    content_root: &root,
+                    locale,
+                    output_prefix: &output_prefix,
+                    subdirectories: &subdirectories,
+                    descriptors: &descriptors,
+                    collections,
+                },
             )?;
             if let Some(task) = loaded.task {
                 tasks.push(task);
@@ -90,7 +104,7 @@ pub(super) fn load(content_root: &Path, i18n: &I18nConfig) -> Result<LocalizedCo
             );
             locale_pages.insert(loaded.page.id.clone(), loaded.page);
         }
-        index::fix_siblings(&mut locale_pages);
+        siblings.insert(locale.clone(), index::fix_siblings(&mut locale_pages));
         pages.insert(locale.clone(), locale_pages);
         entries_by_locale.insert(locale.clone(), entries);
         content_inputs.insert(locale.clone(), locale_inputs);
@@ -102,6 +116,7 @@ pub(super) fn load(content_root: &Path, i18n: &I18nConfig) -> Result<LocalizedCo
     });
     Ok(LocalizedContent {
         pages,
+        siblings,
         tasks,
         entries: entries_by_locale,
         content_inputs,

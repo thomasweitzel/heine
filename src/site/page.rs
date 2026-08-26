@@ -3,6 +3,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
+    sync::Arc,
     time::SystemTime,
 };
 
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use time::{Date, OffsetDateTime};
 
-use crate::{content::MarkdownSource, output::OutputPath, source_path};
+use crate::{config::CollectionName, content::MarkdownSource, output::OutputPath, source_path};
 
 /// A stable logical page identifier, always relative to one locale tree without `.page`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -19,7 +20,7 @@ use crate::{content::MarkdownSource, output::OutputPath, source_path};
 pub(crate) struct PageId(String);
 
 impl PageId {
-    pub(super) fn from_source_path(path: &Path) -> Self {
+    pub(crate) fn from_source_path(path: &Path) -> Self {
         Self(source_path::url(path))
     }
 
@@ -106,6 +107,7 @@ pub(super) struct RawPage {
     pub(super) content: BTreeMap<String, toml::Spanned<String>>,
     #[serde(default)]
     pub(super) tags: Vec<String>,
+    pub(super) collections: Option<Vec<toml::Spanned<String>>>,
     pub(super) weight: Option<toml::Spanned<toml::Value>>,
     #[serde(default = "default_suffix")]
     pub(super) suffix: toml::Spanned<String>,
@@ -130,6 +132,12 @@ pub(super) enum MetadataDate {
 }
 
 impl MetadataDate {
+    pub(super) fn is_date_only(&self) -> bool {
+        matches!(self, Self::Date(_))
+    }
+}
+
+impl MetadataDate {
     pub(super) fn render(&self) -> String {
         match self {
             Self::Date(value) => value.to_string(),
@@ -146,6 +154,7 @@ pub(super) struct Metadata {
     pub(super) description: Option<String>,
     pub(super) summary: Option<String>,
     pub(super) date: Option<MetadataDate>,
+    pub(super) date_span: Option<SourceSpan>,
     pub(super) extra: Value,
 }
 
@@ -219,11 +228,21 @@ pub(super) struct Page {
     pub(super) source: NamedSource<String>,
     pub(super) directory: DirectoryView,
     pub(super) tags: Vec<String>,
+    pub(super) collections: Vec<CollectionMembership>,
     pub(super) weight: Option<i64>,
-    pub(super) siblings: Vec<PageId>,
+    pub(super) weight_span: Option<SourceSpan>,
     pub(super) lighter: Option<PageId>,
     pub(super) heavier: Option<PageId>,
     pub(super) translations: BTreeMap<String, PageLink>,
+}
+
+/// An authored collection membership, retaining its declaration for
+/// relationship diagnostics after page loading has finished.
+#[derive(Debug, Clone)]
+pub(super) struct CollectionMembership {
+    pub(super) name: CollectionName,
+    pub(super) source: Arc<NamedSource<String>>,
+    pub(super) span: SourceSpan,
 }
 
 /// A resolved counterpart deliberately exposed through `page.translations`.
@@ -234,26 +253,36 @@ pub(super) struct PageLink {
 }
 
 impl Page {
-    pub(super) fn view(&self) -> PageView {
+    /// Drops loading-only state after all site relationships are resolved.
+    /// The resulting value is the sole page representation retained while
+    /// templates render.
+    pub(super) fn into_view(self) -> PageView {
+        let Metadata {
+            title,
+            description,
+            summary,
+            date,
+            extra,
+            ..
+        } = self.metadata;
         PageView {
-            id: self.id.clone(),
-            path: self.path.as_ref().map(|path| path.as_str().to_owned()),
-            dir: self.dir.clone(),
-            filename: self.filename.clone(),
-            subdirs: self.subdirs.clone(),
-            content: self.content.clone(),
-            title: self.metadata.title.clone(),
-            description: self.metadata.description.clone(),
-            summary: self.metadata.summary.clone(),
-            date: self.metadata.date.as_ref().map(MetadataDate::render),
-            extra: self.metadata.extra.clone(),
-            translations: self.translations.clone(),
-            directory: self.directory.clone(),
-            tags: self.tags.clone(),
+            id: self.id,
+            path: self.path.map(|path| path.0),
+            dir: self.dir,
+            filename: self.filename,
+            subdirs: self.subdirs,
+            content: self.content,
+            title,
+            description,
+            summary,
+            date: date.as_ref().map(MetadataDate::render),
+            extra,
+            translations: self.translations,
+            directory: self.directory,
+            tags: self.tags,
             weight: self.weight,
-            siblings: self.siblings.clone(),
-            lighter: self.lighter.clone(),
-            heavier: self.heavier.clone(),
+            lighter: self.lighter,
+            heavier: self.heavier,
         }
     }
 }
@@ -276,9 +305,18 @@ pub(crate) struct PageView {
     directory: DirectoryView,
     tags: Vec<String>,
     weight: Option<i64>,
-    siblings: Vec<PageId>,
     lighter: Option<PageId>,
     heavier: Option<PageId>,
+}
+
+impl PageView {
+    pub(crate) fn directory(&self) -> &str {
+        &self.dir
+    }
+
+    pub(crate) fn output_path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
 }
 
 /// The immediate containing directory's deliberately small template view.
