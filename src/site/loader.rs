@@ -22,10 +22,11 @@ use crate::{
         Error,
         page::{
             CollectionMembership, DirectoryView, LoadedPage, Metadata, MetadataDate, OutputSuffix,
-            Page, PageId, RawMetadata, RawPage, Task, TemplateName, UrlPath,
+            Page, PageId, Pagination, PaginationSegment, RawMetadata, RawPage, Task, TranslationId,
         },
     },
     source_path,
+    template::TemplateName,
 };
 
 pub(super) const DIRECTORY_FILE: &str = "_directory.toml";
@@ -137,6 +138,18 @@ pub(super) fn content_entries(root: &Path) -> Result<Vec<DirEntry>, Error> {
                     });
                 }
             }
+            if let Some(collision) = source_path::normalization_collision(
+                entries
+                    .iter()
+                    .filter(|entry| entry.path() != root)
+                    .map(|entry| {
+                        relative_path(root, entry.path())
+                            .map(|relative| (relative, entry.path().into()))
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?,
+            ) {
+                return Err(Error::NormalizationCollision(Box::new(collision)));
+            }
             Ok(entries)
         })
 }
@@ -189,7 +202,10 @@ pub(super) fn load_page(
             span: error.span().unwrap_or(0..0).into(),
         }))
     })?;
-    let id = PageId::from_source_path(&relative.with_extension(""));
+    let id = PageId::from_logical_path(
+        source_path::LogicalPath::from_path(&relative.with_extension(""))
+            .expect("discovered page IDs remain logical"),
+    );
     let directory_path = relative.parent().unwrap_or(Path::new(""));
     let ancestors = descriptor_ancestors(directory_path, context.descriptors);
     let template = template_for(raw.template, &ancestors, path, &text)?;
@@ -204,6 +220,13 @@ pub(super) fn load_page(
     let collections = collections_for(
         raw.collections,
         &ancestors,
+        context.collections,
+        path,
+        &text,
+    )?;
+    let pagination = pagination_for(
+        raw.pagination,
+        template.is_some(),
         context.collections,
         path,
         &text,
@@ -277,29 +300,35 @@ pub(super) fn load_page(
         .translationid
         .map(toml::Spanned::into_inner)
         .map(|value| {
-            if value.trim().is_empty() {
-                Err(invalid(
+            TranslationId::parse(value).map_err(|message| {
+                invalid(
                     path,
                     &text,
                     translationid_span.unwrap_or((0, 0).into()),
-                    "field `translationid` must not be empty",
-                ))
-            } else {
-                Ok(value)
-            }
+                    message,
+                )
+            })
         })
         .transpose()?;
-    let output_path = template.as_ref().map(|_| {
-        OutputPath::new(
-            context
+    let output_path = template
+        .as_ref()
+        .map(|_| {
+            let derived_output = context
                 .output_prefix
                 .join(relative)
-                .with_extension(suffix.as_str()),
-        )
-    });
+                .with_extension(suffix.as_str());
+            OutputPath::try_new(derived_output.clone()).map_err(|message| {
+                Error::InvalidPageOutput(Box::new(PageOutputPathDiagnostic {
+                    path: path.into(),
+                    output: derived_output,
+                    message,
+                }))
+            })
+        })
+        .transpose()?;
     let (path_value, filename) = match &output_path {
         Some(output) => (
-            Some(UrlPath::from_output(output)),
+            Some(output.url_path()),
             output
                 .as_path()
                 .file_name()
@@ -310,7 +339,12 @@ pub(super) fn load_page(
     let directory = relative
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
-        .map(source_path::url)
+        .map(|path| {
+            source_path::LogicalPath::from_path(path)
+                .expect("discovered page directories remain logical")
+                .as_str()
+                .to_owned()
+        })
         .unwrap_or_default();
     let source_dir = path.parent().expect("page file has parent");
     let subdirs = context
@@ -320,6 +354,7 @@ pub(super) fn load_page(
         .unwrap_or_default();
     let page = Page {
         id: id.clone(),
+        output_path: output_path.clone(),
         path: path_value,
         dir: directory.clone(),
         filename,
@@ -336,6 +371,7 @@ pub(super) fn load_page(
             .unwrap_or_else(|| DirectoryView::new(directory.clone(), &Metadata::default())),
         tags,
         collections,
+        pagination,
         weight,
         weight_span,
         lighter: None,
@@ -349,10 +385,11 @@ pub(super) fn load_page(
             output_span: suffix_span.into(),
             page_id: id,
             template,
-            page_source,
-            template_source,
+            page_source: Arc::new(page_source),
+            template_source: Arc::new(template_source),
             output_path,
             latest_input: latest,
+            pagination: None,
         },
     );
     Ok(LoadedPage {
@@ -361,6 +398,75 @@ pub(super) fn load_page(
         content_inputs,
         markdown_sources,
     })
+}
+
+fn pagination_for(
+    raw: Option<super::page::RawPagination>,
+    rendered: bool,
+    collections: &CollectionsConfig,
+    path: &Path,
+    source: &str,
+) -> Result<Option<Pagination>, Error> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let collection_span: SourceSpan = raw.collection.span().into();
+    let collection_value = raw.collection.into_inner();
+    let collection = CollectionName::parse(collection_value.clone())
+        .map_err(|message| invalid(path, source, collection_span, message))?;
+    if !collections.contains(&collection) {
+        return Err(invalid(
+            path,
+            source,
+            collection_span,
+            format!(
+                "pagination collection {collection_value:?} is not configured; add a [collections.{collection_value}] table to heine.toml"
+            ),
+        ));
+    }
+    if !rendered {
+        return Err(invalid(
+            path,
+            source,
+            collection_span,
+            "pagination requires this page to have a template; add `template = \"…\"` or remove [pagination]",
+        ));
+    }
+    let per_page_span: SourceSpan = raw.per_page.span().into();
+    let per_page = raw.per_page.into_inner();
+    if per_page == 0 {
+        return Err(invalid(
+            path,
+            source,
+            per_page_span,
+            "pagination.per_page must be a positive integer",
+        ));
+    }
+    let has_authored_segment = !raw.segment.span().is_empty();
+    let segment_span: SourceSpan = raw.segment.span().into();
+    let segment = PaginationSegment::parse(raw.segment.into_inner())
+        .map_err(|message| invalid(path, source, segment_span, message))?;
+    let window_span: SourceSpan = raw.navigation.window.span().into();
+    let navigation_window = raw.navigation.window.into_inner();
+    if !(1..=5).contains(&navigation_window) {
+        return Err(invalid(
+            path,
+            source,
+            window_span,
+            "pagination.navigation.window must be an integer from 1 through 5",
+        ));
+    }
+    Ok(Some(Pagination {
+        collection,
+        per_page,
+        segment,
+        navigation_window,
+        route_span: if has_authored_segment {
+            segment_span
+        } else {
+            collection_span
+        },
+    }))
 }
 
 pub(super) fn load_descriptors(
@@ -573,16 +679,16 @@ fn parse_template(
     path: &Path,
     source: &str,
 ) -> Result<TemplateChoice, Error> {
-    let span = value.span();
+    let span: SourceSpan = value.span().into();
     match value.into_inner() {
-        toml::Value::String(name) => {
-            Ok(TemplateChoice::Named(TemplateName::new(name), span.into()))
-        }
+        toml::Value::String(name) => TemplateName::parse(name)
+            .map(|name| TemplateChoice::Named(name, span))
+            .map_err(|message| invalid(path, source, span, message)),
         toml::Value::Boolean(false) => Ok(TemplateChoice::Disabled),
         _ => Err(invalid(
             path,
             source,
-            span.into(),
+            span,
             "field `template` must be a template name or `false`",
         )),
     }
@@ -905,6 +1011,21 @@ pub(crate) struct PageDiagnostic {
     source_code: NamedSource<String>,
     #[label("{message}")]
     span: SourceSpan,
+}
+
+/// A page filename-derived output error. The invalid value is in the source
+/// path rather than the TOML body, so this deliberately reports that path
+/// instead of attaching a fabricated source span to unrelated page text.
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("page {path} derives invalid output path {output}: {message}")]
+#[diagnostic(
+    code(heine::page::invalid_output_path),
+    help("rename the page or choose a portable output filename")
+)]
+pub(crate) struct PageOutputPathDiagnostic {
+    path: PathBuf,
+    output: PathBuf,
+    message: String,
 }
 
 #[derive(Debug, Diagnostic, ThisError)]

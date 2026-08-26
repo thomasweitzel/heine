@@ -53,6 +53,8 @@ fn builds_the_documented_starter_site() {
         "{german_blog}"
     );
     assert!(!german_blog.contains("Quiz"), "{german_blog}");
+    assert!(output.join("blog/page/2.html").is_file());
+    assert!(!output.join("de/blog/page/2.html").exists());
 
     let german_post =
         fs::read_to_string(output.join("de/blog/2026-08-15.html")).expect("German post");

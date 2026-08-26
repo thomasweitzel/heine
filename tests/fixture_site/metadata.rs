@@ -133,6 +133,21 @@ fn reports_invalid_directory_template_at_its_declaration() {
 }
 
 #[test]
+fn reports_an_unsafe_template_name_at_its_authored_value() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = '../outside.tera'\n");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("template is invalid");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("content/en/index.page:1"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("relative paths"), "{diagnostic}");
+}
+
+#[test]
 fn resolves_explicit_collections_with_inherited_membership_and_page_opt_out() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[collections.posts]\norder = 'date-desc'\n");

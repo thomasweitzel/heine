@@ -9,10 +9,13 @@ mod target;
 mod writer;
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     io,
     path::{Path, PathBuf},
 };
+
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use unicode_normalization::UnicodeNormalization;
 
 use miette::Diagnostic;
 use miette::{NamedSource, SourceSpan};
@@ -84,30 +87,48 @@ impl PlannedOutputPath {
 
 impl OutputPlan {
     pub(crate) fn validate(claims: &[OutputClaim]) -> Result<Self, Error> {
-        for (index, claim) in claims.iter().enumerate() {
+        let mut ordered = BTreeMap::new();
+        let mut portable = BTreeMap::new();
+        for claim in claims {
             if is_internal_output_path(claim.path.as_path()) {
                 return Err(Error::Claim(Box::new(OutputClaimError::reserved(claim))));
             }
-            for existing in &claims[..index] {
-                if paths_conflict(existing.path.as_path(), claim.path.as_path()) {
+            if let Some(existing) = portable.insert(claim.path.collision_key(), claim) {
+                return Err(Error::Claim(Box::new(OutputClaimError::collision(
+                    existing, claim,
+                ))));
+            }
+            ordered.insert(claim.path.clone(), claim);
+        }
+
+        // Every non-identical conflict is an ancestor relationship. Looking
+        // up each path's (normally few) ancestors keeps collision validation
+        // proportional to the number of output components rather than to the
+        // square of all generated files.
+        for (path, claim) in &ordered {
+            let mut ancestor = path.as_path().parent();
+            while let Some(ancestor_path) = ancestor {
+                if ancestor_path.as_os_str().is_empty() {
+                    break;
+                }
+                let ancestor_output = OutputPath::try_new(ancestor_path.into())
+                    .expect("ancestors of validated output paths remain validated");
+                if let Some(existing) = portable.get(&ancestor_output.collision_key()) {
                     return Err(Error::Claim(Box::new(OutputClaimError::collision(
                         existing, claim,
                     ))));
                 }
+                ancestor = ancestor_path.parent();
             }
         }
         Ok(Self {
-            paths: claims.iter().map(|claim| claim.path.clone()).collect(),
+            paths: ordered.into_keys().collect(),
         })
     }
 
     pub(crate) fn planned_path(&self, path: &OutputPath) -> Option<PlannedOutputPath> {
         self.paths.get(path).cloned().map(PlannedOutputPath)
     }
-}
-
-fn paths_conflict(left: &Path, right: &Path) -> bool {
-    left == right || left.starts_with(right) || right.starts_with(left)
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -135,6 +156,13 @@ pub(crate) enum OutputClaimError {
         span: SourceSpan,
         #[related]
         related: Vec<ClaimOrigin>,
+    },
+    #[error("output path {path} would be produced by copied assets {first} and {second}")]
+    #[diagnostic(code(heine::output::collision))]
+    CollisionFiles {
+        path: PathBuf,
+        first: PathBuf,
+        second: PathBuf,
     },
 }
 
@@ -173,7 +201,18 @@ impl OutputClaimError {
         let (primary, related) = match (&left.origin, &right.origin) {
             (_, OutputOrigin::Authored { .. }) => (right, left),
             (OutputOrigin::Authored { .. }, _) => (left, right),
-            _ => unreachable!("asset discovery cannot claim duplicate output paths"),
+            (
+                OutputOrigin::File { source_path: first },
+                OutputOrigin::File {
+                    source_path: second,
+                },
+            ) => {
+                return Self::CollisionFiles {
+                    path: right.path.as_path().into(),
+                    first: first.clone(),
+                    second: second.clone(),
+                };
+            }
         };
         let OutputOrigin::Authored {
             description,
@@ -223,12 +262,133 @@ impl ClaimOrigin {
 pub(crate) struct OutputPath(PathBuf);
 
 impl OutputPath {
-    pub(crate) fn new(path: PathBuf) -> Self {
-        Self(path)
+    /// Validates one filesystem-relative output location.
+    ///
+    /// This establishes the per-path invariant. `OutputPlan` separately owns
+    /// relationships between several valid paths, such as collisions.
+    pub(crate) fn try_new(path: PathBuf) -> Result<Self, String> {
+        if path.as_os_str().is_empty()
+            || path.is_absolute()
+            || !path.components().all(|component| {
+                matches!(component, std::path::Component::Normal(component) if component
+                    .to_str()
+                    .is_some_and(is_safe_output_component))
+            })
+        {
+            return Err(
+                "output paths must be non-empty relative paths with portable filename components"
+                    .into(),
+            );
+        }
+        Ok(Self(path))
     }
 
     pub(crate) fn as_path(&self) -> &Path {
         &self.0
+    }
+
+    /// A deterministic NFC-normalized, case-independent output identity used
+    /// only for collision checks. Heine deliberately rejects names that differ
+    /// only by Unicode normalization or lowercase spelling, rather than
+    /// depending on a deployment filesystem's naming policy.
+    fn collision_key(&self) -> String {
+        self.0
+            .components()
+            .filter_map(|component| match component {
+                std::path::Component::Normal(component) => component.to_str(),
+                std::path::Component::CurDir
+                | std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_) => None,
+            })
+            .map(|component| {
+                component
+                    .nfc()
+                    .flat_map(char::to_lowercase)
+                    .nfc()
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    /// Converts this validated output location into a browser-facing URL
+    /// path. Output names stay literal on disk; URL escaping happens exactly
+    /// once at this boundary.
+    pub(crate) fn url_path(&self) -> UrlPath {
+        UrlPath::from_output(self)
+    }
+}
+
+/// A canonical percent-encoded URL path relative to the generated site root.
+///
+/// It is distinct from [`OutputPath`]: the former is safe to place in HTML or
+/// an HTTP URL, while the latter is a filesystem-relative location.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UrlPath(String);
+
+impl UrlPath {
+    fn from_output(path: &OutputPath) -> Self {
+        Self::from_components(path.as_path())
+    }
+
+    /// Converts a validated logical source path to URL syntax.
+    pub(crate) fn from_logical(path: &crate::source_path::LogicalPath) -> Self {
+        Self::from_components(path.as_path())
+    }
+
+    fn from_components(path: &Path) -> Self {
+        Self(
+            path.components()
+                .filter_map(|component| match component {
+                    std::path::Component::Normal(component) => component.to_str(),
+                    std::path::Component::CurDir
+                    | std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_) => None,
+                })
+                .map(|component| utf8_percent_encode(component, URL_PATH_SEGMENT).to_string())
+                .collect::<Vec<_>>()
+                .join("/"),
+        )
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+// RFC 3986 path segments allow `pchar`: unreserved characters, sub-delims,
+// `:` and `@`. Every other byte, including a literal percent sign, is encoded
+// so source filenames can never be mistaken for already-escaped URL syntax.
+const URL_PATH_SEGMENT: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'%')
+    .add(b'/')
+    .add(b'<')
+    .add(b'>')
+    .add(b'?')
+    .add(b'[')
+    .add(b'\\')
+    .add(b']')
+    .add(b'^')
+    .add(b'`')
+    .add(b'{')
+    .add(b'|')
+    .add(b'}');
+
+#[cfg(test)]
+mod url_path_tests {
+    use super::*;
+
+    #[test]
+    fn output_urls_encode_literal_filename_bytes() {
+        let path =
+            OutputPath::try_new(PathBuf::from("über space#%/ab.html")).expect("valid output path");
+
+        assert_eq!(path.url_path().as_str(), "%C3%BCber%20space%23%25/ab.html");
     }
 }
 
@@ -333,6 +493,34 @@ pub(crate) fn is_internal_output_path(path: &Path) -> bool {
     path == Path::new(MARKER) || is_reserved_output_path(path)
 }
 
+/// Whether one user-authored path component can be materialized portably in
+/// Heine's output tree. URL-facing generated names must satisfy this in
+/// addition to their URL grammar: characters such as `:` and `*` are legal in
+/// some URLs but not in Windows filenames.
+pub(crate) fn is_safe_output_component(component: &str) -> bool {
+    !component.is_empty()
+        && !matches!(component, "." | "..")
+        && !component.ends_with(['.', ' '])
+        && !component.chars().any(char::is_control)
+        && !component.contains(['<', '>', ':', '"', '/', '\\', '|', '?', '*'])
+        && !is_windows_device_name(component)
+}
+
+fn is_windows_device_name(component: &str) -> bool {
+    let stem = component.split('.').next().unwrap_or_default();
+    let upper = stem.to_ascii_uppercase();
+    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || upper
+            .strip_prefix("COM")
+            .or_else(|| upper.strip_prefix("LPT"))
+            .is_some_and(|number| {
+                matches!(
+                    number,
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+            })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +531,113 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
     use walkdir::WalkDir;
+
+    #[test]
+    fn output_components_use_portable_filename_syntax() {
+        assert!(is_safe_output_component("page"));
+        assert!(!is_safe_output_component("page:two"));
+        assert!(!is_safe_output_component("page*two"));
+        assert!(!is_safe_output_component("page. "));
+        assert!(!is_safe_output_component("page\u{1}"));
+        assert!(!is_safe_output_component("con"));
+        assert!(!is_safe_output_component("LPT1.log"));
+        assert!(!is_safe_output_component("COM¹.log"));
+    }
+
+    #[test]
+    fn output_paths_admit_only_portable_relative_components() {
+        assert!(OutputPath::try_new("blog/post.html".into()).is_ok());
+        assert!(OutputPath::try_new("".into()).is_err());
+        assert!(OutputPath::try_new("../post.html".into()).is_err());
+        assert!(OutputPath::try_new("blog/post?.html".into()).is_err());
+        assert!(OutputPath::try_new("CON.html".into()).is_err());
+    }
+
+    #[test]
+    fn output_plan_detects_ancestor_claims_even_with_intervening_paths() {
+        let claims = [
+            OutputClaim::authored(
+                OutputPath::try_new("articles".into()).expect("valid output path"),
+                "first page",
+                NamedSource::new("first.page", "template = 'page.tera'".to_owned()),
+                (0, 1).into(),
+            ),
+            OutputClaim::authored(
+                OutputPath::try_new("articles.about".into()).expect("valid output path"),
+                "intervening page",
+                NamedSource::new("about.page", "template = 'page.tera'".to_owned()),
+                (0, 1).into(),
+            ),
+            OutputClaim::authored(
+                OutputPath::try_new("articles/index.html".into()).expect("valid output path"),
+                "second page",
+                NamedSource::new("second.page", "template = 'page.tera'".to_owned()),
+                (0, 1).into(),
+            ),
+        ];
+
+        assert!(OutputPlan::validate(&claims).is_err());
+    }
+
+    #[test]
+    fn output_plan_rejects_case_independent_collisions() {
+        let claims = [
+            OutputClaim::authored(
+                OutputPath::try_new("Blog/Index.html".into()).expect("valid output path"),
+                "first page",
+                NamedSource::new("first.page", "template = 'page.tera'".to_owned()),
+                (0, 1).into(),
+            ),
+            OutputClaim::authored(
+                OutputPath::try_new("blog/index.html".into()).expect("valid output path"),
+                "second page",
+                NamedSource::new("second.page", "template = 'page.tera'".to_owned()),
+                (0, 1).into(),
+            ),
+        ];
+
+        assert!(OutputPlan::validate(&claims).is_err());
+    }
+
+    #[test]
+    fn output_plan_reports_case_independent_asset_collisions() {
+        let claims = [
+            OutputClaim::file(
+                OutputPath::try_new("images/Logo.svg".into()).expect("valid output path"),
+                "content/en/images/Logo.svg".into(),
+            ),
+            OutputClaim::file(
+                OutputPath::try_new("images/logo.svg".into()).expect("valid output path"),
+                "content/en/images/logo.svg".into(),
+            ),
+        ];
+
+        let error = OutputPlan::validate(&claims).expect_err("case collision must fail");
+        assert!(matches!(
+            error,
+            Error::Claim(error) if matches!(*error, OutputClaimError::CollisionFiles { .. })
+        ));
+    }
+
+    #[test]
+    fn output_plan_rejects_unicode_normalization_collisions() {
+        let claims = [
+            OutputClaim::authored(
+                OutputPath::try_new("café.html".into()).expect("valid output path"),
+                "first page",
+                NamedSource::new("café.page", "template = 'page.tera'".to_owned()),
+                (0, 1).into(),
+            ),
+            OutputClaim::authored(
+                OutputPath::try_new("cafe\u{301}.html".into()).expect("valid output path"),
+                "second page",
+                NamedSource::new("café.page", "template = 'page.tera'".to_owned()),
+                (0, 1).into(),
+            ),
+        ];
+
+        assert!(OutputPlan::validate(&claims).is_err());
+    }
 
     #[test]
     fn a_staging_write_failure_preserves_output_and_removes_the_staging_tree() {

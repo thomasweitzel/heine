@@ -23,7 +23,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             result.insert("url".into(), asset.url().into());
             result.insert(
                 "relative_url".into(),
-                format!("{root}{}", asset.path().to_string_lossy()).into(),
+                format!("{root}{}", asset.path().url_path().as_str()).into(),
             );
             result.insert(
                 "integrity".into(),
@@ -49,7 +49,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                 .resolve(id, locale)
                 .map_err(|error| tera::Error::message(error.to_string()))?;
             let page = page_runtime
-                .page_view(&target.locale, id)
+                .page_view(&target.locale, &target.id)
                 .ok_or_else(|| tera::Error::message("Heine page catalog is inconsistent"))?;
             let root = page_runtime.root(state)?;
             let mut result = match tera::Value::try_from_serializable(&page)
@@ -62,7 +62,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             result.insert("url".into(), target.url.into());
             result.insert(
                 "relative_url".into(),
-                format!("{root}{}", target.output_path.to_string_lossy()).into(),
+                format!("{root}{}", target.output_path.url_path().as_str()).into(),
             );
             Ok(result.into())
         },
@@ -133,6 +133,24 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         },
     );
 
+    let pagination_runtime = runtime.clone();
+    tera.register_function(
+        "pagination_links",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("pagination_links", &kwargs, &[])?;
+            let pager = pagination_runtime.pager(state)?.ok_or_else(|| {
+                tera::Error::message(
+                    "pagination_links() is available only while rendering a paginated listing",
+                )
+            })?;
+            let root = pagination_runtime.root(state)?;
+            tera::Value::try_from_serializable(
+                &pager.links(pagination_runtime.pages().base_path(), &root),
+            )
+            .map_err(|_| tera::Error::message("Heine pagination links are not serializable"))
+        },
+    );
+
     let siblings_runtime = runtime.clone();
     tera.register_function(
         "siblings",
@@ -148,11 +166,11 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                         .resolve(id, requested_locale)
                         .map_err(|error| tera::Error::message(error.to_string()))?;
                     let page = siblings_runtime
-                        .page_view(&target.locale, id)
+                        .page_view(&target.locale, &target.id)
                         .ok_or_else(|| {
                             tera::Error::message("Heine page catalog is inconsistent")
                         })?;
-                    (target.locale, page.directory().to_owned(), id.to_owned())
+                    (target.locale, page.directory().to_owned(), target.id)
                 }
                 None if requested_locale.is_some() => {
                     return Err(tera::Error::message(
@@ -179,21 +197,19 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             arguments::only("latest", &kwargs, &[])?;
             let page_dir = latest_runtime.page_dir(state)?;
             let page_dir = Path::new(&page_dir);
-            let (path, content_root_relative) = latest_runtime
+            let (asset, content_root_relative) = latest_runtime
                 .assets()
                 .with_locale(latest_runtime.locale(state)?)
                 .resolve_template_path(page_dir, input)
                 .map_err(|error| tera::Error::message(error.to_string()))?;
-            let path = if content_root_relative {
-                crate::source_path::url(&path)
+            if content_root_relative {
+                Ok(latest_runtime
+                    .pages()
+                    .base_path()
+                    .join(&asset.output.url_path()))
             } else {
-                crate::source_path::url(path.strip_prefix(page_dir).unwrap_or(&path))
-            };
-            Ok(if content_root_relative {
-                format!("{}{}", latest_runtime.pages().base_path(), path)
-            } else {
-                path
-            })
+                Ok(asset.relative_url_path(page_dir).as_str().to_owned())
+            }
         },
     );
 
@@ -209,11 +225,11 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             let links = dimensions_runtime
                 .assets()
                 .with_locale(dimensions_runtime.locale(state)?);
-            let (key, _) = links
+            let (asset, _) = links
                 .resolve_template_path(Path::new(&page_dir), input)
                 .map_err(|error| tera::Error::message(error.to_string()))?;
             let mut result = tera::Map::new();
-            if let Some((width, height)) = links.dimensions(&key) {
+            if let Some((width, height)) = links.dimensions(&asset.output) {
                 result.insert("width".into(), width.into());
                 result.insert("height".into(), height.into());
             }

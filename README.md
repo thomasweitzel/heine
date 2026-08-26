@@ -18,7 +18,7 @@ batteries-included workflow: for example, a missing asset or rendered page
 reference fails at the template call site instead of in the browser. For now,
 build and run Heine from a source checkout with `cargo run`.
 
-Pagination, RSS feeds, and a plugin system are deliberately out of scope for
+Taxonomies, RSS feeds, and a plugin system are deliberately out of scope for
 now.
 
 ## Contents
@@ -32,6 +32,7 @@ now.
 - [Pages and content](#pages-and-content)
   - [Directory descriptors](#directory-descriptors)
 - [Collections](#collections)
+- [Pagination](#pagination)
 - [Templates](#templates)
 - [Configuration](#configuration)
 - [Build behavior](#build-behavior)
@@ -200,6 +201,18 @@ Heine reads them but never copies them to `public/`. Every other file below
 source-path components beneath `content/` and `templates/` must be valid
 UTF-8 and must not contain backslashes; Heine reports an invalid path instead
 of silently changing its generated URL or identifier.
+Within each content tree, template tree, and locale-resource tree, filenames
+must also be distinct after NFC normalization. Use one NFC-normalized spelling
+for non-ASCII names; Heine preserves that literal spelling in output and URLs,
+but reports both paths instead of silently choosing between equivalent names.
+
+Every copied asset and every rendered page must additionally have portable
+output filename components: they cannot be empty, `.`, `..`, Windows device
+names such as `CON`, end in a dot or space, or contain `<`, `>`, `:`, `"`,
+`/`, `\`, `|`, `?`, `*`, or control characters. Heine also rejects output
+paths that differ only by case, rather than making a site depend on the
+deployment filesystem's case-sensitivity policy. It also rejects paths that
+differ only by Unicode normalization.
 Content, data, localization, and template files must be regular files:
 symbolic links are rejected rather than silently being skipped.
 
@@ -319,7 +332,7 @@ main = "post.md"
 
 The page above renders to `post.html`. The core page fields are `template`,
 `title`, `description`, `summary`, `date`, `tags`, `weight`, `suffix`,
-`translationid`, `collections`, `[content]`, and `[extra]`. Their defaults,
+`translationid`, `collections`, `[pagination]`, `[content]`, and `[extra]`. Their defaults,
 exact value rules, and render-facing fields are in the
 [page reference](docs/reference.md#page).
 
@@ -409,10 +422,35 @@ configured collection is available, even if it has no members:
 {% endfor %}
 ```
 
-Collections only resolve relationships; they do not generate listing pages or
-write output. Pagination and taxonomies will be explicit consumers of this
-same validated model. See the [collection design](docs/collections.md) for the
-full rationale and explicitly marked future extension boundaries.
+Collections only resolve relationships. Paginated listings are their explicit
+generated-output consumer; taxonomies will reuse the same model later. See the
+[collection design](docs/collections.md) and [pagination guide](docs/pagination.md)
+for rationale and extension boundaries.
+
+## Pagination
+
+An ordinary rendered page can list a collection in slices. Its own output is
+page one; Heine generates later pages and validates every route before writing:
+
+```toml
+# content/en/blog/index.page
+template = "section-index.tera"
+# Keep this listing page itself out of the posts collection.
+collections = []
+
+[pagination]
+collection = "posts"
+per_page = 10
+
+[pagination.navigation]
+window = 1
+```
+
+Templates receive `pagination.pages`, page-number and adjacent-link fields,
+and a compact `pagination.navigation` sequence with gap items. Call
+`pagination_links()` only when a template intentionally needs every page
+number. The [pagination guide](docs/pagination.md) documents routes, the
+template contract, navigation windows, validation, and quick-build behavior.
 
 Content files are addressed relative to their `.page` file and must remain
 inside that page's `content/<locale>/` tree. Symbolic links are not permitted
@@ -497,9 +535,9 @@ template values are:
 
 The global page, collection, and asset inventories are intentionally not
 serialized into every render. Use the validating `page()`, `page_exists()`,
-`collection()`, `tag()`, `siblings()`, and `asset()` functions for the item a template
-needs. This keeps large sites predictable without making relationships
-implicit.
+`collection()`, `tag()`, `siblings()`, `pagination_links()`, and `asset()`
+functions for the item a template needs. This keeps large sites predictable
+without making relationships implicit.
 
 `siblings()` returns only rendered pages that participate in sibling ordering:
 pages with a numeric `weight`. An index page and a page using `weight =
@@ -562,6 +600,12 @@ extension. Keeping asset and page lookups separate makes templates explicit and
 lets Heine validate each kind of internal link. Leave external URLs as ordinary
 template strings. See the [reference](docs/reference.md#template-contract) for
 the complete list of Heine functions and filters.
+
+IDs name literal source filenames; write a space, `#`, `%`, or non-ASCII
+character exactly as it appears on disk, rather than pre-encoding it. Heine
+percent-encodes those names once when it produces `url` or `relative_url`.
+For non-ASCII names, use NFC-normalized spelling consistently; Heine preserves
+that spelling rather than normalizing lookup IDs.
 
 When a navigation item or other optional link may be absent in a locale, guard
 the strict lookup with `page_exists(id="quiz/index")`. It returns `false` only
@@ -661,7 +705,8 @@ root, and controls where generated files are written. It is independent of
 serve the site below `/my-project/`, or keep `public` when a hosting platform
 or reverse proxy maps that URL path to the generated directory. Output cannot
 be placed inside `content/`, `data/`, `locales/`, or `templates/`. Its existing
-ancestor directories must not be symbolic links.
+ancestor directories must not be symbolic links. Like generated output names,
+its components must use portable filename syntax.
 
 `assets.integrity` defaults to no integrity hashes. Allowed values are
 `sha256`, `sha384`, and `sha512`. When set, the `asset` function calculates and
@@ -732,7 +777,9 @@ versioned CSS, browser-side quiz JavaScript, and shared site data. Its
 `data/site.toml` supplies the site identity and primary navigation while pages
 retain their own titles and content.
 
-It also has English and German source trees. Two translated blog posts use
+It also has English and German source trees. Its collection-backed blog index
+uses pagination, producing a second English listing page while the shorter
+German collection remains a single page. Two translated blog posts use
 explicit `translationid` values, so their post navigation can link only to
 known counterparts. Fluent localizes navigation, the footer, post controls,
 and the singular/plural blog-post count; shared site assets live in

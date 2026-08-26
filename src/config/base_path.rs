@@ -9,15 +9,19 @@
 /// It is deliberately distinct from a full URL: the latter would carry an
 /// origin and is only needed by features such as feeds or canonical links.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct BasePath(String);
+pub(crate) struct BasePath(String);
 
 impl BasePath {
-    pub(super) fn root() -> Self {
+    pub(crate) fn root() -> Self {
         Self("/".into())
     }
 
-    pub(super) fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.0
+    }
+
+    pub(crate) fn join(&self, path: &crate::output::UrlPath) -> String {
+        format!("{}{}", self.0, path.as_str())
     }
 }
 
@@ -60,10 +64,18 @@ impl TryFrom<String> for BasePath {
     }
 }
 
+impl TryFrom<&str> for BasePath {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.to_owned().try_into()
+    }
+}
+
 /// Accept URL path segments in their canonical, already-encoded form. Keeping
 /// this representation canonical makes it safe to use both as a URL prefix
 /// and as the injected reload-client URL without a second escaping boundary.
-fn valid_url_segment(segment: &str) -> bool {
+pub(crate) fn valid_url_segment(segment: &str) -> bool {
     let bytes = segment.as_bytes();
     let mut index = 0;
     while index < bytes.len() {

@@ -32,6 +32,8 @@ mod markdown;
 mod metadata;
 #[path = "fixture_site/output.rs"]
 mod output;
+#[path = "fixture_site/pagination.rs"]
+mod pagination;
 #[path = "fixture_site/resources.rs"]
 mod resources;
 #[path = "fixture_site/site_data.rs"]

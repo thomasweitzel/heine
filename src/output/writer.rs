@@ -6,10 +6,7 @@ use super::{
     target::{OutputDirectory, OutputTarget, ensure_directory, ensure_parent, write_marker},
 };
 use crate::{asset::AssetCatalog, site::BuildMode};
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-};
+use std::{fs, io, path::Path};
 
 pub(crate) struct OutputWriter {
     target: OutputTarget,
@@ -77,25 +74,25 @@ fn ensure_marker_is_available(assets: &AssetCatalog) -> Result<(), Error> {
     if let Some(asset) = assets
         .paths()
         .iter()
-        .find(|asset| is_internal_output_path(Path::new(asset)))
+        .find(|asset| is_internal_output_path(asset.as_path()))
     {
         return Err(Error::ReservedPath {
-            path: PathBuf::from(asset),
+            path: asset.as_path().into(),
         });
     }
     Ok(())
 }
 fn copy_assets(root: &Path, assets: &AssetCatalog) -> Result<(), Error> {
     for asset in assets.paths() {
-        copy_asset(&assets.source_path(asset), &root.join(asset))?;
+        copy_asset(&assets.source_path(asset), &root.join(asset.as_path()))?;
     }
     Ok(())
 }
 fn copy_newer_assets(root: &Path, assets: &AssetCatalog) -> Result<(), Error> {
     for asset in assets.paths() {
         let source = assets.source_path(asset);
-        let target = root.join(asset);
-        ensure_safe_output_target(root, Path::new(asset))?;
+        let target = root.join(asset.as_path());
+        ensure_safe_output_target(root, asset.as_path())?;
         if asset_needs_copying(&source, &target)? {
             copy_asset(&source, &target)?;
         }

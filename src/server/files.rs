@@ -135,17 +135,19 @@ async fn output_root_exists(root: &Path) -> io::Result<bool> {
 }
 
 fn base_redirect_or_not_found(requested: &str, published: &PublishedSite) -> Response {
-    if published.base_path != "/" && requested == published.base_path.trim_end_matches('/') {
-        return development_redirect(&published.base_path);
+    if published.base_path.as_str() != "/"
+        && requested == published.base_path.as_str().trim_end_matches('/')
+    {
+        return development_redirect(published.base_path.as_str());
     }
     not_found()
 }
 
 fn output_path(requested: &str, published: &PublishedSite) -> Option<PathBuf> {
-    let relative = if published.base_path == "/" {
+    let relative = if published.base_path.as_str() == "/" {
         requested
     } else {
-        requested.strip_prefix(&published.base_path)?
+        requested.strip_prefix(published.base_path.as_str())?
     };
     decoded_relative_path(relative)
 }
@@ -472,7 +474,7 @@ mod tests {
     #[test]
     fn matches_percent_encoded_base_paths_without_decoding_the_prefix() {
         let published = PublishedSite {
-            base_path: "/guide%20notes/".into(),
+            base_path: "/guide%20notes/".try_into().expect("valid base path"),
             output_root: PathBuf::from("public"),
             generation: 1,
         };
@@ -527,7 +529,7 @@ mod tests {
             .expect("write html fixture");
         fs::write(root.join("audio.ogg"), b"0123456789").expect("write range fixture");
         let (sender, receiver) = tokio::sync::watch::channel(PublishedSite {
-            base_path: "/guide/".into(),
+            base_path: "/guide/".try_into().expect("valid base path"),
             output_root: root.clone(),
             generation: 1,
         });
@@ -625,7 +627,7 @@ mod tests {
         fs::write(root.join("audio.ogg"), b"0123456789").expect("write range fixture");
         fs::write(root.join(".heine-output"), "heine-output-v1\n").expect("write marker");
         let (_, receiver) = tokio::sync::watch::channel(PublishedSite {
-            base_path: "/guide%20notes/".into(),
+            base_path: "/guide%20notes/".try_into().expect("valid base path"),
             output_root: root.clone(),
             generation: 1,
         });

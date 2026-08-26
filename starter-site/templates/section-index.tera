@@ -13,18 +13,29 @@
   {{ page.content.main | markdown }}
 {% endif %}
 
-{% if page.extra.collection %}
-  {% set entries = collection(name=page.extra.collection) %}
+{% if pagination %}
   {% if page.extra.count_message %}
-    <p>{{ t(id=page.extra.count_message, count=entries.count) }}</p>
+    <p>{{ t(id=page.extra.count_message, count=pagination.item_count) }}</p>
   {% endif %}
   <hr>
   <nav class="link-stack">
-    {% for p in entries.page_ids %}
-      {% set sibling = page(id=p) %}
-      <a href="{{ sibling.relative_url }}">{{ sibling.title or sibling.filename }}</a>
+    {% for post in pagination.pages %}
+      <a href="{{ post.relative_url }}">{{ post.title or post.filename }}</a>
     {% endfor %}
   </nav>
+  {% if pagination.page_count > 1 %}
+    <nav class="page-navigation" aria-label="Pagination">
+      {% for item in pagination.navigation %}
+        {% if item.kind == "gap" %}
+          <span aria-hidden="true">…</span>
+        {% elif item.current %}
+          <span aria-current="page">{{ item.page_number }}</span>
+        {% else %}
+          <a href="{{ item.relative_url }}">{{ item.page_number }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+  {% endif %}
 {% else %}
   {% set entries = siblings() %}
   {% if entries %}

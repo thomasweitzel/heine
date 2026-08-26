@@ -49,7 +49,7 @@ fn should_reload(client_generation: Option<u64>, published_generation: u64) -> b
 fn event_data(site: &PublishedSite) -> String {
     serde_json::json!({
         "generation": site.generation,
-        "base_path": site.base_path,
+        "base_path": site.base_path.as_str(),
     })
     .to_string()
 }
@@ -57,7 +57,9 @@ fn event_data(site: &PublishedSite) -> String {
 pub(crate) fn inject(html: String, published: &PublishedSite) -> String {
     let script_url = format!(
         "{}{}/{SCRIPT_NAME}?generation={}",
-        published.base_path, INTERNAL_DIRECTORY, published.generation
+        published.base_path.as_str(),
+        INTERNAL_DIRECTORY,
+        published.generation
     );
     let script = format!(
         r#"<script defer src="{}"></script>"#,
@@ -108,7 +110,7 @@ mod tests {
             inject(
                 "<head><title>x</title></head><body></body>".into(),
                 &PublishedSite {
-                    base_path: "/guide/".into(),
+                    base_path: "/guide/".try_into().expect("valid base path"),
                     output_root: "public".into(),
                     generation: 4,
                 }
@@ -123,7 +125,7 @@ mod tests {
             inject(
                 "hello".into(),
                 &PublishedSite {
-                    base_path: "/".into(),
+                    base_path: "/".try_into().expect("valid base path"),
                     output_root: "public".into(),
                     generation: 1
                 }
@@ -138,7 +140,7 @@ mod tests {
             inject(
                 "<head></head>".into(),
                 &PublishedSite {
-                    base_path: "/guide&copy;/".into(),
+                    base_path: "/guide&copy;/".try_into().expect("valid base path"),
                     output_root: "public".into(),
                     generation: 1,
                 }
@@ -158,7 +160,7 @@ mod tests {
     #[test]
     fn reload_events_describe_the_published_base_path() {
         let site = PublishedSite {
-            base_path: "/guide/".into(),
+            base_path: "/guide/".try_into().expect("valid base path"),
             output_root: "public/guide".into(),
             generation: 3,
         };
@@ -192,7 +194,7 @@ mod tests {
         let runtime = tokio::runtime::Runtime::new().expect("runtime");
         runtime.block_on(async {
             let current = PublishedSite {
-                base_path: "/".into(),
+                base_path: "/".try_into().expect("valid base path"),
                 output_root: "public".into(),
                 generation: 2,
             };
@@ -212,7 +214,7 @@ mod tests {
             );
             sender
                 .send(PublishedSite {
-                    base_path: "/".into(),
+                    base_path: "/".try_into().expect("valid base path"),
                     output_root: "public".into(),
                     generation: 3,
                 })

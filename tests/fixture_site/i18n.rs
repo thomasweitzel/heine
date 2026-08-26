@@ -359,6 +359,23 @@ fn reports_both_fluent_message_declarations() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn rejects_localization_paths_that_differ_only_by_unicode_normalization() {
+    let fixture = multilingual_fixture();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("locales/en/café.ftl", "composed = composed\n");
+    fixture.write("locales/en/cafe\u{301}.ftl", "decomposed = decomposed\n");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("normalization-equivalent localization paths are ambiguous");
+    let message = error.to_string();
+
+    assert!(message.contains("café.ftl"), "{message}");
+    assert!(message.contains("cafe\u{301}.ftl"), "{message}");
+    assert!(message.contains("Unicode normalization"), "{message}");
+}
+
 #[test]
 fn reports_both_duplicate_declarations_in_one_fluent_resource() {
     let fixture = multilingual_fixture();

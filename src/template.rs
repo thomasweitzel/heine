@@ -20,11 +20,39 @@ use walkdir::WalkDir;
 
 use crate::{
     asset::AssetLinks,
+    config::BasePath,
     locale::Locale,
     localization::Localization,
     site::{PageCatalog, PageId, PageLinks, PageView, TagIndex},
     source_diagnostic,
+    source_path::LogicalPath,
 };
+
+/// A validated template identifier relative to `templates/`.
+///
+/// Template discovery and page declarations share this type, so every Tera
+/// lookup names the same logical template namespace.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct TemplateName(LogicalPath);
+
+impl TemplateName {
+    pub(crate) fn parse(name: String) -> Result<Self, String> {
+        LogicalPath::parse(&name).map(Self).ok_or_else(|| {
+            "template names must be non-empty relative paths without '.', '..', or backslashes"
+                .into()
+        })
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl std::fmt::Display for TemplateName {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_str().fmt(formatter)
+    }
+}
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
@@ -44,15 +72,19 @@ pub(crate) enum Error {
     NonUtf8Path { path: PathBuf },
     #[error("template path {path} is a symbolic link")]
     TemplateSymlink { path: PathBuf },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NormalizationCollision(#[from] Box<crate::source_path::NormalizationCollision>),
     #[error("could not load templates from {path}")]
     Load {
         path: PathBuf,
         #[source]
         source: tera::Error,
     },
-    #[error("could not render template {template}")]
+    #[error("could not render template {template}{rendering}")]
     Render {
         template: String,
+        rendering: String,
         #[source]
         source: tera::Error,
     },
@@ -82,6 +114,7 @@ pub(crate) struct TemplateRelationships {
         std::sync::Arc<BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>>,
     siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
     tags: std::sync::Arc<BTreeMap<Locale, TagIndex>>,
+    pagers: crate::site::PaginationCatalog,
 }
 
 /// Values deliberately exposed to one template render. This is the boundary
@@ -90,6 +123,7 @@ pub(crate) struct TemplateRelationships {
 pub(crate) struct RenderContext<'a> {
     pub(crate) locale: LocaleView,
     pub(crate) page: &'a PageView,
+    pub(crate) pagination: Option<crate::site::PaginationView>,
     pub(crate) data: &'a serde_json::Value,
     pub(crate) locale_data: &'a serde_json::Value,
     pub(crate) root: &'a str,
@@ -115,6 +149,7 @@ pub(crate) struct RuntimeContext<'a> {
     pub(crate) page_dir: &'a str,
     pub(crate) page_id: &'a PageId,
     pub(crate) root: &'a str,
+    pub(crate) pagination_page: Option<usize>,
 }
 
 impl TemplateResources {
@@ -137,12 +172,13 @@ impl TemplateRelationships {
     pub(crate) fn new(
         page_catalog: PageCatalog,
         default_locale: Locale,
-        base_path: String,
+        base_path: BasePath,
         collections: std::sync::Arc<
             BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>,
         >,
         siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
         tags: std::sync::Arc<BTreeMap<Locale, TagIndex>>,
+        pagers: crate::site::PaginationCatalog,
     ) -> Self {
         Self {
             page_links: page_catalog.links(default_locale, base_path),
@@ -150,16 +186,18 @@ impl TemplateRelationships {
             collections,
             siblings,
             tags,
+            pagers,
         }
     }
 }
 
 /// A Tera failure tied back to a concrete source file owned by Heine.
 #[derive(Debug, Diagnostic, Error)]
-#[error("{stage} error in template {template:?}: {message}")]
+#[error("{stage} error in template {template:?}: {message}{rendering}")]
 #[diagnostic(code(heine::template::invalid))]
 pub(crate) struct TemplateDiagnostic {
     stage: &'static str,
+    rendering: String,
     template: String,
     message: String,
     #[source_code]
@@ -171,7 +209,7 @@ pub(crate) struct TemplateDiagnostic {
 
 pub(crate) struct TemplateEngine {
     tera: tera::Tera,
-    sources: BTreeMap<String, miette::NamedSource<String>>,
+    sources: BTreeMap<TemplateName, miette::NamedSource<String>>,
 }
 
 impl TemplateEngine {
@@ -195,7 +233,7 @@ impl TemplateEngine {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let sources = entries
+        let paths = entries
             .into_iter()
             .map(|entry| {
                 if entry.file_type().is_symlink() {
@@ -217,13 +255,20 @@ impl TemplateEngine {
                 if !crate::source_path::has_safe_components(name) {
                     return Err(Error::NonUtf8Path { path });
                 }
-                let name = name
-                    .to_str()
+                let name = LogicalPath::from_path(name)
                     .ok_or_else(|| Error::NonUtf8Path { path: path.clone() })?;
-                let name = name.replace('\\', "/");
+                let name = TemplateName(name);
                 Ok((path, name))
             })
-            .collect::<Result<Vec<_>, Error>>()?
+            .collect::<Result<Vec<_>, Error>>()?;
+        if let Some(collision) = crate::source_path::normalization_collision(
+            paths
+                .iter()
+                .map(|(path, name)| (name.0.as_path().into(), path.clone())),
+        ) {
+            return Err(Error::NormalizationCollision(Box::new(collision)));
+        }
+        let sources = paths
             .into_iter()
             .map(|(path, name)| {
                 fs::read_to_string(&path)
@@ -235,24 +280,33 @@ impl TemplateEngine {
             .iter()
             .map(|(name, source)| (name.as_str(), source.inner().as_str()));
         tera.add_raw_templates(raw_templates)
-            .map_err(|source| Error::from_tera("parse", templates, &sources, source))?;
+            .map_err(|source| Error::from_tera("parse", templates, &sources, source, None))?;
         Ok(Self { tera, sources })
     }
 
     pub(crate) fn render(
         &self,
-        template: &str,
+        template: &TemplateName,
         context: RenderContext<'_>,
+        rendering: &str,
     ) -> Result<String, Error> {
         let context =
             tera::Context::from_serialize(&context).expect("render context is serializable");
-        self.tera.render(template, &context).map_err(|source| {
-            Error::from_tera("render", Path::new(template), &self.sources, source)
-        })
+        self.tera
+            .render(template.as_str(), &context)
+            .map_err(|source| {
+                Error::from_tera(
+                    "render",
+                    Path::new(template.as_str()),
+                    &self.sources,
+                    source,
+                    Some(rendering),
+                )
+            })
     }
 
-    pub(crate) fn contains(&self, template: &str) -> bool {
-        self.tera.contains_template(template)
+    pub(crate) fn contains(&self, template: &TemplateName) -> bool {
+        self.tera.contains_template(template.as_str())
     }
 }
 
@@ -260,8 +314,9 @@ impl Error {
     fn from_tera(
         stage: &'static str,
         location: &Path,
-        sources: &BTreeMap<String, miette::NamedSource<String>>,
+        sources: &BTreeMap<TemplateName, miette::NamedSource<String>>,
         source: tera::Error,
+        rendering: Option<&str>,
     ) -> Self {
         if let tera::ErrorKind::MissingParent { current, parent } = source.kind()
             && let Some(diagnostic) = Self::template_reference_diagnostic(
@@ -270,6 +325,7 @@ impl Error {
                 parent,
                 format!("parent template {parent:?} was not found"),
                 sources,
+                rendering,
             )
         {
             return diagnostic;
@@ -282,6 +338,9 @@ impl Error {
                 return if stage == "render" {
                     Self::Render {
                         template: location.display().to_string(),
+                        rendering: rendering
+                            .map(|rendering| format!(" while rendering {rendering}"))
+                            .unwrap_or_default(),
                         source,
                     }
                 } else {
@@ -293,10 +352,16 @@ impl Error {
             }
         };
         let template = report.filename();
-        let Some(source_code) = sources.get(template) else {
+        let Some(source_code) = TemplateName::parse(template.into())
+            .ok()
+            .and_then(|template| sources.get(&template))
+        else {
             return if stage == "render" {
                 Self::Render {
                     template: location.display().to_string(),
+                    rendering: rendering
+                        .map(|rendering| format!(" while rendering {rendering}"))
+                        .unwrap_or_default(),
                     source,
                 }
             } else {
@@ -309,6 +374,9 @@ impl Error {
         let range = report.span().range.clone();
         Self::Detailed(Box::new(TemplateDiagnostic {
             stage,
+            rendering: rendering
+                .map(|rendering| format!(" (while rendering {rendering})"))
+                .unwrap_or_default(),
             template: template.into(),
             message: report.message().into(),
             source_code: source_code.clone(),
@@ -322,11 +390,15 @@ impl Error {
         template: &str,
         reference: &str,
         message: String,
-        sources: &BTreeMap<String, miette::NamedSource<String>>,
+        sources: &BTreeMap<TemplateName, miette::NamedSource<String>>,
+        rendering: Option<&str>,
     ) -> Option<Self> {
-        let source_code = sources.get(template)?;
+        let source_code = sources.get(&TemplateName::parse(template.into()).ok()?)?;
         Some(Self::Detailed(Box::new(TemplateDiagnostic {
             stage,
+            rendering: rendering
+                .map(|rendering| format!(" (while rendering {rendering})"))
+                .unwrap_or_default(),
             template: template.into(),
             message,
             source_code: source_code.clone(),
@@ -400,4 +472,21 @@ fn quoted_template_string(value: &str) -> Option<(&str, usize)> {
     let value = &value[quote.len_utf8()..];
     let end = value.find(quote)?;
     Some((&value[..end], quote.len_utf8()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TemplateName;
+
+    #[test]
+    fn template_names_are_logical_template_paths() {
+        assert_eq!(
+            TemplateName::parse("posts/item.tera".into())
+                .expect("valid template name")
+                .as_str(),
+            "posts/item.tera"
+        );
+        assert!(TemplateName::parse("../item.tera".into()).is_err());
+        assert!(TemplateName::parse("posts\\item.tera".into()).is_err());
+    }
 }

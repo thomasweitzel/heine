@@ -30,7 +30,7 @@ fields use the following defaults.
 | Field                                    | Type             | Default                               | Allowed values and constraints                                                                                                     | Effect                                                                   |
 |------------------------------------------|------------------|---------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
 | `site.base_path`                         | string           | `"/"`                                 | ASCII absolute URL directory path; starts and ends with `/`; uppercase percent escapes only; no encoded separators or dot segments | Prefix for absolute URLs from `asset()` and `page()`                     |
-| `build.output_dir`                       | string           | `"public"`                            | Non-empty relative filesystem path without `.` or `..`; cannot be an input directory or descendant                                 | Generated output directory relative to site root                         |
+| `build.output_dir`                       | string           | `"public"`                            | Non-empty relative path with portable filename components; cannot be an input directory or descendant                                | Generated output directory relative to site root                         |
 | `assets.integrity`                       | string           | absent                                | `"sha256"`, `"sha384"`, `"sha512"`                                                                                                 | Enables Subresource Integrity values from `asset()`                      |
 | `i18n.default_locale`                    | string           | required                              | Canonical BCP-47 locale declared by an `i18n.locales.<code>` table                                                                  | Locale with unprefixed generated URLs                                    |
 | `i18n.locales`                           | table            | required                              | Non-empty table keyed by canonical BCP-47 locale codes                                                                              | Finite locale source trees to render                                     |
@@ -102,10 +102,28 @@ Each `.page` defines a page. Its ID is its path below its `content/<locale>/` tr
 | `suffix`         | string                              | `".html"`               | Non-empty extension without `/`, `\`, NUL, `.`, or `..`                                              | Rendered filename extension                                           |
 | `translationid`  | string                              | absent                  | Non-empty opaque identifier; at most once per locale                                                 | Explicitly joins pages across locales as `page.translations`          |
 | `collections`    | array of strings                    | inherited, or `[]`       | Unique configured collection names; only rendered pages may belong                                    | Replaces the inherited membership default; `[]` opts out              |
+| `pagination.collection` | string                       | absent                   | Configured collection name; page must render                                                         | Makes this authored page a collection listing                          |
+| `pagination.per_page` | integer                          | required when paginating | Positive integer                                                                                      | Collection members on each pager                                      |
+| `pagination.segment` | string                           | `"page"`                | Literal ASCII letters/digits or `-._~!$&'()*+,;=@`; no percent escapes, `.`/`..`, or trailing `.`   | Generated-pager route segment                                         |
+| `pagination.navigation.window` | integer               | `1`                      | Integer from `1` through `5`                                                                         | Compact navigation link radius around boundaries and current pager    |
 | `content.<name>` | string                              | absent                  | `<name>` is a simple template identifier; path is relative to page and remains under its locale tree | `page.content.<name>`; input is not copied                            |
 | `extra`          | TOML table                          | empty table             | Nested keys begin with ASCII letter or `_`, then letters, digits, or `_`                             | `page.extra`                                                          |
 
 `index.page` has no default `weight` and is excluded from sibling ordering unless it has a numeric weight.
+
+Rendered pages, like copied assets, must derive portable output filename
+components. They cannot use empty components, `.`, `..`, Windows device names,
+trailing dots or spaces, or `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`, or
+control characters. Heine rejects output paths that differ only by case, so a
+published tree does not depend on the deployment filesystem's case-sensitivity
+policy. It also rejects NFC-equivalent Unicode spellings, such as composed and
+decomposed forms of `café`. Use one NFC-normalized spelling; Heine preserves
+that literal spelling rather than silently rewriting it. A page with `template
+= false` has no output path and is not subject to this output rule.
+
+Within each content tree, template tree, and locale-resource tree, filenames
+must likewise be distinct after NFC normalization. Heine preserves their
+literal spelling, but names both source paths when it finds an ambiguity.
 
 ### Declared content files
 
@@ -134,6 +152,7 @@ they are scoped to the locale currently being rendered unless noted otherwise.
 | `data` | Shared values from `data/`. |
 | `locale_data` | Values from `data/<locale>/`; it never falls back to shared data. |
 | `root` | Relative prefix from the rendered page to the site root. |
+| `pagination` | `null` for ordinary pages; the current generated-listing view otherwise. See [pagination](pagination.md). |
 
 Combine `root` with a counterpart's `path` for a relative language-switcher
 link, or pass an exact locale and ID to `page()` for its base-path-aware URL.
@@ -155,8 +174,15 @@ it does not use.
 | `t`             | `t(id="quiz-count", count=quizzes \| length)` | Escaped Fluent text for the current locale. It falls back to the default locale only when the message or requested attribute is absent. Use `attribute="label"` for a Fluent attribute; other named arguments must be strings, numbers, or booleans. |
 | `format_date`   | `format_date(value=page.date, style="long")`  | A locale-formatted calendar date. Values are `YYYY-MM-DD` or RFC 3339 offset-aware date-times; styles are `short`, `medium` (default), and `long`.                                                                                                   |
 | `highlight_css` | `highlight_css()`                             | The base-path-aware URL for the configured generated highlighting stylesheet. It fails if highlighting is disabled.                                                                                                                                  |
+| `pagination_links` | `pagination_links()`                       | Every lightweight pager link for the current paginated listing. It fails at the call site outside such a render.                                                                                                                                     |
 
 `asset()` IDs and `page()` IDs are relative to the current locale tree and never begin with `/`. Assign a function result with `{% set guide = page(id="guide") %}` before reading a field such as `guide.url`; Tera does not support a field access directly on a function call. `asset()` can resolve a shared asset such as `assets/logo.svg`; a non-default locale can override it below its own `assets/` directory. `page()` resolves only rendered pages.
+
+IDs are literal source filenames, not URL fragments: do not pre-encode spaces,
+`#`, `%`, or non-ASCII characters. Heine percent-encodes a resolved output
+path exactly once when it exposes `url` or `relative_url`. For non-ASCII names,
+use the same NFC-normalized spelling as the filename on disk; Heine preserves
+that literal spelling rather than normalizing lookup IDs.
 
 `highlight_css()` returns the base-path-aware URL for the configured generated
 syntax stylesheet. It is available only when `[markdown.highlighting]` is

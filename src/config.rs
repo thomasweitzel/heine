@@ -19,7 +19,7 @@ use crate::{
     output::{OutputClaim, OutputPath},
     source_path,
 };
-use base_path::BasePath;
+pub(crate) use base_path::{BasePath, valid_url_segment};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SiteConfig {
@@ -50,7 +50,7 @@ impl SiteConfig {
             Error::Invalid(Box::new(ConfigDiagnostic {
                 message: error.message().to_owned(),
                 source_code: crate::source_diagnostic::named_source(path, source.clone(), "TOML"),
-                span: span.into(),
+                span: span.clone().into(),
             }))
         })?;
         let mut config: Self = raw.try_into().map_err(|error: ConfigValueError| {
@@ -203,8 +203,8 @@ impl Default for SiteSettings {
 }
 
 impl SiteSettings {
-    pub(crate) fn base_path(&self) -> &str {
-        self.base_path.as_str()
+    pub(crate) fn base_path(&self) -> &BasePath {
+        &self.base_path
     }
 }
 
@@ -217,42 +217,31 @@ pub(crate) struct BuildConfig {
 impl Default for BuildConfig {
     fn default() -> Self {
         Self {
-            output_dir: OutputDirectory(PathBuf::from("public")),
+            output_dir: OutputDirectory(
+                OutputPath::try_new(PathBuf::from("public"))
+                    .expect("the default output directory is portable"),
+            ),
         }
     }
 }
 
 impl BuildConfig {
     pub(crate) fn output_dir(&self) -> &Path {
-        &self.output_dir.0
+        self.output_dir.0.as_path()
     }
 }
 
 /// A safe output directory relative to the site root.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct OutputDirectory(PathBuf);
+struct OutputDirectory(OutputPath);
 
 impl TryFrom<String> for OutputDirectory {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let path = PathBuf::from(value);
-        if path.as_os_str().is_empty()
-            || path.components().any(|component| {
-                matches!(
-                    component,
-                    std::path::Component::Prefix(_)
-                        | std::path::Component::RootDir
-                        | std::path::Component::CurDir
-                        | std::path::Component::ParentDir
-                )
-            })
-        {
-            return Err(
-                "build.output_dir must be a non-empty relative path without '.' or '..'".into(),
-            );
-        }
-        Ok(Self(path))
+        OutputPath::try_new(PathBuf::from(value))
+            .map(Self)
+            .map_err(|message| format!("build.output_dir {message}"))
     }
 }
 
@@ -579,7 +568,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     span: output_dir_span.clone().into(),
                     message,
                 })?;
-        if matches!(output_dir.0.components().next(), Some(std::path::Component::Normal(name)) if matches!(name.to_str(), Some("content" | "data" | "templates" | "locales")))
+        if matches!(output_dir.0.as_path().components().next(), Some(std::path::Component::Normal(name)) if matches!(name.to_str(), Some("content" | "data" | "templates" | "locales")))
         {
             return Err(ConfigValueError {
                 span: output_dir_span.into(),
@@ -621,8 +610,12 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     message: "markdown.highlighting.stylesheet must not use Heine's reserved __heine/ namespace".into(),
                 });
             }
+            let stylesheet = OutputPath::try_new(path).map_err(|message| ConfigValueError {
+                span: span.clone().into(),
+                message: format!("markdown.highlighting.stylesheet {message}"),
+            })?;
             Ok(HighlightingConfig {
-                stylesheet: OutputPath::new(path),
+                stylesheet,
                 light_theme_span: raw.theme.light.span().into(),
                 dark_theme_span: raw.theme.dark.span().into(),
                 light_theme: raw.theme.light.into_inner(),

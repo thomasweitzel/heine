@@ -29,6 +29,7 @@ time = { version = "0.3.55", features = ["formatting", "macros", "parsing"] }
 fluent-bundle = "0.16.0"
 fluent-syntax = "0.12.0"
 unic-langid = "0.9.6"
+unicode-normalization = "0.1.25"
 icu_datetime = { version = "2.3.0", features = ["compiled_data"] }
 icu_calendar = "2.3.0"
 icu_locale = "2.3.1"

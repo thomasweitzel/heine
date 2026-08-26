@@ -279,6 +279,64 @@ fn reports_the_configuration_location_for_an_unsafe_output_directory() {
 }
 
 #[test]
+fn requires_a_portable_output_directory() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[build]\noutput_dir = 'public:site'\n");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("output directory is unsafe");
+    let diagnostic = format!("{error:?}");
+
+    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("portable filename components"),
+        "{diagnostic}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn reports_a_page_filename_derived_output_error_without_a_fake_toml_span() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/bad:name.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("output filename is unsafe");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("content/en/bad:name.page"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("derives invalid output path"),
+        "{diagnostic}"
+    );
+    assert!(
+        !diagnostic.contains("content/en/bad:name.page:1"),
+        "{diagnostic}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn rejects_a_copied_asset_with_an_unsafe_output_filename() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/bad:name.txt", "asset");
+    fixture.write("templates/page.tera", "page");
+
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("asset output filename is unsafe");
+    let message = error.to_string();
+
+    assert!(message.contains("bad:name.txt"), "{message}");
+    assert!(
+        message.contains("portable filename components"),
+        "{message}"
+    );
+}
+
+#[test]
 fn rejects_an_output_directory_inside_global_data() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[build]\noutput_dir = 'data/public'\n");

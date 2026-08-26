@@ -330,3 +330,20 @@ fn copies_dotfiles_that_are_not_declared_content() {
     assert!(fixture.path().join("public/source/.metadata").is_file());
     assert!(fixture.path().join("public/source/asset.txt").is_file());
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn rejects_content_paths_that_differ_only_by_unicode_normalization() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/café.page", "template = 'page.tera'\n");
+    fixture.write("content/en/cafe\u{301}.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("normalization-equivalent content paths are ambiguous");
+    let message = error.to_string();
+
+    assert!(message.contains("café.page"), "{message}");
+    assert!(message.contains("cafe\u{301}.page"), "{message}");
+    assert!(message.contains("Unicode normalization"), "{message}");
+}

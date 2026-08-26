@@ -14,7 +14,12 @@ use sha2::Digest;
 use thiserror::Error;
 use walkdir::DirEntry;
 
-use crate::{config::IntegrityAlgorithm, locale::Locale, source_path};
+use crate::{
+    config::{BasePath, IntegrityAlgorithm},
+    locale::Locale,
+    output::OutputPath,
+    source_path::{self, LogicalPath},
+};
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
@@ -28,6 +33,12 @@ pub(crate) enum Error {
     OutsideContent { path: PathBuf, root: PathBuf },
     #[error("asset path {path} must use UTF-8 components and must not contain backslashes")]
     NonUtf8Path { path: PathBuf },
+    #[error("asset {asset_path} would be published to invalid output path {output}: {message}")]
+    InvalidOutputPath {
+        asset_path: PathBuf,
+        output: PathBuf,
+        message: String,
+    },
     #[error("assets {first} and {second} would both be published as {output}")]
     OutputCollision {
         output: PathBuf,
@@ -66,14 +77,54 @@ struct AssetEntry {
     dimensions: Option<(u32, u32)>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedAsset {
+    id: AssetId,
+    pub(crate) output: OutputPath,
+}
+
+impl ResolvedAsset {
+    pub(crate) fn relative_url_path(&self, page_dir: &Path) -> crate::output::UrlPath {
+        let path = self
+            .id
+            .as_path()
+            .strip_prefix(page_dir)
+            .unwrap_or(self.id.as_path());
+        let path = LogicalPath::from_path(path)
+            .expect("a relative path below validated logical source paths remains logical");
+        crate::output::UrlPath::from_logical(&path)
+    }
+}
+
+/// A validated asset lookup identity within one locale content tree.
+///
+/// Unlike an [`OutputPath`], this is never a destination: it is the logical
+/// name accepted by `asset()` and Markdown `asset:` links.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct AssetId(LogicalPath);
+
+impl AssetId {
+    fn from_path(path: &Path) -> Option<Self> {
+        LogicalPath::from_path(path).map(Self)
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        LogicalPath::parse(value).map(Self)
+    }
+
+    fn as_path(&self) -> &Path {
+        self.0.as_path()
+    }
+}
+
 /// Validated inventory of copied assets. Logical IDs resolve per locale;
 /// output paths remain global for the output domain.
 #[derive(Debug, Clone)]
 pub(crate) struct AssetCatalog {
-    entries: BTreeMap<PathBuf, AssetEntry>,
-    paths: Vec<String>,
-    locale_entries: BTreeMap<Locale, BTreeMap<PathBuf, PathBuf>>,
-    versions: BTreeMap<(Locale, PathBuf), u64>,
+    entries: BTreeMap<OutputPath, AssetEntry>,
+    paths: Vec<OutputPath>,
+    locale_entries: BTreeMap<Locale, BTreeMap<AssetId, OutputPath>>,
+    versions: BTreeMap<(Locale, AssetId), u64>,
     latest_input: Option<SystemTime>,
 }
 
@@ -112,11 +163,7 @@ impl AssetCatalog {
         for (locale, source) in sources {
             catalog.add_locale(locale, source)?;
         }
-        catalog.paths = catalog
-            .entries
-            .keys()
-            .map(|path| source_path::url(path))
-            .collect();
+        catalog.paths = catalog.entries.keys().cloned().collect();
         Ok(catalog)
     }
 
@@ -127,7 +174,20 @@ impl AssetCatalog {
                 if entry.file_type().is_file() {
                     let relative = relative_path(shared.root, entry.path())?;
                     let id = Path::new("assets").join(relative);
-                    self.add_entry(locale, &mut ids, id.clone(), id, entry.path())?;
+                    let Some(id) = AssetId::from_path(&id) else {
+                        return Err(Error::NonUtf8Path {
+                            path: entry.path().into(),
+                        });
+                    };
+                    let output = id.as_path().into();
+                    let output = OutputPath::try_new(output).map_err(|message| {
+                        Error::InvalidOutputPath {
+                            asset_path: entry.path().into(),
+                            output: id.as_path().into(),
+                            message,
+                        }
+                    })?;
+                    self.add_entry(locale, &mut ids, id.clone(), output, entry.path())?;
                 }
             }
         }
@@ -141,22 +201,29 @@ impl AssetCatalog {
             {
                 continue;
             }
-            let id = relative_path(sources.root, entry.path())?;
-            if !source_path::has_safe_components(&id) {
+            let relative = relative_path(sources.root, entry.path())?;
+            if !source_path::has_safe_components(&relative) {
                 return Err(Error::NonUtf8Path {
                     path: entry.path().into(),
                 });
             }
-            if sources.content_inputs.contains(&id) {
+            if sources.content_inputs.contains(&relative) {
                 continue;
             }
-            self.add_entry(
-                locale,
-                &mut ids,
-                id.clone(),
-                sources.output_prefix.join(id),
-                entry.path(),
-            )?;
+            let Some(id) = AssetId::from_path(&relative) else {
+                return Err(Error::NonUtf8Path {
+                    path: entry.path().into(),
+                });
+            };
+            let output_path = sources.output_prefix.join(id.as_path());
+            let output = OutputPath::try_new(output_path.clone()).map_err(|message| {
+                Error::InvalidOutputPath {
+                    asset_path: entry.path().into(),
+                    output: output_path,
+                    message,
+                }
+            })?;
+            self.add_entry(locale, &mut ids, id.clone(), output, entry.path())?;
         }
         self.locale_entries.insert(locale.clone(), ids);
         Ok(())
@@ -165,12 +232,14 @@ impl AssetCatalog {
     fn add_entry(
         &mut self,
         locale: &Locale,
-        ids: &mut BTreeMap<PathBuf, PathBuf>,
-        id: PathBuf,
-        output: PathBuf,
+        ids: &mut BTreeMap<AssetId, OutputPath>,
+        id: AssetId,
+        output: OutputPath,
         source: &Path,
     ) -> Result<(), Error> {
-        if !source_path::has_safe_components(&id) || !source_path::has_safe_components(&output) {
+        if !source_path::has_safe_components(id.as_path())
+            || !source_path::has_safe_components(output.as_path())
+        {
             return Err(Error::NonUtf8Path {
                 path: source.into(),
             });
@@ -186,7 +255,7 @@ impl AssetCatalog {
                 .map_or(modified, |latest| latest.max(modified)),
         );
         process_versioned(locale, &id, &mut self.versions);
-        let dimensions = is_image(&id)
+        let dimensions = is_image(id.as_path())
             .then(|| {
                 image::ImageReader::open(source)
                     .ok()?
@@ -197,7 +266,7 @@ impl AssetCatalog {
         if let Some(existing) = self.entries.get(&output) {
             if existing.source != source {
                 return Err(Error::OutputCollision {
-                    output,
+                    output: output.as_path().into(),
                     first: existing.source.clone(),
                     second: source.into(),
                 });
@@ -215,7 +284,7 @@ impl AssetCatalog {
         Ok(())
     }
 
-    pub(crate) fn paths(&self) -> &[String] {
+    pub(crate) fn paths(&self) -> &[OutputPath] {
         &self.paths
     }
 
@@ -226,7 +295,7 @@ impl AssetCatalog {
     pub(crate) fn integrity_values(
         &self,
         algorithm: Option<IntegrityAlgorithm>,
-    ) -> Result<BTreeMap<PathBuf, String>, Error> {
+    ) -> Result<BTreeMap<OutputPath, String>, Error> {
         let Some(algorithm) = algorithm else {
             return Ok(BTreeMap::new());
         };
@@ -242,9 +311,9 @@ impl AssetCatalog {
             .collect()
     }
 
-    pub(crate) fn source_path(&self, output: &str) -> PathBuf {
+    pub(crate) fn source_path(&self, output: &OutputPath) -> PathBuf {
         self.entries
-            .get(Path::new(output))
+            .get(output)
             .expect("output claims use catalog paths")
             .source
             .clone()
@@ -253,8 +322,8 @@ impl AssetCatalog {
     pub(crate) fn links(
         self: &Arc<Self>,
         locale: Locale,
-        base_path: String,
-        integrities: BTreeMap<PathBuf, String>,
+        base_path: BasePath,
+        integrities: BTreeMap<OutputPath, String>,
     ) -> AssetLinks {
         AssetLinks {
             catalog: self.clone(),
@@ -264,11 +333,8 @@ impl AssetCatalog {
         }
     }
 
-    fn resolve_id(&self, locale: &Locale, id: &str) -> Result<PathBuf, ResolveError> {
-        let requested = PathBuf::from(id);
-        if !source_path::is_logical_id(&requested) {
-            return Err(ResolveError::InvalidId);
-        }
+    fn resolve_id(&self, locale: &Locale, id: &str) -> Result<ResolvedAsset, ResolveError> {
+        let requested = AssetId::parse(id).ok_or(ResolveError::InvalidId)?;
         self.resolve_path(locale, requested)
     }
 
@@ -277,33 +343,46 @@ impl AssetCatalog {
         locale: &Locale,
         page_dir: &Path,
         id: &str,
-    ) -> Result<PathBuf, ResolveError> {
-        let requested = PathBuf::from(id);
-        if !source_path::is_logical_id(&requested) {
-            return Err(ResolveError::InvalidId);
-        }
-        self.resolve_path(locale, page_dir.join(requested))
+    ) -> Result<ResolvedAsset, ResolveError> {
+        let requested = LogicalPath::parse(id).ok_or(ResolveError::InvalidId)?;
+        let requested = AssetId::from_path(&page_dir.join(requested.as_path()))
+            .expect("page directories and logical asset IDs remain logical");
+        self.resolve_path(locale, requested)
     }
 
-    fn resolve_path(&self, locale: &Locale, requested: PathBuf) -> Result<PathBuf, ResolveError> {
+    fn resolve_path(
+        &self,
+        locale: &Locale,
+        requested: AssetId,
+    ) -> Result<ResolvedAsset, ResolveError> {
         let ids = self
             .locale_entries
             .get(locale)
             .ok_or_else(|| ResolveError::NotFound {
-                id: requested.clone(),
+                id: requested.as_path().into(),
             })?;
         if let Some(output) = ids.get(&requested) {
-            return Ok(output.clone());
+            return Ok(ResolvedAsset {
+                id: requested,
+                output: output.clone(),
+            });
         }
         let Some(version) = self.versions.get(&(locale.clone(), requested.clone())) else {
-            return Err(ResolveError::NotFound { id: requested });
+            return Err(ResolveError::NotFound {
+                id: requested.as_path().into(),
+            });
         };
-        ids.get(&versioned_path(&requested, *version))
+        let id = versioned_id(&requested, *version);
+        let output = ids
+            .get(&id)
             .cloned()
-            .ok_or(ResolveError::NotFound { id: requested })
+            .ok_or_else(|| ResolveError::NotFound {
+                id: requested.as_path().into(),
+            })?;
+        Ok(ResolvedAsset { id, output })
     }
 
-    fn dimensions(&self, output: &Path) -> Option<(u32, u32)> {
+    fn dimensions(&self, output: &OutputPath) -> Option<(u32, u32)> {
         self.entries.get(output).and_then(|entry| entry.dimensions)
     }
 }
@@ -312,13 +391,13 @@ impl AssetCatalog {
 pub(crate) struct AssetLinks {
     catalog: Arc<AssetCatalog>,
     locale: Locale,
-    base_path: String,
-    integrities: Arc<BTreeMap<PathBuf, String>>,
+    base_path: BasePath,
+    integrities: Arc<BTreeMap<OutputPath, String>>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct AssetLink {
-    path: PathBuf,
+    path: OutputPath,
     url: String,
     integrity: Option<String>,
     dimensions: Option<(u32, u32)>,
@@ -335,12 +414,12 @@ impl AssetLinks {
     }
 
     pub(crate) fn resolve(&self, id: &str) -> Result<AssetLink, ResolveError> {
-        let path = self.catalog.resolve_id(&self.locale, id)?;
+        let asset = self.catalog.resolve_id(&self.locale, id)?;
         Ok(AssetLink {
-            url: format!("{}{}", self.base_path, source_path::url(&path)),
-            integrity: self.integrities.get(&path).cloned(),
-            dimensions: self.catalog.dimensions(&path),
-            path,
+            url: self.base_path.join(&asset.output.url_path()),
+            integrity: self.integrities.get(&asset.output).cloned(),
+            dimensions: self.catalog.dimensions(&asset.output),
+            path: asset.output,
         })
     }
 
@@ -350,7 +429,7 @@ impl AssetLinks {
         &self,
         page_dir: &Path,
         id: &str,
-    ) -> Result<(PathBuf, bool), ResolveError> {
+    ) -> Result<(ResolvedAsset, bool), ResolveError> {
         match id.strip_prefix('/') {
             Some(id) => self
                 .catalog
@@ -363,13 +442,13 @@ impl AssetLinks {
         }
     }
 
-    pub(crate) fn dimensions(&self, path: &Path) -> Option<(u32, u32)> {
+    pub(crate) fn dimensions(&self, path: &OutputPath) -> Option<(u32, u32)> {
         self.catalog.dimensions(path)
     }
 }
 
 impl AssetLink {
-    pub(crate) fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &OutputPath {
         &self.path
     }
     pub(crate) fn url(&self) -> &str {
@@ -417,9 +496,10 @@ fn is_image(path: &Path) -> bool {
 
 fn process_versioned(
     locale: &Locale,
-    path: &Path,
-    versions: &mut BTreeMap<(Locale, PathBuf), u64>,
+    id: &AssetId,
+    versions: &mut BTreeMap<(Locale, AssetId), u64>,
 ) {
+    let path = id.as_path();
     let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
         return;
     };
@@ -437,12 +517,16 @@ fn process_versioned(
         key.set_extension(extension);
     }
     versions
-        .entry((locale.clone(), key))
+        .entry((
+            locale.clone(),
+            AssetId::from_path(&key).expect("versioned asset IDs stay logical"),
+        ))
         .and_modify(|latest| *latest = (*latest).max(version))
         .or_insert(version);
 }
 
-pub(crate) fn versioned_path(path: &Path, version: u64) -> PathBuf {
+fn versioned_id(path: &AssetId, version: u64) -> AssetId {
+    let path = path.as_path();
     let extension = path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -456,5 +540,5 @@ pub(crate) fn versioned_path(path: &Path, version: u64) -> PathBuf {
     } else {
         format!("{stem}.v{version}.{extension}")
     };
-    path.with_file_name(filename)
+    AssetId::from_path(&path.with_file_name(filename)).expect("versioned asset IDs stay logical")
 }

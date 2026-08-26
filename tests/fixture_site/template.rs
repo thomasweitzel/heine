@@ -82,6 +82,23 @@ fn rejects_non_utf8_template_paths_instead_of_lossy_template_names() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn rejects_template_paths_that_differ_only_by_unicode_normalization() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'café.tera'\n");
+    fixture.write("templates/café.tera", "composed");
+    fixture.write("templates/cafe\u{301}.tera", "decomposed");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("normalization-equivalent template paths are ambiguous");
+    let message = error.to_string();
+
+    assert!(message.contains("café.tera"), "{message}");
+    assert!(message.contains("cafe\u{301}.tera"), "{message}");
+    assert!(message.contains("Unicode normalization"), "{message}");
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_symbolic_links_anywhere_in_templates() {

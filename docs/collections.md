@@ -1,8 +1,8 @@
 # Collections
 
-> **Status:** implemented collection core. Explicit membership, ordering, and
-> the template contract are available now. Pagination, taxonomies, and other
-> generated-resource consumers remain future features.
+> **Status:** explicit membership, deterministic ordering, and paginated
+> collection listings are implemented. Taxonomies and other generated-resource
+> consumers remain future features.
 
 Collections are named, deterministic, locale-local ordered sets of rendered
 pages. They provide one shared foundation for article listings, pagination,
@@ -260,49 +260,14 @@ That is why configuration and relationship errors can identify both the
 offending page value and the relevant collection definition. The template and
 output domains receive only the information each needs.
 
-## Future: pagination
+## Pagination
 
-This section is a design boundary, not current syntax. Heine does not yet
-recognize `[listing]` or generate paginated output.
-
-Pagination will be the first generated-output consumer of a resolved
-collection, not an alternative collection mechanism. It attaches to an
-ordinary authored listing page, which provides the page-one template, metadata,
-and canonical route. Its future page metadata will name a collection, a
-positive page size, and a small route policy. For example:
-
-```toml
-# content/en/blog/index.page
-template = "blog-index.tera"
-title = "Blog"
-
-[listing]
-collection = "posts"
-page_size = 10
-path = "page"
-```
-
-That page is the canonical first listing; Heine does not generate a duplicate
-`page/1/`. The build creates explicit render tasks only for later pages, such
-as `blog/page/2/`. The exact route policy and field names will be settled with
-the pagination feature, but it will remain a small validated policy rather
-than a general route interpolation language.
-
-Each generated listing context should expose only the facts it needs:
-
-```text
-listing.collection
-listing.number
-listing.page_count
-listing.page_ids
-listing.previous
-listing.next
-```
-
-Before rendering, Heine will validate page size, locale-aware routes, output
-claims, and collisions with authored pages, assets, and other generated
-resources. The exact route spelling belongs to the pagination feature itself,
-where it can be specified and tested as one coherent public contract.
+Pagination is the first generated-output consumer of a resolved collection,
+not an alternative collection mechanism. It attaches to an ordinary authored
+listing page, which supplies page-one metadata, template, and canonical route.
+Later pagers are explicit render tasks without authored page identities. The
+[pagination guide](pagination.md) documents its syntax, routes, template
+contract, navigation policy, diagnostics, and quick-build behavior.
 
 ## Future: taxonomies and other consumers
 
@@ -333,12 +298,13 @@ feature.
 Diagnostics for authored collection errors retain source text and spans for an
 invalid collection name or ordering value, duplicate membership declarations,
 and the relevant membership, date, weight, and ordering declaration for
-relationship errors. Generated-route collisions are a future pagination and
-taxonomy responsibility; they must label every claim that caused them.
+relationship errors. Pagination route collisions are validated now and label
+every claim that caused them; taxonomies will follow the same output rule.
 
 The implementation includes focused unit tests and fixture-site tests for
 deterministic ordering and tie-breaking, directory-default overrides,
 per-locale independence, empty collections, Tera exposure, invalid
-configuration, source-aware diagnostics, and quick-mode's intentionally stale
-relationship output. The starter site uses the post collection for its
-localized blog listing, while retaining its sibling-list example for the quiz.
+configuration, source-aware diagnostics, pagination route generation, and
+quick-mode updates for present collection members. The starter site uses the
+post collection for its localized paginated blog listing, while retaining its
+sibling-list example for the quiz.

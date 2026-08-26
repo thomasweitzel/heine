@@ -2,70 +2,77 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
     time::SystemTime,
 };
 
 use miette::{NamedSource, SourceSpan};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use time::{Date, OffsetDateTime};
 
-use crate::{config::CollectionName, content::MarkdownSource, output::OutputPath, source_path};
+use crate::{
+    config::CollectionName,
+    content::MarkdownSource,
+    output::{OutputPath, UrlPath},
+    source_path::LogicalPath,
+    template::TemplateName,
+};
 
 /// A stable logical page identifier, always relative to one locale tree without `.page`.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(transparent)]
-pub(crate) struct PageId(String);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct PageId(LogicalPath);
 
 impl PageId {
-    pub(crate) fn from_source_path(path: &Path) -> Self {
-        Self(source_path::url(path))
+    pub(crate) fn from_logical_path(path: LogicalPath) -> Self {
+        Self(path)
+    }
+
+    /// Parses a page ID supplied at a template boundary. Source discovery
+    /// constructs page IDs directly from validated [`LogicalPath`] values.
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        LogicalPath::parse(value).map(Self)
     }
 
     pub(super) fn is_index(&self) -> bool {
-        self.0 == "index" || self.0.ends_with("/index")
+        self.0.as_str() == "index" || self.0.as_str().ends_with("/index")
     }
 }
 
-impl std::fmt::Display for PageId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+/// An explicit, nonblank identity relating corresponding pages across
+/// locales. Its value is intentionally otherwise opaque to Heine.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct TranslationId(String);
+
+impl TranslationId {
+    pub(super) fn parse(value: String) -> Result<Self, String> {
+        if value.trim().is_empty() {
+            Err("field `translationid` must not be empty".into())
+        } else {
+            Ok(Self(value))
+        }
     }
 }
 
-/// A template identifier relative to `templates/`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct TemplateName(String);
-
-impl TemplateName {
-    pub(super) fn new(name: String) -> Self {
-        Self(name)
-    }
-
-    pub(super) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for TemplateName {
+impl std::fmt::Display for TranslationId {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(formatter)
     }
 }
 
-/// A URL path relative to the generated site's root.
-#[derive(Debug, Clone)]
-pub(super) struct UrlPath(String);
-
-impl UrlPath {
-    pub(super) fn from_output(path: &OutputPath) -> Self {
-        Self(source_path::url(path.as_path()))
+impl std::fmt::Display for PageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.as_str().fmt(f)
     }
+}
 
-    pub(super) fn as_str(&self) -> &str {
-        &self.0
+impl Serialize for PageId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.0.as_str())
     }
 }
 
@@ -74,12 +81,29 @@ pub(super) struct Task {
     pub(super) locale: crate::locale::Locale,
     pub(super) page_id: PageId,
     pub(super) template: TemplateName,
-    pub(super) page_source: NamedSource<String>,
-    pub(super) template_source: NamedSource<String>,
+    pub(super) page_source: Arc<NamedSource<String>>,
+    pub(super) template_source: Arc<NamedSource<String>>,
     pub(super) template_span: SourceSpan,
     pub(super) output_span: SourceSpan,
     pub(super) output_path: OutputPath,
     pub(super) latest_input: SystemTime,
+    pub(super) pagination: Option<Arc<Pager>>,
+}
+
+/// One fully resolved generated view of an authored paginated listing.
+///
+/// It deliberately carries page IDs rather than page views: `PageCatalog`
+/// remains the sole owner of render-facing page facts.
+#[derive(Debug, Clone)]
+pub(crate) struct Pager {
+    pub(super) collection: String,
+    pub(super) page_ids: Vec<PageId>,
+    pub(super) page_number: usize,
+    pub(super) page_count: usize,
+    pub(super) item_count: usize,
+    pub(super) per_page: usize,
+    pub(super) navigation_window: usize,
+    pub(super) paths: Arc<Vec<OutputPath>>,
 }
 
 /// A page resolved from its serialized form, retaining the source inputs used
@@ -109,8 +133,43 @@ pub(super) struct RawPage {
     pub(super) tags: Vec<String>,
     pub(super) collections: Option<Vec<toml::Spanned<String>>>,
     pub(super) weight: Option<toml::Spanned<toml::Value>>,
+    pub(super) pagination: Option<RawPagination>,
     #[serde(default = "default_suffix")]
     pub(super) suffix: toml::Spanned<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawPagination {
+    pub(super) collection: toml::Spanned<String>,
+    pub(super) per_page: toml::Spanned<usize>,
+    #[serde(default = "default_pagination_segment")]
+    pub(super) segment: toml::Spanned<String>,
+    #[serde(default)]
+    pub(super) navigation: RawPaginationNavigation,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawPaginationNavigation {
+    #[serde(default = "default_navigation_window")]
+    pub(super) window: toml::Spanned<usize>,
+}
+
+impl Default for RawPaginationNavigation {
+    fn default() -> Self {
+        Self {
+            window: default_navigation_window(),
+        }
+    }
+}
+
+fn default_pagination_segment() -> toml::Spanned<String> {
+    toml::Spanned::new(0..0, "page".into())
+}
+
+fn default_navigation_window() -> toml::Spanned<usize> {
+    toml::Spanned::new(0..0, 1)
 }
 
 /// The common authored metadata shape for pages and directory descriptors.
@@ -217,23 +276,64 @@ impl TryFrom<String> for OutputSuffix {
 #[derive(Debug, Clone)]
 pub(super) struct Page {
     pub(super) id: PageId,
+    pub(super) output_path: Option<OutputPath>,
     pub(super) path: Option<UrlPath>,
     pub(super) dir: String,
     pub(super) filename: Option<String>,
     pub(super) subdirs: Vec<String>,
     pub(super) content: BTreeMap<String, Value>,
     pub(super) metadata: Metadata,
-    pub(super) translationid: Option<String>,
+    pub(super) translationid: Option<TranslationId>,
     pub(super) translationid_span: Option<SourceSpan>,
     pub(super) source: NamedSource<String>,
     pub(super) directory: DirectoryView,
     pub(super) tags: Vec<String>,
     pub(super) collections: Vec<CollectionMembership>,
+    pub(super) pagination: Option<Pagination>,
     pub(super) weight: Option<i64>,
     pub(super) weight_span: Option<SourceSpan>,
     pub(super) lighter: Option<PageId>,
     pub(super) heavier: Option<PageId>,
     pub(super) translations: BTreeMap<String, PageLink>,
+}
+
+/// Validated pagination declared by one authored listing page. Generated
+/// pager tasks are resolved later, after collection membership is stable.
+#[derive(Debug, Clone)]
+pub(super) struct Pagination {
+    pub(super) collection: CollectionName,
+    pub(super) per_page: usize,
+    pub(super) segment: PaginationSegment,
+    pub(super) navigation_window: usize,
+    /// The authored value responsible for generated pager routes. A default
+    /// segment has no source range, so it falls back to the collection value
+    /// that declares the pagination relationship.
+    pub(super) route_span: SourceSpan,
+}
+
+/// A generated pager route component that is simultaneously a canonical URL
+/// component and a portable output-directory name.
+#[derive(Debug, Clone)]
+pub(super) struct PaginationSegment(String);
+
+impl PaginationSegment {
+    pub(super) fn parse(value: String) -> Result<Self, String> {
+        if value.is_empty()
+            || matches!(value.as_str(), "." | "..")
+            || value.contains('%')
+            || !crate::config::valid_url_segment(&value)
+            || !crate::output::is_safe_output_component(&value)
+        {
+            return Err(
+                "pagination.segment must use a literal portable URL-path component: ASCII letters or digits, or -._~!$&'()*+,;=@; it cannot be '.', '..', end in '.', or contain percent escapes".into(),
+            );
+        }
+        Ok(Self(value))
+    }
+
+    pub(super) fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// An authored collection membership, retaining its declaration for
@@ -267,7 +367,7 @@ impl Page {
         } = self.metadata;
         PageView {
             id: self.id,
-            path: self.path.map(|path| path.0),
+            path: self.path.map(|path| path.as_str().into()),
             dir: self.dir,
             filename: self.filename,
             subdirs: self.subdirs,
@@ -313,10 +413,6 @@ impl PageView {
     pub(crate) fn directory(&self) -> &str {
         &self.dir
     }
-
-    pub(crate) fn output_path(&self) -> Option<&str> {
-        self.path.as_deref()
-    }
 }
 
 /// The immediate containing directory's deliberately small template view.
@@ -347,9 +443,23 @@ mod tests {
 
     #[test]
     fn only_index_page_names_receive_index_ordering() {
-        assert!(PageId("index".into()).is_index());
-        assert!(PageId("blog/index".into()).is_index());
-        assert!(!PageId("thinking".into()).is_index());
-        assert!(!PageId("myindex".into()).is_index());
+        assert!(PageId::parse("index").unwrap().is_index());
+        assert!(PageId::parse("blog/index").unwrap().is_index());
+        assert!(!PageId::parse("thinking").unwrap().is_index());
+        assert!(!PageId::parse("myindex").unwrap().is_index());
+    }
+
+    #[test]
+    fn page_names_accept_only_logical_paths() {
+        assert_eq!(PageId::parse("blog/post").unwrap().to_string(), "blog/post");
+        assert!(PageId::parse("../post").is_none());
+    }
+
+    #[test]
+    fn pagination_segments_intersect_url_and_output_component_rules() {
+        assert!(PaginationSegment::parse("older-posts".into()).is_ok());
+        assert!(PaginationSegment::parse("older%20posts".into()).is_err());
+        assert!(PaginationSegment::parse("older:posts".into()).is_err());
+        assert!(PaginationSegment::parse("older.".into()).is_err());
     }
 }

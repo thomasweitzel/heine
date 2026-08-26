@@ -33,6 +33,10 @@ impl ResolvedCollection {
             page_ids: self.page_ids.clone(),
         }
     }
+
+    pub(super) fn page_ids(&self) -> &[PageId] {
+        &self.page_ids
+    }
 }
 
 /// Deliberate template-facing collection data.

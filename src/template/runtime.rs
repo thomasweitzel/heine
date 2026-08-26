@@ -7,8 +7,8 @@ use crate::{
     locale::Locale,
     localization::Localization,
     site::{
-        PageCatalog, PageId, PageLinks, PageView, SiblingIndex, TagIndex, TagView,
-        collection::CollectionView,
+        PageCatalog, PageId, PageLinks, PageView, Pager, PaginationCatalog, SiblingIndex, TagIndex,
+        TagView, collection::CollectionView,
     },
 };
 
@@ -24,6 +24,7 @@ pub(super) struct TemplateRuntime {
     collections: Arc<BTreeMap<Locale, BTreeMap<String, CollectionView>>>,
     siblings: Arc<BTreeMap<Locale, SiblingIndex>>,
     tags: Arc<BTreeMap<Locale, TagIndex>>,
+    pagers: PaginationCatalog,
     localization: Arc<Localization>,
     highlight_css: Option<String>,
 }
@@ -36,6 +37,7 @@ impl From<TemplateResources> for TemplateRuntime {
             collections,
             siblings,
             tags,
+            pagers,
         } = resources.relationships;
         Self {
             assets: resources.asset_links,
@@ -44,6 +46,7 @@ impl From<TemplateResources> for TemplateRuntime {
             collections,
             siblings,
             tags,
+            pagers,
             localization: resources.localization,
             highlight_css: resources.highlight_css,
         }
@@ -59,14 +62,12 @@ impl TemplateRuntime {
         &self.page_links
     }
 
-    pub(super) fn page_view(&self, locale: &Locale, id: &str) -> Option<PageView> {
-        self.page_catalog
-            .view(locale, &PageId::from_source_path(std::path::Path::new(id)))
-            .cloned()
+    pub(super) fn page_view(&self, locale: &Locale, id: &PageId) -> Option<&PageView> {
+        self.page_catalog.view(locale, id)
     }
 
-    pub(super) fn collection(&self, locale: &Locale, name: &str) -> Option<CollectionView> {
-        self.collections.get(locale)?.get(name).cloned()
+    pub(super) fn collection(&self, locale: &Locale, name: &str) -> Option<&CollectionView> {
+        self.collections.get(locale)?.get(name)
     }
 
     pub(super) fn collection_names(&self, locale: &Locale) -> Vec<String> {
@@ -76,14 +77,14 @@ impl TemplateRuntime {
             .unwrap_or_default()
     }
 
-    pub(super) fn siblings(&self, locale: &Locale, directory: &str, page: &str) -> Vec<PageId> {
+    pub(super) fn siblings(&self, locale: &Locale, directory: &str, page: &PageId) -> Vec<PageId> {
         self.siblings
             .get(locale)
             .map(|siblings| siblings.for_page(directory, page))
             .unwrap_or_default()
     }
 
-    pub(super) fn tag(&self, locale: &Locale, name: &str) -> Option<TagView> {
+    pub(super) fn tag(&self, locale: &Locale, name: &str) -> Option<&TagView> {
         self.tags.get(locale)?.tag(name)
     }
 
@@ -92,6 +93,21 @@ impl TemplateRuntime {
             .get(locale)
             .map(TagIndex::names)
             .unwrap_or_default()
+    }
+
+    pub(super) fn pager(&self, state: &tera::State) -> tera::TeraResult<Option<&Pager>> {
+        let locale = self.locale(state)?;
+        let page_id = self.page_id(state)?;
+        let Some(number) = state
+            .get::<tera::Value>("__heine_runtime")?
+            .and_then(|runtime| runtime.get_from_path("pagination_page")?.as_u64())
+        else {
+            return Ok(None);
+        };
+        let number = usize::try_from(number).map_err(|_| {
+            tera::Error::message("Heine internal render context has an invalid pagination page")
+        })?;
+        Ok(self.pagers.pager(&locale, &page_id, number))
     }
 
     pub(super) fn localization(&self) -> &Localization {
@@ -116,8 +132,11 @@ impl TemplateRuntime {
         self.runtime_string(state, "root")
     }
 
-    pub(super) fn page_id(&self, state: &tera::State) -> tera::TeraResult<String> {
-        self.runtime_string(state, "page_id")
+    pub(super) fn page_id(&self, state: &tera::State) -> tera::TeraResult<PageId> {
+        let value = self.runtime_string(state, "page_id")?;
+        PageId::parse(&value).ok_or_else(|| {
+            tera::Error::message("Heine internal render context has an invalid page ID")
+        })
     }
 
     fn runtime_string(&self, state: &tera::State, field: &str) -> tera::TeraResult<String> {

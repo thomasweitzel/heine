@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::{
     locale::Locale,
-    site::page::{Page, PageId, PageLink},
+    site::page::{Page, PageId, PageLink, TranslationId},
 };
 
 #[derive(Debug, Diagnostic, Error)]
@@ -40,7 +40,7 @@ struct FirstTranslation {
 pub(super) fn resolve_translations(
     pages: &mut BTreeMap<Locale, BTreeMap<PageId, Page>>,
 ) -> Result<(), Box<DuplicateTranslation>> {
-    let mut groups: BTreeMap<String, BTreeMap<Locale, PageId>> = BTreeMap::new();
+    let mut groups: BTreeMap<TranslationId, BTreeMap<Locale, PageId>> = BTreeMap::new();
     for (locale, locale_pages) in pages.iter() {
         for (id, page) in locale_pages {
             let Some(translationid) = &page.translationid else {
@@ -53,7 +53,7 @@ pub(super) fn resolve_translations(
             {
                 let first = &locale_pages[&previous];
                 return Err(Box::new(DuplicateTranslation {
-                    translationid: translationid.clone(),
+                    translationid: translationid.to_string(),
                     locale: locale.clone(),
                     source_code: page.source.clone(),
                     span: page.translationid_span.unwrap_or((0, 0).into()),
@@ -100,13 +100,12 @@ pub(crate) struct SiblingIndex {
 }
 
 impl SiblingIndex {
-    pub(crate) fn for_page(&self, directory: &str, page: &str) -> Vec<PageId> {
-        let page = PageId::from_source_path(std::path::Path::new(page));
+    pub(crate) fn for_page(&self, directory: &str, page: &PageId) -> Vec<PageId> {
         self.eligible
             .get(directory)
             .into_iter()
             .flatten()
-            .filter(|id| *id != &page)
+            .filter(|id| *id != page)
             .cloned()
             .collect()
     }
@@ -137,25 +136,21 @@ pub(super) fn fix_siblings(pages: &mut BTreeMap<PageId, Page>) -> SiblingIndex {
 /// render.
 #[derive(Debug, Default)]
 pub(crate) struct TagIndex {
-    pages: BTreeMap<String, Vec<PageId>>,
+    tags: BTreeMap<String, TagView>,
 }
 
 impl TagIndex {
-    pub(crate) fn tag(&self, name: &str) -> Option<TagView> {
-        self.pages.get(name).map(|page_ids| TagView {
-            name: name.into(),
-            count: page_ids.len(),
-            page_ids: page_ids.clone(),
-        })
+    pub(crate) fn tag(&self, name: &str) -> Option<&TagView> {
+        self.tags.get(name)
     }
 
     pub(crate) fn names(&self) -> Vec<String> {
-        self.pages.keys().cloned().collect()
+        self.tags.keys().cloned().collect()
     }
 }
 
 /// The focused render-facing view returned by `tag()`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Serialize)]
 pub(crate) struct TagView {
     name: String,
     count: usize,
@@ -175,5 +170,17 @@ pub(super) fn tags_for(pages: &BTreeMap<PageId, Page>) -> TagIndex {
     for ids in tags.values_mut() {
         ids.sort();
     }
-    TagIndex { pages: tags }
+    TagIndex {
+        tags: tags
+            .into_iter()
+            .map(|(name, page_ids)| {
+                let view = TagView {
+                    count: page_ids.len(),
+                    name: name.clone(),
+                    page_ids,
+                };
+                (name, view)
+            })
+            .collect(),
+    }
 }

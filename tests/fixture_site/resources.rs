@@ -90,6 +90,27 @@ fn asset_helper_exposes_detected_image_dimensions() {
 }
 
 #[test]
+fn resource_urls_encode_literal_source_filenames_once() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/über space#%.page", "template = 'page.tera'\n");
+    fixture.write("content/en/images/logo #%.svg", "<svg />");
+    fixture.write(
+        "templates/page.tera",
+        "{% set logo = asset(id='images/logo #%.svg') %}{% set page = page(id='über space#%') %}{{ logo.url }}|{{ logo.relative_url }}|{{ page.url }}|{{ page.relative_url }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("output"),
+        "/images/logo%20%23%25.svg|./images/logo%20%23%25.svg|/%C3%BCber%20space%23%25.html|./%C3%BCber%20space%23%25.html"
+    );
+    assert!(fixture.path().join("public/über space#%.html").is_file());
+    assert!(fixture.path().join("public/images/logo #%.svg").is_file());
+}
+
+#[test]
 fn resource_filters_accept_content_root_relative_paths() {
     let fixture = Fixture::new();
     fixture.write(
@@ -109,6 +130,30 @@ fn resource_filters_accept_content_root_relative_paths() {
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/guide/blog/post.html")).expect("output"),
         "/guide/css/styles.v2.css|1x1"
+    );
+}
+
+#[test]
+fn latest_uses_the_logical_asset_id_for_locale_relative_urls() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\nbase_path = '/guide/'\n\n[build]\noutput_dir = 'public/guide'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/de/index.page", "template = 'page.tera'\n");
+    fixture.write("content/de/blog/post.page", "template = 'page.tera'\n");
+    fixture.write("content/de/blog/styles.v2.css", "body {}\n");
+    fixture.write(
+        "templates/page.tera",
+        "{% if page.dir == 'blog' %}{{ 'styles.css' | latest }}{% endif %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/guide/de/blog/post.html")).expect("output"),
+        "styles.v2.css"
     );
 }
 
@@ -286,6 +331,22 @@ fn reports_the_template_location_for_an_unknown_page_id() {
 
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(diagnostic.contains("does-not-exist"), "{diagnostic}");
+}
+
+#[test]
+fn reports_the_template_location_for_an_invalid_page_id() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "templates/page.tera",
+        "{% set missing = page(id='../outside') %}",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("page ID should be invalid");
+    let diagnostic = format!("{error:?}");
+
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("page id must be"), "{diagnostic}");
 }
 
 #[test]

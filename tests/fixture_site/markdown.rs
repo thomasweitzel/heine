@@ -204,6 +204,24 @@ fn rejects_a_highlighting_stylesheet_that_would_be_an_asset_directory() {
 }
 
 #[test]
+fn reports_an_unsafe_highlighting_output_path_at_its_configuration_value() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown.highlighting]\nstylesheet = 'styles/highlighting?.css'\n\n[markdown.highlighting.theme]\nlight = 'github-light'\ndark = 'github-dark'\n",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("stylesheet is unsafe");
+    let diagnostic = format!("{error:?}");
+
+    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("portable filename components"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn reports_both_configuration_and_page_locations_for_a_stylesheet_collision() {
     let fixture = Fixture::new();
     fixture.write(

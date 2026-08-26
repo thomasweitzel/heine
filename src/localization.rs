@@ -14,7 +14,7 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use crate::locale::Locale;
+use crate::{locale::Locale, source_path};
 
 pub(crate) type Arguments<'a> = FluentArgs<'a>;
 
@@ -32,6 +32,11 @@ pub(crate) enum Error {
     Format { path: PathBuf },
     #[error("localization path {path} is not a directory")]
     NotDirectory { path: PathBuf },
+    #[error("localization file {path} is outside localization directory {root}")]
+    OutsideDirectory { root: PathBuf, path: PathBuf },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NormalizationCollision(#[from] Box<source_path::NormalizationCollision>),
     #[error("could not read localization file {path}")]
     Read {
         path: PathBuf,
@@ -171,11 +176,15 @@ impl Localization {
                 }
             };
             if directory_exists {
-                for entry in WalkDir::new(&directory).sort_by_file_name() {
-                    let entry = entry.map_err(|source| Error::Walk {
+                let entries = WalkDir::new(&directory)
+                    .sort_by_file_name()
+                    .into_iter()
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|source| Error::Walk {
                         path: directory.clone(),
                         source,
                     })?;
+                for entry in &entries {
                     if entry.file_type().is_symlink() {
                         return Err(Error::Symlink {
                             path: entry.path().into(),
@@ -188,6 +197,27 @@ impl Localization {
                     if path.extension().is_none_or(|extension| extension != "ftl") {
                         return Err(Error::Format { path: path.into() });
                     }
+                }
+                let paths = entries
+                    .iter()
+                    .filter(|entry| entry.file_type().is_file())
+                    .map(|entry| {
+                        let path = entry.path().to_path_buf();
+                        let relative = path
+                            .strip_prefix(&directory)
+                            .map(Path::to_path_buf)
+                            .map_err(|_| Error::OutsideDirectory {
+                                root: directory.clone(),
+                                path: path.clone(),
+                            })?;
+                        Ok((relative, path))
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+                if let Some(collision) = source_path::normalization_collision(paths) {
+                    return Err(Error::NormalizationCollision(Box::new(collision)));
+                }
+                for entry in entries.iter().filter(|entry| entry.file_type().is_file()) {
+                    let path = entry.path();
                     let source = fs::read_to_string(path).map_err(|source| Error::Read {
                         path: path.into(),
                         source,

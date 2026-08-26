@@ -20,7 +20,9 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tokio::sync::watch as state_watch;
 
-use crate::{BuildMode, BuildOptions, BuildPublication, build_at_with_publication};
+use crate::{
+    BuildMode, BuildOptions, BuildPublication, build_at_with_publication, config::BasePath,
+};
 
 pub(crate) use crate::output::INTERNAL_DIRECTORY;
 
@@ -134,7 +136,7 @@ enum Error {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PublishedSite {
-    pub(crate) base_path: String,
+    pub(crate) base_path: BasePath,
     pub(crate) output_root: PathBuf,
     pub(crate) generation: u64,
 }
@@ -178,7 +180,10 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
     let address = listener
         .local_addr()
         .map_err(|source| miette::Report::new(Error::ListenerAddress { source }))?;
-    println!("Serving {}", display_url(address, &initial.base_path));
+    println!(
+        "Serving {}",
+        display_url(address, initial.base_path.as_str())
+    );
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -302,13 +307,13 @@ mod tests {
     fn published_site_uses_the_successful_build_metadata() {
         let published = PublishedSite::from_build(
             BuildPublication {
-                base_path: "/guide/".into(),
+                base_path: "/guide/".try_into().expect("valid base path"),
                 output_root: PathBuf::from("public/guide"),
             },
             4,
         );
 
-        assert_eq!(published.base_path, "/guide/");
+        assert_eq!(published.base_path.as_str(), "/guide/");
         assert_eq!(published.output_root, PathBuf::from("public/guide"));
         assert_eq!(published.generation, 4);
     }

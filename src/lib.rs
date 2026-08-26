@@ -21,7 +21,7 @@ mod template;
 use std::path::{Path, PathBuf};
 
 use crate::{
-    config::SiteConfig,
+    config::{BasePath, SiteConfig},
     output::{OutputTarget, OutputWriter},
     project::ProjectPaths,
     site::{BuildOptions as SiteBuildOptions, Site},
@@ -36,7 +36,7 @@ pub use site::BuildMode;
 /// rather than by rereading configuration after output publication.
 #[derive(Debug, Clone)]
 pub(crate) struct BuildPublication {
-    pub(crate) base_path: String,
+    pub(crate) base_path: BasePath,
     pub(crate) output_root: PathBuf,
 }
 
