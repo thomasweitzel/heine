@@ -3,7 +3,7 @@ title = "Quiz"
 summary = """
 An example of how one might do a quiz.
 
-Only three questions so far…
+Only three questions so far.
 """
 content.main = "content/quiz-list.md"
 

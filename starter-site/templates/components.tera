@@ -1,0 +1,15 @@
+{% component ui.pagination(pager, label: string) %}
+  {% if pager.page_count > 1 %}
+    <nav class="page-navigation pagination" aria-label="{{ label }}">
+      {% for item in pager.navigation %}
+        {% if item.kind == "gap" %}
+          <span aria-hidden="true">…</span>
+        {% elif item.current %}
+          <span aria-current="page">{{ item.page_number }}</span>
+        {% else %}
+          <a href="{{ item.relative_url }}">{{ item.page_number }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+  {% endif %}
+{% endcomponent ui.pagination %}

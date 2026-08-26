@@ -7,6 +7,8 @@
     --color-2-text: #fff;
     --code-bg: #e9edf2;
     --border-color: #c8d0da;
+    --badge-bg: #d8e2f0;
+    --badge-fg: #20262e;
 
     --border: 1px solid var(--border-color);
     --radius: 0.25rem;
@@ -25,6 +27,8 @@
         --color-2-text: #111827;
         --code-bg: #282f39;
         --border-color: #465363;
+        --badge-bg: #3a4b60;
+        --badge-fg: #f4f7fb;
     }
 }
 
@@ -71,7 +75,9 @@ header {
 }
 
 .site-header,
-.site-navigation {
+.site-links,
+.site-navigation,
+.language-navigation {
     display: flex;
     align-items: baseline;
 }
@@ -86,13 +92,49 @@ header {
     font-weight: bold;
 }
 
-.site-navigation {
+.site-links,
+.site-navigation,
+.language-navigation {
     gap: var(--spacing-m);
+}
+
+.language-navigation a {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+.language-navigation img {
+    display: block;
+    width: 1.5rem;
+    height: auto;
 }
 
 .page-navigation {
     margin-top: var(--spacing-s);
     text-align: end;
+}
+
+.pagination {
+    display: flex;
+    justify-content: end;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.pagination a,
+.pagination [aria-current="page"] {
+    display: inline-block;
+    min-width: 2rem;
+    padding-inline: 0.35rem;
+    border-radius: var(--radius);
+    text-align: center;
+}
+
+.pagination [aria-current="page"] {
+    background-color: var(--badge-bg);
+    color: var(--badge-fg);
+    font-weight: 600;
 }
 
 footer {
@@ -226,4 +268,16 @@ math[display="block"] {
 .link-stack a:hover,
 .link-stack a:focus-visible {
     color: var(--color-2-text);
+}
+
+.taxonomy-count {
+    display: inline-block;
+    min-width: 1.5em;
+    padding-inline: 0.35em;
+    border-radius: 0.2rem;
+    background-color: var(--badge-bg);
+    color: var(--badge-fg);
+    font-size: 0.85em;
+    line-height: 1.4;
+    text-align: center;
 }

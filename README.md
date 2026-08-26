@@ -804,11 +804,14 @@ retain their own titles and content.
 
 It also has English and German source trees. Its collection-backed blog index
 uses pagination, producing a second English listing page while the shorter
-German collection remains a single page. Two translated blog posts use
-explicit `translationid` values, so their post navigation can link only to
-known counterparts. Fluent localizes navigation, the footer, post controls,
-and the singular/plural blog-post count; shared site assets live in
-`content/assets/`.
+German collection remains a single page. The home page, blog indexes, and two
+blog posts use explicit `translationid` values, so the shared header offers
+links only to known counterparts. Fluent localizes navigation, the footer,
+post controls, and the singular/plural blog-post count; shared site assets
+live in `content/assets/`. Its data-defined language flags keep the compact
+switcher accessible through localized link labels. Its small `components.tera`
+component file keeps the shared pager UI consistent between blog and taxonomy
+listings.
 
 The first blog post also demonstrates the starter's `featured_image` template
 convention. It resolves the declared asset and emits its detected intrinsic

@@ -145,14 +145,22 @@ validated `page()` helper, to create a link. A language switcher therefore
 offers only existing pages; Heine never guesses a URL, redirects to an
 unrelated language, or requires matching source-tree structures.
 
-For example, this renders links only for the page's known counterparts. The
-link text is deliberately just the locale code here; a site can use its own
-localized labels when it has them.
+For example, this shared-header switcher renders links only for the current
+page's known counterparts. The `language-<locale>` message IDs are a site
+convention for localized labels; Heine does not prescribe label text.
 
 ```tera
-{% for code, translation in page.translations %}
-  <a href="{{ root }}{{ translation.path }}" lang="{{ code }}">{{ code }}</a>
-{% endfor %}
+{% if page %}
+  {% if page.translations %}
+    <nav aria-label="{{ t(id="language") }}">
+      {% for locale, translation in page.translations %}
+        {% set target = page(locale=locale, id=translation.id) %}
+        {% set label = "language-" ~ locale %}
+        <a href="{{ target.url }}" hreflang="{{ locale }}">{{ t(id=label) }}</a>
+      {% endfor %}
+    </nav>
+  {% endif %}
+{% endif %}
 ```
 
 `page(id="...")` addresses an exact page ID in the locale currently being

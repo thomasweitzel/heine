@@ -9,4 +9,5 @@
   <li><a href="{{ post.relative_url }}">{{ post.title }}</a></li>
 {% endfor %}
 </ul>
+{{ <ui.pagination pager={pagination} label={t(id="pagination-label")} /> }}
 {% endblock %}

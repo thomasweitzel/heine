@@ -1,5 +1,11 @@
 name = "Heine Starter Site"
 
+[language_flags.en]
+asset = "assets/images/flags/english.svg"
+
+[language_flags.de]
+asset = "assets/images/flags/german.svg"
+
 [[navigation]]
 message = "nav-home"
 page = "index"

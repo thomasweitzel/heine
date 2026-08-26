@@ -30,6 +30,20 @@
             {% endif %}
             {% endfor %}
           </nav>
+          {% if page %}
+            {% if page.translations %}
+              <nav class="language-navigation" aria-label="{{ t(id="language") }}">
+                {% for locale, translation in page.translations %}
+                  {% set translated = page(locale=locale, id=translation.id) %}
+                  {% set language_message = "language-" ~ locale %}
+                  {% set flag = asset(id=data.site.language_flags[locale].asset) %}
+                  <a href="{{ translated.url }}" hreflang="{{ locale }}" aria-label="{{ t(id=language_message) }}">
+                    <img src="{{ flag.url }}" width="{{ flag.width }}" height="{{ flag.height }}" alt="">
+                  </a>
+                {% endfor %}
+              </nav>
+            {% endif %}
+          {% endif %}
         </div>
       </div>
       {% block header %}{% endblock %}

@@ -13,14 +13,6 @@
     {% set p = page(id=page.heavier) %}
     | {{ t(id="next") }}: <a href="{{ p.relative_url }}">{{ p.title }}</a>
   {% endif %}
-  {% if page.translations %}
-    | {{ t(id="language") }}:
-    {% for locale, translation in page.translations %}
-      {% set translated = page(locale=locale, id=translation.id) %}
-      {% set language_message = "language-" ~ locale %}
-      <a href="{{ translated.relative_url }}" hreflang="{{ locale }}">{{ t(id=language_message) }}</a>
-    {% endfor %}
-  {% endif %}
 </nav>
 {% endblock %}
 
