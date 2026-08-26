@@ -222,3 +222,8 @@ math[display="block"] {
     margin: 0;
     color: var(--fg);
 }
+
+.link-stack a:hover,
+.link-stack a:focus-visible {
+    color: var(--color-2-text);
+}
