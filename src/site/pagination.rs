@@ -21,11 +21,11 @@ use super::{
 /// every render context.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Catalog {
-    pagers: Arc<BTreeMap<(Locale, PageId, usize), Arc<Pager>>>,
+    pagers: Arc<BTreeMap<(Locale, OutputPath), Arc<Pager>>>,
 }
 
 impl Catalog {
-    pub(super) fn from_tasks(tasks: &[Task]) -> Self {
+    pub(super) fn from_tasks(tasks: &[Task], taxonomy_tasks: &[super::taxonomy::Task]) -> Self {
         Self {
             pagers: Arc::new(
                 tasks
@@ -33,19 +33,27 @@ impl Catalog {
                     .filter_map(|task| {
                         task.pagination.as_ref().map(|pager| {
                             (
-                                (task.locale.clone(), task.page_id.clone(), pager.page_number),
+                                (task.locale.clone(), task.output_path.clone()),
                                 pager.clone(),
                             )
                         })
                     })
+                    .chain(taxonomy_tasks.iter().filter_map(|task| {
+                        task.pagination.as_ref().map(|pager| {
+                            (
+                                (task.locale.clone(), task.output_path.clone()),
+                                pager.clone(),
+                            )
+                        })
+                    }))
                     .collect(),
             ),
         }
     }
 
-    pub(crate) fn pager(&self, locale: &Locale, page_id: &PageId, number: usize) -> Option<&Pager> {
+    pub(crate) fn pager(&self, locale: &Locale, output_path: &OutputPath) -> Option<&Pager> {
         self.pagers
-            .get(&(locale.clone(), page_id.clone(), number))
+            .get(&(locale.clone(), output_path.clone()))
             .map(AsRef::as_ref)
     }
 }

@@ -14,7 +14,7 @@ use time::{Date, Month, PrimitiveDateTime, Time, UtcOffset};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{
-    config::{CollectionName, CollectionsConfig},
+    config::{CollectionName, CollectionsConfig, TaxonomiesConfig, TaxonomyName},
     content,
     locale::Locale,
     output::OutputPath,
@@ -22,7 +22,8 @@ use crate::{
         Error,
         page::{
             CollectionMembership, DirectoryView, LoadedPage, Metadata, MetadataDate, OutputSuffix,
-            Page, PageId, Pagination, PaginationSegment, RawMetadata, RawPage, Task, TranslationId,
+            Page, PageId, Pagination, PaginationSegment, RawMetadata, RawPage, Task,
+            TaxonomyMembership, TaxonomyTermMembership, TranslationId,
         },
     },
     source_path,
@@ -82,6 +83,7 @@ pub(super) struct PageLoadContext<'a> {
     pub(super) subdirectories: &'a BTreeMap<PathBuf, Vec<String>>,
     pub(super) descriptors: &'a BTreeMap<PathBuf, DirectoryDescriptor>,
     pub(super) collections: &'a CollectionsConfig,
+    pub(super) taxonomies: &'a TaxonomiesConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +111,29 @@ struct FirstCollectionMembership {
     #[source_code]
     source_code: Arc<NamedSource<String>>,
     #[label("first membership here")]
+    span: SourceSpan,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("taxonomy term {term:?} is declared more than once for taxonomy {taxonomy:?}")]
+#[diagnostic(code(heine::taxonomy::duplicate_term))]
+pub(crate) struct DuplicateTaxonomyTerm {
+    taxonomy: String,
+    term: String,
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("duplicate term here")]
+    span: SourceSpan,
+    #[related]
+    first: Vec<FirstTaxonomyTerm>,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("first declaration of this taxonomy term")]
+struct FirstTaxonomyTerm {
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("first term here")]
     span: SourceSpan,
 }
 
@@ -216,7 +241,7 @@ pub(super) fn load_page(
         .into_inner()
         .try_into()
         .map_err(|message| invalid(path, &text, suffix_span.clone().into(), message))?;
-    let tags = raw.tags;
+    let taxonomies = taxonomies_for(raw.taxonomies, context.taxonomies, path, &text)?;
     let collections = collections_for(
         raw.collections,
         &ancestors,
@@ -369,7 +394,7 @@ pub(super) fn load_page(
             .get(directory_path)
             .map(|descriptor| DirectoryView::new(directory.clone(), &descriptor.metadata))
             .unwrap_or_else(|| DirectoryView::new(directory.clone(), &Metadata::default())),
-        tags,
+        taxonomies,
         collections,
         pagination,
         weight,
@@ -672,6 +697,87 @@ fn parse_collections(
         });
     }
     Ok(collections)
+}
+
+fn taxonomies_for(
+    values: BTreeMap<toml::Spanned<String>, Vec<toml::Spanned<String>>>,
+    config: &TaxonomiesConfig,
+    path: &Path,
+    source: &str,
+) -> Result<Vec<TaxonomyMembership>, Error> {
+    let named_source = Arc::new(crate::source_diagnostic::named_source(
+        path,
+        source.to_owned(),
+        "TOML",
+    ));
+    let mut memberships = Vec::with_capacity(values.len());
+    for (name, values) in values {
+        let name_span: SourceSpan = name.span().into();
+        let raw_name = name.into_inner();
+        let name = TaxonomyName::parse(raw_name.clone())
+            .map_err(|message| invalid(path, source, name_span, message))?;
+        if !config.contains(&name) {
+            return Err(invalid(
+                path,
+                source,
+                name_span,
+                format!("taxonomy {raw_name:?} is not configured"),
+            ));
+        }
+        if values.is_empty() {
+            return Err(invalid(
+                path,
+                source,
+                name_span,
+                "taxonomy term lists must contain at least one term",
+            ));
+        }
+        let mut terms = Vec::with_capacity(values.len());
+        for value in values {
+            let span: SourceSpan = value.span().into();
+            let term = value.into_inner();
+            if term.is_empty() {
+                return Err(invalid(
+                    path,
+                    source,
+                    span,
+                    "taxonomy terms must not be empty",
+                ));
+            }
+            if !crate::output::is_safe_output_component(&term) {
+                return Err(invalid(
+                    path,
+                    source,
+                    span,
+                    "taxonomy terms must be portable output filename components",
+                ));
+            }
+            if let Some(first) = terms
+                .iter()
+                .find(|existing: &&TaxonomyTermMembership| existing.term == term)
+            {
+                return Err(Error::DuplicateTaxonomyTerm(Box::new(
+                    DuplicateTaxonomyTerm {
+                        taxonomy: name.to_string(),
+                        term,
+                        source_code: named_source.clone(),
+                        span,
+                        first: vec![FirstTaxonomyTerm {
+                            source_code: first.source.clone(),
+                            span: first.span,
+                        }],
+                    },
+                )));
+            }
+            terms.push(TaxonomyTermMembership {
+                term,
+                source: named_source.clone(),
+                span,
+            });
+        }
+        memberships.push(TaxonomyMembership { name, terms });
+    }
+    Ok(memberships)
 }
 
 fn parse_template(

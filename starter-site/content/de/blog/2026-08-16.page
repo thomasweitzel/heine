@@ -2,3 +2,6 @@ title = "16. August 2026"
 date = 2026-08-16
 translationid = "third-post"
 content.main = "md/2026-08-16.md"
+
+[taxonomies]
+tags = ["Statische Seiten"]

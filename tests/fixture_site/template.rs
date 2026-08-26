@@ -8,7 +8,8 @@ fn rejects_unknown_keywords_for_fixed_template_function_contracts() {
         ("{{ 'missing.css' | latest(unknown=true) }}", false),
         ("{{ 'missing.png' | dimensions(unknown=true) }}", false),
         ("{{ format_date(value='2026-08-26', unknown=true) }}", false),
-        ("{{ tag(name='news', unknown=true) }}", false),
+        ("{{ collection(name='news', unknown=true) }}", false),
+        ("{{ taxonomy(name='tags', unknown=true) }}", false),
     ];
 
     for (template, highlighting) in cases {

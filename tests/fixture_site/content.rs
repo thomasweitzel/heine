@@ -9,7 +9,7 @@ fn builds_a_site_with_pages_segments_markdown_and_versioned_assets() {
     );
     fixture.write(
         "content/en/article.page",
-        "template = 'page.html'\ntags = ['news']\ncontent.main = 'article.html'\n",
+        "template = 'page.html'\ncontent.main = 'article.html'\n",
     );
     fixture.write("content/en/index.md", "# Home");
     fixture.write(

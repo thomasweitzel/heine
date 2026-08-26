@@ -1,0 +1,12 @@
+{% extends "base.tera" %}
+
+{% block title %}{{ taxonomy.term.name }}{% endblock %}
+
+{% block content %}
+<h1>{{ t(id=taxonomy.name, count=1) }}: {{ taxonomy.term.name }}</h1>
+<ul>
+{% for post in pagination.pages %}
+  <li><a href="{{ post.relative_url }}">{{ post.title }}</a></li>
+{% endfor %}
+</ul>
+{% endblock %}

@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="{{ locale.code }}" dir="{{ locale.direction }}">
   <head>
    <meta charset='UTF-8'>
-   <title>{{ data.site.name }} - {{ page.title }}</title>
+   <title>{{ data.site.name }} - {% block title %}{{ page.title }}{% endblock %}</title>
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
    {% set favicon = asset(id="assets/favicon.svg") %}
    <link rel="icon" href="{{ favicon.url }}" type="image/svg+xml"{% if favicon.integrity %} integrity="{{ favicon.integrity }}" crossorigin="anonymous"{% endif %}>
@@ -16,14 +16,21 @@
       <div class="site-header">
         {% set home = page(id="index") %}
         <a class="site-name" href="{{ home.url }}">{{ data.site.name }}</a>
-        <nav class="site-navigation" aria-label="{{ t(id="nav-label") }}">
-          {% for item in data.site.navigation %}
-          {% if page_exists(id=item.page) %}
-            {% set target = page(id=item.page) %}
-            <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
-          {% endif %}
-          {% endfor %}
-        </nav>
+        <div class="site-links">
+          <nav class="site-navigation" aria-label="{{ t(id="nav-label") }}">
+            {% for item in data.site.navigation %}
+            {% if item.page is defined %}
+              {% if page_exists(id=item.page) %}
+                {% set target = page(id=item.page) %}
+                <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
+              {% endif %}
+            {% elif item.taxonomy is defined %}
+              {% set target = taxonomy(name=item.taxonomy) %}
+              <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
+            {% endif %}
+            {% endfor %}
+          </nav>
+        </div>
       </div>
       {% block header %}{% endblock %}
     </header>

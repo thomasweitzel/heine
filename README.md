@@ -18,8 +18,8 @@ batteries-included workflow: for example, a missing asset or rendered page
 reference fails at the template call site instead of in the browser. For now,
 build and run Heine from a source checkout with `cargo run`.
 
-Taxonomies, RSS feeds, and a plugin system are deliberately out of scope for
-now.
+Sitemaps, RSS/Atom feeds, and a plugin system are deliberately out of scope
+for now.
 
 ## Contents
 
@@ -32,6 +32,7 @@ now.
 - [Pages and content](#pages-and-content)
   - [Directory descriptors](#directory-descriptors)
 - [Collections](#collections)
+- [Taxonomies](#taxonomies)
 - [Pagination](#pagination)
 - [Templates](#templates)
 - [Configuration](#configuration)
@@ -84,7 +85,7 @@ This builds `content/en/index.page` as `public/index.html`. The default locale
 is unprefixed; add another configured locale and its source tree when the site
 needs another language. The working [`starter-site/`](starter-site/) is the
 best next example for pages with Markdown, data, assets, localization, and
-collections.
+collections, and taxonomies.
 
 ## Build a site
 
@@ -321,6 +322,8 @@ named content files:
 template = "post.tera"
 title = "A post"
 date = 2026-08-14
+collections = ["posts"]
+[taxonomies]
 tags = ["news"]
 
 [extra]
@@ -331,7 +334,7 @@ main = "post.md"
 ```
 
 The page above renders to `post.html`. The core page fields are `template`,
-`title`, `description`, `summary`, `date`, `tags`, `weight`, `suffix`,
+`title`, `description`, `summary`, `date`, `[taxonomies]`, `weight`, `suffix`,
 `translationid`, `collections`, `[pagination]`, `[content]`, and `[extra]`. Their defaults,
 exact value rules, and render-facing fields are in the
 [page reference](docs/reference.md#page).
@@ -422,10 +425,32 @@ configured collection is available, even if it has no members:
 {% endfor %}
 ```
 
-Collections only resolve relationships. Paginated listings are their explicit
-generated-output consumer; taxonomies will reuse the same model later. See the
-[collection design](docs/collections.md) and [pagination guide](docs/pagination.md)
+Collections only resolve relationships. Paginated listings and taxonomies are
+their explicit generated-output consumers. See the [collection design](docs/collections.md),
+[taxonomy guide](docs/taxonomies.md), and [pagination guide](docs/pagination.md)
 for rationale and extension boundaries.
+
+## Taxonomies
+
+Taxonomies classify the explicitly selected members of one collection. A
+taxonomy owns its generated index and term listings, while the collection
+remains the sole source of membership order:
+
+```toml
+[taxonomies.tags]
+collection = "posts"
+path = "tags"
+index_template = "taxonomy-index.tera"
+term_template = "taxonomy-term.tera"
+per_page = 20
+```
+
+Pages assign literal terms through a `[taxonomies]` table. A term is both its
+display name and one route component; Heine does not silently slugify or merge
+it. An ordinary page exposes its own validated term links as
+`page.taxonomies.tags`; taxonomy templates receive a `taxonomy` value and the
+existing `pagination` value. Read the [taxonomy guide](docs/taxonomies.md) for
+the complete route, ordering, and template contract.
 
 ## Pagination
 
@@ -529,13 +554,13 @@ template values are:
 | `content`                                    | Values declared by `[content]` in the page file.                           |
 | `title` / `description` / `summary` / `date` | Explicit page metadata.                                                    |
 | `extra` / `directory`                        | User metadata and the immediate directory’s metadata view.                 |
-| `tags` / `weight`                            | The page's tags and ordering weight.                                       |
+| `taxonomies` / `weight`                      | The page's assigned taxonomy-term links and ordering weight.                |
 | `lighter` / `heavier`                        | Previous / next sibling IDs, when present.                                 |
 | `translations`                               | Explicitly known counterparts, keyed by locale code.                       |
 
 The global page, collection, and asset inventories are intentionally not
 serialized into every render. Use the validating `page()`, `page_exists()`,
-`collection()`, `tag()`, `siblings()`, `pagination_links()`, and `asset()`
+`collection()`, `taxonomy()`, `siblings()`, `pagination_links()`, and `asset()`
 functions for the item a template needs. This keeps large sites predictable
 without making relationships implicit.
 
@@ -544,10 +569,10 @@ pages with a numeric `weight`. An index page and a page using `weight =
 "None"` can use `siblings()` but are not themselves included in that ordered
 set.
 
-`tag(name="news")` returns the current locale's named tag with `name`,
-`count`, and rendered `page_ids` in ascending page-ID order. Like
-`collection()`, it fails at the template call site for an unknown name, which
-catches misspelled internal relationships during a build.
+Taxonomy index and term templates receive their generated taxonomy views;
+ordinary pages expose only their own assigned terms through
+`page.taxonomies.<name>`. The [taxonomy guide](docs/taxonomies.md) explains
+the generated routes and template contract.
 
 Heine provides these filters:
 

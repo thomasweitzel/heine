@@ -1,7 +1,7 @@
 # Collections
 
-> **Status:** explicit membership, deterministic ordering, and paginated
-> collection listings are implemented. Taxonomies and other generated-resource
+> **Status:** explicit membership, deterministic ordering, paginated
+> collection listings, and taxonomies are implemented. Other generated-resource
 > consumers remain future features.
 
 Collections are named, deterministic, locale-local ordered sets of rendered
@@ -269,17 +269,13 @@ Later pagers are explicit render tasks without authored page identities. The
 [pagination guide](pagination.md) documents its syntax, routes, template
 contract, navigation policy, diagnostics, and quick-build behavior.
 
-## Future: taxonomies and other consumers
+## Taxonomies and other consumers
 
-Taxonomies build term collections on this same core. A configured taxonomy
-will turn validated page terms into deterministic term collections and then
-generate term/listing pages from explicit render tasks. Term identifiers,
-display labels, localized routes, and their output-safe mapping must be
-designed together; display text must never become an unchecked output path.
-
-The current `tags` page field is not a reason to add an implicit compatibility
-layer. When taxonomies are implemented, the public contract can deliberately
-supersede it instead.
+[Taxonomies](taxonomies.md) build term collections on this same core. A
+configured taxonomy turns validated page terms into deterministic term
+collections and generates index and term-listing pages from explicit render
+tasks. Their literal term routes, locale-aware ordering, and output-safe
+mapping are documented in the taxonomy guide.
 
 Feeds, sitemaps, archives, and search indexes likewise consume resolved
 collections. They describe generated output to the host; the output domain
@@ -299,7 +295,7 @@ Diagnostics for authored collection errors retain source text and spans for an
 invalid collection name or ordering value, duplicate membership declarations,
 and the relevant membership, date, weight, and ordering declaration for
 relationship errors. Pagination route collisions are validated now and label
-every claim that caused them; taxonomies will follow the same output rule.
+every claim that caused them; taxonomies use the same output rule.
 
 The implementation includes focused unit tests and fixture-site tests for
 deterministic ordering and tie-breaking, directory-default overrides,

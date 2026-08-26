@@ -1,11 +1,12 @@
 # Pagination
 
-> **Status:** implemented for explicit collection listings. Taxonomy term
-> listings will reuse the same generated-listing model later.
+> **Status:** implemented for explicit collection listings and taxonomy term
+> listings.
 
-Pagination divides one ordered collection into several rendered views of one
-ordinary authored listing page. It never discovers pages, changes collection
-order, or lets a template create output.
+Pagination divides one ordered collection into several rendered views. An
+ordinary authored listing declares `[pagination]`; a taxonomy term listing
+uses the `per_page` value from its taxonomy definition. Neither form discovers
+pages, changes collection order, or lets a template create output.
 
 ## A paginated listing
 
@@ -40,6 +41,11 @@ listing once.
 
 Collection order remains the single source of ordering. A listing cannot
 filter, reverse, or sort its collection.
+
+Taxonomy term listings use the same `pagination` view and
+`pagination_links()` function. Their generated page-one route is the literal
+term route, and later pages use `path/<term>/page/<number>.html`; their compact
+navigation window is `1`.
 
 ## Routes
 
@@ -148,8 +154,8 @@ it outside a paginated listing is a template call-site error.
 
 Heine resolves paginated listings after collections and before template
 rendering. Every generated pager is an output task, not an authored page: it
-has no page ID and does not appear in `page()`, collections, siblings,
-translations, or tags.
+has no page ID and does not appear in `page()`, collections, siblings, or
+translations.
 
 Full builds validate every generated route and render every pager before
 publishing. Quick builds re-render all pagers of a listing when a present

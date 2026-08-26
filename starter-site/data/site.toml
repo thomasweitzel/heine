@@ -1,4 +1,5 @@
 name = "Heine Starter Site"
+
 [[navigation]]
 message = "nav-home"
 page = "index"
@@ -6,6 +7,10 @@ page = "index"
 [[navigation]]
 message = "nav-blog"
 page = "blog/index"
+
+[[navigation]]
+message = "nav-tags"
+taxonomy = "tags"
 
 [[navigation]]
 message = "nav-quiz"

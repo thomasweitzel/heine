@@ -13,7 +13,7 @@ use serde_json::Value;
 use time::{Date, OffsetDateTime};
 
 use crate::{
-    config::CollectionName,
+    config::{CollectionName, TaxonomyName},
     content::MarkdownSource,
     output::{OutputPath, UrlPath},
     source_path::LogicalPath,
@@ -130,7 +130,7 @@ pub(super) struct RawPage {
     #[serde(default)]
     pub(super) content: BTreeMap<String, toml::Spanned<String>>,
     #[serde(default)]
-    pub(super) tags: Vec<String>,
+    pub(super) taxonomies: BTreeMap<toml::Spanned<String>, Vec<toml::Spanned<String>>>,
     pub(super) collections: Option<Vec<toml::Spanned<String>>>,
     pub(super) weight: Option<toml::Spanned<toml::Value>>,
     pub(super) pagination: Option<RawPagination>,
@@ -287,7 +287,7 @@ pub(super) struct Page {
     pub(super) translationid_span: Option<SourceSpan>,
     pub(super) source: NamedSource<String>,
     pub(super) directory: DirectoryView,
-    pub(super) tags: Vec<String>,
+    pub(super) taxonomies: Vec<TaxonomyMembership>,
     pub(super) collections: Vec<CollectionMembership>,
     pub(super) pagination: Option<Pagination>,
     pub(super) weight: Option<i64>,
@@ -345,6 +345,21 @@ pub(super) struct CollectionMembership {
     pub(super) span: SourceSpan,
 }
 
+/// One literal term assignment, retaining its source range for taxonomy
+/// relationship diagnostics.
+#[derive(Debug, Clone)]
+pub(super) struct TaxonomyMembership {
+    pub(super) name: TaxonomyName,
+    pub(super) terms: Vec<TaxonomyTermMembership>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct TaxonomyTermMembership {
+    pub(super) term: String,
+    pub(super) source: Arc<NamedSource<String>>,
+    pub(super) span: SourceSpan,
+}
+
 /// A resolved counterpart deliberately exposed through `page.translations`.
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct PageLink {
@@ -379,7 +394,6 @@ impl Page {
             extra,
             translations: self.translations,
             directory: self.directory,
-            tags: self.tags,
             weight: self.weight,
             lighter: self.lighter,
             heavier: self.heavier,
@@ -403,7 +417,6 @@ pub(crate) struct PageView {
     extra: Value,
     translations: BTreeMap<String, PageLink>,
     directory: DirectoryView,
-    tags: Vec<String>,
     weight: Option<i64>,
     lighter: Option<PageId>,
     heavier: Option<PageId>,

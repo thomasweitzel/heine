@@ -291,7 +291,9 @@ impl OutputPath {
     /// only for collision checks. Heine deliberately rejects names that differ
     /// only by Unicode normalization or lowercase spelling, rather than
     /// depending on a deployment filesystem's naming policy.
-    fn collision_key(&self) -> String {
+    /// Returns the portable output identity used exclusively for collision
+    /// checks between several producers.
+    pub(crate) fn collision_key(&self) -> String {
         self.0
             .components()
             .filter_map(|component| match component {

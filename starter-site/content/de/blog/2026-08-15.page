@@ -2,3 +2,6 @@ title = "15. August 2026"
 date = 2026-08-15
 translationid = "second-post"
 content.main = "md/2026-08-15.md"
+
+[taxonomies]
+tags = ["Rust"]

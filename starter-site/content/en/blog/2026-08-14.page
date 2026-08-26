@@ -2,6 +2,9 @@ title = "14th August 2026"
 date = 2026-08-14
 content.main = "md/2026-08-14.md"
 
+[taxonomies]
+tags = ["MathML", "Rust"]
+
 [extra.featured_image]
 id = "blog/md/images/heine.jpg"
 alt = "A small starter-site illustration"

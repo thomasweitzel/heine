@@ -19,6 +19,13 @@ integrity = "sha384"
 [collections.posts]
 order = "date-desc"
 
+[taxonomies.tags]
+collection = "posts"
+path = "tags"
+index_template = "taxonomy-index.tera"
+term_template = "taxonomy-term.tera"
+per_page = 10
+
 [markdown]
 math = "mathml"
 

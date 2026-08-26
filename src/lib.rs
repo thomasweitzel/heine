@@ -97,15 +97,16 @@ pub(crate) fn build_at_with_publication(
         .map_err(|error| miette::Report::new(*error))?;
     let (data, locale_data) = data::SiteData::load_localized(paths.data(), config.i18n().locales())
         .map_err(miette::Report::new)?;
-    let site = Site::load(
-        paths.content(),
-        paths.locales(),
+    let site = Site::load(site::LoadInputs {
+        content_root: paths.content(),
+        locales_root: paths.locales(),
         data,
         locale_data,
-        config.i18n().clone(),
-        config.collections().clone(),
-        &markdown,
-    )
+        i18n: config.i18n().clone(),
+        collections: config.collections().clone(),
+        taxonomies: config.taxonomies().clone(),
+        markdown_renderer: &markdown,
+    })
     .map_err(miette::Report::new)?;
     let output_dir = config.build().output_dir().to_path_buf();
     let output = paths.root().join(&output_dir);

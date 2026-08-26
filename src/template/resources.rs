@@ -64,6 +64,15 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                 "relative_url".into(),
                 format!("{root}{}", target.output_path.url_path().as_str()).into(),
             );
+            result.insert(
+                "taxonomies".into(),
+                tera::Value::try_from_serializable(&page_runtime.page_terms(
+                    &target.locale,
+                    &target.id,
+                    &root,
+                ))
+                .map_err(|_| tera::Error::message("Heine taxonomy terms are not serializable"))?,
+            );
             Ok(result.into())
         },
     );
@@ -110,25 +119,28 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         },
     );
 
-    let tag_runtime = runtime.clone();
+    let taxonomy_runtime = runtime.clone();
     tera.register_function(
-        "tag",
+        "taxonomy",
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
-            arguments::only("tag", &kwargs, &["name"])?;
+            arguments::only("taxonomy", &kwargs, &["name"])?;
             let name = kwargs.must_get::<&str>("name")?;
-            let locale = tag_runtime.locale(state)?;
-            tag_runtime
-                .tag(&locale, name)
-                .map(|tag| {
-                    tera::Value::try_from_serializable(&tag)
-                        .map_err(|_| tera::Error::message("Heine tag view is not serializable"))
+            let locale = taxonomy_runtime.locale(state)?;
+            let root = taxonomy_runtime.root(state)?;
+            taxonomy_runtime
+                .taxonomy_index(&locale, name, &root)
+                .map_err(tera::Error::message)?
+                .map(|taxonomy| {
+                    tera::Value::try_from_serializable(&taxonomy).map_err(|_| {
+                        tera::Error::message("Heine taxonomy index view is not serializable")
+                    })
                 })
                 .transpose()?
                 .ok_or_else(|| {
-                    let available = tag_runtime.tag_names(&locale);
+                    let available = taxonomy_runtime.taxonomy_names(&locale);
                     let detail =
-                        available_names("no tags are defined in this locale", "tags", &available);
-                    tera::Error::message(format!("tag {name:?} was not found; {detail}"))
+                        available_names("no taxonomies are configured", "taxonomies", &available);
+                    tera::Error::message(format!("taxonomy {name:?} was not found; {detail}"))
                 })
         },
     );

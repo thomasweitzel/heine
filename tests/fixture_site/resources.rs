@@ -397,42 +397,60 @@ fn page_function_exposes_page_fields_and_links() {
 }
 
 #[test]
-fn tag_function_exposes_only_the_requested_locale_tag() {
+fn taxonomies_generate_locale_local_index_and_term_listings() {
     let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 1\n",
+    );
     fixture.write("content/en/index.page", "template = 'index.tera'\n");
     fixture.write(
         "content/en/guide.page",
-        "template = 'page.tera'\ntags = ['news']\n",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['news']\n",
     );
     fixture.write(
         "content/en/alpha.page",
-        "template = 'page.tera'\ntags = ['news']\n",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['news']\n",
     );
-    fixture.write("content/en/draft.page", "tags = ['news']\n");
     fixture.write(
         "templates/index.tera",
-        "{% set news = tag(name='news') %}{{ news.name }}|{{ news.count }}|{{ news.page_ids | join(sep=',') }}",
+        "{% set alpha = page(id='alpha') %}{% for term in alpha.taxonomies.tags %}{{ term.name }}|{{ term.relative_url }}{% endfor %}",
     );
-    fixture.write("templates/page.tera", "guide");
+    fixture.write(
+        "templates/page.tera",
+        "{% for term in page.taxonomies.tags %}{{ term.name }}|{{ term.url }}|{{ term.relative_url }}{% endfor %}",
+    );
+    fixture.write(
+        "templates/taxonomy-index.tera",
+        "{% for term in taxonomy.terms %}{{ term.name }}|{{ term.count }}|{{ term.url }}|{{ term.relative_url }}{% endfor %}",
+    );
+    fixture.write(
+        "templates/taxonomy-term.tera",
+        "{{ taxonomy.term.name }}|{{ pagination.page_number }}|{% for page in pagination.pages %}{{ page.id }}{% endfor %}|{{ pagination_links() | length }}",
+    );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
     assert_eq!(
+        fs::read_to_string(fixture.path().join("public/alpha.html")).unwrap(),
+        "news|/tags/news.html|./tags/news.html"
+    );
+    assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
-        "news|2|alpha,guide"
+        "news|./tags/news.html"
     );
-
-    fixture.write(
-        "templates/index.tera",
-        "{% set missing = tag(name='missing') %}{{ missing.count }}",
-    );
-    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown tag must fail");
-    let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("templates/index.tera:1"),
-        "{diagnostic}"
+        fs::read_to_string(fixture.path().join("public/tags/index.html"))
+            .unwrap()
+            .contains("news|2|/tags/news.html|../tags/news.html")
     );
-    assert!(diagnostic.contains("missing"), "{diagnostic}");
-    assert!(diagnostic.contains("available tags: news"), "{diagnostic}");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/tags/news.html")).unwrap(),
+        "news|1|alpha|2"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/tags/news/page/2.html")).unwrap(),
+        "news|2|guide|2"
+    );
 }
 
 #[test]

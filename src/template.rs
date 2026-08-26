@@ -23,10 +23,19 @@ use crate::{
     config::BasePath,
     locale::Locale,
     localization::Localization,
-    site::{PageCatalog, PageId, PageLinks, PageView, TagIndex},
+    site::{PageCatalog, PageId, PageLinks, PageView, TaxonomyCatalog},
     source_diagnostic,
     source_path::LogicalPath,
 };
+
+/// The current page augmented with taxonomy links whose relative URLs depend
+/// on the output file currently being rendered.
+#[derive(Serialize)]
+pub(crate) struct RenderedPage<'a> {
+    #[serde(flatten)]
+    pub(crate) page: &'a PageView,
+    pub(crate) taxonomies: BTreeMap<String, Vec<crate::site::PageTermView>>,
+}
 
 /// A validated template identifier relative to `templates/`.
 ///
@@ -113,7 +122,7 @@ pub(crate) struct TemplateRelationships {
     collections:
         std::sync::Arc<BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>>,
     siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
-    tags: std::sync::Arc<BTreeMap<Locale, TagIndex>>,
+    taxonomies: std::sync::Arc<TaxonomyCatalog>,
     pagers: crate::site::PaginationCatalog,
 }
 
@@ -122,7 +131,8 @@ pub(crate) struct TemplateRelationships {
 #[derive(Serialize)]
 pub(crate) struct RenderContext<'a> {
     pub(crate) locale: LocaleView,
-    pub(crate) page: &'a PageView,
+    pub(crate) page: Option<RenderedPage<'a>>,
+    pub(crate) taxonomy: Option<crate::site::TaxonomyView>,
     pub(crate) pagination: Option<crate::site::PaginationView>,
     pub(crate) data: &'a serde_json::Value,
     pub(crate) locale_data: &'a serde_json::Value,
@@ -147,7 +157,8 @@ pub(crate) struct LocaleView {
 pub(crate) struct RuntimeContext<'a> {
     pub(crate) locale: String,
     pub(crate) page_dir: &'a str,
-    pub(crate) page_id: &'a PageId,
+    pub(crate) page_id: Option<&'a PageId>,
+    pub(crate) output_path: &'a str,
     pub(crate) root: &'a str,
     pub(crate) pagination_page: Option<usize>,
 }
@@ -177,7 +188,7 @@ impl TemplateRelationships {
             BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>,
         >,
         siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
-        tags: std::sync::Arc<BTreeMap<Locale, TagIndex>>,
+        taxonomies: std::sync::Arc<TaxonomyCatalog>,
         pagers: crate::site::PaginationCatalog,
     ) -> Self {
         Self {
@@ -185,7 +196,7 @@ impl TemplateRelationships {
             page_catalog,
             collections,
             siblings,
-            tags,
+            taxonomies,
             pagers,
         }
     }

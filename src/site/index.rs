@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
-use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
@@ -129,58 +128,4 @@ pub(super) fn fix_siblings(pages: &mut BTreeMap<PageId, Page>) -> SiblingIndex {
         }
     }
     SiblingIndex { eligible }
-}
-
-/// A deterministic, locale-local tag index of rendered pages. Like
-/// collections, it retains IDs rather than duplicating page views for every
-/// render.
-#[derive(Debug, Default)]
-pub(crate) struct TagIndex {
-    tags: BTreeMap<String, TagView>,
-}
-
-impl TagIndex {
-    pub(crate) fn tag(&self, name: &str) -> Option<&TagView> {
-        self.tags.get(name)
-    }
-
-    pub(crate) fn names(&self) -> Vec<String> {
-        self.tags.keys().cloned().collect()
-    }
-}
-
-/// The focused render-facing view returned by `tag()`.
-#[derive(Debug, Serialize)]
-pub(crate) struct TagView {
-    name: String,
-    count: usize,
-    page_ids: Vec<PageId>,
-}
-
-pub(super) fn tags_for(pages: &BTreeMap<PageId, Page>) -> TagIndex {
-    let mut tags: BTreeMap<_, Vec<_>> = BTreeMap::new();
-    for (id, page) in pages {
-        if page.path.is_none() {
-            continue;
-        }
-        for tag in &page.tags {
-            tags.entry(tag.clone()).or_default().push(id.clone());
-        }
-    }
-    for ids in tags.values_mut() {
-        ids.sort();
-    }
-    TagIndex {
-        tags: tags
-            .into_iter()
-            .map(|(name, page_ids)| {
-                let view = TagView {
-                    count: page_ids.len(),
-                    name: name.clone(),
-                    page_ids,
-                };
-                (name, view)
-            })
-            .collect(),
-    }
 }

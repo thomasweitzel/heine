@@ -10,11 +10,13 @@ mod loader;
 mod locales;
 mod page;
 mod pagination;
+mod taxonomy;
 
 use std::{
     collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
@@ -22,7 +24,7 @@ use thiserror::Error;
 
 use crate::{
     asset::{AssetCatalog, AssetSources, SharedAssets},
-    config::{BasePath, CollectionsConfig, I18nConfig, SiteConfig},
+    config::{BasePath, CollectionsConfig, I18nConfig, SiteConfig, TaxonomiesConfig},
     content,
     data::SiteData,
     locale::Locale,
@@ -35,10 +37,14 @@ use crate::{
     },
 };
 
-pub(crate) use index::{SiblingIndex, TagIndex, TagView};
+pub(crate) use index::SiblingIndex;
 use page::Task;
 pub(crate) use page::{PageId, PageView, Pager};
 pub(crate) use pagination::{Catalog as PaginationCatalog, View as PaginationView};
+pub(crate) use taxonomy::View as TaxonomyView;
+pub(crate) use taxonomy::{
+    Catalog as TaxonomyCatalog, IndexView as TaxonomyIndexView, PageTermView,
+};
 
 /// The complete, locale-aware catalog of rendered pages.
 ///
@@ -185,6 +191,19 @@ pub(crate) struct BuildOptions {
     config: SiteConfig,
 }
 
+/// Inputs consumed while resolving one site. Grouping them keeps the site
+/// boundary stable as independently-owned source domains grow.
+pub(crate) struct LoadInputs<'a> {
+    pub(crate) content_root: &'a Path,
+    pub(crate) locales_root: &'a Path,
+    pub(crate) data: SiteData,
+    pub(crate) locale_data: BTreeMap<Locale, SiteData>,
+    pub(crate) i18n: I18nConfig,
+    pub(crate) collections: CollectionsConfig,
+    pub(crate) taxonomies: TaxonomiesConfig,
+    pub(crate) markdown_renderer: &'a MarkdownRenderer,
+}
+
 impl BuildOptions {
     pub(crate) fn new(mode: BuildMode, config: SiteConfig) -> Self {
         Self { mode, config }
@@ -215,6 +234,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Collection(#[from] collection::Error),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Taxonomy(#[from] Box<taxonomy::Error>),
     #[error("could not inspect {path}")]
     Io {
         path: PathBuf,
@@ -247,6 +269,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateCollectionMembership(#[from] Box<loader::DuplicateCollectionMembership>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateTaxonomyTerm(#[from] Box<loader::DuplicateTaxonomyTerm>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     Content(#[from] content::Error),
@@ -291,7 +316,8 @@ pub(crate) struct Site {
     pages: PageCatalog,
     siblings: std::sync::Arc<BTreeMap<Locale, index::SiblingIndex>>,
     tasks: Vec<Task>,
-    tags: std::sync::Arc<BTreeMap<Locale, TagIndex>>,
+    taxonomy_tasks: Vec<taxonomy::Task>,
+    taxonomies: std::sync::Arc<taxonomy::Catalog>,
     collections: std::sync::Arc<BTreeMap<Locale, BTreeMap<String, collection::CollectionView>>>,
     pagers: pagination::Catalog,
     assets: std::sync::Arc<AssetCatalog>,
@@ -303,15 +329,17 @@ pub(crate) struct Site {
 }
 
 impl Site {
-    pub(crate) fn load(
-        content_root: &Path,
-        locales_root: &Path,
-        data: SiteData,
-        locale_data: BTreeMap<Locale, SiteData>,
-        i18n: I18nConfig,
-        collection_config: CollectionsConfig,
-        markdown_renderer: &MarkdownRenderer,
-    ) -> Result<Self, Error> {
+    pub(crate) fn load(inputs: LoadInputs<'_>) -> Result<Self, Error> {
+        let LoadInputs {
+            content_root,
+            locales_root,
+            data,
+            locale_data,
+            i18n,
+            collections: collection_config,
+            taxonomies: taxonomy_config,
+            markdown_renderer,
+        } = inputs;
         match fs::symlink_metadata(content_root) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 return Err(Error::ContentSymlink {
@@ -337,7 +365,7 @@ impl Site {
             i18n.locales(),
             i18n.default_locale().clone(),
         )?);
-        let locales = locales::load(content_root, &i18n, &collection_config)?;
+        let locales = locales::load(content_root, &i18n, &collection_config, &taxonomy_config)?;
         let mut pages = locales.pages;
         let siblings = locales.siblings;
         let mut tasks = locales.tasks;
@@ -354,15 +382,8 @@ impl Site {
                 task.latest_input = task.latest_input.max(latest_input);
             }
         }
-        let tags = std::sync::Arc::new(
-            pages
-                .iter()
-                .map(|(locale, pages)| (locale.clone(), index::tags_for(pages)))
-                .collect(),
-        );
         let collections = collection::resolve(&pages, &collection_config)?;
         pagination::expand(&pages, &collections, &mut tasks);
-        let pagers = pagination::Catalog::from_tasks(&tasks);
         index::resolve_translations(&mut pages).map_err(Error::DuplicateTranslation)?;
         let sources = i18n
             .locales()
@@ -381,6 +402,9 @@ impl Site {
                 )
             })
             .collect::<BTreeMap<_, _>>();
+        let taxonomies =
+            taxonomy::resolve(&pages, &collections, &taxonomy_config, prefixes.clone())
+                .map_err(|error| Error::Taxonomy(Box::new(error)))?;
         let asset_sources = sources
             .iter()
             .map(|(locale, root)| {
@@ -405,6 +429,34 @@ impl Site {
                 task.latest_input = task.latest_input.max(latest_asset_input);
             }
         }
+        let latest_inputs = tasks
+            .iter()
+            .map(|task| {
+                (
+                    (task.locale.clone(), task.page_id.clone()),
+                    task.latest_input,
+                )
+            })
+            .collect();
+        let shared_latest = i18n
+            .locales()
+            .map(|locale| {
+                let mut latest = data.latest_input().unwrap_or(SystemTime::UNIX_EPOCH);
+                if let Some(input) = locale_data[locale].latest_input() {
+                    latest = latest.max(input);
+                }
+                if let Some(input) = localization.latest_input(locale) {
+                    latest = latest.max(input);
+                }
+                if let Some(input) = assets.latest_input() {
+                    latest = latest.max(input);
+                }
+                (locale.clone(), latest)
+            })
+            .collect();
+        let taxonomy_tasks = taxonomies.tasks(&latest_inputs, &shared_latest);
+        let taxonomies = std::sync::Arc::new(taxonomies);
+        let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks);
         let mut output_claims = tasks
             .iter()
             .map(|task| {
@@ -424,6 +476,14 @@ impl Site {
                 )
             })
             .collect::<Vec<_>>();
+        output_claims.extend(taxonomy_tasks.iter().map(|task| {
+            OutputClaim::authored(
+                task.output_path.clone(),
+                format!("taxonomy {}", task.taxonomy.name),
+                task.output_source.as_ref().clone(),
+                task.output_span,
+            )
+        }));
         output_claims.extend(
             assets
                 .paths()
@@ -468,7 +528,8 @@ impl Site {
             pages,
             siblings: std::sync::Arc::new(siblings),
             tasks,
-            tags,
+            taxonomy_tasks,
+            taxonomies,
             collections,
             pagers,
             assets,
@@ -503,7 +564,7 @@ impl Site {
                 base_path.clone(),
                 self.collections.clone(),
                 self.siblings.clone(),
-                self.tags.clone(),
+                self.taxonomies.clone(),
                 self.pagers.clone(),
             ),
             self.localization.clone(),
@@ -524,6 +585,15 @@ impl Site {
                 .expect("tasks refer to loaded pages");
             let page_dir = page.directory();
             let root = root_for(task.output_path.as_path());
+            let render_page = crate::template::RenderedPage {
+                page,
+                taxonomies: self.taxonomies.page_terms(
+                    &task.locale,
+                    &task.page_id,
+                    &base_path,
+                    &root,
+                ),
+            };
             let pagination = task
                 .pagination
                 .as_ref()
@@ -554,7 +624,8 @@ impl Site {
                         code: task.locale.to_string(),
                         direction: self.i18n.direction(&task.locale).as_str().into(),
                     },
-                    page,
+                    page: Some(render_page),
+                    taxonomy: None,
                     pagination,
                     data: self.data.value(),
                     locale_data: self.locale_data[&task.locale].value(),
@@ -562,7 +633,12 @@ impl Site {
                     runtime: RuntimeContext {
                         locale: task.locale.to_string(),
                         page_dir,
-                        page_id: &task.page_id,
+                        page_id: Some(&task.page_id),
+                        output_path: task
+                            .output_path
+                            .as_path()
+                            .to_str()
+                            .expect("validated output paths are UTF-8"),
                         root: &root,
                         pagination_page: task.pagination.as_ref().map(|pager| pager.page_number),
                     },
@@ -573,6 +649,64 @@ impl Site {
                 .output_plan
                 .planned_path(&task.output_path)
                 .expect("page task output was validated in the output plan");
+            rendered.push(GeneratedFile::text(path, contents));
+        }
+        for task in &self.taxonomy_tasks {
+            if !needs_render_generated(
+                task.latest_input,
+                &task.output_path,
+                existing_output,
+                options.mode(),
+            )? {
+                continue;
+            }
+            let root = root_for(task.output_path.as_path());
+            let pagination = task
+                .pagination
+                .as_ref()
+                .map(|pager| pager.view(&self.pages, &task.locale, &base_path, &root));
+            let contents = engine.render(
+                &task.template,
+                RenderContext {
+                    locale: LocaleView {
+                        code: task.locale.to_string(),
+                        direction: self.i18n.direction(&task.locale).as_str().into(),
+                    },
+                    page: None,
+                    taxonomy: Some(task.taxonomy_view(&base_path, &root)),
+                    pagination,
+                    data: self.data.value(),
+                    locale_data: self.locale_data[&task.locale].value(),
+                    root: &root,
+                    runtime: RuntimeContext {
+                        locale: task.locale.to_string(),
+                        page_dir: task
+                            .output_path
+                            .as_path()
+                            .parent()
+                            .and_then(|path| path.to_str())
+                            .unwrap_or(""),
+                        page_id: None,
+                        output_path: task
+                            .output_path
+                            .as_path()
+                            .to_str()
+                            .expect("validated output paths are UTF-8"),
+                        root: &root,
+                        pagination_page: task.pagination.as_ref().map(|pager| pager.page_number),
+                    },
+                },
+                &format!(
+                    "taxonomy {} ({}) to {}",
+                    task.taxonomy.name,
+                    task.locale,
+                    task.output_path.as_path().display()
+                ),
+            )?;
+            let path = self
+                .output_plan
+                .planned_path(&task.output_path)
+                .expect("taxonomy task output was validated in the output plan");
             rendered.push(GeneratedFile::text(path, contents));
         }
         if let (Some(stylesheet), Some(path)) = (
@@ -594,21 +728,44 @@ impl Site {
 
     fn validate_templates(&self, engine: &TemplateEngine) -> Result<(), Error> {
         for task in &self.tasks {
-            if !engine.contains(&task.template) {
-                return Err(Box::new(MissingTemplate {
-                    template: task.template.to_string(),
-                    source_code: task.template_source.as_ref().clone(),
-                    span: task.template_span,
-                    help: format!(
-                        "add {:?} under templates/, or correct this reference",
-                        task.template
-                    ),
-                })
-                .into());
-            }
+            validate_template_reference(
+                engine,
+                &task.template,
+                task.template_source.as_ref().clone(),
+                task.template_span,
+            )?;
+        }
+        for reference in self.taxonomies.template_references() {
+            validate_template_reference(
+                engine,
+                &reference.template,
+                reference.source.as_ref().clone(),
+                reference.span,
+            )?;
         }
         Ok(())
     }
+}
+
+fn validate_template_reference(
+    engine: &TemplateEngine,
+    template: &crate::template::TemplateName,
+    source_code: NamedSource<String>,
+    span: SourceSpan,
+) -> Result<(), Error> {
+    if engine.contains(template) {
+        return Ok(());
+    }
+    Err(Box::new(MissingTemplate {
+        template: template.to_string(),
+        source_code,
+        span,
+        help: format!(
+            "add {:?} under templates/, or correct this reference",
+            template
+        ),
+    })
+    .into())
 }
 
 fn root_for(output: &Path) -> String {
@@ -624,10 +781,19 @@ fn root_for(output: &Path) -> String {
 }
 
 fn needs_render(task: &Task, output_root: &Path, mode: BuildMode) -> Result<bool, Error> {
+    needs_render_generated(task.latest_input, &task.output_path, output_root, mode)
+}
+
+fn needs_render_generated(
+    latest_input: SystemTime,
+    output_path: &OutputPath,
+    output_root: &Path,
+    mode: BuildMode,
+) -> Result<bool, Error> {
     if mode == BuildMode::Full {
         return Ok(true);
     }
-    let target = output_root.join(task.output_path.as_path());
+    let target = output_root.join(output_path.as_path());
     if !target.exists() {
         return Ok(true);
     }
@@ -637,5 +803,5 @@ fn needs_render(task: &Task, output_root: &Path, mode: BuildMode) -> Result<bool
             path: target,
             source,
         })?;
-    Ok(modified <= task.latest_input)
+    Ok(modified <= latest_input)
 }

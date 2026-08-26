@@ -1,14 +1,14 @@
 //! Private, validated services shared by Tera built-ins.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use crate::{
     asset::AssetLinks,
     locale::Locale,
     localization::Localization,
     site::{
-        PageCatalog, PageId, PageLinks, PageView, Pager, PaginationCatalog, SiblingIndex, TagIndex,
-        TagView, collection::CollectionView,
+        PageCatalog, PageId, PageLinks, PageTermView, PageView, Pager, PaginationCatalog,
+        SiblingIndex, TaxonomyCatalog, TaxonomyIndexView, collection::CollectionView,
     },
 };
 
@@ -23,7 +23,7 @@ pub(super) struct TemplateRuntime {
     page_catalog: PageCatalog,
     collections: Arc<BTreeMap<Locale, BTreeMap<String, CollectionView>>>,
     siblings: Arc<BTreeMap<Locale, SiblingIndex>>,
-    tags: Arc<BTreeMap<Locale, TagIndex>>,
+    taxonomies: Arc<TaxonomyCatalog>,
     pagers: PaginationCatalog,
     localization: Arc<Localization>,
     highlight_css: Option<String>,
@@ -36,7 +36,7 @@ impl From<TemplateResources> for TemplateRuntime {
             page_catalog,
             collections,
             siblings,
-            tags,
+            taxonomies,
             pagers,
         } = resources.relationships;
         Self {
@@ -45,7 +45,7 @@ impl From<TemplateResources> for TemplateRuntime {
             page_catalog,
             collections,
             siblings,
-            tags,
+            taxonomies,
             pagers,
             localization: resources.localization,
             highlight_css: resources.highlight_css,
@@ -66,6 +66,32 @@ impl TemplateRuntime {
         self.page_catalog.view(locale, id)
     }
 
+    pub(super) fn page_terms(
+        &self,
+        locale: &Locale,
+        id: &PageId,
+        root: &str,
+    ) -> BTreeMap<String, Vec<PageTermView>> {
+        self.taxonomies
+            .page_terms(locale, id, self.page_links.base_path(), root)
+    }
+
+    pub(super) fn taxonomy_index(
+        &self,
+        locale: &Locale,
+        name: &str,
+        root: &str,
+    ) -> Result<Option<TaxonomyIndexView>, String> {
+        let name = crate::config::TaxonomyName::parse(name.to_owned())?;
+        Ok(self
+            .taxonomies
+            .index(locale, &name, self.page_links.base_path(), root))
+    }
+
+    pub(super) fn taxonomy_names(&self, locale: &Locale) -> Vec<String> {
+        self.taxonomies.names(locale)
+    }
+
     pub(super) fn collection(&self, locale: &Locale, name: &str) -> Option<&CollectionView> {
         self.collections.get(locale)?.get(name)
     }
@@ -84,30 +110,20 @@ impl TemplateRuntime {
             .unwrap_or_default()
     }
 
-    pub(super) fn tag(&self, locale: &Locale, name: &str) -> Option<&TagView> {
-        self.tags.get(locale)?.tag(name)
-    }
-
-    pub(super) fn tag_names(&self, locale: &Locale) -> Vec<String> {
-        self.tags
-            .get(locale)
-            .map(TagIndex::names)
-            .unwrap_or_default()
-    }
-
     pub(super) fn pager(&self, state: &tera::State) -> tera::TeraResult<Option<&Pager>> {
         let locale = self.locale(state)?;
-        let page_id = self.page_id(state)?;
-        let Some(number) = state
+        if state
             .get::<tera::Value>("__heine_runtime")?
             .and_then(|runtime| runtime.get_from_path("pagination_page")?.as_u64())
-        else {
+            .is_none()
+        {
             return Ok(None);
-        };
-        let number = usize::try_from(number).map_err(|_| {
-            tera::Error::message("Heine internal render context has an invalid pagination page")
-        })?;
-        Ok(self.pagers.pager(&locale, &page_id, number))
+        }
+        let output_path = crate::output::OutputPath::try_new(PathBuf::from(
+            self.runtime_string(state, "output_path")?,
+        ))
+        .map_err(|_| tera::Error::message("Heine render context has an invalid output path"))?;
+        Ok(self.pagers.pager(&locale, &output_path))
     }
 
     pub(super) fn localization(&self) -> &Localization {
@@ -133,7 +149,17 @@ impl TemplateRuntime {
     }
 
     pub(super) fn page_id(&self, state: &tera::State) -> tera::TeraResult<PageId> {
-        let value = self.runtime_string(state, "page_id")?;
+        let value = state
+            .get::<tera::Value>("__heine_runtime")?
+            .and_then(|runtime| {
+                runtime
+                    .get_from_path("page_id")?
+                    .as_str()
+                    .map(str::to_owned)
+            })
+            .ok_or_else(|| {
+                tera::Error::message("this operation requires an authored page render")
+            })?;
         PageId::parse(&value).ok_or_else(|| {
             tera::Error::message("Heine internal render context has an invalid page ID")
         })

@@ -27,6 +27,13 @@
 {% block content %}
 {% set published = format_date(value=page.date, style="long") %}
 <p><time datetime="{{ page.date }}">{{ published }}</time></p>
+{% if page.taxonomies.tags %}
+  <p>{{ t(id="tags", count=page.taxonomies.tags | length) }}:
+    {% for tag in page.taxonomies.tags %}
+      <a href="{{ tag.relative_url }}">{{ tag.name }}</a>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </p>
+{% endif %}
 {% if page.extra.featured_image %}
   {% set image = asset(id=page.extra.featured_image.id) %}
   <figure class="featured-image">

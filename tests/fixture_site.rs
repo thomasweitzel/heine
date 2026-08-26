@@ -38,5 +38,7 @@ mod pagination;
 mod resources;
 #[path = "fixture_site/site_data.rs"]
 mod site_data;
+#[path = "fixture_site/taxonomy.rs"]
+mod taxonomy;
 #[path = "fixture_site/template.rs"]
 mod template;

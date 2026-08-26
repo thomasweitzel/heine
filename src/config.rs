@@ -18,6 +18,7 @@ use crate::{
     locale::{Locale, TextDirection},
     output::{OutputClaim, OutputPath},
     source_path,
+    template::TemplateName,
 };
 pub(crate) use base_path::{BasePath, valid_url_segment};
 
@@ -29,6 +30,7 @@ pub(crate) struct SiteConfig {
     markdown: MarkdownConfig,
     i18n: I18nConfig,
     collections: CollectionsConfig,
+    taxonomies: TaxonomiesConfig,
 }
 
 impl SiteConfig {
@@ -88,6 +90,10 @@ impl SiteConfig {
     pub(crate) fn collections(&self) -> &CollectionsConfig {
         &self.collections
     }
+
+    pub(crate) fn taxonomies(&self) -> &TaxonomiesConfig {
+        &self.taxonomies
+    }
 }
 
 /// Validated, site-wide collection definitions. Membership remains authored in
@@ -126,6 +132,99 @@ impl CollectionName {
 impl std::fmt::Display for CollectionName {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(formatter)
+    }
+}
+
+/// A taxonomy name that is safe to use as an authored page-table key and a
+/// template-map key. It intentionally remains distinct from a collection name.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct TaxonomyName(String);
+
+impl TaxonomyName {
+    pub(crate) fn parse(value: String) -> Result<Self, String> {
+        if crate::source_path::is_simple_identifier(&value) {
+            Ok(Self(value))
+        } else {
+            Err(format!(
+                "taxonomy name {value:?} must be a simple template identifier"
+            ))
+        }
+    }
+}
+
+impl std::fmt::Display for TaxonomyName {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// Validated generated-output contracts for site taxonomies.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TaxonomiesConfig {
+    definitions: BTreeMap<TaxonomyName, TaxonomyDefinition>,
+}
+
+impl TaxonomiesConfig {
+    pub(crate) fn definitions(&self) -> &BTreeMap<TaxonomyName, TaxonomyDefinition> {
+        &self.definitions
+    }
+
+    pub(crate) fn contains(&self, name: &TaxonomyName) -> bool {
+        self.definitions.contains_key(name)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TaxonomyDefinition {
+    collection: CollectionName,
+    path: OutputPath,
+    index_template: TemplateName,
+    term_template: TemplateName,
+    per_page: usize,
+    source: Option<Arc<NamedSource<String>>>,
+    collection_span: SourceSpan,
+    path_span: SourceSpan,
+    index_template_span: SourceSpan,
+    term_template_span: SourceSpan,
+    per_page_span: SourceSpan,
+}
+
+impl TaxonomyDefinition {
+    pub(crate) fn collection(&self) -> &CollectionName {
+        &self.collection
+    }
+    pub(crate) fn path(&self) -> &OutputPath {
+        &self.path
+    }
+    pub(crate) fn index_template(&self) -> &TemplateName {
+        &self.index_template
+    }
+    pub(crate) fn term_template(&self) -> &TemplateName {
+        &self.term_template
+    }
+    pub(crate) fn per_page(&self) -> usize {
+        self.per_page
+    }
+    pub(crate) fn origin(
+        &self,
+        span: SourceSpan,
+    ) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.source.as_ref().map(|source| (source.clone(), span))
+    }
+    pub(crate) fn collection_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.collection_span)
+    }
+    pub(crate) fn path_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.path_span)
+    }
+    pub(crate) fn index_template_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.index_template_span)
+    }
+    pub(crate) fn term_template_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.term_template_span)
+    }
+    pub(crate) fn per_page_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.per_page_span)
     }
 }
 
@@ -380,12 +479,24 @@ struct RawSiteConfig {
     i18n: RawI18nConfig,
     #[serde(default)]
     collections: BTreeMap<toml::Spanned<String>, RawCollectionDefinition>,
+    #[serde(default)]
+    taxonomies: BTreeMap<toml::Spanned<String>, RawTaxonomyDefinition>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawCollectionDefinition {
     order: toml::Spanned<CollectionOrder>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawTaxonomyDefinition {
+    collection: toml::Spanned<String>,
+    path: toml::Spanned<String>,
+    index_template: toml::Spanned<String>,
+    term_template: toml::Spanned<String>,
+    per_page: toml::Spanned<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -643,6 +754,82 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 },
             );
         }
+        let mut taxonomies = BTreeMap::new();
+        for (name, definition) in raw.taxonomies {
+            let name_span = name.span();
+            let name =
+                TaxonomyName::parse(name.into_inner()).map_err(|message| ConfigValueError {
+                    span: name_span.into(),
+                    message,
+                })?;
+            let collection_span: SourceSpan = definition.collection.span().into();
+            let collection_value = definition.collection.into_inner();
+            let collection =
+                CollectionName::parse(collection_value.clone()).map_err(|message| {
+                    ConfigValueError {
+                        span: collection_span,
+                        message,
+                    }
+                })?;
+            if !collections.contains_key(&collection) {
+                return Err(ConfigValueError {
+                    span: collection_span,
+                    message: format!(
+                        "taxonomy {name} uses collection {collection_value:?}, which is not configured"
+                    ),
+                });
+            }
+            let path_span: SourceSpan = definition.path.span().into();
+            let path_value = PathBuf::from(definition.path.into_inner());
+            let path = OutputPath::try_new(path_value).map_err(|message| ConfigValueError {
+                span: path_span,
+                message: format!("taxonomy {name} path {message}"),
+            })?;
+            if crate::output::is_reserved_output_path(path.as_path()) {
+                return Err(ConfigValueError {
+                    span: path_span,
+                    message: format!(
+                        "taxonomy {name} path must not use Heine's reserved __heine/ namespace"
+                    ),
+                });
+            }
+            let index_template_span: SourceSpan = definition.index_template.span().into();
+            let index_template = TemplateName::parse(definition.index_template.into_inner())
+                .map_err(|message| ConfigValueError {
+                    span: index_template_span,
+                    message: format!("taxonomy {name} index_template {message}"),
+                })?;
+            let term_template_span: SourceSpan = definition.term_template.span().into();
+            let term_template = TemplateName::parse(definition.term_template.into_inner())
+                .map_err(|message| ConfigValueError {
+                    span: term_template_span,
+                    message: format!("taxonomy {name} term_template {message}"),
+                })?;
+            let per_page_span: SourceSpan = definition.per_page.span().into();
+            let per_page = definition.per_page.into_inner();
+            if per_page == 0 {
+                return Err(ConfigValueError {
+                    span: per_page_span,
+                    message: format!("taxonomy {name} per_page must be a positive integer"),
+                });
+            }
+            taxonomies.insert(
+                name,
+                TaxonomyDefinition {
+                    collection,
+                    path,
+                    index_template,
+                    term_template,
+                    per_page,
+                    source: None,
+                    collection_span,
+                    path_span,
+                    index_template_span,
+                    term_template_span,
+                    per_page_span,
+                },
+            );
+        }
         Ok(Self {
             site: SiteSettings { base_path },
             build: BuildConfig { output_dir },
@@ -661,6 +848,9 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             collections: CollectionsConfig {
                 definitions: collections,
             },
+            taxonomies: TaxonomiesConfig {
+                definitions: taxonomies,
+            },
         })
     }
 }
@@ -674,6 +864,9 @@ impl SiteConfig {
         let collection_source =
             Arc::new(crate::source_diagnostic::named_source(path, source, "TOML"));
         for definition in self.collections.definitions.values_mut() {
+            definition.source = Some(collection_source.clone());
+        }
+        for definition in self.taxonomies.definitions.values_mut() {
             definition.source = Some(collection_source.clone());
         }
     }
