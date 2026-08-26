@@ -70,17 +70,17 @@ participate in normal output-collision validation before anything is written.
 `pagination` is `null` while rendering an ordinary page. A paginated listing
 receives this value:
 
-| Field | Meaning |
-|---|---|
-| `collection` | configured collection name |
-| `pages` | render-facing page views in the current slice, each with `url` and pager-relative `relative_url` |
-| `item_count` | total collection members |
-| `per_page` | configured slice size |
-| `page_number` | current one-based pager number |
-| `page_count` | total pager count; at least one |
-| `current`, `first`, `last` | pager link views |
-| `previous`, `next` | adjacent pager link views, or `null` |
-| `navigation` | compact link and gap items for ordinary navigation |
+| Field                      | Meaning                                                                                          |
+|----------------------------|--------------------------------------------------------------------------------------------------|
+| `collection`               | configured collection name                                                                       |
+| `pages`                    | render-facing page views in the current slice, each with `url` and pager-relative `relative_url` |
+| `item_count`               | total collection members                                                                         |
+| `per_page`                 | configured slice size                                                                            |
+| `page_number`              | current one-based pager number                                                                   |
+| `page_count`               | total pager count; at least one                                                                  |
+| `current`, `first`, `last` | pager link views                                                                                 |
+| `previous`, `next`         | adjacent pager link views, or `null`                                                             |
+| `navigation`               | compact link and gap items for ordinary navigation                                               |
 
 A pager link has `page_number`, `url`, `relative_url`, and `current` fields.
 The URL fields have the same base-path and relative-link behavior as Heine's

@@ -109,14 +109,14 @@ order = "weight-asc"
 Collection names are simple identifiers, consistent with other authored names
 that become template keys. Every definition has exactly one `order` value:
 
-| Value | Primary ordering |
-|---|---|
-| `date-asc` | page date, oldest first |
-| `date-desc` | page date, newest first |
-| `weight-asc` | page weight, lowest first |
-| `weight-desc` | page weight, highest first |
-| `id-asc` | logical page ID, ascending |
-| `id-desc` | logical page ID, descending |
+| Value         | Primary ordering            |
+|---------------|-----------------------------|
+| `date-asc`    | page date, oldest first     |
+| `date-desc`   | page date, newest first     |
+| `weight-asc`  | page weight, lowest first   |
+| `weight-desc` | page weight, highest first  |
+| `id-asc`      | logical page ID, ascending  |
+| `id-desc`     | logical page ID, descending |
 
 Logical page ID is always the deterministic tie-breaker. A collection ordered
 by date requires every member to have a date. A weight ordering uses the
@@ -216,10 +216,10 @@ Use `collection()` to read a current-locale collection:
 
 Each collection view initially exposes:
 
-| Field | Meaning |
-|---|---|
-| `name` | The configured collection name. |
-| `count` | Number of member pages in this locale. |
+| Field      | Meaning                                  |
+|------------|------------------------------------------|
+| `name`     | The configured collection name.          |
+| `count`    | Number of member pages in this locale.   |
 | `page_ids` | The ordered logical IDs of member pages. |
 
 `page_ids`, together with `page()`, is intentionally more

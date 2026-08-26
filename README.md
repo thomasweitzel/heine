@@ -511,13 +511,13 @@ Other Markdown URLs retain their normal, unmodified Markdown behavior.
 Templates use Tera2 syntax and normally have a `.tera` extension. The main
 template values are:
 
-| Value    | Meaning                                                   |
-|----------|-----------------------------------------------------------|
-| `page`   | The current page's render-facing fields and content       |
-| `data`   | Site-wide values loaded from the optional `data/` tree    |
+| Value         | Meaning                                                             |
+|---------------|---------------------------------------------------------------------|
+| `page`        | The current page's render-facing fields and content                 |
+| `data`        | Site-wide values loaded from the optional `data/` tree              |
 | `locale_data` | Values loaded from optional `data/<locale>/` for the current locale |
-| `locale` | Current locale identity; `locale.code` is its BCP-47 code |
-| `root`   | A relative prefix from the rendered page to the site root |
+| `locale`      | Current locale identity; `locale.code` is its BCP-47 code           |
+| `root`        | A relative prefix from the rendered page to the site root           |
 
 `page` deliberately exposes only these fields:
 
@@ -531,7 +531,7 @@ template values are:
 | `extra` / `directory`                        | User metadata and the immediate directory’s metadata view.                 |
 | `tags` / `weight`                            | The page's tags and ordering weight.                                       |
 | `lighter` / `heavier`                        | Previous / next sibling IDs, when present.                                 |
-| `translations`                               | Explicitly known counterparts, keyed by locale code.                        |
+| `translations`                               | Explicitly known counterparts, keyed by locale code.                       |
 
 The global page, collection, and asset inventories are intentionally not
 serialized into every render. Use the validating `page()`, `page_exists()`,
