@@ -28,6 +28,14 @@
     }
 }
 
+@font-face {
+    font-family: "STIX Two Math";
+    src: url("../fonts/STIXTwoMath-Regular.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
 *,
 *::before,
 *::after {
@@ -175,6 +183,28 @@ pre,
 code {
     direction: ltr;
     text-align: left;
+}
+
+pre {
+    padding: var(--spacing-s) var(--spacing-m);
+    border-radius: var(--radius);
+    overflow-x: auto;
+}
+
+pre:not(.giallo) {
+    background-color: var(--code-bg);
+}
+
+pre > code {
+    background-color: transparent;
+}
+
+math {
+    font-family: "STIX Two Math";
+}
+
+math[display="block"] {
+    font-size: 1.25em;
 }
 
 .link-stack {
