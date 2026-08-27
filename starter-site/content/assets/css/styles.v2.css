@@ -106,8 +106,11 @@ header {
 
 .language-navigation img {
     display: block;
+    box-sizing: border-box;
     width: 1.5rem;
     height: auto;
+    border: var(--border);
+    border-radius: 0.1rem;
 }
 
 .page-navigation {
