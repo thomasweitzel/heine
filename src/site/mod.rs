@@ -4,6 +4,7 @@
 //! in dedicated child modules. `Site` coordinates those stages without owning
 //! template-engine or output filesystem implementation details.
 
+mod collation;
 pub(crate) mod collection;
 mod index;
 mod loader;

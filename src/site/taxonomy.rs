@@ -17,6 +17,7 @@ use crate::{
 };
 
 use super::{
+    collation,
     collection::ResolvedCollection,
     page::{Page, PageId, Pager, TaxonomyTermMembership},
 };
@@ -241,11 +242,12 @@ pub(super) fn resolve(
     let mut locales = BTreeMap::new();
     let mut page_terms = BTreeMap::new();
     for (locale, locale_pages) in pages {
+        let collation = collation::TextCollation::for_locale(locale);
         let mut taxonomies = BTreeMap::new();
         for (name, definition) in config.definitions() {
             let source = &collections[locale][definition.collection()];
             validate_scope(locale_pages, name, definition)?;
-            let terms = resolve_terms(locale, locale_pages, source, name)?;
+            let terms = resolve_terms(&collation, locale_pages, source, name)?;
             taxonomies.insert(name.clone(), resolved(name, definition, terms));
         }
         let mut locale_terms: BTreeMap<PageId, BTreeMap<String, Vec<TermRoute>>> = BTreeMap::new();
@@ -436,7 +438,7 @@ fn validate_scope(
 }
 
 fn resolve_terms(
-    locale: &Locale,
+    collation: &collation::TextCollation,
     pages: &BTreeMap<PageId, Page>,
     collection: &ResolvedCollection,
     taxonomy: &TaxonomyName,
@@ -476,27 +478,12 @@ fn resolve_terms(
         }
     }
     let mut terms = terms.into_values().collect::<Vec<_>>();
-    sort_terms(locale, &mut terms);
+    sort_terms(collation, &mut terms);
     Ok(terms)
 }
 
-fn sort_terms(locale: &Locale, terms: &mut [ResolvedTerm]) {
-    let Ok(locale) = locale.to_string().parse::<icu_locale::Locale>() else {
-        terms.sort_by(|left, right| left.name.cmp(&right.name));
-        return;
-    };
-    let Ok(collator) = icu_collator::Collator::try_new(
-        icu_collator::CollatorPreferences::from(locale),
-        Default::default(),
-    ) else {
-        terms.sort_by(|left, right| left.name.cmp(&right.name));
-        return;
-    };
-    terms.sort_by(|left, right| {
-        collator
-            .compare(&left.name, &right.name)
-            .then(left.name.cmp(&right.name))
-    });
+fn sort_terms(collation: &collation::TextCollation, terms: &mut [ResolvedTerm]) {
+    terms.sort_by(|left, right| collation.compare(&left.name, &right.name));
 }
 
 fn term_route_identity(term: &str) -> String {

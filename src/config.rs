@@ -266,6 +266,8 @@ impl TermTranslation {
 pub(crate) enum CollectionOrder {
     DateAsc,
     DateDesc,
+    TitleAsc,
+    TitleDesc,
     WeightAsc,
     WeightDesc,
     IdAsc,

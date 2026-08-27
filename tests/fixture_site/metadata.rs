@@ -186,15 +186,15 @@ fn applies_each_collection_order_with_page_id_tie_breaking() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[collections.date_asc]\norder = 'date-asc'\n[collections.date_desc]\norder = 'date-desc'\n[collections.weight_asc]\norder = 'weight-asc'\n[collections.weight_desc]\norder = 'weight-desc'\n[collections.id_asc]\norder = 'id-asc'\n[collections.id_desc]\norder = 'id-desc'\n",
+        "[collections.date_asc]\norder = 'date-asc'\n[collections.date_desc]\norder = 'date-desc'\n[collections.title_asc]\norder = 'title-asc'\n[collections.title_desc]\norder = 'title-desc'\n[collections.weight_asc]\norder = 'weight-asc'\n[collections.weight_desc]\norder = 'weight-desc'\n[collections.id_asc]\norder = 'id-asc'\n[collections.id_desc]\norder = 'id-desc'\n",
     );
     fixture.write(
         "content/en/alpha.page",
-        "template = 'page.tera'\ndate = 2026-08-14\nweight = 2\ncollections = ['date_asc', 'date_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
+        "template = 'page.tera'\ntitle = 'Same'\ndate = 2026-08-14\nweight = 2\ncollections = ['date_asc', 'date_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
     );
     fixture.write(
         "content/en/beta.page",
-        "template = 'page.tera'\ndate = 2026-08-16\nweight = 1\ncollections = ['date_asc', 'date_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
+        "template = 'page.tera'\ntitle = 'Same'\ndate = 2026-08-16\nweight = 1\ncollections = ['date_asc', 'date_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
     );
     fixture.write(
         "content/en/index.page",
@@ -203,14 +203,14 @@ fn applies_each_collection_order_with_page_id_tie_breaking() {
     fixture.write("templates/page.tera", "page");
     fixture.write(
         "templates/index.tera",
-        "{% for name in ['date_asc', 'date_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc'] %}{% set entries = collection(name=name) %}{% for id in entries.page_ids %}{{ id }};{% endfor %}{% if name != 'id_desc' %}|{% endif %}{% endfor %}",
+        "{% for name in ['date_asc', 'date_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc'] %}{% set entries = collection(name=name) %}{% for id in entries.page_ids %}{{ id }};{% endfor %}{% if name != 'id_desc' %}|{% endif %}{% endfor %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).expect("listing output"),
-        "alpha;beta;|beta;alpha;|beta;alpha;|alpha;beta;|alpha;beta;|beta;alpha;"
+        "alpha;beta;|beta;alpha;|alpha;beta;|alpha;beta;|beta;alpha;|alpha;beta;|alpha;beta;|beta;alpha;"
     );
 }
 
@@ -299,6 +299,59 @@ fn reports_collection_ordering_requirements_at_membership() {
     assert!(diagnostic.contains("orders by date"), "{diagnostic}");
     assert!(diagnostic.contains("add a TOML date"), "{diagnostic}");
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+}
+
+#[test]
+fn title_ordering_uses_locale_collation_and_requires_titles() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'de'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n[collections.posts]\norder = 'title-asc'\n",
+    );
+    fixture.write(
+        "content/de/a.page",
+        "template = 'page.tera'\ntitle = 'Apfel'\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "content/de/b.page",
+        "template = 'page.tera'\ntitle = 'Ähre'\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "content/de/index.page",
+        "template = 'index.tera'\ncollections = []\n",
+    );
+    fixture.write("templates/page.tera", "page");
+    fixture.write(
+        "templates/index.tera",
+        "{% set posts = collection(name='posts') %}{% for id in posts.page_ids %}{{ id }};{% endfor %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("listing output"),
+        "b;a;"
+    );
+
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'de'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n[collections.posts]\norder = 'title-desc'\n",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("site builds in descending title order");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("listing output"),
+        "a;b;"
+    );
+
+    fixture.write(
+        "content/de/b.page",
+        "template = 'page.tera'\ncollections = ['posts']\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("title is required");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/de/b.page:2"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:8"), "{diagnostic}");
+    assert!(diagnostic.contains("orders by title"), "{diagnostic}");
+    assert!(diagnostic.contains("add a title"), "{diagnostic}");
 }
 
 #[test]

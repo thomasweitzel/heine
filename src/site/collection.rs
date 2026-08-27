@@ -15,7 +15,10 @@ use crate::{
     locale::Locale,
 };
 
-use super::page::{CollectionMembership, MetadataDate, Page, PageId};
+use super::{
+    collation,
+    page::{CollectionMembership, MetadataDate, Page, PageId},
+};
 
 /// The resolved domain representation. It retains IDs rather than cloned
 /// pages, keeping the resolved page map the only source of page facts.
@@ -70,6 +73,22 @@ pub(crate) struct MissingDate {
     #[source_code]
     source_code: Arc<NamedSource<String>>,
     #[label("collection membership declared here; this collection orders by date")]
+    span: SourceSpan,
+    #[related]
+    order: Vec<CollectionOrderOrigin>,
+    #[help]
+    help: String,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error("collection {collection:?} orders by title, but page {page:?} has no title")]
+#[diagnostic(code(heine::collection::missing_title))]
+pub(crate) struct MissingTitle {
+    page: String,
+    collection: String,
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("collection membership declared here; this collection orders by title")]
     span: SourceSpan,
     #[related]
     order: Vec<CollectionOrderOrigin>,
@@ -166,6 +185,9 @@ pub(crate) enum Error {
     MissingDate(#[from] Box<MissingDate>),
     #[error(transparent)]
     #[diagnostic(transparent)]
+    MissingTitle(#[from] Box<MissingTitle>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     MissingWeight(#[from] Box<MissingWeight>),
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -182,15 +204,17 @@ pub(super) fn resolve(
     pages
         .iter()
         .map(|(locale, pages)| {
-            resolve_locale(pages, config).map(|collections| (locale.clone(), collections))
+            resolve_locale(locale, pages, config).map(|collections| (locale.clone(), collections))
         })
         .collect()
 }
 
 fn resolve_locale(
+    locale: &Locale,
     pages: &BTreeMap<PageId, Page>,
     config: &CollectionsConfig,
 ) -> Result<BTreeMap<CollectionName, ResolvedCollection>, Error> {
+    let collation = collation::TextCollation::for_locale(locale);
     let mut collections = config
         .definitions()
         .keys()
@@ -229,9 +253,9 @@ fn resolve_locale(
     for (name, collection) in &mut collections {
         let definition = &config.definitions()[name];
         validate_ordering_data(name, definition, &collection.page_ids, pages)?;
-        collection
-            .page_ids
-            .sort_by(|left, right| compare_pages(definition.order(), left, right, pages));
+        collection.page_ids.sort_by(|left, right| {
+            compare_pages(&collation, definition.order(), left, right, pages)
+        });
     }
     Ok(collections)
 }
@@ -289,6 +313,23 @@ fn validate_ordering_data(
                     }
                     None => first = Some((date.is_date_only(), page)),
                     _ => {}
+                }
+            }
+        }
+        CollectionOrder::TitleAsc | CollectionOrder::TitleDesc => {
+            for id in ids {
+                let page = &pages[id];
+                if page.metadata.title.is_none() {
+                    let membership = membership(page, name);
+                    return Err(Box::new(MissingTitle {
+                        page: id.to_string(),
+                        collection: name.to_string(),
+                        source_code: membership.source.clone(),
+                        span: membership.span,
+                        order: collection_order_origin(definition).into_iter().collect(),
+                        help: "add a title, or use another collection order".into(),
+                    })
+                    .into());
                 }
             }
         }
@@ -355,6 +396,7 @@ fn membership<'a>(page: &'a Page, name: &CollectionName) -> &'a CollectionMember
 }
 
 fn compare_pages(
+    collation: &collation::TextCollation,
     order: CollectionOrder,
     left: &PageId,
     right: &PageId,
@@ -373,6 +415,18 @@ fn compare_pages(
                 .as_ref()
                 .expect("date ordering was validated"),
         ),
+        CollectionOrder::TitleAsc | CollectionOrder::TitleDesc => collation.compare(
+            pages[left]
+                .metadata
+                .title
+                .as_deref()
+                .expect("title ordering was validated"),
+            pages[right]
+                .metadata
+                .title
+                .as_deref()
+                .expect("title ordering was validated"),
+        ),
         CollectionOrder::WeightAsc | CollectionOrder::WeightDesc => pages[left]
             .weight
             .expect("weight ordering was validated")
@@ -380,9 +434,10 @@ fn compare_pages(
         CollectionOrder::IdAsc | CollectionOrder::IdDesc => left.cmp(right),
     };
     let primary = match order {
-        CollectionOrder::DateDesc | CollectionOrder::WeightDesc | CollectionOrder::IdDesc => {
-            primary.reverse()
-        }
+        CollectionOrder::DateDesc
+        | CollectionOrder::TitleDesc
+        | CollectionOrder::WeightDesc
+        | CollectionOrder::IdDesc => primary.reverse(),
         _ => primary,
     };
     primary.then_with(|| left.cmp(right))
