@@ -46,17 +46,18 @@ term_template = "taxonomy-term.tera"
 per_page = 20
 ```
 
-All five fields are required. Taxonomy pages always use the HTML `.html`
+The five fields are required; optional `translations` groups declare explicit
+cross-locale term counterparts. Taxonomy pages always use the HTML `.html`
 suffix; a taxonomy is an HTML listing feature rather than a second general
 output-format mechanism.
 
-| Field | Meaning | Constraint |
-|---|---|---|
-| `collection` | Source collection | A configured collection name |
-| `path` | Generated taxonomy root | A validated portable relative output path |
-| `index_template` | Template for the term index | A validated template name |
-| `term_template` | Template for term listings and later pagers | A validated template name |
-| `per_page` | Members on each term-listing page | A positive integer |
+| Field            | Meaning                                     | Constraint                                |
+|------------------|---------------------------------------------|-------------------------------------------|
+| `collection`     | Source collection                           | A configured collection name              |
+| `path`           | Generated taxonomy root                     | A validated portable relative output path |
+| `index_template` | Template for the term index                 | A validated template name                 |
+| `term_template`  | Template for term listings and later pagers | A validated template name                 |
+| `per_page`       | Members on each term-listing page           | A positive integer                        |
 
 The taxonomy name (`tags` above) is a simple identifier. It is available as a
 template-map key and identifies the taxonomy in page metadata. `path` is
@@ -97,8 +98,8 @@ values.
 
 Membership is locale-local. Terms with the same spelling in two locale trees
 remain independent, and no counterpart term is inferred for a language
-switcher. A future explicit term-translation model may add that relationship
-when a real use case needs it.
+switcher. Declare only the deliberate counterparts in the taxonomy's optional
+`translations` groups, described in the [template contract](#template-contract).
 
 ## Generated output
 
@@ -162,6 +163,48 @@ The returned view has `name`, base-path-aware `url`, and
 current-output-relative `relative_url`. A malformed or unknown taxonomy name
 fails at the template call site and names the available configured taxonomies.
 
+Pass an exact configured locale when a template needs another locale's index:
+
+```tera
+{% set german_tags = taxonomy(name="tags", locale="de") %}
+<a href="{{ german_tags.url }}">Schlagwörter</a>
+```
+
+This selects only the taxonomy index. It never infers that a literal term in
+one locale corresponds to a term in another. Declare known counterparts in
+the taxonomy configuration instead:
+
+```toml
+[taxonomies.tags.translations.rust]
+en = "Rust"
+de = "Rust"
+
+[taxonomies.tags.translations.static-sites]
+en = "Static sites"
+de = "Statische Seiten"
+```
+
+The final component (`rust`, `static-sites`) is an opaque, non-empty group
+name. Each group has at least two configured locales. Every listed term must
+exist literally in that locale's taxonomy, and a locale-term pair may belong
+to only one group. Groups may be partial: a term such as `MathML` that exists
+only in English simply has no group and therefore no language counterpart.
+
+The generated term views then expose only the deliberate relationships:
+
+```tera
+{% for target_locale, target in taxonomy.term.translations %}
+  <a href="{{ target.url }}" hreflang="{{ target_locale }}">{{ target.name }}</a>
+{% endfor %}
+```
+
+Each target has its literal `name`, base-path-aware `url`, and
+current-output-relative `relative_url`. This is available both for a term in
+the taxonomy index's `taxonomy.terms` and for the current term listing's
+`taxonomy.term`. Empty `translations` means that no counterpart was declared.
+Each counterpart always points to that term's first listing page; Heine does
+not infer a correspondence between later pagers in different locales.
+
 The taxonomy index template receives a `taxonomy` view with its name and
 ordered terms:
 
@@ -213,7 +256,6 @@ rename, and deletion changes.
   term weights.
 - Pagination for very large taxonomy indexes.
 - Related-page ranking based on shared terms.
-- Explicit cross-locale term relationships.
 - Per-term Atom feeds, which depend on the later canonical-URL and feed work.
 
 These remain possible because terms, their generated routes, and their

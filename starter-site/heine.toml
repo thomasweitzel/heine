@@ -26,6 +26,14 @@ index_template = "taxonomy-index.tera"
 term_template = "taxonomy-term.tera"
 per_page = 10
 
+[taxonomies.tags.translations.rust]
+en = "Rust"
+de = "Rust"
+
+[taxonomies.tags.translations.static-sites]
+en = "Static sites"
+de = "Statische Seiten"
+
 [markdown]
 math = "mathml"
 

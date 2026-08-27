@@ -17,13 +17,25 @@ fn builds_the_documented_starter_site() {
     let root = temporary.path();
 
     copy_file(&source.join("heine.toml"), &root.join("heine.toml"));
-    for directory in ["content", "data", "locales", "templates"] {
+    for directory in [
+        "content",
+        "data",
+        "deploy",
+        "LICENSES",
+        "locales",
+        "templates",
+    ] {
         copy_tree(&source.join(directory), &root.join(directory));
     }
 
     build_at(root, BuildMode::Full).expect("starter site builds");
 
     let output = root.join("public/my-project");
+    assert!(output.join(".htaccess").is_file());
+    assert_eq!(
+        fs::read_to_string(output.join("robots.txt")).expect("robots.txt"),
+        "User-agent: *\nAllow: /\n"
+    );
     let index = fs::read_to_string(output.join("index.html")).expect("home page");
     assert!(
         index.contains("<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\" dir=\"ltr\">"),
@@ -96,9 +108,17 @@ fn builds_the_documented_starter_site() {
         tags.contains("href=\"/my-project/tags/index.html\">Tags</a>"),
         "{tags}"
     );
+    assert!(
+        tags.contains("href=\"/my-project/de/tags/index.html\" hreflang=\"de\""),
+        "{tags}"
+    );
     assert!(!tags.contains("<main>\n      <p><a"), "{tags}");
     assert!(
-        tags.contains("A compact example site built with Heine."),
+        tags.contains("A compact example site built with <a href=\"https://heine.rs\" alt=\"Link to Heine Homepage\">Heine</a>."),
+        "{tags}"
+    );
+    assert!(
+        tags.contains("href=\"/my-project/licenses.html\">Attributions</a>"),
         "{tags}"
     );
     assert!(
@@ -110,6 +130,16 @@ fn builds_the_documented_starter_site() {
     assert!(output.join("de/tags/index.html").is_file());
     let rust_tag = fs::read_to_string(output.join("tags/Rust.html")).expect("Rust tag listing");
     assert!(rust_tag.contains("14th August 2026"), "{rust_tag}");
+    assert!(
+        rust_tag.contains("href=\"/my-project/de/tags/Rust.html\" hreflang=\"de\""),
+        "{rust_tag}"
+    );
+    let german_static_tag = fs::read_to_string(output.join("de/tags/Statische Seiten.html"))
+        .expect("German tag listing");
+    assert!(
+        german_static_tag.contains("href=\"/my-project/tags/Static%20sites.html\" hreflang=\"en\""),
+        "{german_static_tag}"
+    );
 
     let german_post =
         fs::read_to_string(output.join("de/blog/2026-08-15.html")).expect("German post");
@@ -128,6 +158,26 @@ fn builds_the_documented_starter_site() {
     let post = fs::read_to_string(output.join("blog/2026-08-14.html")).expect("post page");
     assert!(post.contains("<img"), "{post}");
     assert!(post.contains("width="), "{post}");
+    let attributions = fs::read_to_string(output.join("licenses.html")).expect("attributions page");
+    assert!(
+        attributions.contains("STIXTwoMath-Regular.woff2"),
+        "{attributions}"
+    );
+    assert!(
+        attributions.contains("Public-domain copperplate engraving of Heinrich Heine"),
+        "{attributions}"
+    );
+    assert!(
+        attributions.contains("<a href=\"./LICENSES/OFL-1.1.txt\">OFL-1.1</a>"),
+        "{attributions}"
+    );
+    let german_attributions =
+        fs::read_to_string(output.join("de/licenses.html")).expect("German attributions page");
+    assert!(
+        german_attributions.contains("Gemeinfreier Kupferstich von Heinrich Heine"),
+        "{german_attributions}"
+    );
+    assert!(output.join("LICENSES/OFL-1.1.txt").is_file());
     assert!(
         post.contains("<audio controls preload=\"metadata\">"),
         "{post}"

@@ -180,6 +180,172 @@ fn taxonomy_function_resolves_the_locale_local_index_and_reports_invalid_lookups
 }
 
 #[test]
+fn taxonomy_function_resolves_an_explicit_configured_locale() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/de/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "content/de/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rust']\n",
+    );
+    templates(&fixture);
+    fixture.write(
+        "templates/page.tera",
+        "{% set tags = taxonomy(name='tags', locale='de') %}{{ tags.name }}|{{ tags.url }}|{{ tags.relative_url }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("explicit locale lookup builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("page output"),
+        "tags|/de/tags/index.html|./de/tags/index.html"
+    );
+
+    fixture.write(
+        "templates/page.tera",
+        "{{ taxonomy(name='tags', locale='fr') }}",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown locale fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("fr"), "{diagnostic}");
+    assert!(diagnostic.contains("not configured"), "{diagnostic}");
+}
+
+#[test]
+fn exposes_only_configured_taxonomy_term_counterparts() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nde = 'Rost'\n",
+    );
+    fixture.write(
+        "content/en/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rust', 'MathML']\n",
+    );
+    fixture.write(
+        "content/de/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rost']\n",
+    );
+    fixture.write("templates/page.tera", "page");
+    fixture.write(
+        "templates/taxonomy-index.tera",
+        "{% if locale.code == 'en' %}{{ taxonomy.terms[0].translations | length }}|{{ taxonomy.terms[1].translations | length }}{% endif %}",
+    );
+    fixture.write(
+        "templates/taxonomy-term.tera",
+        "{% if locale.code == 'en' and taxonomy.term.name == 'Rust' %}{{ taxonomy.term.translations.de.name }}|{{ taxonomy.term.translations.de.url }}{% endif %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("configured counterparts build");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/tags/index.html"))
+            .expect("taxonomy index output"),
+        "0|1"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/tags/Rust.html"))
+            .expect("taxonomy term output"),
+        "Rost|/de/tags/Rost.html"
+    );
+}
+
+#[test]
+fn rejects_invalid_taxonomy_term_translation_groups_at_their_config_values() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.only]\nen = 'Rust'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("single-member group fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("heine.toml:18"), "{diagnostic}");
+    assert!(diagnostic.contains("at least two locales"), "{diagnostic}");
+
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nde = 'Rost'\n\n[taxonomies.tags.translations.duplicate]\nen = 'Rust'\nde = 'Rost'\n",
+    );
+    fixture.write(
+        "content/en/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rust']\n",
+    );
+    fixture.write(
+        "content/de/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rost']\n",
+    );
+    templates(&fixture);
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("duplicate member fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("heine.toml:20"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("belongs to more than one"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("conflicting declaration"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_invalid_or_noncanonical_taxonomy_translation_group_locale_keys() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\n\"not a locale\" = 'Rost'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid locale fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("heine.toml:20"), "{diagnostic}");
+    assert!(diagnostic.contains("not a locale"), "{diagnostic}");
+    assert!(diagnostic.contains("valid BCP-47 locale"), "{diagnostic}");
+
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nDE = 'Rost'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("noncanonical locale fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("heine.toml:20"), "{diagnostic}");
+    assert!(diagnostic.contains("DE"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("canonical BCP-47 spelling"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_a_missing_taxonomy_term_translation_at_its_config_value() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nde = 'Nicht vorhanden'\n",
+    );
+    fixture.write(
+        "content/en/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rust']\n",
+    );
+    fixture.write(
+        "content/de/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Vorhanden']\n",
+    );
+    templates(&fixture);
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("missing term fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("heine.toml:20"), "{diagnostic}");
+    assert!(diagnostic.contains("Nicht vorhanden"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("must exist in the locale-local taxonomy"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn validates_a_taxonomys_term_template_even_when_it_has_no_terms() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", taxonomy_config());

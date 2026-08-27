@@ -611,7 +611,8 @@ set.
 Taxonomy index and term templates receive their generated taxonomy views;
 ordinary pages expose only their own assigned terms through
 `page.taxonomies.<name>`. The [taxonomy guide](docs/taxonomies.md) explains
-the generated routes and template contract.
+the generated routes, explicit cross-locale term counterparts, and template
+contract.
 
 Heine provides these filters:
 

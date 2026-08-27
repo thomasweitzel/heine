@@ -29,7 +29,11 @@ pub(crate) struct Catalog {
     page_terms: BTreeMap<Locale, BTreeMap<PageId, BTreeMap<String, Vec<TermRoute>>>>,
     prefixes: BTreeMap<Locale, PathBuf>,
     template_references: Vec<TemplateReference>,
+    term_translations: BTreeMap<Locale, BTreeMap<TaxonomyName, Arc<TranslationPaths>>>,
 }
+
+type TranslationPaths = BTreeMap<String, BTreeMap<Locale, TermRoute>>;
+type TranslationClaim = (Arc<NamedSource<String>>, SourceSpan);
 
 #[derive(Debug, Clone)]
 struct TermRoute {
@@ -86,6 +90,7 @@ pub(super) struct Task {
     pub(super) taxonomy: View,
     pub(super) pagination: Option<Arc<Pager>>,
     term_paths: Arc<BTreeMap<String, OutputPath>>,
+    term_translations: Arc<TranslationPaths>,
 }
 
 /// Deliberate render-facing taxonomy data. URLs are added at rendering time
@@ -106,6 +111,14 @@ pub(crate) struct TermView {
     url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     relative_url: Option<String>,
+    translations: BTreeMap<String, TermLinkView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TermLinkView {
+    name: String,
+    url: String,
+    relative_url: String,
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -116,6 +129,12 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Collision(#[from] Box<Collision>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MissingTranslationTerm(#[from] Box<MissingTranslationTerm>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateTranslationTerm(#[from] Box<DuplicateTranslationTerm>),
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -150,6 +169,48 @@ pub(crate) struct Collision {
     first: Vec<TermOrigin>,
     #[help]
     help: String,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error(
+    "taxonomy {taxonomy:?} translation group {group:?} refers to missing term {term:?} for locale {locale}"
+)]
+#[diagnostic(code(heine::taxonomy::missing_translation_term))]
+pub(crate) struct MissingTranslationTerm {
+    taxonomy: String,
+    group: String,
+    locale: String,
+    term: String,
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("this term must exist in the locale-local taxonomy")]
+    span: SourceSpan,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error(
+    "taxonomy {taxonomy:?} term {term:?} for locale {locale} belongs to more than one translation group"
+)]
+#[diagnostic(code(heine::taxonomy::duplicate_translation_term))]
+pub(crate) struct DuplicateTranslationTerm {
+    taxonomy: String,
+    locale: String,
+    term: String,
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("this group also declares the term")]
+    span: SourceSpan,
+    #[related]
+    first: Vec<TranslationTermOrigin>,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error("another translation group declares this term")]
+pub(crate) struct TranslationTermOrigin {
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("conflicting declaration")]
+    span: SourceSpan,
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -211,12 +272,98 @@ pub(super) fn resolve(
         locales.insert(locale.clone(), taxonomies);
         page_terms.insert(locale.clone(), locale_terms);
     }
+    let term_translations = resolve_term_translations(&locales, config, &prefixes)?;
     Ok(Catalog {
         locales,
         page_terms,
         prefixes,
         template_references,
+        term_translations,
     })
+}
+
+fn resolve_term_translations(
+    locales: &BTreeMap<Locale, BTreeMap<TaxonomyName, ResolvedTaxonomy>>,
+    config: &TaxonomiesConfig,
+    prefixes: &BTreeMap<Locale, PathBuf>,
+) -> Result<BTreeMap<Locale, BTreeMap<TaxonomyName, Arc<TranslationPaths>>>, Error> {
+    let mut translations = BTreeMap::new();
+    for (taxonomy_name, definition) in config.definitions() {
+        let mut by_locale: BTreeMap<Locale, TranslationPaths> = BTreeMap::new();
+        let mut claimed: BTreeMap<(Locale, String), TranslationClaim> = BTreeMap::new();
+        for (group, members) in definition.translations() {
+            let mut resolved = Vec::new();
+            for (locale, member) in members.terms() {
+                let (source_code, span) = definition
+                    .origin(member.span())
+                    .expect("loaded taxonomy configuration retains source origins");
+                let taxonomy = &locales[locale][taxonomy_name];
+                if !taxonomy.terms.iter().any(|term| term.name == member.term()) {
+                    return Err(Box::new(MissingTranslationTerm {
+                        taxonomy: taxonomy_name.to_string(),
+                        group: group.clone(),
+                        locale: locale.to_string(),
+                        term: member.term().into(),
+                        source_code,
+                        span,
+                    })
+                    .into());
+                }
+                let key = (locale.clone(), member.term().to_owned());
+                if let Some((first_source, first_span)) =
+                    claimed.insert(key, (source_code.clone(), span))
+                {
+                    return Err(Box::new(DuplicateTranslationTerm {
+                        taxonomy: taxonomy_name.to_string(),
+                        locale: locale.to_string(),
+                        term: member.term().into(),
+                        source_code,
+                        span,
+                        first: vec![TranslationTermOrigin {
+                            source_code: first_source,
+                            span: first_span,
+                        }],
+                    })
+                    .into());
+                }
+                let output_path = term_output_path(
+                    &localized_root(prefixes, locale, &taxonomy.root),
+                    member.term(),
+                    1,
+                );
+                resolved.push((locale.clone(), member.term().to_owned(), output_path));
+            }
+            for (locale, term, _) in &resolved {
+                let targets = resolved
+                    .iter()
+                    .filter(|(target_locale, _, _)| target_locale != locale)
+                    .map(|(target_locale, target_term, output_path)| {
+                        (
+                            target_locale.clone(),
+                            TermRoute {
+                                name: target_term.clone(),
+                                output_path: output_path.clone(),
+                            },
+                        )
+                    })
+                    .collect();
+                by_locale
+                    .entry(locale.clone())
+                    .or_default()
+                    .insert(term.clone(), targets);
+            }
+        }
+        for locale in locales.keys() {
+            translations
+                .entry(locale.clone())
+                .or_insert_with(BTreeMap::new)
+                .insert(
+                    taxonomy_name.clone(),
+                    Arc::new(by_locale.remove(locale).unwrap_or_default()),
+                );
+        }
+    }
+    Ok(translations)
 }
 
 fn template_references(config: &TaxonomiesConfig) -> Vec<TemplateReference> {
@@ -471,6 +618,7 @@ impl Catalog {
                         .collect(),
                 );
                 let index_output = index_output_path(&root);
+                let term_translations = self.term_translations[locale][&taxonomy.name].clone();
                 tasks.push(Task {
                     locale: locale.clone(),
                     output_path: index_output,
@@ -486,17 +634,16 @@ impl Catalog {
                     },
                     pagination: None,
                     term_paths: term_paths.clone(),
+                    term_translations: term_translations.clone(),
                 });
+                let resources = TermTaskResources {
+                    latest_inputs,
+                    locale_latest: locale_latest[locale],
+                    term_paths,
+                    term_translations,
+                };
                 for term in &taxonomy.terms {
-                    tasks.extend(term_tasks(
-                        locale,
-                        &root,
-                        taxonomy,
-                        term,
-                        latest_inputs,
-                        locale_latest[locale],
-                        term_paths.clone(),
-                    ));
+                    tasks.extend(term_tasks(locale, &root, taxonomy, term, &resources));
                 }
             }
         }
@@ -521,14 +668,19 @@ pub(crate) struct PageTermView {
     relative_url: String,
 }
 
+struct TermTaskResources<'a> {
+    latest_inputs: &'a BTreeMap<(Locale, PageId), SystemTime>,
+    locale_latest: SystemTime,
+    term_paths: Arc<BTreeMap<String, OutputPath>>,
+    term_translations: Arc<TranslationPaths>,
+}
+
 fn term_tasks(
     locale: &Locale,
     root: &OutputPath,
     taxonomy: &ResolvedTaxonomy,
     term: &ResolvedTerm,
-    latest_inputs: &BTreeMap<(Locale, PageId), SystemTime>,
-    locale_latest: SystemTime,
-    term_paths: Arc<BTreeMap<String, OutputPath>>,
+    resources: &TermTaskResources<'_>,
 ) -> Vec<Task> {
     let page_count = term.members.len().div_ceil(taxonomy.per_page).max(1);
     let paths = Arc::new(
@@ -539,10 +691,15 @@ fn term_tasks(
     let latest_input = term
         .members
         .iter()
-        .filter_map(|id| latest_inputs.get(&(locale.clone(), id.clone())).copied())
+        .filter_map(|id| {
+            resources
+                .latest_inputs
+                .get(&(locale.clone(), id.clone()))
+                .copied()
+        })
         .max()
         .unwrap_or(SystemTime::UNIX_EPOCH)
-        .max(locale_latest);
+        .max(resources.locale_latest);
     (1..=page_count)
         .map(|number| Task {
             locale: locale.clone(),
@@ -574,7 +731,8 @@ fn term_tasks(
                 navigation_window: 1,
                 paths: paths.clone(),
             })),
-            term_paths: term_paths.clone(),
+            term_paths: resources.term_paths.clone(),
+            term_translations: resources.term_translations.clone(),
         })
         .collect()
 }
@@ -591,10 +749,29 @@ fn localized_root(
 impl Task {
     pub(super) fn taxonomy_view(&self, base_path: &BasePath, root: &str) -> View {
         let mut view = self.taxonomy.clone();
-        for term in &mut view.terms {
+        for term in view.terms.iter_mut().chain(view.term.iter_mut()) {
             let path = &self.term_paths[&term.name];
             term.url = Some(base_path.join(&path.url_path()));
             term.relative_url = Some(format!("{root}{}", path.url_path().as_str()));
+            term.translations = self
+                .term_translations
+                .get(&term.name)
+                .into_iter()
+                .flat_map(|targets| targets.iter())
+                .map(|(locale, target)| {
+                    (
+                        locale.to_string(),
+                        TermLinkView {
+                            name: target.name.clone(),
+                            url: base_path.join(&target.output_path.url_path()),
+                            relative_url: format!(
+                                "{root}{}",
+                                target.output_path.url_path().as_str()
+                            ),
+                        },
+                    )
+                })
+                .collect();
         }
         view
     }
@@ -643,5 +820,6 @@ fn term_view(term: &ResolvedTerm) -> TermView {
         count: term.members.len(),
         url: None,
         relative_url: None,
+        translations: BTreeMap::new(),
     }
 }

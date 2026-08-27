@@ -181,6 +181,7 @@ pub(crate) struct TaxonomyDefinition {
     index_template: TemplateName,
     term_template: TemplateName,
     per_page: usize,
+    translations: BTreeMap<String, TermTranslationGroup>,
     source: Option<Arc<NamedSource<String>>>,
     collection_span: SourceSpan,
     path_span: SourceSpan,
@@ -205,6 +206,9 @@ impl TaxonomyDefinition {
     pub(crate) fn per_page(&self) -> usize {
         self.per_page
     }
+    pub(crate) fn translations(&self) -> &BTreeMap<String, TermTranslationGroup> {
+        &self.translations
+    }
     pub(crate) fn origin(
         &self,
         span: SourceSpan,
@@ -225,6 +229,35 @@ impl TaxonomyDefinition {
     }
     pub(crate) fn per_page_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
         self.origin(self.per_page_span)
+    }
+}
+
+/// One explicit, potentially partial set of equivalent literal taxonomy terms.
+/// The group name is opaque; locale members are validated later against the
+/// resolved locale-local taxonomy terms.
+#[derive(Debug, Clone)]
+pub(crate) struct TermTranslationGroup {
+    terms: BTreeMap<Locale, TermTranslation>,
+}
+
+impl TermTranslationGroup {
+    pub(crate) fn terms(&self) -> &BTreeMap<Locale, TermTranslation> {
+        &self.terms
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TermTranslation {
+    term: String,
+    span: SourceSpan,
+}
+
+impl TermTranslation {
+    pub(crate) fn term(&self) -> &str {
+        &self.term
+    }
+    pub(crate) fn span(&self) -> SourceSpan {
+        self.span
     }
 }
 
@@ -497,6 +530,9 @@ struct RawTaxonomyDefinition {
     index_template: toml::Spanned<String>,
     term_template: toml::Spanned<String>,
     per_page: toml::Spanned<usize>,
+    #[serde(default)]
+    translations:
+        BTreeMap<toml::Spanned<String>, BTreeMap<toml::Spanned<String>, toml::Spanned<String>>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -812,6 +848,75 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     message: format!("taxonomy {name} per_page must be a positive integer"),
                 });
             }
+            let mut translations = BTreeMap::new();
+            for (group, members) in definition.translations {
+                let group_span: SourceSpan = group.span().into();
+                let group = group.into_inner();
+                if group.trim().is_empty() {
+                    return Err(ConfigValueError {
+                        span: group_span,
+                        message: format!(
+                            "taxonomy {name} translation group names must not be empty"
+                        ),
+                    });
+                }
+                if members.len() < 2 {
+                    return Err(ConfigValueError {
+                        span: group_span,
+                        message: format!(
+                            "taxonomy {name} translation group {group:?} must declare at least two locales"
+                        ),
+                    });
+                }
+                let mut terms = BTreeMap::new();
+                for (locale, term) in members {
+                    let locale_span: SourceSpan = locale.span().into();
+                    let locale_value = locale.into_inner();
+                    let locale: Locale = locale_value.parse().map_err(|error| ConfigValueError {
+                        span: locale_span,
+                        message: format!("taxonomy {name} translation group {group:?} locale {locale_value:?} must be a valid BCP-47 locale: {error}"),
+                    })?;
+                    if locale.to_string() != locale_value {
+                        return Err(ConfigValueError {
+                            span: locale_span,
+                            message: format!(
+                                "taxonomy {name} translation group {group:?} locale {locale_value:?} must use canonical BCP-47 spelling {:?}",
+                                locale.to_string()
+                            ),
+                        });
+                    }
+                    if !locales.contains_key(&locale) {
+                        return Err(ConfigValueError {
+                            span: locale_span,
+                            message: format!(
+                                "taxonomy {name} translation group {group:?} locale {locale:?} is not configured"
+                            ),
+                        });
+                    }
+                    let span: SourceSpan = term.span().into();
+                    let term = term.into_inner();
+                    if term.is_empty() {
+                        return Err(ConfigValueError {
+                            span,
+                            message: format!(
+                                "taxonomy {name} translation group {group:?} has an empty term for locale {locale}"
+                            ),
+                        });
+                    }
+                    if terms
+                        .insert(locale.clone(), TermTranslation { term, span })
+                        .is_some()
+                    {
+                        return Err(ConfigValueError {
+                            span: locale_span,
+                            message: format!(
+                                "taxonomy {name} translation group {group:?} declares locale {locale} more than once"
+                            ),
+                        });
+                    }
+                }
+                translations.insert(group, TermTranslationGroup { terms });
+            }
             taxonomies.insert(
                 name,
                 TaxonomyDefinition {
@@ -820,6 +925,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     index_template,
                     term_template,
                     per_page,
+                    translations,
                     source: None,
                     collection_span,
                     path_span,

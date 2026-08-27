@@ -145,9 +145,13 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
     tera.register_function(
         "taxonomy",
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
-            arguments::only("taxonomy", &kwargs, &["name"])?;
+            arguments::only("taxonomy", &kwargs, &["name", "locale"])?;
             let name = kwargs.must_get::<&str>("name")?;
-            let locale = taxonomy_runtime.locale(state)?;
+            let locale = taxonomy_runtime
+                .pages()
+                .with_locale(taxonomy_runtime.locale(state)?)
+                .resolve_locale(kwargs.get::<&str>("locale")?)
+                .map_err(|error| tera::Error::message(error.to_string()))?;
             let root = taxonomy_runtime.root(state)?;
             taxonomy_runtime
                 .taxonomy_index(&locale, name, &root)

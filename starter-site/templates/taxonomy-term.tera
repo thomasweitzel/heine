@@ -2,6 +2,20 @@
 
 {% block title %}{{ taxonomy.term.name }}{% endblock %}
 
+{% block language_navigation %}
+  {% if taxonomy.term.translations %}
+    <nav class="language-navigation" aria-label="{{ t(id="language") }}">
+    {% for target_locale, target in taxonomy.term.translations %}
+      {% set language_message = "language-" ~ target_locale %}
+      {% set flag = asset(id=data.site.language_flags[target_locale].asset) %}
+      <a href="{{ target.url }}" hreflang="{{ target_locale }}" aria-label="{{ t(id=language_message) }}">
+        <img src="{{ flag.url }}" width="{{ flag.width }}" height="{{ flag.height }}" alt="">
+      </a>
+    {% endfor %}
+    </nav>
+  {% endif %}
+{% endblock %}
+
 {% block content %}
 <h1>{{ t(id=taxonomy.name, count=1) }}: {{ taxonomy.term.name }}</h1>
 <ul>
