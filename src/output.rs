@@ -22,7 +22,7 @@ use miette::{NamedSource, SourceSpan};
 use thiserror::Error;
 
 pub(crate) use target::OutputTarget;
-pub(crate) use writer::OutputWriter;
+pub(crate) use writer::{CopiedFiles, OutputWriter};
 
 /// One producer's claim on a path in the published tree.
 #[derive(Debug, Clone)]
@@ -142,7 +142,9 @@ pub(crate) enum OutputClaimError {
         #[label("output declared here")]
         span: SourceSpan,
     },
-    #[error("output path {path} is reserved for Heine internal use")]
+    #[error(
+        "copied file {source_path} would claim output path {path}, which is reserved for Heine internal use"
+    )]
     #[diagnostic(code(heine::output::reserved_path))]
     ReservedFile { path: PathBuf, source_path: PathBuf },
     #[error("output path {path} is claimed by {description} and another producer")]
@@ -157,7 +159,7 @@ pub(crate) enum OutputClaimError {
         #[related]
         related: Vec<ClaimOrigin>,
     },
-    #[error("output path {path} would be produced by copied assets {first} and {second}")]
+    #[error("output path {path} would be produced by copied files {first} and {second}")]
     #[diagnostic(code(heine::output::collision))]
     CollisionFiles {
         path: PathBuf,
@@ -177,7 +179,7 @@ pub(crate) enum ClaimOrigin {
         #[label("first output declaration")]
         span: SourceSpan,
     },
-    #[error("copied asset {source_path} claims output {path}")]
+    #[error("copied file {source_path} claims output {path}")]
     File { source_path: PathBuf, path: PathBuf },
 }
 
@@ -285,6 +287,22 @@ impl OutputPath {
 
     pub(crate) fn as_path(&self) -> &Path {
         &self.0
+    }
+
+    /// Returns a slash-separated, unescaped spelling for template-facing
+    /// identifiers. It is not a URL; use [`Self::url_path`] for URL syntax.
+    pub(crate) fn logical_spelling(&self) -> String {
+        self.0
+            .components()
+            .filter_map(|component| match component {
+                std::path::Component::Normal(component) => component.to_str(),
+                std::path::Component::CurDir
+                | std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_) => None,
+            })
+            .collect::<Vec<_>>()
+            .join("/")
     }
 
     /// A deterministic NFC-normalized, case-independent output identity used
@@ -448,15 +466,15 @@ pub(crate) enum Error {
         "run a full build with --clean-output to explicitly replace this directory"
     ))]
     InvalidMarker { path: PathBuf, marker: PathBuf },
-    #[error("could not copy asset {source_path} to output {output_path}")]
-    AssetCopy {
+    #[error("could not copy source file {source_path} to output {output_path}")]
+    Copy {
         source_path: PathBuf,
         output_path: PathBuf,
         #[source]
         source: io::Error,
     },
-    #[error("could not inspect asset {path}")]
-    AssetMetadata {
+    #[error("could not inspect copied source or output file {path}")]
+    CopyMetadata {
         path: PathBuf,
         #[source]
         source: io::Error,
@@ -664,10 +682,15 @@ mod tests {
         target::write_marker(&output).expect("output marker");
         fs::write(output.join("index.html"), "previous site").expect("previous output");
         let error = OutputWriter::new(OutputTarget::new(&root, Path::new("public")))
-            .write(&assets, Vec::<GeneratedFile>::new(), BuildMode::Full, false)
+            .write(
+                &[&assets],
+                Vec::<GeneratedFile>::new(),
+                BuildMode::Full,
+                false,
+            )
             .expect_err("missing source asset prevents publication");
         match error {
-            Error::AssetCopy {
+            Error::Copy {
                 source_path,
                 output_path,
                 ..

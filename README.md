@@ -27,6 +27,8 @@ for now.
 - [Build a site](#build-a-site)
 - [Serve a site locally](#serve-a-site-locally)
 - [Site layout](#site-layout)
+- [Deployment files](#deployment-files)
+- [Asset licensing](#asset-licensing)
 - [Internationalization and localization](#internationalization-and-localization)
 - [Global data](#global-data)
 - [Pages and content](#pages-and-content)
@@ -115,8 +117,10 @@ cargo run -- --root /path/to/site --quick
 
 Quick mode re-renders for changed page files, declared content, inherited
 directory descriptors, shared or locale `data/`, Fluent resources, and present
-copied assets. It intentionally does not consider template, configuration, or
-page-relationship changes. Use a normal build after those changes.
+copied assets and their present licensing sidecars. It also copies changed
+present deployment files and license texts. It intentionally does not consider
+template, configuration, or page-relationship changes. Use a normal build
+after those changes.
 
 ## Serve a site locally
 
@@ -127,8 +131,9 @@ cargo run -- serve --root /path/to/site
 ```
 
 The server performs a complete build before it starts, serves the generated
-`build.output_dir` directory, and watches `content/`, `data/`, `templates/`,
-and `heine.toml`. After a successful rebuild, open pages reload automatically.
+`build.output_dir` directory, and watches `content/`, `data/`, `deploy/`,
+`LICENSES/`, `locales/`, `templates/`, and `heine.toml`. After a successful
+rebuild, open pages reload automatically.
 Its timestamp-seeded reload generation also refreshes a page that reconnects
 after the development server restarts.
 It never serves an in-memory representation or writes its reload client to the
@@ -187,6 +192,8 @@ my-site/
 ├── heine.toml          # required configuration, including locales
 ├── content/            # shared assets and one tree per configured locale
 ├── data/               # optional site-wide JSON and TOML
+├── deploy/              # optional verbatim files for the output root
+├── LICENSES/            # optional published license texts for copied assets
 ├── locales/            # optional Fluent resources per configured locale
 ├── templates/          # Tera2 templates
 └── public/             # generated output
@@ -214,11 +221,43 @@ names such as `CON`, end in a dot or space, or contain `<`, `>`, `:`, `"`,
 paths that differ only by case, rather than making a site depend on the
 deployment filesystem's case-sensitivity policy. It also rejects paths that
 differ only by Unicode normalization.
-Content, data, localization, and template files must be regular files:
+Content, data, deployment, license text, localization, and template files must be regular files:
 symbolic links are rejected rather than silently being skipped.
 
 `__heine/` is reserved in generated output for development-server endpoints.
 Do not use that directory for pages or copied assets.
+
+## Deployment files
+
+`deploy/` is an optional source root for files that belong beside a deployed
+site rather than inside its content model. Heine copies every regular file
+below it unchanged to the matching path below `public/`: for example,
+`deploy/.htaccess` becomes `public/.htaccess`, and
+`deploy/google1234567890.html` becomes `public/google1234567890.html`.
+
+Use it for host-specific configuration such as Apache headers or a Content
+Security Policy, and for verification files requested by services such as
+Google Search Console. Deployment files are deliberately opaque to Heine:
+they are not assets, cannot be used with `asset()`, are not localized or
+versioned, and are not rendered as templates. Like every output producer,
+they are validated for safe portable paths and cannot collide with generated
+pages, copied assets, or `__heine/`.
+
+A normal build publishes an exact replacement output tree, including
+`deploy/`; deleting a deployment file removes its output on the next normal
+build. Quick builds copy changed present deployment files but deliberately do
+not remove stale output. See the [deployment-files guide](docs/deployment-files.md)
+for the complete contract and examples.
+
+## Asset licensing
+
+`LICENSES/` is an optional project-root directory for license texts associated
+with copied content assets. A REUSE-style adjacent `asset.ext.license` sidecar
+declares SPDX copyright and license information; it is validated, never copied
+as an asset, and is available to templates through `asset().licensing` and
+`attributions()`. License texts are copied unchanged to `public/LICENSES/`.
+See the [asset-licensing guide](docs/asset-licensing.md) for the complete
+layout, template views, and important attribution limitations.
 
 ## Global data
 
@@ -554,15 +593,15 @@ template values are:
 | `content`                                    | Values declared by `[content]` in the page file.                           |
 | `title` / `description` / `summary` / `date` | Explicit page metadata.                                                    |
 | `extra` / `directory`                        | User metadata and the immediate directory’s metadata view.                 |
-| `taxonomies` / `weight`                      | The page's assigned taxonomy-term links and ordering weight.                |
+| `taxonomies` / `weight`                      | The page's assigned taxonomy-term links and ordering weight.               |
 | `lighter` / `heavier`                        | Previous / next sibling IDs, when present.                                 |
 | `translations`                               | Explicitly known counterparts, keyed by locale code.                       |
 
 The global page, collection, and asset inventories are intentionally not
 serialized into every render. Use the validating `page()`, `page_exists()`,
-`collection()`, `taxonomy()`, `siblings()`, `pagination_links()`, and `asset()`
-functions for the item a template needs. This keeps large sites predictable
-without making relationships implicit.
+`collection()`, `taxonomy()`, `siblings()`,
+`pagination_links()`, and `asset()` functions for the item a template needs.
+This keeps large sites predictable without making relationships implicit.
 
 `siblings()` returns only rendered pages that participate in sibling ordering:
 pages with a numeric `weight`. An index page and a page using `weight =
@@ -788,11 +827,12 @@ descriptors are older than its existing output. Changed data or Fluent
 resources also re-render affected pages; a default-locale Fluent change
 re-renders every locale because it may be a fallback. A changed present asset
 also re-renders pages: asset URLs can select a new version and integrity values
-depend on asset contents. It copies an asset only when its source is newer than
-the existing output asset or that output asset is missing. It does not notice
-template, configuration, or page-relationship changes, or renamed or deleted
-files, and it never removes stale output. Run a normal build after those
-changes. `--quick` cannot be combined with `--clean-output`.
+depend on asset contents. It copies an asset, deployment file, or license text
+only when its source is newer than the existing output file or that output file
+is missing. It does not notice template, configuration, or page-relationship
+changes, or renamed or deleted files, and it never removes stale output. Run a
+normal build after those changes. `--quick` cannot be combined with
+`--clean-output`.
 
 ## Starter site
 

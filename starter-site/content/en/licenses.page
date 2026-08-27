@@ -1,0 +1,3 @@
+template = "licenses.tera"
+title = "Attributions"
+translationid = "attributions"

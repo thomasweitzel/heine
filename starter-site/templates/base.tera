@@ -30,8 +30,8 @@
             {% endif %}
             {% endfor %}
           </nav>
-          {% if page %}
-            {% if page.translations %}
+          {% block language_navigation %}
+            {% if page and page.translations %}
               <nav class="language-navigation" aria-label="{{ t(id="language") }}">
                 {% for locale, translation in page.translations %}
                   {% set translated = page(locale=locale, id=translation.id) %}
@@ -43,7 +43,7 @@
                 {% endfor %}
               </nav>
             {% endif %}
-          {% endif %}
+          {% endblock %}
         </div>
       </div>
       {% block header %}{% endblock %}
@@ -54,7 +54,13 @@
       {% endblock %}
     </main>
     <footer>
-      {% block footer %}{{ t(id="footer-description") }}{% endblock %}
+      {% block footer %}
+        {% if page_exists(id="licenses") %}
+          {% set attributions = page(id="licenses") %}
+          <div><a href="{{ attributions.url }}">{{ t(id="attributions") }}</a></div>
+        {% endif %}
+        <div>{{ t(id="footer-description") }}</div>
+      {% endblock %}
     </footer>
   </body>
 </html>

@@ -5,8 +5,18 @@ use super::{
     publication::StagingDirectory,
     target::{OutputDirectory, OutputTarget, ensure_directory, ensure_parent, write_marker},
 };
-use crate::{asset::AssetCatalog, site::BuildMode};
+use crate::{output::OutputPath, site::BuildMode};
 use std::{fs, io, path::Path};
+
+/// A validated inventory of source files copied verbatim into the output tree.
+///
+/// Assets, deployment files, and license texts differ in their source and
+/// template semantics, but output materialization treats them as ordinary
+/// claimed files.
+pub(crate) trait CopiedFiles {
+    fn paths(&self) -> &[OutputPath];
+    fn source_path(&self, output: &OutputPath) -> &Path;
+}
 
 pub(crate) struct OutputWriter {
     target: OutputTarget,
@@ -17,34 +27,34 @@ impl OutputWriter {
     }
     pub(crate) fn write(
         &self,
-        assets: &AssetCatalog,
+        copied_files: &[&dyn CopiedFiles],
         generated_files: impl IntoIterator<Item = GeneratedFile>,
         mode: BuildMode,
         clean_output: bool,
     ) -> Result<(), Error> {
         self.target.ensure_no_symlinked_ancestor()?;
-        ensure_marker_is_available(assets)?;
+        ensure_marker_is_available(copied_files)?;
         match mode {
-            BuildMode::Full => self.write_full(assets, generated_files, clean_output),
-            BuildMode::Quick => self.write_quick(assets, generated_files),
+            BuildMode::Full => self.write_full(copied_files, generated_files, clean_output),
+            BuildMode::Quick => self.write_quick(copied_files, generated_files),
         }
     }
     fn write_full(
         &self,
-        assets: &AssetCatalog,
+        copied_files: &[&dyn CopiedFiles],
         generated_files: impl IntoIterator<Item = GeneratedFile>,
         clean_output: bool,
     ) -> Result<(), Error> {
         let output = OutputDirectory::inspect(self.target.root())?;
         output.require_replacement_permission(clean_output)?;
         let mut staging = StagingDirectory::create(self.target.root())?;
-        write_tree(staging.path(), assets, generated_files)?;
+        write_tree(staging.path(), copied_files, generated_files)?;
         write_marker(staging.path())?;
         staging.publish(output.exists())
     }
     fn write_quick(
         &self,
-        assets: &AssetCatalog,
+        copied_files: &[&dyn CopiedFiles],
         generated_files: impl IntoIterator<Item = GeneratedFile>,
     ) -> Result<(), Error> {
         let output = OutputDirectory::inspect(self.target.root())?;
@@ -53,7 +63,7 @@ impl OutputWriter {
         if !output.exists() || output.is_empty() {
             write_marker(self.target.root())?;
         }
-        copy_newer_assets(self.target.root(), assets)?;
+        copy_newer_files(self.target.root(), copied_files)?;
         write_generated_files(
             self.target.root(),
             generated_files,
@@ -64,60 +74,64 @@ impl OutputWriter {
 
 fn write_tree(
     root: &Path,
-    assets: &AssetCatalog,
+    copied_files: &[&dyn CopiedFiles],
     generated_files: impl IntoIterator<Item = GeneratedFile>,
 ) -> Result<(), Error> {
-    copy_assets(root, assets)?;
+    copy_files(root, copied_files)?;
     write_generated_files(root, generated_files, WriteSafety::Staging)
 }
-fn ensure_marker_is_available(assets: &AssetCatalog) -> Result<(), Error> {
-    if let Some(asset) = assets
-        .paths()
+fn ensure_marker_is_available(copied_files: &[&dyn CopiedFiles]) -> Result<(), Error> {
+    if let Some(path) = copied_files
         .iter()
-        .find(|asset| is_internal_output_path(asset.as_path()))
+        .flat_map(|files| files.paths())
+        .find(|path| is_internal_output_path(path.as_path()))
     {
         return Err(Error::ReservedPath {
-            path: asset.as_path().into(),
+            path: path.as_path().into(),
         });
     }
     Ok(())
 }
-fn copy_assets(root: &Path, assets: &AssetCatalog) -> Result<(), Error> {
-    for asset in assets.paths() {
-        copy_asset(&assets.source_path(asset), &root.join(asset.as_path()))?;
-    }
-    Ok(())
-}
-fn copy_newer_assets(root: &Path, assets: &AssetCatalog) -> Result<(), Error> {
-    for asset in assets.paths() {
-        let source = assets.source_path(asset);
-        let target = root.join(asset.as_path());
-        ensure_safe_output_target(root, asset.as_path())?;
-        if asset_needs_copying(&source, &target)? {
-            copy_asset(&source, &target)?;
+fn copy_files(root: &Path, copied_files: &[&dyn CopiedFiles]) -> Result<(), Error> {
+    for files in copied_files {
+        for path in files.paths() {
+            copy_file(files.source_path(path), &root.join(path.as_path()))?;
         }
     }
     Ok(())
 }
-fn asset_needs_copying(source: &Path, target: &Path) -> Result<bool, Error> {
+fn copy_newer_files(root: &Path, copied_files: &[&dyn CopiedFiles]) -> Result<(), Error> {
+    for files in copied_files {
+        for path in files.paths() {
+            let source = files.source_path(path);
+            let target = root.join(path.as_path());
+            ensure_safe_output_target(root, path.as_path())?;
+            if file_needs_copying(source, &target)? {
+                copy_file(source, &target)?;
+            }
+        }
+    }
+    Ok(())
+}
+fn file_needs_copying(source: &Path, target: &Path) -> Result<bool, Error> {
     let source_modified = fs::metadata(source)
         .and_then(|metadata| metadata.modified())
-        .map_err(|source_error| Error::AssetMetadata {
+        .map_err(|source_error| Error::CopyMetadata {
             path: source.into(),
             source: source_error,
         })?;
     match fs::metadata(target).and_then(|metadata| metadata.modified()) {
         Ok(target_modified) => Ok(source_modified > target_modified),
         Err(source_error) if source_error.kind() == io::ErrorKind::NotFound => Ok(true),
-        Err(source_error) => Err(Error::AssetMetadata {
+        Err(source_error) => Err(Error::CopyMetadata {
             path: target.into(),
             source: source_error,
         }),
     }
 }
-fn copy_asset(source: &Path, target: &Path) -> Result<(), Error> {
+fn copy_file(source: &Path, target: &Path) -> Result<(), Error> {
     ensure_parent(target)?;
-    fs::copy(source, target).map_err(|source_error| Error::AssetCopy {
+    fs::copy(source, target).map_err(|source_error| Error::Copy {
         source_path: source.into(),
         output_path: target.into(),
         source: source_error,

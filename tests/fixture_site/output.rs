@@ -349,6 +349,28 @@ fn rejects_an_output_directory_inside_global_data() {
 }
 
 #[test]
+fn rejects_an_output_directory_inside_deployment_files() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[build]\noutput_dir = 'deploy/public'\n");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("output overlaps deploy");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("deploy/"), "{diagnostic}");
+    assert!(diagnostic.contains("build.output_dir"), "{diagnostic}");
+}
+
+#[test]
+fn rejects_an_output_directory_inside_license_texts() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[build]\noutput_dir = 'LICENSES/public'\n");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("output overlaps LICENSES");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("LICENSES/"), "{diagnostic}");
+    assert!(diagnostic.contains("build.output_dir"), "{diagnostic}");
+}
+
+#[test]
 fn rejects_an_output_directory_inside_localization_resources() {
     let fixture = Fixture::new();
     fixture.write(
@@ -385,7 +407,7 @@ fn rejects_a_page_output_that_would_overwrite_a_copied_asset() {
         diagnostic.contains("content/en/index.page:2"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("copied asset"), "{diagnostic}");
+    assert!(diagnostic.contains("copied file"), "{diagnostic}");
 }
 
 #[test]

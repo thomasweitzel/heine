@@ -6,5 +6,5 @@ content.main = "md/2026-08-14.md"
 tags = ["MathML", "Rust"]
 
 [extra.featured_image]
-id = "blog/md/images/heine.jpg"
+id = "assets/images/heine.jpg"
 alt = "A small starter-site illustration"

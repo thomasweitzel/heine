@@ -1,0 +1,33 @@
+AddDefaultCharset UTF-8
+
+Header set Content-Security-Policy " \
+  connect-src 'self'               ; \
+  default-src 'self'               ; \
+  base-uri 'self'                  ; \
+  form-action 'self'               ; \
+  frame-ancestors 'self'           ; \
+  script-src 'self'                ; \
+  script-src-elem 'self'           ; \
+  font-src 'self'                  ; \
+  media-src 'self'                 ; \
+  object-src 'none'                ; \
+  img-src 'self' data:             ; \
+  style-src 'self'"
+Header always set Cross-Origin-Resource-Policy "same-origin"
+Header set Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), usb=(), browsing-topics=()"
+Header set Referrer-Policy "no-referrer"
+Header set X-Content-Type-Options "nosniff"
+Header set X-Frame-Options "SAMEORIGIN"
+Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" env=HTTPS
+
+<FilesMatch "\.(pdf|docx|xlsx)$">
+    Header set X-Robots-Tag "noindex, noarchive, nosnippet"
+</FilesMatch>
+
+<If "%{REQUEST_URI} =~ m#(/tags/)#">
+    Header set X-Robots-Tag "noindex, noarchive, nosnippet"
+</If>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+</IfModule>

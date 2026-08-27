@@ -17,7 +17,7 @@ mod base_path;
 use crate::{
     locale::{Locale, TextDirection},
     output::{OutputClaim, OutputPath},
-    source_path,
+    project, source_path,
     template::TemplateName,
 };
 pub(crate) use base_path::{BasePath, valid_url_segment};
@@ -679,11 +679,10 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     span: output_dir_span.clone().into(),
                     message,
                 })?;
-        if matches!(output_dir.0.as_path().components().next(), Some(std::path::Component::Normal(name)) if matches!(name.to_str(), Some("content" | "data" | "templates" | "locales")))
-        {
+        if project::starts_with_input_root(output_dir.0.as_path()) {
             return Err(ConfigValueError {
                 span: output_dir_span.into(),
-                message: "build.output_dir must not be content/, data/, templates/, or locales/, or a directory beneath an input directory".into(),
+                message: "build.output_dir must not be content/, data/, deploy/, templates/, locales/, or LICENSES/, or a directory beneath an input directory".into(),
             });
         }
         let extensions_span = raw.markdown.extensions.span();

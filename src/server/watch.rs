@@ -326,6 +326,20 @@ mod tests {
     }
 
     #[test]
+    fn recognizes_deployment_and_license_text_changes_as_build_inputs() {
+        let root = Path::new("/site");
+        let write = Event::new(EventKind::Modify(notify::event::ModifyKind::Data(
+            notify::event::DataChange::Content,
+        )))
+        .add_path(root.join("deploy/.htaccess"))
+        .add_path(root.join("LICENSES/MIT.txt"));
+
+        let changes = changed_source_paths(root, &write);
+        assert!(changes.events.contains_key(Path::new("deploy/.htaccess")));
+        assert!(changes.events.contains_key(Path::new("LICENSES/MIT.txt")));
+    }
+
+    #[test]
     fn reports_a_short_deterministic_change_summary() {
         let changes = BTreeMap::from([
             (PathBuf::from("templates/base.tera"), SourceChange::Changed),

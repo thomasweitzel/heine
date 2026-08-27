@@ -27,6 +27,8 @@ use crate::{
     config::{BasePath, CollectionsConfig, I18nConfig, SiteConfig, TaxonomiesConfig},
     content,
     data::SiteData,
+    deploy::Catalog as DeploymentCatalog,
+    licensing::Catalog as LicenseCatalog,
     locale::Locale,
     localization::Localization,
     markdown::{self, Renderer as MarkdownRenderer},
@@ -148,19 +150,7 @@ impl PageLinks {
         locale: Option<&str>,
     ) -> Result<PageLinkTarget, PageResolveError> {
         let requested = PageId::parse(id).ok_or(PageResolveError::InvalidId)?;
-        let locale = match locale {
-            Some(locale) => locale
-                .parse()
-                .map_err(|_| PageResolveError::InvalidLocale {
-                    locale: locale.into(),
-                })?,
-            None => self.current_locale.clone(),
-        };
-        if !self.targets.contains_key(&locale) {
-            return Err(PageResolveError::InvalidLocale {
-                locale: locale.to_string(),
-            });
-        }
+        let locale = self.resolve_locale(locale)?;
         let path = self
             .targets
             .get(&locale)
@@ -175,6 +165,27 @@ impl PageLinks {
             output_path: path.clone(),
             url: self.base_path.join(&path.url_path()),
         })
+    }
+
+    /// Resolves an optional template locale against the finite configured
+    /// locale set. Resource helpers use this shared validation before looking
+    /// up their own locale-local values.
+    pub(crate) fn resolve_locale(&self, locale: Option<&str>) -> Result<Locale, PageResolveError> {
+        let locale = match locale {
+            Some(locale) => locale
+                .parse()
+                .map_err(|_| PageResolveError::InvalidLocale {
+                    locale: locale.into(),
+                })?,
+            None => self.current_locale.clone(),
+        };
+        if self.targets.contains_key(&locale) {
+            Ok(locale)
+        } else {
+            Err(PageResolveError::InvalidLocale {
+                locale: locale.to_string(),
+            })
+        }
     }
 }
 
@@ -201,6 +212,8 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) i18n: I18nConfig,
     pub(crate) collections: CollectionsConfig,
     pub(crate) taxonomies: TaxonomiesConfig,
+    pub(crate) deployment: &'a DeploymentCatalog,
+    pub(crate) licenses: &'a LicenseCatalog,
     pub(crate) markdown_renderer: &'a MarkdownRenderer,
 }
 
@@ -228,6 +241,9 @@ pub(crate) enum Error {
     ContentNotDirectory { path: PathBuf },
     #[error("content root entry {path} is neither `assets` nor a configured locale directory")]
     UnexpectedContentRoot { path: PathBuf },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Licensing(#[from] Box<crate::licensing::Error>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateTranslation(#[from] Box<index::DuplicateTranslation>),
@@ -338,6 +354,8 @@ impl Site {
             i18n,
             collections: collection_config,
             taxonomies: taxonomy_config,
+            deployment,
+            licenses,
             markdown_renderer,
         } = inputs;
         match fs::symlink_metadata(content_root) {
@@ -423,7 +441,11 @@ impl Site {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        let assets = std::sync::Arc::new(AssetCatalog::discover_locales(&asset_sources)?);
+        let mut assets = AssetCatalog::discover_locales(&asset_sources)?;
+        licenses
+            .attach_to_assets(&mut assets, content_root)
+            .map_err(Box::new)?;
+        let assets = std::sync::Arc::new(assets);
         if let Some(latest_asset_input) = assets.latest_input() {
             for task in &mut tasks {
                 task.latest_input = task.latest_input.max(latest_asset_input);
@@ -488,7 +510,19 @@ impl Site {
             assets
                 .paths()
                 .iter()
-                .map(|asset| OutputClaim::file(asset.clone(), assets.source_path(asset))),
+                .map(|asset| OutputClaim::file(asset.clone(), assets.source_path(asset).into())),
+        );
+        output_claims.extend(
+            deployment
+                .paths()
+                .iter()
+                .map(|path| OutputClaim::file(path.clone(), deployment.source_path(path).into())),
+        );
+        output_claims.extend(
+            licenses
+                .paths()
+                .iter()
+                .map(|path| OutputClaim::file(path.clone(), licenses.source_path(path).into())),
         );
         output_claims.extend(markdown_renderer.stylesheet_claim());
         let output_plan = OutputPlan::validate(&output_claims)?;

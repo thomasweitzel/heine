@@ -32,7 +32,29 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             let (width, height) = asset.dimensions().unzip();
             result.insert("width".into(), width.into());
             result.insert("height".into(), height.into());
+            result.insert(
+                "licensing".into(),
+                asset
+                    .licensing_view(&root, asset_runtime.assets().base_path())
+                    .map(|value| tera::Value::try_from_serializable(&value))
+                    .transpose()
+                    .map_err(|_| {
+                        tera::Error::message("Heine asset licensing view is not serializable")
+                    })?
+                    .into(),
+            );
             Ok(result.into())
+        },
+    );
+
+    let attribution_runtime = runtime.clone();
+    tera.register_function(
+        "attributions",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("attributions", &kwargs, &[])?;
+            let root = attribution_runtime.root(state)?;
+            tera::Value::try_from_serializable(&attribution_runtime.assets().attributions(&root))
+                .map_err(|_| tera::Error::message("Heine attribution view is not serializable"))
         },
     );
 

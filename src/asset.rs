@@ -10,6 +10,7 @@ use std::{
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use miette::Diagnostic;
+use serde::Serialize;
 use sha2::Digest;
 use thiserror::Error;
 use walkdir::DirEntry;
@@ -17,7 +18,7 @@ use walkdir::DirEntry;
 use crate::{
     config::{BasePath, IntegrityAlgorithm},
     locale::Locale,
-    output::OutputPath,
+    output::{CopiedFiles, OutputPath},
     source_path::{self, LogicalPath},
 };
 
@@ -45,6 +46,14 @@ pub(crate) enum Error {
         first: PathBuf,
         second: PathBuf,
     },
+    #[error("asset {asset_path} would be published to both {first} and {second}")]
+    SourceOutputConflict {
+        asset_path: PathBuf,
+        first: PathBuf,
+        second: PathBuf,
+    },
+    #[error("asset catalog has no entry for source {path}")]
+    UnknownSource { path: PathBuf },
 }
 
 #[derive(Debug, Error)]
@@ -75,6 +84,23 @@ pub(crate) struct SharedAssets<'a> {
 struct AssetEntry {
     source: PathBuf,
     dimensions: Option<(u32, u32)>,
+    licensing: Option<Arc<AssetLicensing>>,
+}
+
+/// Licensing metadata attached to one copied asset after its REUSE sidecar is
+/// validated. Output links remain paths here; URLs are a template concern.
+#[derive(Debug, Clone)]
+pub(crate) struct AssetLicensing {
+    pub(crate) copyrights: Vec<String>,
+    pub(crate) expressions: Vec<String>,
+    pub(crate) comments: Vec<String>,
+    pub(crate) license_texts: Vec<LicenseText>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LicenseText {
+    pub(crate) id: String,
+    pub(crate) output: OutputPath,
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +148,7 @@ impl AssetId {
 #[derive(Debug, Clone)]
 pub(crate) struct AssetCatalog {
     entries: BTreeMap<OutputPath, AssetEntry>,
+    source_outputs: BTreeMap<PathBuf, OutputPath>,
     paths: Vec<OutputPath>,
     locale_entries: BTreeMap<Locale, BTreeMap<AssetId, OutputPath>>,
     versions: BTreeMap<(Locale, AssetId), u64>,
@@ -155,6 +182,7 @@ impl AssetCatalog {
     ) -> Result<Self, Error> {
         let mut catalog = Self {
             entries: BTreeMap::new(),
+            source_outputs: BTreeMap::new(),
             paths: Vec::new(),
             locale_entries: BTreeMap::new(),
             versions: BTreeMap::new(),
@@ -171,7 +199,12 @@ impl AssetCatalog {
         let mut ids = BTreeMap::new();
         if let Some(shared) = &sources.shared {
             for entry in shared.entries {
-                if entry.file_type().is_file() {
+                if entry.file_type().is_file()
+                    && entry
+                        .path()
+                        .extension()
+                        .is_none_or(|extension| extension != "license")
+                {
                     let relative = relative_path(shared.root, entry.path())?;
                     let id = Path::new("assets").join(relative);
                     let Some(id) = AssetId::from_path(&id) else {
@@ -196,7 +229,7 @@ impl AssetCatalog {
                 || entry
                     .path()
                     .extension()
-                    .is_some_and(|extension| extension == "page")
+                    .is_some_and(|extension| extension == "page" || extension == "license")
                 || entry.file_name() == std::ffi::OsStr::new("_directory.toml")
             {
                 continue;
@@ -277,8 +310,22 @@ impl AssetCatalog {
                 AssetEntry {
                     source: source.into(),
                     dimensions,
+                    licensing: None,
                 },
             );
+        }
+        match self.source_outputs.entry(source.into()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(output.clone());
+            }
+            std::collections::btree_map::Entry::Occupied(entry) if entry.get() != &output => {
+                return Err(Error::SourceOutputConflict {
+                    asset_path: source.into(),
+                    first: entry.get().as_path().into(),
+                    second: output.as_path().into(),
+                });
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {}
         }
         ids.insert(id, output);
         Ok(())
@@ -311,12 +358,40 @@ impl AssetCatalog {
             .collect()
     }
 
-    pub(crate) fn source_path(&self, output: &OutputPath) -> PathBuf {
-        self.entries
+    pub(crate) fn source_path(&self, output: &OutputPath) -> &Path {
+        &self
+            .entries
             .get(output)
             .expect("output claims use catalog paths")
             .source
-            .clone()
+    }
+
+    pub(crate) fn contains_source(&self, source: &Path) -> bool {
+        self.source_outputs.contains_key(source)
+    }
+
+    pub(crate) fn attach_licensing(
+        &mut self,
+        source: &Path,
+        licensing: AssetLicensing,
+        modified: SystemTime,
+    ) -> Result<(), Error> {
+        let Some(output) = self.source_outputs.get(source) else {
+            return Err(Error::UnknownSource {
+                path: source.into(),
+            });
+        };
+        let Some(entry) = self.entries.get_mut(output) else {
+            return Err(Error::UnknownSource {
+                path: source.into(),
+            });
+        };
+        entry.licensing = Some(Arc::new(licensing));
+        self.latest_input = Some(
+            self.latest_input
+                .map_or(modified, |latest| latest.max(modified)),
+        );
+        Ok(())
     }
 
     pub(crate) fn links(
@@ -385,6 +460,22 @@ impl AssetCatalog {
     fn dimensions(&self, output: &OutputPath) -> Option<(u32, u32)> {
         self.entries.get(output).and_then(|entry| entry.dimensions)
     }
+
+    fn licensing(&self, output: &OutputPath) -> Option<&Arc<AssetLicensing>> {
+        self.entries
+            .get(output)
+            .and_then(|entry| entry.licensing.as_ref())
+    }
+}
+
+impl CopiedFiles for AssetCatalog {
+    fn paths(&self) -> &[OutputPath] {
+        self.paths()
+    }
+
+    fn source_path(&self, output: &OutputPath) -> &Path {
+        self.source_path(output)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -401,9 +492,41 @@ pub(crate) struct AssetLink {
     url: String,
     integrity: Option<String>,
     dimensions: Option<(u32, u32)>,
+    licensing: Option<Arc<AssetLicensing>>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AssetLicensingView {
+    copyrights: Vec<String>,
+    expressions: Vec<String>,
+    comments: Vec<String>,
+    license_texts: Vec<AssetLicenseTextView>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AssetLicenseTextView {
+    id: String,
+    url: String,
+    relative_url: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AttributionView {
+    asset: AssetAttributionAssetView,
+    licensing: AssetLicensingView,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct AssetAttributionAssetView {
+    output_path: String,
+    url: String,
+    relative_url: String,
 }
 
 impl AssetLinks {
+    pub(crate) fn base_path(&self) -> &BasePath {
+        &self.base_path
+    }
     pub(crate) fn with_locale(&self, locale: Locale) -> Self {
         Self {
             catalog: self.catalog.clone(),
@@ -419,6 +542,7 @@ impl AssetLinks {
             url: self.base_path.join(&asset.output.url_path()),
             integrity: self.integrities.get(&asset.output).cloned(),
             dimensions: self.catalog.dimensions(&asset.output),
+            licensing: self.catalog.licensing(&asset.output).cloned(),
             path: asset.output,
         })
     }
@@ -445,6 +569,24 @@ impl AssetLinks {
     pub(crate) fn dimensions(&self, path: &OutputPath) -> Option<(u32, u32)> {
         self.catalog.dimensions(path)
     }
+
+    pub(crate) fn attributions(&self, root: &str) -> Vec<AttributionView> {
+        self.catalog
+            .entries
+            .iter()
+            .filter_map(|(path, entry)| {
+                let licensing = entry.licensing.as_ref()?;
+                Some(AttributionView {
+                    asset: AssetAttributionAssetView {
+                        output_path: path.logical_spelling(),
+                        url: self.base_path.join(&path.url_path()),
+                        relative_url: format!("{root}{}", path.url_path().as_str()),
+                    },
+                    licensing: licensing.view(&self.base_path, root),
+                })
+            })
+            .collect()
+    }
 }
 
 impl AssetLink {
@@ -459,6 +601,34 @@ impl AssetLink {
     }
     pub(crate) fn dimensions(&self) -> Option<(u32, u32)> {
         self.dimensions
+    }
+    pub(crate) fn licensing_view(
+        &self,
+        root: &str,
+        base_path: &BasePath,
+    ) -> Option<AssetLicensingView> {
+        self.licensing
+            .as_ref()
+            .map(|licensing| licensing.view(base_path, root))
+    }
+}
+
+impl AssetLicensing {
+    fn view(&self, base_path: &BasePath, root: &str) -> AssetLicensingView {
+        AssetLicensingView {
+            copyrights: self.copyrights.clone(),
+            expressions: self.expressions.clone(),
+            comments: self.comments.clone(),
+            license_texts: self
+                .license_texts
+                .iter()
+                .map(|license| AssetLicenseTextView {
+                    id: license.id.clone(),
+                    url: base_path.join(&license.output.url_path()),
+                    relative_url: format!("{root}{}", license.output.url_path().as_str()),
+                })
+                .collect(),
+        }
     }
 }
 

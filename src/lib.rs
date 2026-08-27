@@ -6,6 +6,8 @@ mod asset;
 mod config;
 mod content;
 mod data;
+mod deploy;
+mod licensing;
 mod locale;
 mod localization;
 mod markdown;
@@ -97,6 +99,8 @@ pub(crate) fn build_at_with_publication(
         .map_err(|error| miette::Report::new(*error))?;
     let (data, locale_data) = data::SiteData::load_localized(paths.data(), config.i18n().locales())
         .map_err(miette::Report::new)?;
+    let deployment = deploy::Catalog::load(paths.deploy()).map_err(miette::Report::new)?;
+    let licenses = licensing::Catalog::load(paths.licenses()).map_err(miette::Report::new)?;
     let site = Site::load(site::LoadInputs {
         content_root: paths.content(),
         locales_root: paths.locales(),
@@ -105,6 +109,8 @@ pub(crate) fn build_at_with_publication(
         i18n: config.i18n().clone(),
         collections: config.collections().clone(),
         taxonomies: config.taxonomies().clone(),
+        deployment: &deployment,
+        licenses: &licenses,
         markdown_renderer: &markdown,
     })
     .map_err(miette::Report::new)?;
@@ -118,8 +124,9 @@ pub(crate) fn build_at_with_publication(
     let rendered = site
         .render(paths.templates(), &output, &options, &markdown)
         .map_err(miette::Report::new)?;
+    let copied_files: [&dyn output::CopiedFiles; 3] = [site.assets(), &deployment, &licenses];
     OutputWriter::new(OutputTarget::new(paths.root(), &output_dir))
-        .write(site.assets(), rendered, build.mode, build.clean_output)
+        .write(&copied_files, rendered, build.mode, build.clean_output)
         .map_err(miette::Report::new)?;
     Ok(publication)
 }
