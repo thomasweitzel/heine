@@ -1,9 +1,12 @@
 # Deployment files
 
-`deploy/` is an optional, output-root source domain for files that must travel
-with a deployed site but are not site content. It keeps host configuration and
-third-party verification files out of `content/`, where files are otherwise
-public assets with locale and template semantics.
+`deploy/` is an optional source root for [deployment files](glossary.md#deployment-file):
+files that must travel with a deployed site but are not site content. It keeps
+host configuration and third-party verification files out of `content/`, where
+regular files are otherwise copied assets with locale and template semantics.
+
+Use this guide after the [tutorial's deployment step](tutorial.md#10-prepare-the-generated-site-for-deployment)
+when you need a file at a fixed output-root path.
 
 ## Use cases
 
@@ -46,7 +49,7 @@ they cannot escape the output root, use platform-reserved filename components,
 or collide by case or Unicode normalization. Heine validates deployment-file
 claims together with pages, assets, and generated resources before writing, so
 a deployment file cannot silently overwrite another output producer. The
-reserved `__heine/` namespace remains unavailable.
+reserved [`__heine/`](glossary.md#heine) namespace remains unavailable.
 
 Full builds atomically publish a complete output tree. Consequently, removing
 `deploy/google1234567890.html` removes its generated counterpart on the next

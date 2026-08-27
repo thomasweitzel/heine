@@ -1,12 +1,13 @@
 # Pagination
 
-> **Status:** implemented for explicit collection listings and taxonomy term
-> listings.
-
-Pagination divides one ordered collection into several rendered views. An
+Pagination divides one ordered [collection](glossary.md#collection) into several rendered views. An
 ordinary authored listing declares `[pagination]`; a taxonomy term listing
 uses the `per_page` value from its taxonomy definition. Neither form discovers
 pages, changes collection order, or lets a template create output.
+
+Start with the [collection guide](collections.md) or the
+[tutorial's pagination step](tutorial.md#7-paginate-the-blog-index) if the
+collection model is new to you.
 
 ## A paginated listing
 

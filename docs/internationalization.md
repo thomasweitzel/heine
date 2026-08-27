@@ -1,16 +1,15 @@
 # Internationalization and localization
 
-This guide explains Heine's locale model and the choices behind it. Start with
-the [README](../README.md) to build a site; use the
-[reference](reference.md) for the complete configuration and template
-contract.
+This guide explains how one Heine site can render configured locale trees. Start
+with the [tutorial](tutorial.md) for a first multilingual site, and use the
+[reference](reference.md) for the complete configuration and template contract.
 
 ## Terms
 
 Internationalization (i18n) is Heine's locale-aware site model: configured
-locales, source trees, page identity, routes, links, assets, data, and output
-validation. Localization (l10n) is the locale-specific result: messages,
-plural forms, formatted values, and authored page content.
+[locales](glossary.md#locale), source trees, page identity, routes, links,
+assets, data, and output validation. Localization (l10n) is the locale-specific
+result: messages, plural forms, formatted values, and authored page content.
 
 Heine renders a finite configured set of locales at build time. URLs select a
 concrete locale; it does not negotiate a language at request time.
@@ -42,7 +41,7 @@ content/en/about.page        -> /about.html
 content/de/ueber-uns.page    -> /de/ueber-uns.html
 ```
 
-Rendered routes continue to derive from validated source-relative paths. There
+Rendered routes continue to derive from checked source-relative paths. There
 is no i18n-specific route override.
 
 ## Text direction
@@ -78,7 +77,7 @@ normally remain LTR regardless of their containing locale.
 
 ## Source trees
 
-The source tree makes every role explicit.
+The source tree gives each role a distinct location.
 
 ```text
 content/
@@ -121,9 +120,28 @@ locale-specific article content.
 
 Shared data remains below `data/`. Locale-specific data belongs below
 `data/<locale>/`; it has no implicit fallback. Templates receive these as
-separate `data` and `locale_data` values.
+separate `data` and [`locale_data`](glossary.md#locale-data) values. They are
+not merged:
 
-## Explicit page counterparts
+```toml
+# data/site.toml
+name = "Example site"
+
+# data/de/navigation.toml
+label = "Blog"
+```
+
+```tera
+<p>{{ data.site.name }}</p>
+{% set blog = page(id='blog/index') %}
+<a href="{{ blog.url }}">{{ locale_data.navigation.label }}</a>
+```
+
+The second value exists only while rendering German pages. A missing
+`locale_data.navigation` value is a template error; it does not read
+`data.navigation` instead.
+
+## Page counterparts
 
 Heine never infers that matching filenames or paths are translations. A page
 may instead declare a `translationid`:
@@ -196,14 +214,14 @@ post-count = { $count ->
 Fluent messages may use named values, terms, attributes, message references,
 and select expressions. Select expressions provide correct language-specific
 plural categories and can also express gender or other controlled choices.
-The initial value contract is deliberate: strings, numbers, and booleans/select
+The initial value contract accepts strings, numbers, and booleans/select
 values. Dates use the separate `format_date()` template function so the stable
 ISO date can remain suitable for HTML `datetime` attributes. It accepts a
 four-digit `YYYY-MM-DD` calendar date or an RFC 3339 offset-aware date-time,
 matching `page.date`, and formats its calendar date for the current locale
-with `short`, `medium`, or `long` styles; time and time-zone presentation
-remain a later extension. The template boundary does not expose arbitrary
-objects, arrays, raw HTML, Fluent internals, or filesystem access.
+with `short`, `medium`, or `long` styles. It formats calendar dates, not times
+or time zones. The template boundary does not expose arbitrary objects, arrays,
+raw HTML, Fluent internals, or filesystem access.
 
 Keep the machine-readable value in `datetime` and format only the visible
 text:
@@ -233,6 +251,6 @@ Templates receive a small render-facing model, including `locale`, shared
 `page()`. They do not receive raw resource bundles, source paths, mutable site
 state, or arbitrary access to every locale's content.
 
-Heine owns locale resolution, fallback, translation-group validation, route
+Heine owns locale resolution, fallback, translation-group checks, route
 and output collision detection, and all writes. Every generated page and
 asset still claims its output through the output domain before rendering.

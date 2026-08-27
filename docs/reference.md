@@ -1,6 +1,10 @@
 # Heine reference
 
-This is the complete reference for Heine-authored files and command options. The [README](../README.md) is the guided introduction.
+This is the complete current contract for Heine-authored files, command
+options, and template values. Start with the [README](../README.md) or
+[tutorial](tutorial.md) when building a site for the first time; use this page
+to look up exact fields, defaults, constraints, functions, and filters. The
+[glossary](glossary.md) defines Heine-specific vocabulary used below.
 
 `heine.toml`, `.page`, and `_directory.toml` use strict schemas: unknown
 fields are rejected. TOML loaded from `data/` or declared as page content is
@@ -27,33 +31,35 @@ A site root contains `heine.toml`, `content/`, and `templates/`; `data/`, `deplo
 `heine.toml` is required. Its `[i18n]` section is required; other sections and
 fields use the following defaults.
 
-| Field                                    | Type             | Default                               | Allowed values and constraints                                                                                                                              | Effect                                                                                      |
-|------------------------------------------|------------------|---------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| `site.base_path`                         | string           | `"/"`                                 | ASCII absolute URL directory path; starts and ends with `/`; uppercase percent escapes only; no encoded separators or dot segments                          | Prefix for Heine-generated absolute URLs, including `asset()`, `page()`, and taxonomy links |
-| `build.output_dir`                       | string           | `"public"`                            | Non-empty relative path with portable filename components; cannot be `content/`, `data/`, `deploy/`, `LICENSES/`, `templates/`, `locales/`, or a descendant | Generated output directory relative to site root                                            |
-| `assets.integrity`                       | string           | absent                                | `"sha256"`, `"sha384"`, `"sha512"`                                                                                                                          | Enables Subresource Integrity values from `asset()`                                         |
-| `i18n.default_locale`                    | string           | required                              | Canonical BCP-47 locale declared by an `i18n.locales.<code>` table                                                                                          | Locale with unprefixed generated URLs                                                       |
-| `i18n.locales`                           | table            | required                              | Non-empty table keyed by canonical BCP-47 locale codes                                                                                                      | Finite locale source trees to render                                                        |
-| `i18n.locales.<code>.direction`          | string           | required                              | `"ltr"` or `"rtl"`                                                                                                                                          | Base HTML writing direction for that locale                                                 |
-| `collections.<name>.order`               | string           | required                              | `"date-asc"`, `"date-desc"`, `"weight-asc"`, `"weight-desc"`, `"id-asc"`, or `"id-desc"`; `<name>` is a simple identifier                                   | Defines a named, locale-local ordered set of rendered pages                                 |
-| `taxonomies.<name>.collection`           | string           | required                              | Configured collection name; `<name>` is a simple identifier                                                                                                 | Selects and orders the taxonomy's rendered members                                          |
-| `taxonomies.<name>.path`                 | string           | required                              | Portable relative output path outside `__heine/`                                                                                                            | Generated taxonomy root                                                                     |
-| `taxonomies.<name>.index_template`       | string           | required                              | Logical template name below `templates/`                                                                                                                    | Renders the taxonomy's term index                                                           |
-| `taxonomies.<name>.term_template`        | string           | required                              | Logical template name below `templates/`                                                                                                                    | Renders each term listing and its pagers                                                    |
-| `taxonomies.<name>.per_page`             | integer          | required                              | Positive integer                                                                                                                                            | Members on each generated term-listing page                                                 |
-| `taxonomies.<name>.translations.<group>.<locale>` | string   | absent                                | An existing literal term for a configured locale; each non-empty opaque `<group>` has at least two locale members, and a locale-term pair occurs in at most one group | Declares a deliberate cross-locale term counterpart                                         |
-| `markdown.extensions`                    | array of strings | `[]`                                  | Unique subset of `"tables"`, `"strikethrough"`, `"task_lists"`, `"footnotes"`                                                                               | Enables Markdown extensions                                                                 |
-| `markdown.math`                          | string           | `"off"`                               | `"off"`, `"mathml"`, `"tex"`                                                                                                                                | Selects ordinary Markdown, build-time MathML, or escaped TeX passthrough                    |
-| `markdown.highlighting.stylesheet`       | string           | absent                                | Safe site-output-relative path ending in `.css`; cannot use `__heine/`                                                                                      | Generated class-based syntax stylesheet                                                     |
-| `markdown.highlighting.missing_language` | string           | `"error"`                             | `"error"`, `"plain"`                                                                                                                                        | Unknown fenced-language policy                                                              |
-| `markdown.highlighting.theme.light`      | string           | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                        | Light syntax palette                                                                        |
-| `markdown.highlighting.theme.dark`       | string           | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                        | Dark syntax palette                                                                         |
+| Field                                             | Type             | Default                               | Allowed values and constraints                                                                                                                                        | Effect                                                                                      |
+|---------------------------------------------------|------------------|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| `site.base_path`                                  | string           | `"/"`                                 | ASCII absolute URL directory path; starts and ends with `/`; uppercase percent escapes only; no encoded separators or dot segments                                    | Prefix for Heine-generated absolute URLs, including `asset()`, `page()`, and taxonomy links |
+| `build.output_dir`                                | string           | `"public"`                            | Non-empty relative path with portable filename components; cannot be `content/`, `data/`, `deploy/`, `LICENSES/`, `templates/`, `locales/`, or a descendant           | Generated output directory relative to site root                                            |
+| `assets.integrity`                                | string           | absent                                | `"sha256"`, `"sha384"`, `"sha512"`                                                                                                                                    | Enables Subresource Integrity values from `asset()`                                         |
+| `i18n.default_locale`                             | string           | required                              | Canonical BCP-47 locale declared by an `i18n.locales.<code>` table                                                                                                    | Locale with unprefixed generated URLs                                                       |
+| `i18n.locales`                                    | table            | required                              | Non-empty table keyed by canonical BCP-47 locale codes                                                                                                                | Finite locale source trees to render                                                        |
+| `i18n.locales.<code>.direction`                   | string           | required                              | `"ltr"` or `"rtl"`                                                                                                                                                    | Base HTML writing direction for that locale                                                 |
+| `collections.<name>.order`                        | string           | required                              | `"date-asc"`, `"date-desc"`, `"title-asc"`, `"title-desc"`, `"weight-asc"`, `"weight-desc"`, `"id-asc"`, or `"id-desc"`; `<name>` is a simple identifier              | Defines a named, locale-local ordered set of rendered pages                                 |
+| `taxonomies.<name>.collection`                    | string           | required                              | Configured collection name; `<name>` is a simple identifier                                                                                                           | Selects and orders the taxonomy's rendered members                                          |
+| `taxonomies.<name>.path`                          | string           | required                              | Portable relative output path outside [`__heine/`](glossary.md#heine)                                                                                                 | Generated taxonomy root                                                                     |
+| `taxonomies.<name>.index_template`                | string           | required                              | Logical template name below `templates/`                                                                                                                              | Renders the taxonomy's term index                                                           |
+| `taxonomies.<name>.term_template`                 | string           | required                              | Logical template name below `templates/`                                                                                                                              | Renders each term listing and its pagers                                                    |
+| `taxonomies.<name>.per_page`                      | integer          | required                              | Positive integer                                                                                                                                                      | Members on each generated term-listing page                                                 |
+| `taxonomies.<name>.translations.<group>.<locale>` | string           | absent                                | An existing literal term for a configured locale; each non-empty opaque `<group>` has at least two locale members, and a locale-term pair occurs in at most one group | Declares a deliberate cross-locale term counterpart                                         |
+| `markdown.extensions`                             | array of strings | `[]`                                  | Unique subset of `"tables"`, `"strikethrough"`, `"task_lists"`, `"footnotes"`                                                                                         | Enables Markdown extensions                                                                 |
+| `markdown.math`                                   | string           | `"off"`                               | `"off"`, `"mathml"`, `"tex"`                                                                                                                                          | Selects ordinary Markdown, build-time MathML, or escaped TeX passthrough                    |
+| `markdown.highlighting.stylesheet`                | string           | absent                                | Safe site-output-relative path ending in `.css`; cannot use [`__heine/`](glossary.md#heine)                                                                           | Generated class-based syntax stylesheet                                                     |
+| `markdown.highlighting.missing_language`          | string           | `"error"`                             | `"error"`, `"plain"`                                                                                                                                                  | Unknown fenced-language policy                                                              |
+| `markdown.highlighting.theme.light`               | string           | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                                  | Light syntax palette                                                                        |
+| `markdown.highlighting.theme.dark`                | string           | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                                  | Dark syntax palette                                                                         |
 
 Collection definitions establish relationships only; they do not write output.
 Every configured collection exists in every locale, including when it is
-empty. Page IDs break ties in ascending order. Date orders require every member
-to have the same explicit date precision (all TOML dates or all offset-aware
-date-times), and weight orders require numeric weights on every member.
+empty. Page IDs are the final deterministic tie-breaker. Date orders require
+every member to have the same explicit date precision (all TOML dates or all
+offset-aware date-times), title orders use the collection locale's ICU
+collation and require titles, and weight orders require numeric weights on
+every member.
 
 Taxonomies turn one configured collection into locale-local generated index
 and term-listing pages. Their terms are literal display and route components;
@@ -122,6 +128,35 @@ Each `.page` defines a page. Its ID is its path below its `content/<locale>/` tr
 
 `index.page` has no default `weight` and is excluded from sibling ordering unless it has a numeric weight.
 
+## Sibling navigation
+
+Sibling navigation is a directory-local sequence, independent of collections.
+For each locale and immediate page directory, Heine includes every rendered
+page with a numeric `weight`. It sorts them by ascending weight and then by
+page ID, so equal weights have a stable order. A page without a numeric weight,
+including a page with `weight = "None"`, does not participate. `index.page`
+also needs an explicit numeric weight to participate.
+
+Every participating page exposes `page.lighter` and `page.heavier`: the
+adjacent lower- and higher-weight page IDs, respectively, or `null` at either
+end. `siblings()` returns all other participating page IDs in the same order.
+The optional `id` argument selects an exact rendered page; `locale=` is allowed
+only with `id=`.
+
+```tera
+{% if page.lighter %}
+  {% set lighter = page(id=page.lighter) %}
+  <a href="{{ lighter.url }}">Previous</a>
+{% endif %}
+{% if page.heavier %}
+  {% set heavier = page(id=page.heavier) %}
+  <a href="{{ heavier.url }}">Next</a>
+{% endif %}
+```
+
+Use a collection when a listing needs its own configured ordering; sibling
+navigation deliberately has one fixed directory-and-weight model.
+
 Rendered pages, like copied assets, must derive portable output filename
 components. They cannot use empty components, `.`, `..`, Windows device names,
 trailing dots or spaces, or `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`, or
@@ -144,6 +179,44 @@ text. If its first line is `<!-- segment: name -->`, text becomes named content
 segments; dotted names create nested values and repeated names become ordered
 arrays. Markdown links and images may use `asset:<locale-root-relative-id>`
 for a validated copied asset; ordinary Markdown URLs are unchanged.
+
+For example, this declared text file begins with a segment marker, so it
+becomes structured content rather than one text value:
+
+```html
+<!-- segment: intro -->
+An introduction.
+<!-- segment: questions.title -->
+First question
+<!-- segment: questions.item -->
+One
+<!-- segment: questions.item -->
+Two
+```
+
+For a page declaring it as `main = "quiz.txt"`, templates receive
+`page.content.main.intro`, `page.content.main.questions.title`, and the array
+`page.content.main.questions.item`. Segmentation applies only when the first
+line is a marker. Otherwise the complete file remains one text value.
+
+## Markdown
+
+Heine renders Markdown with `pulldown-cmark` through the `markdown` filter.
+Markdown page content is normally passed to that filter from `page.content`.
+The following boundaries are part of the current contract:
+
+| Behavior                              | Current rule                                                                                                                                                                                                                                     |
+|---------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Metadata                              | Heine does not parse Markdown front matter. YAML or TOML front matter is ordinary Markdown source; page metadata belongs in the adjacent `.page` file.                                                                                           |
+| Extensions                            | Only the configured `tables`, `strikethrough`, `task_lists`, and `footnotes` extensions are enabled.                                                                                                                                             |
+| Raw HTML                              | Trusted Markdown HTML is passed through unsanitized. Do not use untrusted Markdown as site input.                                                                                                                                                |
+| Heading anchors and table of contents | Heine does not generate heading IDs, heading-anchor links, or a table of contents.                                                                                                                                                               |
+| Ordinary links and images             | Ordinary URLs, including relative URLs such as `./other.md`, are emitted unchanged. Heine does not resolve, convert, or validate them.                                                                                                           |
+| Checked internal links                | In Markdown links, use `page:<id>` or `page:<locale>:<id>` for a rendered page. In links or image sources, use `asset:<id>` for a copied asset. These forms resolve during the build and report invalid targets at the authored source location. |
+
+`markdown.math` and `markdown.highlighting` add the optional math and
+syntax-highlighting behavior described in the [`heine.toml`](#heinetoml)
+table. They do not add a general client-side JavaScript or CSS pipeline.
 
 ## `data/`
 
@@ -189,11 +262,16 @@ they are scoped to the locale currently being rendered unless noted otherwise.
 | `page.directory`    | `id`, `title`, `description`, `summary`, and `extra` from the immediate directory descriptor.                                                                                                                                                                                                             |
 | `page.translations` | Known counterparts keyed by locale code; each has `id` and output-relative `path`.                                                                                                                                                                                                                        |
 | `page.taxonomies`   | Assigned terms keyed by taxonomy name. Each term has literal `name` plus base-path-aware `url` and current-output-relative `relative_url`.                                                                                                                                                                |
-| `taxonomy`          | `null` for authored pages. A taxonomy index receives `name` and ordered `terms`; a term listing also receives `term`. Each term has `name`, `count`, `url`, `relative_url`, and explicitly configured `translations`, keyed by locale code.                                                                      |
+| `taxonomy`          | `null` for authored pages. A taxonomy index receives `name` and ordered `terms`; a term listing also receives `term`. Each term has `name`, `count`, `url`, `relative_url`, and explicitly configured `translations`, keyed by locale code.                                                               |
 | `data`              | Shared values from `data/`.                                                                                                                                                                                                                                                                               |
 | `locale_data`       | Values from `data/<locale>/`; it never falls back to shared data.                                                                                                                                                                                                                                         |
 | `root`              | Relative prefix from the rendered page to the site root.                                                                                                                                                                                                                                                  |
 | `pagination`        | `null` for ordinary pages; the current generated-listing view otherwise. See [pagination](pagination.md).                                                                                                                                                                                                 |
+
+`page.dir` is the locale-relative containing directory, or the empty string
+for a page at the locale root. `page.subdirs` is its sorted immediate list of
+source subdirectory names. They describe the source-tree location; they do not
+discover pages or create output.
 
 Combine `root` with a counterpart's `path` for a relative language-switcher
 link, or pass an exact locale and ID to `page()` for its base-path-aware URL.
@@ -203,20 +281,26 @@ Fluent message arguments. Heine validates their value types while Fluent
 formats the selected message; a message may deliberately ignore an argument
 it does not use.
 
-| Function           | Use                                           | Result                                                                                                                                                                                                                                               |
-|--------------------|-----------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `asset`            | `asset(id="assets/logo.svg")`                 | A copied asset in the current locale: `url`, `relative_url`, optional `integrity`, `width`, `height`, and optional `licensing` (`copyrights`, `expressions`, `comments`, `license_texts`). Shared assets use the `assets/` prefix.                   |
-| `attributions`     | `attributions()`                              | Deterministic inventory of assets with licensing sidecars. Each item has an `asset` (`output_path`, URLs) and the same `licensing` view exposed by `asset()`. `output_path` is the locale-qualified published path, not an `asset()` lookup ID.      |
-| `page`             | `page(id="guide/install")`                    | A rendered page in the current locale, including its render-facing metadata, content, and `url` / `relative_url`.                                                                                                                                    |
-| `page`             | `page(locale="de", id="hilfe/installieren")`  | An exact rendered page in the named configured locale; this never guesses a translation counterpart.                                                                                                                                                 |
-| `page_exists`      | `page_exists(id="quiz/index")`                | Whether a rendered page exists in the current locale. It returns `false` for a missing page, but invalid IDs and locales still fail at the call site.                                                                                                |
-| `collection`       | `collection(name="posts")`                    | A configured current-locale collection with `name`, `count`, and ordered `page_ids`.                                                                                                                                                                 |
-| `taxonomy`         | `taxonomy(name="tags")` or `taxonomy(name="tags", locale="de")` | A configured taxonomy index in the current or an exact configured locale, with `name`, base-path-aware `url`, and current-output-relative `relative_url`. Invalid or unknown names and locales fail at the call site. |
-| `siblings`         | `siblings()` or `siblings(id="blog/index")`   | Ordered IDs for the other rendered pages in the same directory that participate in sibling ordering. `locale=` is allowed only with `id=`.                                                                                                           |
-| `t`                | `t(id="quiz-count", count=quizzes \| length)` | Escaped Fluent text for the current locale. It falls back to the default locale only when the message or requested attribute is absent. Use `attribute="label"` for a Fluent attribute; other named arguments must be strings, numbers, or booleans. |
-| `format_date`      | `format_date(value=page.date, style="long")`  | A locale-formatted calendar date. Values are `YYYY-MM-DD` or RFC 3339 offset-aware date-times; styles are `short`, `medium` (default), and `long`.                                                                                                   |
-| `highlight_css`    | `highlight_css()`                             | The base-path-aware URL for the configured generated highlighting stylesheet. It fails if highlighting is disabled.                                                                                                                                  |
-| `pagination_links` | `pagination_links()`                          | Every lightweight pager link for the current paginated listing. It fails at the call site outside such a render.                                                                                                                                     |
+Template inheritance and components use Tera2's own syntax; the
+[tutorial](tutorial.md#reuse-the-pager-as-a-tera2-component) shows one
+component. Heine does not provide a configuration or plugin hook for
+registering site-defined Rust filters or functions. The function and filter
+tables below are the complete Heine additions to a template environment.
+
+| Function           | Use                                                             | Result                                                                                                                                                                                                                                               |
+|--------------------|-----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `asset`            | `asset(id="assets/logo.svg")`                                   | A copied asset in the current locale: `url`, `relative_url`, optional `integrity`, `width`, `height`, and optional `licensing` (`copyrights`, `expressions`, `comments`, `license_texts`). Shared assets use the `assets/` prefix.                   |
+| `attributions`     | `attributions()`                                                | Deterministic inventory of assets with licensing sidecars. Each item has an `asset` (`output_path`, URLs) and the same `licensing` view exposed by `asset()`. `output_path` is the locale-qualified published path, not an `asset()` lookup ID.      |
+| `page`             | `page(id="guide/install")`                                      | A rendered page in the current locale, including its render-facing metadata, content, and `url` / `relative_url`.                                                                                                                                    |
+| `page`             | `page(locale="de", id="hilfe/installieren")`                    | An exact rendered page in the named configured locale; this never guesses a translation counterpart.                                                                                                                                                 |
+| `page_exists`      | `page_exists(id="quiz/index")`                                  | Whether a rendered page exists in the current locale. It returns `false` for a missing page, but invalid IDs and locales still fail at the call site.                                                                                                |
+| `collection`       | `collection(name="posts")`                                      | A configured current-locale collection with `name`, `count`, and ordered `page_ids`.                                                                                                                                                                 |
+| `taxonomy`         | `taxonomy(name="tags")` or `taxonomy(name="tags", locale="de")` | A configured taxonomy index in the current or an exact configured locale, with `name`, base-path-aware `url`, and current-output-relative `relative_url`. Invalid or unknown names and locales fail at the call site.                                |
+| `siblings`         | `siblings()` or `siblings(id="blog/index")`                     | Ordered IDs for the other eligible pages in the selected page’s directory. See [sibling navigation](#sibling-navigation). `locale=` is allowed only with `id=`.                                                                                      |
+| `t`                | `t(id="quiz-count", count=quizzes \| length)`                   | Escaped Fluent text for the current locale. It falls back to the default locale only when the message or requested attribute is absent. Use `attribute="label"` for a Fluent attribute; other named arguments must be strings, numbers, or booleans. |
+| `format_date`      | `format_date(value=page.date, style="long")`                    | A locale-formatted calendar date. Values are `YYYY-MM-DD` or RFC 3339 offset-aware date-times; styles are `short`, `medium` (default), and `long`.                                                                                                   |
+| `highlight_css`    | `highlight_css()`                                               | The base-path-aware URL for the configured generated highlighting stylesheet. It fails if highlighting is disabled.                                                                                                                                  |
+| `pagination_links` | `pagination_links()`                                            | Every lightweight pager link for the current paginated listing. It fails at the call site outside such a render.                                                                                                                                     |
 
 `asset()` IDs and `page()` IDs are relative to the current locale tree and never begin with `/`. Assign a function result with `{% set guide = page(id="guide") %}` before reading a field such as `guide.url`; Tera does not support a field access directly on a function call. `asset()` can resolve a shared asset such as `assets/logo.svg`; a non-default locale can override it below its own `assets/` directory. `page()` resolves only rendered pages.
 

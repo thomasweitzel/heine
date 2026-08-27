@@ -1,6 +1,7 @@
 # Taxonomies
 
-Taxonomies classify the explicitly selected members of a collection into
+Taxonomies classify the explicitly selected members of a
+[collection](glossary.md#collection) into
 named terms. They are the generated-output counterpart to collections: a
 collection decides which pages participate and in what order; a taxonomy
 partitions that already ordered set into term listings.
@@ -13,21 +14,8 @@ pagination      = slices a term listing into generated output pages
 ```
 
 A taxonomy is one generic, validated model for tags, categories, series,
-topics, and similar classifications.
-
-## Goals
-
-- Keep taxonomy membership explicit in page metadata.
-- Reuse collection membership and ordering rather than introducing a second
-  query or sorting system.
-- Generate an index and term listings as validated render tasks, never from a
-  template-side loop.
-- Preserve literal term identity and routes; never silently slugify, merge, or
-  normalize terms.
-- Use the configured locale for human-friendly term ordering without making
-  locale collation part of term identity.
-- Retain authored source locations for configuration, membership, route, and
-  collision diagnostics.
+topics, and similar classifications. Start with the [tutorial's tag step](tutorial.md#8-add-tags)
+when adding a taxonomy for the first time.
 
 ## Authored configuration
 
@@ -249,16 +237,3 @@ Taxonomy relationships are full-build concerns. A quick build re-renders the
 affected generated term listings when a present member page changes, but it
 retains its existing limitations for configuration, template, relationship,
 rename, and deletion changes.
-
-## Deliberately deferred
-
-- Per-term descriptions, images, aliases, display-label overrides, and manual
-  term weights.
-- Pagination for very large taxonomy indexes.
-- Related-page ranking based on shared terms.
-- Per-term Atom feeds, which depend on the later canonical-URL and feed work.
-
-These remain possible because terms, their generated routes, and their
-rendering context are explicit domain values. They are not part of the first
-feature because they would add independent content, metadata, or ranking
-models without a demonstrated need.
