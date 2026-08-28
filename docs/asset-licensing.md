@@ -7,7 +7,7 @@ exposes the declared information to ordinary Tera templates. It does not
 determine whether a declaration satisfies the law applicable to a particular
 work or use.
 
-Use this guide after the [tutorial's deployment step](tutorial.md#10-prepare-the-generated-site-for-deployment)
+Use this guide after the [tutorial's asset-licensing step](tutorial.md#11-add-asset-licensing-and-attributions)
 when a copied asset needs published licensing information or an attribution
 page.
 
@@ -34,7 +34,7 @@ cannot itself be a copied asset.
 Every SPDX license identifier and `WITH` exception in the expression requires
 the corresponding `LICENSES/<identifier>.txt` file. A local declaration such
 as `LicenseRef-Public-Domain` similarly requires
-`LICENSES/LicenseRef-Public-Domain.txt`. Heine validates expressions with the
+`LICENSES/LicenseRef-Public-Domain.txt`. Heine checks expressions with the
 SPDX license list, diagnoses malformed sidecars at their authored value, and
 rejects an orphaned sidecar rather than silently ignoring it.
 

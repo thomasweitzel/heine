@@ -34,6 +34,14 @@ not maintain a separate in-memory site representation. It uses the
 `http://127.0.0.1:1111/guide/blog/post.html`. `/guide` redirects to `/guide/`;
 paths outside the configured base path return `404`.
 
+For local browsing, a request ending in `/` serves that directory's
+`index.html`; a directory request without the trailing slash redirects to the
+slash form. These are development-server conveniences. They do not change
+Heine's generated URL contract: `page()`, pagination, taxonomy links, and
+sitemaps continue to name their literal output files, such as
+`/blog/index.html`. A production host decides independently whether it offers
+the same directory-index behavior.
+
 It handles `GET` and `HEAD`, supplies ordinary content types, and supports one
 `bytes` range for regular files. That allows local playback and seeking for
 audio and video. Multiple or unsupported ranges receive a normal complete

@@ -1,6 +1,6 @@
 template = "section-index.tera"
 title = "Blog"
-date = 2026-08-01
+published = 2026-08-01T09:30:00
 summary = """
 Ein Beispiel-Blog mit lokalisierten Beiträgen.
 """

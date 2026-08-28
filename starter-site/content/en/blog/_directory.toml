@@ -6,4 +6,4 @@ template = "post.tera"
 collections = ["posts"]
 
 [pages.metadata]
-required = ["title", "date"]
+required = ["title", "published"]

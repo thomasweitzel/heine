@@ -109,6 +109,8 @@ pub(crate) fn build_at_with_publication(
         i18n: config.i18n().clone(),
         collections: config.collections().clone(),
         taxonomies: config.taxonomies().clone(),
+        site: config.site(),
+        sitemap: config.sitemap(),
         deployment: &deployment,
         licenses: &licenses,
         markdown_renderer: &markdown,

@@ -20,7 +20,7 @@ all-in-one web-development workflow. Heine is not published to crates.io yet:
 install a current stable Rust toolchain, clone this repository, and run it with
 `cargo run`.
 
-Sitemaps, RSS/Atom feeds, and plugins are not implemented yet.
+RSS/Atom feeds and plugins are not implemented yet.
 
 ## First site
 
@@ -102,7 +102,7 @@ The [documentation map](docs/README.md) explains the available reading paths.
   [localization](docs/internationalization.md),
   [collections](docs/collections.md), [pagination](docs/pagination.md),
   [taxonomies](docs/taxonomies.md), [deployment files](docs/deployment-files.md),
-  [asset licensing](docs/asset-licensing.md), or the
+  [asset licensing](docs/asset-licensing.md), [sitemaps](docs/sitemap.md), or the
   [development server](docs/development-server.md).
 - Use the [reference](docs/reference.md) for exact fields, defaults, template
   functions, and constraints.
@@ -138,7 +138,7 @@ automatic content-hash generation.
 
 ## Build behavior
 
-A normal build validates a complete site and publishes it only after rendering
+A normal build checks a complete site and publishes it only after rendering
 and copying succeed. It replaces stale generated files left by renamed or
 deleted inputs. If an existing output directory was not created by Heine, use
 `--clean-output` only after confirming that it is safe to replace.

@@ -8,21 +8,23 @@ use std::{
     time::SystemTime,
 };
 
+use jiff::tz::AmbiguousOffset;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error as ThisError;
-use time::{Date, Month, PrimitiveDateTime, Time, UtcOffset};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{
-    config::{CollectionName, CollectionsConfig, TaxonomiesConfig, TaxonomyName},
+    config::{
+        CollectionName, CollectionsConfig, EditorialTimeZone, TaxonomiesConfig, TaxonomyName,
+    },
     content,
     locale::Locale,
     output::OutputPath,
     site::{
         Error,
         page::{
-            CollectionMembership, DirectoryView, LoadedPage, Metadata, MetadataDate, OutputSuffix,
-            Page, PageId, Pagination, PaginationSegment, RawMetadata, RawPage, Task,
+            CollectionMembership, DirectoryView, LoadedPage, Metadata, OutputSuffix, Page, PageId,
+            Pagination, PaginationSegment, PublicationTime, RawMetadata, RawPage, Task,
             TaxonomyMembership, TaxonomyTermMembership, TranslationId,
         },
     },
@@ -38,7 +40,6 @@ struct RawDirectory {
     title: Option<toml::Spanned<String>>,
     description: Option<toml::Spanned<String>>,
     summary: Option<toml::Spanned<String>>,
-    date: Option<toml::Spanned<toml::Value>>,
     extra: Option<toml::Spanned<toml::Value>>,
     #[serde(rename = "metadata")]
     metadata_policy: Option<RawMetadataPolicy>,
@@ -57,6 +58,7 @@ struct RawMetadataPolicy {
 struct RawPagePolicy {
     template: Option<toml::Spanned<toml::Value>>,
     collections: Option<Vec<toml::Spanned<String>>>,
+    sitemap: Option<toml::Spanned<bool>>,
     metadata: Option<RawMetadataPolicy>,
 }
 
@@ -71,6 +73,7 @@ pub(super) struct DirectoryDescriptor {
     page_requirements: Vec<Requirement>,
     template: Option<TemplateChoice>,
     collections: Option<Vec<CollectionMembership>>,
+    sitemap_exclusion: Option<SourceSpan>,
     modified: SystemTime,
 }
 
@@ -84,6 +87,8 @@ pub(super) struct PageLoadContext<'a> {
     pub(super) descriptors: &'a BTreeMap<PathBuf, DirectoryDescriptor>,
     pub(super) collections: &'a CollectionsConfig,
     pub(super) taxonomies: &'a TaxonomiesConfig,
+    pub(super) time_zone: Option<&'a EditorialTimeZone>,
+    pub(super) sitemap_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +139,27 @@ struct FirstTaxonomyTerm {
     #[source_code]
     source_code: Arc<NamedSource<String>>,
     #[label("first term here")]
+    span: SourceSpan,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("page sitemap setting cannot override an excluded directory")]
+#[diagnostic(code(heine::sitemap::directory_override))]
+pub(crate) struct SitemapDirectoryOverride {
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("this attempts to re-include the page")]
+    span: SourceSpan,
+    #[related]
+    boundary: Vec<SitemapDirectoryBoundary>,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("this directory excludes every descendant page from the sitemap")]
+struct SitemapDirectoryBoundary {
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("recursive sitemap boundary")]
     span: SourceSpan,
 }
 
@@ -227,6 +253,14 @@ pub(super) fn load_page(
             span: error.span().unwrap_or(0..0).into(),
         }))
     })?;
+    if let Some(date) = &raw.legacy_date {
+        return Err(invalid(
+            path,
+            &text,
+            date.span().into(),
+            "field `date` is no longer supported; use `published = 2026-08-14T09:30:00` with site.time_zone instead",
+        ));
+    }
     let id = PageId::from_logical_path(
         source_path::LogicalPath::from_path(&relative.with_extension(""))
             .expect("discovered page IDs remain logical"),
@@ -234,7 +268,6 @@ pub(super) fn load_page(
     let directory_path = relative.parent().unwrap_or(Path::new(""));
     let ancestors = descriptor_ancestors(directory_path, context.descriptors);
     let template = template_for(raw.template, &ancestors, path, &text)?;
-    let page_source = crate::source_diagnostic::named_source(path, text.clone(), "TOML");
     let suffix_span = raw.suffix.span();
     let suffix: OutputSuffix = raw
         .suffix
@@ -307,9 +340,29 @@ pub(super) fn load_page(
             title: raw.title,
             description: raw.description,
             summary: raw.summary,
-            date: raw.date,
+            published: raw.published,
+            updated: raw.updated,
             extra: raw.extra,
         },
+        path,
+        &text,
+        context.time_zone,
+    )?;
+    if let (Some(published), Some(updated)) = (&metadata.published, &metadata.updated)
+        && updated < published
+    {
+        return Err(invalid(
+            path,
+            &text,
+            metadata.updated_span.unwrap_or((0, 0).into()),
+            "field `updated` must not be earlier than `published`",
+        ));
+    }
+    let sitemap_include = sitemap_for(
+        raw.sitemap,
+        template.is_some(),
+        context.sitemap_enabled,
+        &ancestors,
         path,
         &text,
     )?;
@@ -377,6 +430,8 @@ pub(super) fn load_page(
         .get(source_dir)
         .cloned()
         .unwrap_or_default();
+    let sitemap_lastmod = metadata.updated.or(metadata.published);
+    let page_source = crate::source_diagnostic::named_source(path, text.clone(), "TOML");
     let page = Page {
         id: id.clone(),
         output_path: output_path.clone(),
@@ -415,6 +470,8 @@ pub(super) fn load_page(
             output_path,
             latest_input: latest,
             pagination: None,
+            sitemap_include,
+            sitemap_lastmod,
         },
     );
     Ok(LoadedPage {
@@ -494,10 +551,70 @@ fn pagination_for(
     }))
 }
 
+fn sitemap_for(
+    raw: Option<toml::Spanned<bool>>,
+    rendered: bool,
+    sitemap_enabled: bool,
+    ancestors: &[&DirectoryDescriptor],
+    path: &Path,
+    source: &str,
+) -> Result<bool, Error> {
+    let directory_exclusion = ancestors
+        .iter()
+        .rev()
+        .find_map(|descriptor| descriptor.sitemap_exclusion.map(|span| (*descriptor, span)));
+    let Some(raw) = raw else {
+        return Ok(directory_exclusion.is_none());
+    };
+    let span: SourceSpan = raw.span().into();
+    if !sitemap_enabled {
+        return Err(invalid(
+            path,
+            source,
+            span,
+            "field `sitemap` on a page requires [sitemap] in heine.toml",
+        ));
+    }
+    if !rendered {
+        return Err(invalid(
+            path,
+            source,
+            span,
+            "field `sitemap` requires this page to have a template",
+        ));
+    }
+    if raw.into_inner() {
+        if let Some((descriptor, boundary_span)) = directory_exclusion {
+            return Err(Error::SitemapDirectoryOverride(Box::new(
+                SitemapDirectoryOverride {
+                    source_code: Arc::new(crate::source_diagnostic::named_source(
+                        path,
+                        source.to_owned(),
+                        "TOML",
+                    )),
+                    span,
+                    boundary: vec![SitemapDirectoryBoundary {
+                        source_code: Arc::new(descriptor.source.clone()),
+                        span: boundary_span,
+                    }],
+                },
+            )));
+        }
+        return Err(invalid(
+            path,
+            source,
+            span,
+            "field `sitemap` accepts only false; omit it to include this page",
+        ));
+    }
+    Ok(false)
+}
+
 pub(super) fn load_descriptors(
     content_root: &Path,
     entries: &[DirEntry],
     collection_config: &CollectionsConfig,
+    sitemap_enabled: bool,
 ) -> Result<BTreeMap<PathBuf, DirectoryDescriptor>, Error> {
     let mut descriptors = BTreeMap::new();
     for entry in entries {
@@ -527,14 +644,39 @@ pub(super) fn load_descriptors(
                 title: raw.title,
                 description: raw.description,
                 summary: raw.summary,
-                date: raw.date,
+                published: None,
+                updated: None,
                 extra: raw.extra,
             },
             path,
             &text,
+            None,
         )?;
         let metadata_requirements = requirements(raw.metadata_policy, path, &text)?;
         let page_policy = raw.pages.unwrap_or_default();
+        let sitemap_exclusion = page_policy
+            .sitemap
+            .map(|value| {
+                let span: SourceSpan = value.span().into();
+                if !sitemap_enabled {
+                    return Err(invalid(
+                        path,
+                        &text,
+                        span,
+                        "field `pages.sitemap` requires [sitemap] in heine.toml",
+                    ));
+                }
+                if value.into_inner() {
+                    return Err(invalid(
+                        path,
+                        &text,
+                        span,
+                        "field `pages.sitemap` accepts only false; omit it to keep ordinary sitemap membership",
+                    ));
+                }
+                Ok(span)
+            })
+            .transpose()?;
         let page_requirements = requirements(page_policy.metadata, path, &text)?;
         let template = match page_policy.template {
             Some(value) => Some(parse_template(value, path, &text)?),
@@ -556,6 +698,7 @@ pub(super) fn load_descriptors(
                 page_requirements,
                 template,
                 collections,
+                sitemap_exclusion,
                 modified: metadata_modified(path)?,
             },
         );
@@ -800,11 +943,20 @@ fn parse_template(
     }
 }
 
-fn parse_metadata(raw: RawMetadata, path: &Path, source: &str) -> Result<Metadata, Error> {
-    let date_span = raw.date.as_ref().map(|value| value.span().into());
-    let date = raw
-        .date
-        .map(|value| parse_date(value, path, source))
+fn parse_metadata(
+    raw: RawMetadata,
+    path: &Path,
+    source: &str,
+    time_zone: Option<&EditorialTimeZone>,
+) -> Result<Metadata, Error> {
+    let updated_span = raw.updated.as_ref().map(|value| value.span().into());
+    let published = raw
+        .published
+        .map(|value| parse_publication_time("published", value, time_zone, path, source))
+        .transpose()?;
+    let updated = raw
+        .updated
+        .map(|value| parse_publication_time("updated", value, time_zone, path, source))
         .transpose()?;
     let (extra, extra_span) = raw
         .extra
@@ -826,91 +978,95 @@ fn parse_metadata(raw: RawMetadata, path: &Path, source: &str) -> Result<Metadat
         title: raw.title.map(toml::Spanned::into_inner),
         description: raw.description.map(toml::Spanned::into_inner),
         summary: raw.summary.map(toml::Spanned::into_inner),
-        date,
-        date_span,
+        published,
+        updated,
+        updated_span,
         extra: serde_json::to_value(extra).expect("toml values are serializable"),
     })
 }
 
-fn parse_date(
+fn parse_publication_time(
+    field: &str,
     value: toml::Spanned<toml::Value>,
+    time_zone: Option<&EditorialTimeZone>,
     path: &Path,
     source: &str,
-) -> Result<MetadataDate, Error> {
+) -> Result<PublicationTime, Error> {
     let span = value.span().into();
     let toml::Value::Datetime(value) = value.into_inner() else {
         return Err(invalid(
             path,
             source,
             span,
-            "field `date` must be a TOML date or an offset-aware date-time",
+            format!("field `{field}` must be a TOML local date-time without a UTC offset"),
         ));
     };
-    let Some(date) = value.date else {
+    if value.date.is_none() || value.time.is_none() || value.offset.is_some() {
         return Err(invalid(
             path,
             source,
             span,
-            "field `date` must include a calendar date",
+            format!("field `{field}` must be a TOML local date-time without a UTC offset"),
+        ));
+    }
+    let Some(time_zone) = time_zone else {
+        return Err(invalid(
+            path,
+            source,
+            span,
+            format!(
+                "field `{field}` requires site.time_zone; add an IANA time-zone name such as \"Europe/Berlin\" under [site]"
+            ),
         ));
     };
-    let month = Month::try_from(date.month).map_err(|_| {
-        invalid(
-            path,
-            source,
-            span,
-            "field `date` contains an invalid calendar month",
-        )
-    })?;
-    let date = Date::from_calendar_date(i32::from(date.year), month, date.day).map_err(|_| {
-        invalid(
-            path,
-            source,
-            span,
-            "field `date` contains an invalid calendar date",
-        )
-    })?;
-    match (value.time, value.offset) {
-        (None, None) => Ok(MetadataDate::Date(date)),
-        (Some(time), Some(offset)) => {
-            let time = Time::from_hms_nano(
-                time.hour,
-                time.minute,
-                time.second.unwrap_or(0),
-                time.nanosecond.unwrap_or(0),
+    let local = value
+        .to_string()
+        .parse::<jiff::civil::DateTime>()
+        .map_err(|_| {
+            invalid(
+                path,
+                source,
+                span,
+                format!("field `{field}` contains an invalid local date-time"),
             )
-            .map_err(|_| {
-                invalid(
-                    path,
-                    source,
-                    span,
-                    "field `date` contains an invalid clock time",
-                )
-            })?;
-            let offset = match offset {
-                toml::value::Offset::Z => UtcOffset::UTC,
-                toml::value::Offset::Custom { minutes } => {
-                    UtcOffset::from_whole_seconds(i32::from(minutes) * 60).map_err(|_| {
-                        invalid(
-                            path,
-                            source,
-                            span,
-                            "field `date` contains an invalid UTC offset",
-                        )
-                    })?
-                }
-            };
-            Ok(MetadataDate::OffsetDateTime(
-                PrimitiveDateTime::new(date, time).assume_offset(offset),
-            ))
+        })?;
+    let ambiguous = time_zone.zone().to_ambiguous_zoned(local);
+    let zoned = match ambiguous.offset() {
+        AmbiguousOffset::Unambiguous { .. } => ambiguous.unambiguous().map_err(|_| {
+            invalid(
+                path,
+                source,
+                span,
+                format!(
+                    "field `{field}` could not be resolved in site.time_zone {:?}",
+                    time_zone.name(),
+                ),
+            )
+        })?,
+        AmbiguousOffset::Gap { before, after } => {
+            return Err(invalid(
+                path,
+                source,
+                span,
+                format!(
+                    "field `{field}` does not exist in site.time_zone {:?}: the clock moves from {before} to {after}; choose a local time outside that gap",
+                    time_zone.name(),
+                ),
+            ));
         }
-        _ => Err(invalid(
-            path,
-            source,
-            span,
-            "field `date` must be a TOML date or an offset-aware date-time",
-        )),
-    }
+        AmbiguousOffset::Fold { before, after } => {
+            return Err(invalid(
+                path,
+                source,
+                span,
+                format!(
+                    "field `{field}` occurs twice in site.time_zone {:?}: the clock moves from {before} to {after}; choose a local time outside that repeated interval",
+                    time_zone.name(),
+                ),
+            ));
+        }
+    };
+    Ok(PublicationTime::new(zoned.timestamp()))
 }
 
 fn validate_extra_keys(
@@ -973,9 +1129,9 @@ fn requirements(
 ) -> Result<Vec<Requirement>, Error> {
     raw.unwrap_or_default().required.into_iter().map(|value| {
         let span = value.span(); let name = value.into_inner();
-        if matches!(name.as_str(), "title" | "description" | "summary" | "date") || valid_extra_requirement(&name) {
+        if matches!(name.as_str(), "title" | "description" | "summary" | "published" | "updated") || valid_extra_requirement(&name) {
             Ok(Requirement { name, span: span.into() })
-        } else { Err(invalid(path, source, span.into(), "metadata requirement must name `title`, `description`, `summary`, `date`, or `extra.<name>`")) }
+        } else { Err(invalid(path, source, span.into(), "metadata requirement must name `title`, `description`, `summary`, `published`, `updated`, or `extra.<name>`")) }
     }).collect()
 }
 

@@ -17,8 +17,8 @@
 {% endblock %}
 
 {% block content %}
-{% set published = format_date(value=page.date, style="long") %}
-<p><time datetime="{{ page.date }}">{{ published }}</time></p>
+{% set published = format_date(value=page.published, style="long") %}
+<p><time datetime="{{ page.published }}">{{ published }}</time></p>
 {% if page.taxonomies.tags %}
   <p>{{ t(id="tags", count=page.taxonomies.tags | length) }}:
     {% for tag in page.taxonomies.tags %}

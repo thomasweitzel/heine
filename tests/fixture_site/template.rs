@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn exposes_components_defined_in_any_template_without_imports() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "templates/components.tera",
+        "{% component ui.greeting(label: string) %}<p>{{ label }}</p>{% endcomponent ui.greeting %}",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ <ui.greeting label=\"Hello\" /> }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("component is globally available");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("rendered output"),
+        "<p>Hello</p>"
+    );
+}
+
+#[test]
 fn rejects_unknown_keywords_for_fixed_template_function_contracts() {
     let cases = [
         ("{{ highlight_css(unknown=true) }}", true),
@@ -263,7 +284,7 @@ fn rejects_invalid_collection_configuration_at_the_authored_value() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[collections.blog-posts]\norder = 'date-desc'\n",
+        "[collections.blog-posts]\norder = 'id-desc'\n",
     );
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("collection is invalid");
@@ -277,15 +298,12 @@ fn rejects_invalid_collection_configuration_at_the_authored_value() {
     );
 
     let fixture = Fixture::new();
-    fixture.write(
-        "heine.toml",
-        "[collections.posts]\norder = 'published-desc'\n",
-    );
+    fixture.write("heine.toml", "[collections.posts]\norder = 'date-desc'\n");
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("order is invalid");
     let diagnostic = format!("{error:?}");
 
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
-    assert!(diagnostic.contains("published-desc"), "{diagnostic}");
     assert!(diagnostic.contains("date-desc"), "{diagnostic}");
+    assert!(diagnostic.contains("published-desc"), "{diagnostic}");
 }

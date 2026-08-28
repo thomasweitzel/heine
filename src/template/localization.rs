@@ -147,9 +147,8 @@ fn format_date(locale: &Locale, value: &str, style: &str) -> Result<String, Stri
     })
 }
 
-/// `page.date` is validated before rendering. The public helper deliberately
-/// accepts that same contract: a four-digit ISO calendar date or RFC 3339
-/// offset date-time. This keeps date-only values strict and predictable.
+/// The template boundary accepts RFC 3339 values from `page.published` and
+/// `page.updated`; plain ISO dates remain useful for authored template data.
 fn parse_iso_date(value: &str) -> Result<Date<icu_calendar::Iso>, String> {
     let calendar = match value.contains('T') {
         true => OffsetDateTime::parse(value, &Rfc3339)

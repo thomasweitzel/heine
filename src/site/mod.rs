@@ -11,6 +11,7 @@ mod loader;
 mod locales;
 mod page;
 mod pagination;
+mod sitemap;
 mod taxonomy;
 
 use std::{
@@ -25,7 +26,10 @@ use thiserror::Error;
 
 use crate::{
     asset::{AssetCatalog, AssetSources, SharedAssets},
-    config::{BasePath, CollectionsConfig, I18nConfig, SiteConfig, TaxonomiesConfig},
+    config::{
+        BasePath, CollectionsConfig, I18nConfig, SiteConfig, SiteSettings, SitemapConfig,
+        TaxonomiesConfig,
+    },
     content,
     data::SiteData,
     deploy::Catalog as DeploymentCatalog,
@@ -213,6 +217,8 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) i18n: I18nConfig,
     pub(crate) collections: CollectionsConfig,
     pub(crate) taxonomies: TaxonomiesConfig,
+    pub(crate) site: &'a SiteSettings,
+    pub(crate) sitemap: Option<&'a SitemapConfig>,
     pub(crate) deployment: &'a DeploymentCatalog,
     pub(crate) licenses: &'a LicenseCatalog,
     pub(crate) markdown_renderer: &'a MarkdownRenderer,
@@ -279,6 +285,9 @@ pub(crate) enum Error {
     InvalidPage(#[from] Box<loader::PageDiagnostic>),
     #[error(transparent)]
     #[diagnostic(transparent)]
+    SitemapDirectoryOverride(#[from] Box<loader::SitemapDirectoryOverride>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     InvalidPageOutput(#[from] Box<loader::PageOutputPathDiagnostic>),
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -310,6 +319,8 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Output(#[from] crate::output::Error),
+    #[error(transparent)]
+    Sitemap(#[from] sitemap::Error),
 }
 
 /// A semantic error tied to the precise source range that referenced a
@@ -343,6 +354,7 @@ pub(crate) struct Site {
     i18n: I18nConfig,
     localization: std::sync::Arc<Localization>,
     output_plan: OutputPlan,
+    sitemap: Option<sitemap::Sitemap>,
 }
 
 impl Site {
@@ -355,6 +367,8 @@ impl Site {
             i18n,
             collections: collection_config,
             taxonomies: taxonomy_config,
+            site: site_settings,
+            sitemap: sitemap_config,
             deployment,
             licenses,
             markdown_renderer,
@@ -384,7 +398,14 @@ impl Site {
             i18n.locales(),
             i18n.default_locale().clone(),
         )?);
-        let locales = locales::load(content_root, &i18n, &collection_config, &taxonomy_config)?;
+        let locales = locales::load(
+            content_root,
+            &i18n,
+            &collection_config,
+            &taxonomy_config,
+            site_settings.time_zone(),
+            sitemap_config.is_some(),
+        )?;
         let mut pages = locales.pages;
         let siblings = locales.siblings;
         let mut tasks = locales.tasks;
@@ -480,6 +501,19 @@ impl Site {
         let taxonomy_tasks = taxonomies.tasks(&latest_inputs, &shared_latest);
         let taxonomies = std::sync::Arc::new(taxonomies);
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks);
+        let sitemap = match (sitemap_config, site_settings.origin()) {
+            (Some(config), Some(origin)) => Some(
+                sitemap::Sitemap::new(
+                    config,
+                    origin,
+                    site_settings.base_path(),
+                    &tasks,
+                    &taxonomy_tasks,
+                )
+                .map_err(Error::Sitemap)?,
+            ),
+            _ => None,
+        };
         let mut output_claims = tasks
             .iter()
             .map(|task| {
@@ -526,6 +560,9 @@ impl Site {
                 .map(|path| OutputClaim::file(path.clone(), licenses.source_path(path).into())),
         );
         output_claims.extend(markdown_renderer.stylesheet_claim());
+        if let Some((_, claims)) = &sitemap {
+            output_claims.extend(claims.iter().cloned());
+        }
         let output_plan = OutputPlan::validate(&output_claims)?;
         let asset_links = assets.links(
             i18n.default_locale().clone(),
@@ -573,6 +610,7 @@ impl Site {
             i18n,
             localization,
             output_plan,
+            sitemap: sitemap.map(|(sitemap, _)| sitemap),
         })
     }
 
@@ -753,6 +791,11 @@ impl Site {
                 .planned_path(path)
                 .expect("highlighting stylesheet was validated in the output plan");
             rendered.push(GeneratedFile::text(path, stylesheet));
+        }
+        if options.mode() == BuildMode::Full
+            && let Some(sitemap) = &self.sitemap
+        {
+            rendered.extend(sitemap.generated(&self.output_plan));
         }
         Ok(rendered)
     }

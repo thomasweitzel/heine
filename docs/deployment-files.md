@@ -40,13 +40,13 @@ Templates cannot refer to them through `asset()`. Use `content/` for files
 that a page needs to link or embed; use `deploy/` only for output-root files
 whose meaning belongs to the hosting environment.
 
-## Validation and builds
+## Checks and builds
 
 The optional directory and its nested directories must be real directories;
 its nested files must be regular files, and symbolic links are rejected. Paths
 must be valid UTF-8, portable output paths;
 they cannot escape the output root, use platform-reserved filename components,
-or collide by case or Unicode normalization. Heine validates deployment-file
+or collide by case or Unicode normalization. Heine checks deployment-file
 claims together with pages, assets, and generated resources before writing, so
 a deployment file cannot silently overwrite another output producer. The
 reserved [`__heine/`](glossary.md#heine) namespace remains unavailable.
