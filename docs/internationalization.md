@@ -8,7 +8,7 @@ with the [tutorial](tutorial.md) for a first multilingual site, and use the
 
 Internationalization (i18n) is Heine's locale-aware site model: configured
 [locales](glossary.md#locale), source trees, page identity, routes, links,
-assets, data, and output validation. Localization (l10n) is the locale-specific
+assets, data, and output checks. Localization (l10n) is the locale-specific
 result: messages, plural forms, formatted values, and authored page content.
 
 Heine renders a finite configured set of locales at build time. URLs select a
@@ -159,7 +159,7 @@ error that identifies both declarations.
 The render-facing page view exposes only known counterparts through
 `page.translations`. Its keys are locale codes and its values contain a
 counterpart `id` plus output-relative `path`; use `root` with `path`, or the
-validated `page()` helper, to create a link. A language switcher therefore
+checked `page()` helper, to create a link. A language switcher therefore
 offers only existing pages; Heine never guesses a URL, redirects to an
 unrelated language, or requires matching source-tree structures.
 
@@ -184,7 +184,7 @@ convention for localized labels; Heine does not prescribe label text.
 `page(id="...")` addresses an exact page ID in the locale currently being
 rendered. Its optional `locale` argument addresses an exact page ID in that
 named locale; it never resolves a translation group implicitly. Markdown has
-the equivalent validated page-link syntax: `page:<id>` addresses the current
+the equivalent checked page-link syntax: `page:<id>` addresses the current
 locale, and `page:<locale>:<id>` addresses an explicit locale. Both support
 query strings and fragments. It applies to Markdown
 links, including reference-style links, but not to image sources. Template and
@@ -216,9 +216,8 @@ and select expressions. Select expressions provide correct language-specific
 plural categories and can also express gender or other controlled choices.
 The initial value contract accepts strings, numbers, and booleans/select
 values. Dates use the separate `format_date()` template function so the stable
-ISO date can remain suitable for HTML `datetime` attributes. It accepts a
-four-digit `YYYY-MM-DD` calendar date or an RFC 3339 offset-aware date-time,
-matching `page.date`, and formats its calendar date for the current locale
+UTC RFC 3339 timestamp can remain suitable for HTML `datetime` attributes. It
+accepts the rendered `page.published` value and formats its calendar date for the current locale
 with `short`, `medium`, or `long` styles. It formats calendar dates, not times
 or time zones. The template boundary does not expose arbitrary objects, arrays,
 raw HTML, Fluent internals, or filesystem access.
@@ -227,8 +226,8 @@ Keep the machine-readable value in `datetime` and format only the visible
 text:
 
 ```tera
-<time datetime="{{ page.date }}">
-  {{ format_date(value=page.date, style="long") }}
+<time datetime="{{ page.published }}">
+  {{ format_date(value=page.published, style="long") }}
 </time>
 ```
 
@@ -244,7 +243,7 @@ message call site and attempted locale chain. Invalid Fluent resources,
 duplicate IDs, invalid arguments, and invalid locale configuration are build
 errors. Heine does not use warnings for translation-resolution failures.
 
-## Render boundary and validation
+## Render boundary and checks
 
 Templates receive a small render-facing model, including `locale`, shared
 `data`, `locale_data`, `page`, `page.translations`, `t()`, `asset()`, and

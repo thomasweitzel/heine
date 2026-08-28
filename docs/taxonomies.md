@@ -13,8 +13,9 @@ term            = one ordered subset of the collection
 pagination      = slices a term listing into generated output pages
 ```
 
-A taxonomy is one generic, validated model for tags, categories, series,
-topics, and similar classifications. Start with the [tutorial's tag step](tutorial.md#8-add-tags)
+A taxonomy is one generic model for tags, categories, series, topics, and
+similar classifications. Heine checks its authored membership and output
+relationships during the build. Start with the [tutorial's tag step](tutorial.md#8-add-tags)
 when adding a taxonomy for the first time.
 
 ## Authored configuration
@@ -24,7 +25,7 @@ Each taxonomy is a complete generated-output contract:
 ```toml
 # heine.toml
 [collections.posts]
-order = "date-desc"
+order = "published-desc"
 
 [taxonomies.tags]
 collection = "posts"
@@ -39,13 +40,13 @@ cross-locale term counterparts. Taxonomy pages always use the HTML `.html`
 suffix; a taxonomy is an HTML listing feature rather than a second general
 output-format mechanism.
 
-| Field            | Meaning                                     | Constraint                                |
-|------------------|---------------------------------------------|-------------------------------------------|
-| `collection`     | Source collection                           | A configured collection name              |
-| `path`           | Generated taxonomy root                     | A validated portable relative output path |
-| `index_template` | Template for the term index                 | A validated template name                 |
-| `term_template`  | Template for term listings and later pagers | A validated template name                 |
-| `per_page`       | Members on each term-listing page           | A positive integer                        |
+| Field            | Meaning                                     | Constraint                              |
+|------------------|---------------------------------------------|-----------------------------------------|
+| `collection`     | Source collection                           | A configured collection name            |
+| `path`           | Generated taxonomy root                     | A checked portable relative output path |
+| `index_template` | Template for the term index                 | A checked template name                 |
+| `term_template`  | Template for term listings and later pagers | A checked template name                 |
+| `per_page`       | Members on each term-listing page           | A positive integer                      |
 
 The taxonomy name (`tags` above) is a simple identifier. It is available as a
 template-map key and identifies the taxonomy in page metadata. `path` is
@@ -105,12 +106,13 @@ prefix, for example `de/tags/Rust.html`.
 
 Heine always generates the configured taxonomy index, even when it has no
 terms. A term listing exists only for a term that has at least one rendered
-member. Later pager routes use the existing pagination route policy and the
-term template. All generated routes participate in normal output ownership,
-portable-path validation, collision detection, atomic publication, and
+member. Later pagers always use the fixed `page` route segment shown above and
+the term template; authored `pagination.segment` settings do not apply to
+taxonomy listings. All generated routes participate in normal output ownership,
+portable-path checks, collision detection, atomic publication, and
 base-path-aware URL generation.
 
-Both configured templates are validated on every build, including an empty
+Both configured templates are checked on every build, including an empty
 taxonomy whose term template has no current render task. A missing template is
 therefore always reported at its `heine.toml` reference.
 
@@ -139,7 +141,7 @@ An ordinary page exposes its assigned term links directly:
 ```
 
 Any template can resolve its current locale's taxonomy index through the
-validated `taxonomy()` function. This is useful for a shared navigation
+checked `taxonomy()` function. This is useful for a shared navigation
 template without duplicating a generated route:
 
 ```tera
@@ -225,9 +227,9 @@ The [reference](reference.md) contains the complete field tables. Heine does
 not add a general template query language: ordinary pages have their own terms
 and the generated index already exposes every term.
 
-## Validation and build behavior
+## Checks and build behavior
 
-Before rendering, Heine validates taxonomy definitions, page membership keys,
+Before rendering, Heine checks taxonomy definitions, page membership keys,
 term values, required source-collection membership, template references,
 generated routes, and all output collisions. Diagnostics retain the relevant
 configuration and membership spans; route collisions identify every authored

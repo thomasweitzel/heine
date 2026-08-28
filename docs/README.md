@@ -35,6 +35,7 @@ required prerequisite for the guides.
   license texts, and template attribution data.
 - [Development server](development-server.md) — local serving, live reload,
   and byte-range responses for media.
+- [Sitemaps](sitemap.md) — canonical discovery documents generated from rendered output.
 
 ## Reference material
 

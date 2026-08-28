@@ -17,7 +17,7 @@ First, define the collection in `heine.toml`:
 
 ```toml
 [collections.posts]
-order = "date-desc"
+order = "published-desc"
 ```
 
 Then add a rendered page to it:
@@ -26,7 +26,7 @@ Then add a rendered page to it:
 # content/en/blog/first.page
 template = "post.tera"
 title = "First post"
-date = 2026-08-14
+published = 2026-08-14T09:30:00
 collections = ["posts"]
 ```
 
@@ -77,7 +77,7 @@ routes belong to one locale tree.
 
 ```toml
 [collections.posts]
-order = "date-desc"
+order = "published-desc"
 
 [collections.docs]
 order = "weight-asc"
@@ -86,31 +86,28 @@ order = "weight-asc"
 Collection names are simple identifiers, consistent with other authored names
 that become template keys. Every definition has exactly one `order` value:
 
-| Value         | Primary ordering              |
-|---------------|-------------------------------|
-| `date-asc`    | page date, oldest first       |
-| `date-desc`   | page date, newest first       |
-| `title-asc`   | page title, locale ascending  |
-| `title-desc`  | page title, locale descending |
-| `weight-asc`  | page weight, lowest first     |
-| `weight-desc` | page weight, highest first    |
-| `id-asc`      | logical page ID, ascending    |
-| `id-desc`     | logical page ID, descending   |
+| Value            | Primary ordering               |
+|------------------|--------------------------------|
+| `published-asc`  | publication time, oldest first |
+| `published-desc` | publication time, newest first |
+| `title-asc`      | page title, locale ascending   |
+| `title-desc`     | page title, locale descending  |
+| `weight-asc`     | page weight, lowest first      |
+| `weight-desc`    | page weight, highest first     |
+| `id-asc`         | logical page ID, ascending     |
+| `id-desc`        | logical page ID, descending    |
 
 Logical page ID is the final deterministic tie-breaker. A collection ordered
-by date or title requires every member to have that value. Title ordering uses
+by publication time or title requires every member to have that value. Title ordering uses
 the resolved collection locale's ICU collation, with literal title spelling as
 an additional deterministic tie-breaker. A weight ordering uses the page's
 already-resolved numeric weight; a member with `weight = "None"` is an error.
 Unknown collection fields, duplicate names, and unknown ordering values are
 errors at their authored locations.
 
-Date-only values and offset-aware date-times are intentionally different
-precisions. A date-ordered collection must use one precision consistently:
-either every member has a TOML date or every member has an offset-aware
-date-time. Heine must not invent a time zone or a time of day to make those
-values comparable. A mixed collection is an error that labels the relevant
-members; an author can make the intended precision explicit.
+Publication ordering compares the resolved instants from required local
+`published` timestamps. The site-wide editorial time zone makes this ordering
+deterministic without a machine-local default.
 
 ## Membership
 
@@ -120,7 +117,7 @@ A page joins a collection through its `.page` metadata:
 # content/en/blog/2026-08-14.page
 template = "post.tera"
 title = "First post"
-date = 2026-08-14
+published = 2026-08-14T09:30:00
 collections = ["posts"]
 ```
 
@@ -139,7 +136,7 @@ directory's template policy but not appear in its article listing.
 Each listed name must refer to a configured collection, and a page may name a
 collection only once. Only rendered pages may be members: a page with no
 template, or with `template = false`, cannot be listed. Ordering diagnostics
-show the relevant membership, date, title, or weight value when one exists,
+show the relevant membership, publication time, title, or weight value when one exists,
 and the configured ordering declaration.
 
 This is a concise extension of page metadata—not a second

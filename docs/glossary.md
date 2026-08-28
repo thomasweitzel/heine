@@ -14,7 +14,7 @@ with `/guide/`; it does not change the source layout.
 
 ### Full build
 
-A normal Heine build. It creates and validates a complete replacement output
+A normal Heine build. It creates and checks a complete replacement output
 tree before publishing it, so renamed and deleted source files disappear from
 generated output.
 
@@ -37,9 +37,10 @@ all make output claims; Heine rejects collisions before writing.
 
 ### `__heine/`
 
-A generated-output namespace reserved for Heine’s development-server endpoints.
-Pages, copied assets, deployment files, and generated resources cannot claim a
-path inside it, preventing a site from colliding with the server’s own routes.
+A URL and output-path namespace reserved for Heine’s development-server
+endpoints. It is never published as site output. Pages, copied assets,
+deployment files, and generated resources cannot claim a path inside it,
+preventing a site from colliding with the server’s own routes.
 
 ### Quick build
 
@@ -58,6 +59,34 @@ as `relative_url`; unlike `url`, it does not begin with `site.base_path`.
 The project directory containing `heine.toml`, `content/`, and `templates/`.
 Optional roots such as `data/`, `locales/`, `deploy/`, and `LICENSES/` also
 live beside them.
+
+### Site origin
+
+The scheme, host, and optional port configured as `site.origin`, for example
+`https://example.org`. It has no deployment path; combine it with the base path
+when a generated document needs an absolute canonical URL.
+
+### Sitemap
+
+An opt-in XML discovery document generated from Heine's rendered-output
+inventory. It lists canonical page URLs for search engines; it does not affect
+whether a page is rendered or reachable. A page can opt out with
+`sitemap = false`; a descriptor's `[pages] sitemap = false` establishes a
+recursive, non-overridable boundary for its descendant pages.
+
+### Publication chronology
+
+Optional page `published` and `updated` local date-times. They must include a
+calendar date and time without an offset; Heine resolves them through the
+site-wide [editorial time zone](#editorial-time-zone). `published` records when
+a page became public, while `updated` records a later reader-meaningful change
+and cannot precede `published`.
+
+### Editorial time zone
+
+The site-wide IANA zone in `site.time_zone` used to resolve authored local
+`published` and `updated` times. Heine uses its bundled time-zone database, so
+the resulting UTC timestamps do not depend on the build machine.
 
 ## Authored files and inputs
 
@@ -93,7 +122,7 @@ pages.
 ### License text
 
 A text file in optional `LICENSES/`, named for an SPDX identifier or local
-`LicenseRef-…`. Heine publishes it below `public/LICENSES/` and validates it
+`LicenseRef-…`. Heine publishes it below `public/LICENSES/` and checks it
 against referenced asset sidecars.
 
 ### Locale tree
@@ -157,13 +186,13 @@ not a separate directory or build step.
 ### Asset ID
 
 The literal path used to identify a copied asset within its locale's content
-tree, without a leading slash; for example, `css/site.css`. `asset()` validates
+tree, without a leading slash; for example, `css/site.css`. `asset()` checks
 this ID and returns URLs, integrity metadata, and image dimensions when known.
 
 ### Page ID
 
 The literal path of a `.page` file relative to its locale tree, without the
-`.page` extension; for example, `blog/first-post`. `page()` validates this ID
+`.page` extension; for example, `blog/first-post`. `page()` checks this ID
 and resolves an exact rendered page.
 
 ### URL

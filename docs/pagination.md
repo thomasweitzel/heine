@@ -15,7 +15,7 @@ First define an ordered collection in `heine.toml`:
 
 ```toml
 [collections.posts]
-order = "date-desc"
+order = "published-desc"
 ```
 
 Then make an ordinary page a listing:
@@ -70,7 +70,7 @@ both URLs and filesystem names, so use `older-posts` rather than
 `older%20posts`.
 Generated routes use
 the listing's configured suffix, locale prefix, and site `base_path`, and they
-participate in normal output-collision validation before anything is written.
+participate in normal output-collision checks before anything is written.
 
 ## Template values
 
@@ -158,7 +158,7 @@ rendering. Every generated pager is an output task, not an authored page: it
 has no page ID and does not appear in `page()`, collections, siblings, or
 translations.
 
-Full builds validate every generated route and render every pager before
+Full builds check every generated route and render every pager before
 publishing. Quick builds re-render all pagers of a listing when a present
 member page changes. As elsewhere, quick builds intentionally do not detect
 renames, deletions, template changes, configuration changes, or changed
