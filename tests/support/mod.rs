@@ -13,7 +13,7 @@ impl Fixture {
         fs::create_dir_all(root.path().join("templates")).expect("fixture template directory");
         fs::write(
             root.path().join("heine.toml"),
-            "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
+            "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
         )
         .expect("fixture configuration");
         Self(root)
@@ -28,13 +28,17 @@ impl Fixture {
         let path = self.path().join(relative);
         fs::create_dir_all(path.parent().expect("fixture file has a parent"))
             .expect("fixture parent directory");
-        let contents = if relative == Path::new("heine.toml") && !contents.contains("[i18n]") {
-            format!(
-                "{contents}\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n"
-            )
-        } else {
-            contents.to_owned()
-        };
+        let mut contents = contents.to_owned();
+        if relative == Path::new("heine.toml") {
+            if !contents.contains("[site]") {
+                contents.push_str("\n[site]\ntime_zone = 'Europe/Berlin'\n");
+            }
+            if !contents.contains("[i18n]") {
+                contents.push_str(
+                    "\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
+                );
+            }
+        }
         fs::write(path, contents).expect("fixture file");
     }
 }

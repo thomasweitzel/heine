@@ -13,6 +13,8 @@ use serde::Deserialize;
 use thiserror::Error;
 
 mod base_path;
+mod origin;
+mod time_zone;
 
 use crate::{
     locale::{Locale, TextDirection},
@@ -21,6 +23,8 @@ use crate::{
     template::TemplateName,
 };
 pub(crate) use base_path::{BasePath, valid_url_segment};
+pub(crate) use origin::SiteOrigin;
+pub(crate) use time_zone::EditorialTimeZone;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SiteConfig {
@@ -31,6 +35,7 @@ pub(crate) struct SiteConfig {
     i18n: I18nConfig,
     collections: CollectionsConfig,
     taxonomies: TaxonomiesConfig,
+    sitemap: Option<SitemapConfig>,
 }
 
 impl SiteConfig {
@@ -93,6 +98,10 @@ impl SiteConfig {
 
     pub(crate) fn taxonomies(&self) -> &TaxonomiesConfig {
         &self.taxonomies
+    }
+
+    pub(crate) fn sitemap(&self) -> Option<&SitemapConfig> {
+        self.sitemap.as_ref()
     }
 }
 
@@ -264,8 +273,8 @@ impl TermTranslation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum CollectionOrder {
-    DateAsc,
-    DateDesc,
+    PublishedAsc,
+    PublishedDesc,
     TitleAsc,
     TitleDesc,
     WeightAsc,
@@ -326,12 +335,16 @@ impl I18nConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SiteSettings {
     base_path: BasePath,
+    origin: Option<SiteOrigin>,
+    time_zone: Option<EditorialTimeZone>,
 }
 
 impl Default for SiteSettings {
     fn default() -> Self {
         Self {
             base_path: BasePath::root(),
+            origin: None,
+            time_zone: None,
         }
     }
 }
@@ -339,6 +352,27 @@ impl Default for SiteSettings {
 impl SiteSettings {
     pub(crate) fn base_path(&self) -> &BasePath {
         &self.base_path
+    }
+    pub(crate) fn origin(&self) -> Option<&SiteOrigin> {
+        self.origin.as_ref()
+    }
+    pub(crate) fn time_zone(&self) -> Option<&EditorialTimeZone> {
+        self.time_zone.as_ref()
+    }
+}
+
+/// Enables structural generation of canonical sitemap resources.
+#[derive(Debug, Clone)]
+pub(crate) struct SitemapConfig {
+    span: SourceSpan,
+    source: Option<Arc<NamedSource<String>>>,
+}
+
+impl SitemapConfig {
+    pub(crate) fn output_claim(&self, path: OutputPath) -> Option<OutputClaim> {
+        self.source.as_ref().map(|source| {
+            OutputClaim::authored(path, "sitemap", source.as_ref().clone(), self.span)
+        })
     }
 }
 
@@ -516,7 +550,12 @@ struct RawSiteConfig {
     collections: BTreeMap<toml::Spanned<String>, RawCollectionDefinition>,
     #[serde(default)]
     taxonomies: BTreeMap<toml::Spanned<String>, RawTaxonomyDefinition>,
+    sitemap: Option<toml::Spanned<RawSitemapConfig>>,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSitemapConfig {}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -554,12 +593,16 @@ struct RawLocaleSettings {
 struct RawSiteSettings {
     #[serde(default = "default_base_path")]
     base_path: toml::Spanned<String>,
+    origin: Option<toml::Spanned<String>>,
+    time_zone: Option<toml::Spanned<String>>,
 }
 
 impl Default for RawSiteSettings {
     fn default() -> Self {
         Self {
             base_path: default_base_path(),
+            origin: None,
+            time_zone: None,
         }
     }
 }
@@ -707,6 +750,49 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 span: base_path_span.into(),
                 message,
             })?;
+        let origin = raw
+            .site
+            .origin
+            .map(|value| {
+                let span = value.span();
+                value
+                    .into_inner()
+                    .try_into()
+                    .map_err(|message| ConfigValueError {
+                        span: span.into(),
+                        message,
+                    })
+            })
+            .transpose()?;
+        let time_zone = raw
+            .site
+            .time_zone
+            .map(|value| {
+                let span = value.span();
+                value
+                    .into_inner()
+                    .try_into()
+                    .map_err(|message| ConfigValueError {
+                        span: span.into(),
+                        message,
+                    })
+            })
+            .transpose()?;
+        let sitemap = raw
+            .sitemap
+            .map(|value| {
+                let span: SourceSpan = value.span().into();
+                if origin.is_none() {
+                    return Err(ConfigValueError {
+                        span,
+                        message:
+                            "[sitemap] requires site.origin so Heine can generate canonical URLs"
+                                .into(),
+                    });
+                }
+                Ok(SitemapConfig { span, source: None })
+            })
+            .transpose()?;
         let output_dir_span = raw.build.output_dir.span();
         let output_dir: OutputDirectory =
             raw.build
@@ -938,7 +1024,11 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             );
         }
         Ok(Self {
-            site: SiteSettings { base_path },
+            site: SiteSettings {
+                base_path,
+                origin,
+                time_zone,
+            },
             build: BuildConfig { output_dir },
             assets: AssetConfig {
                 integrity: raw.assets.integrity,
@@ -958,6 +1048,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             taxonomies: TaxonomiesConfig {
                 definitions: taxonomies,
             },
+            sitemap,
         })
     }
 }
@@ -975,6 +1066,9 @@ impl SiteConfig {
         }
         for definition in self.taxonomies.definitions.values_mut() {
             definition.source = Some(collection_source.clone());
+        }
+        if let Some(sitemap) = &mut self.sitemap {
+            sitemap.source = Some(collection_source);
         }
     }
 }

@@ -7,10 +7,10 @@ use std::{
     time::SystemTime,
 };
 
+use jiff::Timestamp;
 use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
-use time::{Date, OffsetDateTime};
 
 use crate::{
     config::{CollectionName, TaxonomyName},
@@ -88,6 +88,8 @@ pub(super) struct Task {
     pub(super) output_path: OutputPath,
     pub(super) latest_input: SystemTime,
     pub(super) pagination: Option<Arc<Pager>>,
+    pub(super) sitemap_include: bool,
+    pub(super) sitemap_lastmod: Option<PublicationTime>,
 }
 
 /// One fully resolved generated view of an authored paginated listing.
@@ -125,7 +127,11 @@ pub(super) struct RawPage {
     pub(super) description: Option<toml::Spanned<String>>,
     pub(super) summary: Option<toml::Spanned<String>>,
     pub(super) translationid: Option<toml::Spanned<String>>,
-    pub(super) date: Option<toml::Spanned<toml::Value>>,
+    #[serde(rename = "date")]
+    pub(super) legacy_date: Option<toml::Spanned<toml::Value>>,
+    pub(super) published: Option<toml::Spanned<toml::Value>>,
+    pub(super) updated: Option<toml::Spanned<toml::Value>>,
+    pub(super) sitemap: Option<toml::Spanned<bool>>,
     pub(super) extra: Option<toml::Spanned<toml::Value>>,
     #[serde(default)]
     pub(super) content: BTreeMap<String, toml::Spanned<String>>,
@@ -178,32 +184,22 @@ pub(super) struct RawMetadata {
     pub(super) title: Option<toml::Spanned<String>>,
     pub(super) description: Option<toml::Spanned<String>>,
     pub(super) summary: Option<toml::Spanned<String>>,
-    pub(super) date: Option<toml::Spanned<toml::Value>>,
+    pub(super) published: Option<toml::Spanned<toml::Value>>,
+    pub(super) updated: Option<toml::Spanned<toml::Value>>,
     pub(super) extra: Option<toml::Spanned<toml::Value>>,
 }
 
-/// A validated authored date, retained in a form future chronological indexes
-/// can order without reparsing template-facing strings.
-#[derive(Debug, Clone)]
-pub(super) enum MetadataDate {
-    Date(Date),
-    OffsetDateTime(OffsetDateTime),
-}
+/// A resolved instant written as a local civil time in the configured editorial
+/// time zone. The local-time ambiguity check happens exactly once at loading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct PublicationTime(Timestamp);
 
-impl MetadataDate {
-    pub(super) fn is_date_only(&self) -> bool {
-        matches!(self, Self::Date(_))
+impl PublicationTime {
+    pub(super) fn new(value: Timestamp) -> Self {
+        Self(value)
     }
-}
-
-impl MetadataDate {
     pub(super) fn render(&self) -> String {
-        match self {
-            Self::Date(value) => value.to_string(),
-            Self::OffsetDateTime(value) => value
-                .format(&time::format_description::well_known::Rfc3339)
-                .expect("valid offset date-times always format as RFC 3339"),
-        }
+        self.0.to_string()
     }
 }
 
@@ -212,8 +208,9 @@ pub(super) struct Metadata {
     pub(super) title: Option<String>,
     pub(super) description: Option<String>,
     pub(super) summary: Option<String>,
-    pub(super) date: Option<MetadataDate>,
-    pub(super) date_span: Option<SourceSpan>,
+    pub(super) published: Option<PublicationTime>,
+    pub(super) updated: Option<PublicationTime>,
+    pub(super) updated_span: Option<SourceSpan>,
     pub(super) extra: Value,
 }
 
@@ -223,7 +220,8 @@ impl Metadata {
             "title" => self.title.is_some(),
             "description" => self.description.is_some(),
             "summary" => self.summary.is_some(),
-            "date" => self.date.is_some(),
+            "published" => self.published.is_some(),
+            "updated" => self.updated.is_some(),
             _ => name
                 .strip_prefix("extra.")
                 .and_then(|path| {
@@ -376,7 +374,8 @@ impl Page {
             title,
             description,
             summary,
-            date,
+            published,
+            updated,
             extra,
             ..
         } = self.metadata;
@@ -390,7 +389,8 @@ impl Page {
             title,
             description,
             summary,
-            date: date.as_ref().map(MetadataDate::render),
+            published: published.as_ref().map(PublicationTime::render),
+            updated: updated.as_ref().map(PublicationTime::render),
             extra,
             translations: self.translations,
             directory: self.directory,
@@ -413,7 +413,8 @@ pub(crate) struct PageView {
     title: Option<String>,
     description: Option<String>,
     summary: Option<String>,
-    date: Option<String>,
+    published: Option<String>,
+    updated: Option<String>,
     extra: Value,
     translations: BTreeMap<String, PageLink>,
     directory: DirectoryView,

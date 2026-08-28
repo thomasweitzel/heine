@@ -34,7 +34,12 @@ fn builds_the_documented_starter_site() {
     assert!(output.join(".htaccess").is_file());
     assert_eq!(
         fs::read_to_string(output.join("robots.txt")).expect("robots.txt"),
-        "User-agent: *\nAllow: /\n"
+        "User-agent: *\nAllow: /\nSitemap: https://example.org/my-project/sitemap.xml\n"
+    );
+    let sitemap = fs::read_to_string(output.join("sitemap.xml")).expect("sitemap");
+    assert!(
+        sitemap.contains("https://example.org/my-project/index.html"),
+        "{sitemap}"
     );
     let index = fs::read_to_string(output.join("index.html")).expect("home page");
     assert!(

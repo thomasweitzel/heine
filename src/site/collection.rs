@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     collation,
-    page::{CollectionMembership, MetadataDate, Page, PageId},
+    page::{CollectionMembership, Page, PageId, PublicationTime},
 };
 
 /// The resolved domain representation. It retains IDs rather than cloned
@@ -65,14 +65,16 @@ pub(crate) struct UnrenderedMember {
 }
 
 #[derive(Debug, Diagnostic, Error)]
-#[error("collection {collection:?} orders by date, but page {page:?} has no date")]
-#[diagnostic(code(heine::collection::missing_date))]
-pub(crate) struct MissingDate {
+#[error(
+    "collection {collection:?} orders by publication time, but page {page:?} has no `published` value"
+)]
+#[diagnostic(code(heine::collection::missing_published))]
+pub(crate) struct MissingPublished {
     page: String,
     collection: String,
     #[source_code]
     source_code: Arc<NamedSource<String>>,
-    #[label("collection membership declared here; this collection orders by date")]
+    #[label("collection membership declared here; this collection orders by publication time")]
     span: SourceSpan,
     #[related]
     order: Vec<CollectionOrderOrigin>,
@@ -114,30 +116,6 @@ pub(crate) struct MissingWeight {
 }
 
 #[derive(Debug, Diagnostic, Error)]
-#[error("collection {collection:?} mixes date-only values and offset-aware date-times")]
-#[diagnostic(code(heine::collection::mixed_date_precision))]
-pub(crate) struct MixedDatePrecision {
-    collection: String,
-    #[source_code]
-    source_code: Arc<NamedSource<String>>,
-    #[label("this date has a different precision")]
-    span: SourceSpan,
-    #[related]
-    related: Vec<MixedDatePrecisionRelation>,
-    #[help]
-    help: String,
-}
-
-#[derive(Debug, Diagnostic, Error)]
-#[error("first member with this date precision")]
-struct FirstDatePrecision {
-    #[source_code]
-    source_code: Arc<NamedSource<String>>,
-    #[label("first date with this precision")]
-    span: SourceSpan,
-}
-
-#[derive(Debug, Diagnostic, Error)]
 #[error("collection ordering is declared here")]
 struct CollectionOrderOrigin {
     #[source_code]
@@ -166,32 +144,19 @@ enum MissingWeightRelation {
 }
 
 #[derive(Debug, Diagnostic, Error)]
-enum MixedDatePrecisionRelation {
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    First(#[from] FirstDatePrecision),
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Order(#[from] CollectionOrderOrigin),
-}
-
-#[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Unrendered(#[from] Box<UnrenderedMember>),
     #[error(transparent)]
     #[diagnostic(transparent)]
-    MissingDate(#[from] Box<MissingDate>),
+    MissingPublished(#[from] Box<MissingPublished>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingTitle(#[from] Box<MissingTitle>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingWeight(#[from] Box<MissingWeight>),
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    MixedDatePrecision(#[from] Box<MixedDatePrecision>),
 }
 
 /// Resolves every configured collection for every locale. Empty collections
@@ -267,52 +232,20 @@ fn validate_ordering_data(
     pages: &BTreeMap<PageId, Page>,
 ) -> Result<(), Error> {
     match definition.order() {
-        CollectionOrder::DateAsc | CollectionOrder::DateDesc => {
-            let mut first: Option<(bool, &Page)> = None;
+        CollectionOrder::PublishedAsc | CollectionOrder::PublishedDesc => {
             for id in ids {
                 let page = &pages[id];
                 let membership = membership(page, name);
-                let Some(date) = &page.metadata.date else {
-                    return Err(Box::new(MissingDate {
+                if page.metadata.published.is_none() {
+                    return Err(Box::new(MissingPublished {
                         page: id.to_string(),
                         collection: name.to_string(),
                         source_code: membership.source.clone(),
                         span: membership.span,
                         order: collection_order_origin(definition).into_iter().collect(),
-                        help: "add a TOML date or offset-aware date-time, or use another collection order".into(),
+                        help: "add a TOML local date-time as `published`, or use another collection order".into(),
                     })
                     .into());
-                };
-                match first {
-                    Some((precision, first_page)) if precision != date.is_date_only() => {
-                        return Err(Box::new(MixedDatePrecision {
-                            collection: name.to_string(),
-                            source_code: Arc::new(page.source.clone()),
-                            span: page
-                                .metadata
-                                .date_span
-                                .expect("present dates retain their authored spans"),
-                            related: vec![MixedDatePrecisionRelation::First(
-                                FirstDatePrecision {
-                                source_code: Arc::new(first_page.source.clone()),
-                                span: first_page
-                                    .metadata
-                                    .date_span
-                                    .expect("present dates retain their authored spans"),
-                                },
-                            )]
-                            .into_iter()
-                            .chain(
-                                collection_order_origin(definition)
-                                    .map(MixedDatePrecisionRelation::Order),
-                            )
-                            .collect(),
-                            help: "use TOML dates for every member, or offset-aware date-times for every member".into(),
-                        })
-                        .into());
-                    }
-                    None => first = Some((date.is_date_only(), page)),
-                    _ => {}
                 }
             }
         }
@@ -403,18 +336,20 @@ fn compare_pages(
     pages: &BTreeMap<PageId, Page>,
 ) -> Ordering {
     let primary = match order {
-        CollectionOrder::DateAsc | CollectionOrder::DateDesc => compare_dates(
-            pages[left]
-                .metadata
-                .date
-                .as_ref()
-                .expect("date ordering was validated"),
-            pages[right]
-                .metadata
-                .date
-                .as_ref()
-                .expect("date ordering was validated"),
-        ),
+        CollectionOrder::PublishedAsc | CollectionOrder::PublishedDesc => {
+            compare_publication_times(
+                pages[left]
+                    .metadata
+                    .published
+                    .as_ref()
+                    .expect("published ordering was validated"),
+                pages[right]
+                    .metadata
+                    .published
+                    .as_ref()
+                    .expect("published ordering was validated"),
+            )
+        }
         CollectionOrder::TitleAsc | CollectionOrder::TitleDesc => collation.compare(
             pages[left]
                 .metadata
@@ -434,7 +369,7 @@ fn compare_pages(
         CollectionOrder::IdAsc | CollectionOrder::IdDesc => left.cmp(right),
     };
     let primary = match order {
-        CollectionOrder::DateDesc
+        CollectionOrder::PublishedDesc
         | CollectionOrder::TitleDesc
         | CollectionOrder::WeightDesc
         | CollectionOrder::IdDesc => primary.reverse(),
@@ -443,12 +378,6 @@ fn compare_pages(
     primary.then_with(|| left.cmp(right))
 }
 
-fn compare_dates(left: &MetadataDate, right: &MetadataDate) -> Ordering {
-    match (left, right) {
-        (MetadataDate::Date(left), MetadataDate::Date(right)) => left.cmp(right),
-        (MetadataDate::OffsetDateTime(left), MetadataDate::OffsetDateTime(right)) => {
-            left.cmp(right)
-        }
-        _ => unreachable!("mixed date precision was validated"),
-    }
+fn compare_publication_times(left: &PublicationTime, right: &PublicationTime) -> Ordering {
+    left.cmp(right)
 }

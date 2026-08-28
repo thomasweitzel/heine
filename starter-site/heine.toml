@@ -9,6 +9,10 @@ direction = "ltr"
 
 [site]
 base_path = "/my-project/"
+origin = "https://example.org"
+time_zone = "Europe/Berlin"
+
+[sitemap]
 
 [build]
 output_dir = "public/my-project"
@@ -17,7 +21,7 @@ output_dir = "public/my-project"
 integrity = "sha384"
 
 [collections.posts]
-order = "date-desc"
+order = "published-desc"
 
 [taxonomies.tags]
 collection = "posts"

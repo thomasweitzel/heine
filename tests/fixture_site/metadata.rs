@@ -11,11 +11,11 @@ fn inherits_directory_page_policy_and_exposes_explicit_metadata() {
     );
     fixture.write(
         "content/en/blog/_directory.toml",
-        "title = 'Blog'\n[pages]\ntemplate = 'post.tera'\n[pages.metadata]\nrequired = ['date', 'extra.author']\n",
+        "title = 'Blog'\n[pages]\ntemplate = 'post.tera'\n[pages.metadata]\nrequired = ['published', 'extra.author']\n",
     );
     fixture.write(
         "content/en/blog/post.page",
-        "title = 'Post'\ndate = 2026-08-14\n[extra]\nauthor = 'Heine'\n",
+        "title = 'Post'\npublished = 2026-08-14T09:30:00\n[extra]\nauthor = 'Heine'\n",
     );
     fixture.write(
         "content/en/blog/nested/_directory.toml",
@@ -23,11 +23,11 @@ fn inherits_directory_page_policy_and_exposes_explicit_metadata() {
     );
     fixture.write(
         "content/en/blog/nested/inherited.page",
-        "title = 'Nested'\ndate = 2026-08-15\n[extra]\nauthor = 'Heine'\n",
+        "title = 'Nested'\npublished = 2026-08-15T09:30:00\n[extra]\nauthor = 'Heine'\n",
     );
     fixture.write(
         "content/en/blog/nested/overridden.page",
-        "template = 'override.tera'\ntitle = 'Override'\ndate = 2026-08-16\n[extra]\nauthor = 'Heine'\n",
+        "template = 'override.tera'\ntitle = 'Override'\npublished = 2026-08-16T09:30:00\n[extra]\nauthor = 'Heine'\n",
     );
     fixture.write(
         "content/en/about.page",
@@ -35,7 +35,7 @@ fn inherits_directory_page_policy_and_exposes_explicit_metadata() {
     );
     fixture.write(
         "templates/post.tera",
-        "{{ page.title }}|{{ page.date }}|{{ page.extra.author }}|{{ page.directory.title }}",
+        "{{ page.title }}|{{ page.published }}|{{ page.extra.author }}|{{ page.directory.title }}",
     );
     fixture.write("templates/default.tera", "{{ page.title }}");
     fixture.write("templates/nested.tera", "nested {{ page.title }}");
@@ -45,7 +45,7 @@ fn inherits_directory_page_policy_and_exposes_explicit_metadata() {
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/blog/post.html")).expect("post output"),
-        "Post|2026-08-14|Heine|Blog"
+        "Post|2026-08-14T07:30:00Z|Heine|Blog"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/blog/nested/inherited.html"))
@@ -150,7 +150,10 @@ fn reports_an_unsafe_template_name_at_its_authored_value() {
 #[test]
 fn resolves_explicit_collections_with_inherited_membership_and_page_opt_out() {
     let fixture = Fixture::new();
-    fixture.write("heine.toml", "[collections.posts]\norder = 'date-desc'\n");
+    fixture.write(
+        "heine.toml",
+        "[collections.posts]\norder = 'published-desc'\n",
+    );
     fixture.write(
         "content/en/blog/_directory.toml",
         "[pages]\ntemplate = 'post.tera'\ncollections = ['posts']\n",
@@ -161,11 +164,11 @@ fn resolves_explicit_collections_with_inherited_membership_and_page_opt_out() {
     );
     fixture.write(
         "content/en/blog/older.page",
-        "title = 'Older'\ndate = 2026-08-14\n",
+        "title = 'Older'\npublished = 2026-08-14T09:30:00\n",
     );
     fixture.write(
         "content/en/blog/newer.page",
-        "title = 'Newer'\ndate = 2026-08-16\n",
+        "title = 'Newer'\npublished = 2026-08-16T09:30:00\n",
     );
     fixture.write("templates/post.tera", "{{ page.title }}");
     fixture.write(
@@ -186,15 +189,15 @@ fn applies_each_collection_order_with_page_id_tie_breaking() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[collections.date_asc]\norder = 'date-asc'\n[collections.date_desc]\norder = 'date-desc'\n[collections.title_asc]\norder = 'title-asc'\n[collections.title_desc]\norder = 'title-desc'\n[collections.weight_asc]\norder = 'weight-asc'\n[collections.weight_desc]\norder = 'weight-desc'\n[collections.id_asc]\norder = 'id-asc'\n[collections.id_desc]\norder = 'id-desc'\n",
+        "[collections.published_asc]\norder = 'published-asc'\n[collections.published_desc]\norder = 'published-desc'\n[collections.title_asc]\norder = 'title-asc'\n[collections.title_desc]\norder = 'title-desc'\n[collections.weight_asc]\norder = 'weight-asc'\n[collections.weight_desc]\norder = 'weight-desc'\n[collections.id_asc]\norder = 'id-asc'\n[collections.id_desc]\norder = 'id-desc'\n",
     );
     fixture.write(
         "content/en/alpha.page",
-        "template = 'page.tera'\ntitle = 'Same'\ndate = 2026-08-14\nweight = 2\ncollections = ['date_asc', 'date_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
+        "template = 'page.tera'\ntitle = 'Same'\npublished = 2026-08-14T09:30:00\nweight = 2\ncollections = ['published_asc', 'published_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
     );
     fixture.write(
         "content/en/beta.page",
-        "template = 'page.tera'\ntitle = 'Same'\ndate = 2026-08-16\nweight = 1\ncollections = ['date_asc', 'date_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
+        "template = 'page.tera'\ntitle = 'Same'\npublished = 2026-08-16T09:30:00\nweight = 1\ncollections = ['published_asc', 'published_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc']\n",
     );
     fixture.write(
         "content/en/index.page",
@@ -203,7 +206,7 @@ fn applies_each_collection_order_with_page_id_tie_breaking() {
     fixture.write("templates/page.tera", "page");
     fixture.write(
         "templates/index.tera",
-        "{% for name in ['date_asc', 'date_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc'] %}{% set entries = collection(name=name) %}{% for id in entries.page_ids %}{{ id }};{% endfor %}{% if name != 'id_desc' %}|{% endif %}{% endfor %}",
+        "{% for name in ['published_asc', 'published_desc', 'title_asc', 'title_desc', 'weight_asc', 'weight_desc', 'id_asc', 'id_desc'] %}{% set entries = collection(name=name) %}{% for id in entries.page_ids %}{{ id }};{% endfor %}{% if name != 'id_desc' %}|{% endif %}{% endfor %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
@@ -282,22 +285,31 @@ fn reports_invalid_collection_membership_at_its_authored_value() {
 #[test]
 fn reports_collection_ordering_requirements_at_membership() {
     let fixture = Fixture::new();
-    fixture.write("heine.toml", "[collections.posts]\norder = 'date-desc'\n");
+    fixture.write(
+        "heine.toml",
+        "[collections.posts]\norder = 'published-desc'\n",
+    );
     fixture.write(
         "content/en/index.page",
         "template = 'page.tera'\ncollections = ['posts']\n",
     );
     fixture.write("templates/page.tera", "page");
 
-    let error = build_at(fixture.path(), BuildMode::Full).expect_err("date is required");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("published is required");
     let diagnostic = format!("{error:?}");
 
     assert!(
         diagnostic.contains("content/en/index.page:2"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("orders by date"), "{diagnostic}");
-    assert!(diagnostic.contains("add a TOML date"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("orders by publication time"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("add a TOML local date-time"),
+        "{diagnostic}"
+    );
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
 }
 
@@ -428,32 +440,50 @@ fn rejects_collection_membership_for_a_non_rendered_page() {
 }
 
 #[test]
-fn rejects_mixed_date_precision_with_both_membership_locations() {
+fn rejects_updated_values_before_publication() {
     let fixture = Fixture::new();
-    fixture.write("heine.toml", "[collections.posts]\norder = 'date-desc'\n");
     fixture.write(
         "content/en/first.page",
-        "template = 'page.tera'\ndate = 2026-08-14\ncollections = ['posts']\n",
+        "template = 'page.tera'\npublished = 2026-08-14T09:30:00\nupdated = 2026-08-14T09:00:00\n",
     );
-    fixture.write(
-        "content/en/second.page",
-        "template = 'page.tera'\ndate = 2026-08-15T10:00:00Z\ncollections = ['posts']\n",
-    );
+    fixture.write("content/en/second.page", "template = 'page.tera'\n");
     fixture.write("templates/page.tera", "page");
 
-    let error = build_at(fixture.path(), BuildMode::Full).expect_err("precision must match");
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("updated must follow publication");
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("content/en/first.page:2"),
+        diagnostic.contains("updated = 2026-08-14T09:00:00"),
         "{diagnostic}"
     );
-    assert!(
-        diagnostic.contains("content/en/second.page:2"),
-        "{diagnostic}"
+    assert!(diagnostic.contains("field `updated`"), "{diagnostic}");
+}
+
+#[test]
+fn distinguishes_nonexistent_and_repeated_publication_times() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T02:30:00\n",
     );
-    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
-    assert!(diagnostic.contains("mixes date-only"), "{diagnostic}");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("time is in a gap");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("does not exist"), "{diagnostic}");
+    assert!(diagnostic.contains("Europe/Berlin"), "{diagnostic}");
+    assert!(diagnostic.contains("02:30:00"), "{diagnostic}");
+
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\npublished = 2026-10-25T02:30:00\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("time is repeated");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("occurs twice"), "{diagnostic}");
+    assert!(diagnostic.contains("Europe/Berlin"), "{diagnostic}");
+    assert!(diagnostic.contains("02:30:00"), "{diagnostic}");
 }
 
 #[test]
@@ -501,15 +531,19 @@ fn quick_build_keeps_a_collection_listing_stale_after_membership_changes() {
 }
 
 #[test]
-fn rejects_ambiguous_local_date_times() {
+fn requires_a_time_zone_for_publication_times() {
     let fixture = Fixture::new();
     fixture.write(
         "content/en/index.page",
-        "template = 'page.tera'\ntitle = 'Home'\ndate = 2026-08-14T09:30:00\n",
+        "template = 'page.tera'\ntitle = 'Home'\npublished = 2026-08-14T09:30:00\n",
     );
     fixture.write("templates/page.tera", "page");
 
-    let error = build_at(fixture.path(), BuildMode::Full).expect_err("date is ambiguous");
+    fixture.write(
+        "heine.toml",
+        "[site]\n\n[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("time zone is required");
     let diagnostic = format!("{error:?}");
 
     assert!(diagnostic.contains("content/en/index.page"), "{diagnostic}");
@@ -517,23 +551,57 @@ fn rejects_ambiguous_local_date_times() {
         diagnostic.contains("content/en/index.page:3"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("offset-aware"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("requires site.time_zone"),
+        "{diagnostic}"
+    );
 }
 
 #[test]
-fn renders_offset_date_times_in_rfc_3339_form() {
+fn rejects_legacy_and_offset_bearing_publication_values_at_their_fields() {
     let fixture = Fixture::new();
     fixture.write(
         "content/en/index.page",
-        "template = 'page.tera'\ntitle = 'Home'\ndate = 2026-08-14T09:30:00+02:00\n",
+        "template = 'page.tera'\ndate = 2026-08-14\n",
     );
-    fixture.write("templates/page.tera", "{{ page.date }}");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("legacy date is invalid");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("no longer supported"), "{diagnostic}");
+    assert!(diagnostic.contains("published"), "{diagnostic}");
+
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\npublished = 2026-08-14T09:30:00Z\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("offset is invalid");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("without a UTC offset"), "{diagnostic}");
+}
+
+#[test]
+fn renders_publication_times_as_utc_rfc_3339() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ntitle = 'Home'\npublished = 2026-08-14T09:30:00\n",
+    );
+    fixture.write("templates/page.tera", "{{ page.published }}");
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).expect("output"),
-        "2026-08-14T09:30:00+02:00"
+        "2026-08-14T07:30:00Z"
     );
 }
 

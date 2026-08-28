@@ -522,26 +522,26 @@ fn formats_page_dates_for_the_locale_being_rendered() {
     let fixture = multilingual_fixture();
     fixture.write(
         "templates/page.tera",
-        "{% set date = format_date(value=page.date, style='long') %}<time datetime=\"{{ page.date }}\">{{ date }}</time>",
+        "{% set date = format_date(value=page.published, style='long') %}<time datetime=\"{{ page.published }}\">{{ date }}</time>",
     );
     fixture.write(
         "content/en/index.page",
-        "template = 'page.tera'\ndate = 2026-08-14\n",
+        "template = 'page.tera'\npublished = 2026-08-14T09:30:00\n",
     );
     fixture.write(
         "content/de/index.page",
-        "template = 'page.tera'\ndate = 2026-08-14\n",
+        "template = 'page.tera'\npublished = 2026-08-14T09:30:00\n",
     );
     fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
 
     build_at(fixture.path(), BuildMode::Full).expect("localized dates");
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
-        "<time datetime=\"2026-08-14\">August 14, 2026</time>"
+        "<time datetime=\"2026-08-14T07:30:00Z\">August 14, 2026</time>"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap(),
-        "<time datetime=\"2026-08-14\">14. August 2026</time>"
+        "<time datetime=\"2026-08-14T07:30:00Z\">14. August 2026</time>"
     );
 }
 
@@ -550,11 +550,11 @@ fn reports_invalid_date_formatting_options_at_the_template_call_site() {
     let fixture = multilingual_fixture();
     fixture.write(
         "templates/page.tera",
-        "{{ format_date(value=page.date, style='full') }}",
+        "{{ format_date(value=page.published, style='full') }}",
     );
     fixture.write(
         "content/en/index.page",
-        "template = 'page.tera'\ndate = 2026-08-14\n",
+        "template = 'page.tera'\npublished = 2026-08-14T09:30:00\n",
     );
     fs::create_dir_all(fixture.path().join("content/de")).unwrap();
     fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
