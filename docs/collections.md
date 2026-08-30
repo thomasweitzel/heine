@@ -175,6 +175,32 @@ no members. After `{% set posts = collection(name="posts") %}`, a template can
 therefore rely on `posts.count` being zero rather than needing to distinguish
 an empty collection from a missing definition.
 
+## Collection neighbors
+
+Use [`collection_neighbors()`](glossary.md#collection-neighbors) from a member
+page when its previous and next links should follow the collection's configured
+order rather than directory weight order:
+
+```tera
+{% set neighbors = collection_neighbors(name="posts") %}
+<nav aria-label="Post navigation">
+  {% if neighbors.before %}
+    <a href="{{ neighbors.before.relative_url }}">Previous</a>
+  {% endif %}
+  {% if neighbors.after %}
+    <a href="{{ neighbors.after.relative_url }}">Next</a>
+  {% endif %}
+</nav>
+```
+
+The result always has `before` and `after`. `before` is the preceding member
+and `after` the following member in the resolved collection order. Each is a
+complete page view or `null` at the corresponding end. The function uses the
+current locale and current authored page. It fails at the template call if the
+named collection is unknown or the page is not a member. It is therefore a
+different relationship from `siblings()` and `sibling_neighbors()`, which use
+pages from one source directory ordered by numeric weight.
+
 ## Locale behavior
 
 Definitions are shared, but membership and resolution happen independently

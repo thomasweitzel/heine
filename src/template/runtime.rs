@@ -24,6 +24,7 @@ pub(super) struct TemplateRuntime {
     page_catalog: PageCatalog,
     collections: Arc<BTreeMap<Locale, BTreeMap<String, CollectionView>>>,
     siblings: Arc<BTreeMap<Locale, SiblingIndex>>,
+    collection_neighbors: Arc<crate::site::collection::CollectionNeighborIndex>,
     taxonomies: Arc<TaxonomyCatalog>,
     pagers: PaginationCatalog,
     feeds: Arc<FeedCatalog>,
@@ -38,6 +39,7 @@ impl From<TemplateResources> for TemplateRuntime {
             page_catalog,
             collections,
             siblings,
+            collection_neighbors,
             taxonomies,
             pagers,
             feeds,
@@ -48,6 +50,7 @@ impl From<TemplateResources> for TemplateRuntime {
             page_catalog,
             collections,
             siblings,
+            collection_neighbors,
             taxonomies,
             pagers,
             feeds,
@@ -112,6 +115,24 @@ impl TemplateRuntime {
             .get(locale)
             .map(|siblings| siblings.for_page(directory, page))
             .unwrap_or_default()
+    }
+
+    pub(super) fn sibling_neighbors(
+        &self,
+        locale: &Locale,
+        directory: &str,
+        page: &PageId,
+    ) -> Option<crate::site::Neighbors> {
+        self.siblings.get(locale)?.neighbors(directory, page)
+    }
+
+    pub(super) fn collection_neighbors(
+        &self,
+        locale: &Locale,
+        name: &str,
+        page: &PageId,
+    ) -> Option<crate::site::Neighbors> {
+        self.collection_neighbors.neighbors(locale, name, page)
     }
 
     pub(super) fn pager(&self, state: &tera::State) -> tera::TeraResult<Option<&Pager>> {

@@ -2,7 +2,7 @@
 {% block header %}
 {% if page.extra.parent %}
   {% set up = page(id=page.extra.parent) %}
-  <nav class="page-navigation">
+  <nav class="page-navigation" aria-label="{{ t(id="page-navigation") }}">
     <a href="{{ up.url }}"><span aria-hidden="true">↑</span><span>{{ up.title }}</span></a>
   </nav>
 {% endif %}

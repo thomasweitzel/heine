@@ -70,32 +70,8 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                 .with_locale(page_runtime.locale(state)?)
                 .resolve(id, locale)
                 .map_err(|error| tera::Error::message(error.to_string()))?;
-            let page = page_runtime
-                .page_view(&target.locale, &target.id)
-                .ok_or_else(|| tera::Error::message("Heine page catalog is inconsistent"))?;
             let root = page_runtime.root(state)?;
-            let mut result = match tera::Value::try_from_serializable(&page)
-                .map_err(|_| tera::Error::message("Heine page view is not serializable"))?
-                .into_map()
-            {
-                Some(values) => values,
-                None => return Err(tera::Error::message("Heine page view is not a map")),
-            };
-            result.insert("url".into(), target.url.into());
-            result.insert(
-                "relative_url".into(),
-                format!("{root}{}", target.output_path.url_path().as_str()).into(),
-            );
-            result.insert(
-                "taxonomies".into(),
-                tera::Value::try_from_serializable(&page_runtime.page_terms(
-                    &target.locale,
-                    &target.id,
-                    &root,
-                ))
-                .map_err(|_| tera::Error::message("Heine taxonomy terms are not serializable"))?,
-            );
-            Ok(result.into())
+            page_value(&page_runtime, target, &root)
         },
     );
 
@@ -255,6 +231,53 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         },
     );
 
+    let sibling_neighbors_runtime = runtime.clone();
+    tera.register_function(
+        "sibling_neighbors",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("sibling_neighbors", &kwargs, &[])?;
+            let locale = sibling_neighbors_runtime.locale(state)?;
+            let directory = sibling_neighbors_runtime.page_dir(state)?;
+            let page = sibling_neighbors_runtime.page_id(state)?;
+            let neighbors = sibling_neighbors_runtime
+                .sibling_neighbors(&locale, &directory, &page)
+                .ok_or_else(|| {
+                    tera::Error::message(format!(
+                        "page {page:?} does not participate in sibling ordering; give it a numeric weight"
+                    ))
+                })?;
+            let root = sibling_neighbors_runtime.root(state)?;
+            neighbor_value(&sibling_neighbors_runtime, &locale, neighbors, &root)
+        },
+    );
+
+    let collection_neighbors_runtime = runtime.clone();
+    tera.register_function(
+        "collection_neighbors",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("collection_neighbors", &kwargs, &["name"])?;
+            let name = kwargs.must_get::<&str>("name")?;
+            let locale = collection_neighbors_runtime.locale(state)?;
+            if collection_neighbors_runtime.collection(&locale, name).is_none() {
+                let available = collection_neighbors_runtime.collection_names(&locale);
+                let detail = available_names("no collections are configured", "collections", &available);
+                return Err(tera::Error::message(format!(
+                    "collection {name:?} was not found; {detail}"
+                )));
+            }
+            let page = collection_neighbors_runtime.page_id(state)?;
+            let neighbors = collection_neighbors_runtime
+                .collection_neighbors(&locale, name, &page)
+                .ok_or_else(|| {
+                    tera::Error::message(format!(
+                        "page {page:?} is not a member of collection {name:?}; add it to the collection before requesting its neighbors"
+                    ))
+                })?;
+            let root = collection_neighbors_runtime.root(state)?;
+            neighbor_value(&collection_neighbors_runtime, &locale, neighbors, &root)
+        },
+    );
+
     let latest_runtime = runtime.clone();
     tera.register_filter(
         "latest",
@@ -301,6 +324,60 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             Ok(result.into())
         },
     );
+}
+
+fn neighbor_value(
+    runtime: &TemplateRuntime,
+    locale: &crate::locale::Locale,
+    neighbors: crate::site::Neighbors,
+    root: &str,
+) -> tera::TeraResult<tera::Value> {
+    let mut value = tera::Map::new();
+    for (name, id) in [("before", neighbors.before), ("after", neighbors.after)] {
+        let page = id
+            .map(|id| page_target(runtime, locale, id))
+            .transpose()?
+            .map(|target| page_value(runtime, target, root))
+            .transpose()?;
+        value.insert(name.into(), page.into());
+    }
+    Ok(value.into())
+}
+
+fn page_target(
+    runtime: &TemplateRuntime,
+    locale: &crate::locale::Locale,
+    id: crate::site::PageId,
+) -> tera::TeraResult<crate::site::PageLinkTarget> {
+    runtime
+        .pages()
+        .target(locale, &id)
+        .ok_or_else(|| tera::Error::message("Heine page relationship is inconsistent"))
+}
+
+fn page_value(
+    runtime: &TemplateRuntime,
+    target: crate::site::PageLinkTarget,
+    root: &str,
+) -> tera::TeraResult<tera::Value> {
+    let page = runtime
+        .page_view(&target.locale, &target.id)
+        .ok_or_else(|| tera::Error::message("Heine page catalog is inconsistent"))?;
+    let mut result = tera::Value::try_from_serializable(page)
+        .map_err(|_| tera::Error::message("Heine page view is not serializable"))?
+        .into_map()
+        .ok_or_else(|| tera::Error::message("Heine page view is not a map"))?;
+    result.insert("url".into(), target.url.into());
+    result.insert(
+        "relative_url".into(),
+        format!("{root}{}", target.output_path.url_path().as_str()).into(),
+    );
+    result.insert(
+        "taxonomies".into(),
+        tera::Value::try_from_serializable(&runtime.page_terms(&target.locale, &target.id, root))
+            .map_err(|_| tera::Error::message("Heine taxonomy terms are not serializable"))?,
+    );
+    Ok(result.into())
 }
 
 fn available_names(empty: &str, kind: &str, names: &[String]) -> String {

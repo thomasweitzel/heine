@@ -110,7 +110,7 @@ pub(super) fn load(
             );
             locale_pages.insert(loaded.page.id.clone(), loaded.page);
         }
-        siblings.insert(locale.clone(), index::fix_siblings(&mut locale_pages));
+        siblings.insert(locale.clone(), index::resolve_siblings(&locale_pages));
         pages.insert(locale.clone(), locale_pages);
         entries_by_locale.insert(locale.clone(), entries);
         content_inputs.insert(locale.clone(), locale_inputs);

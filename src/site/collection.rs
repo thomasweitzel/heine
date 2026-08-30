@@ -17,6 +17,7 @@ use crate::{
 
 use super::{
     collation,
+    index::{Neighbors, OrderedPages},
     page::{CollectionMembership, Page, PageId, PublicationTime},
 };
 
@@ -48,6 +49,49 @@ pub(crate) struct CollectionView {
     name: String,
     count: usize,
     page_ids: Vec<PageId>,
+}
+
+/// Locale-local adjacent-member indexes derived from resolved collection
+/// order. This remains separate from the serializable collection view because
+/// it is a render-time lookup aid, not template data by itself.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CollectionNeighborIndex {
+    collections: BTreeMap<Locale, BTreeMap<String, OrderedPages>>,
+}
+
+impl CollectionNeighborIndex {
+    pub(crate) fn neighbors(
+        &self,
+        locale: &Locale,
+        name: &str,
+        page: &PageId,
+    ) -> Option<Neighbors> {
+        self.collections.get(locale)?.get(name)?.neighbors(page)
+    }
+}
+
+pub(super) fn resolve_neighbors(
+    collections: &BTreeMap<Locale, BTreeMap<CollectionName, ResolvedCollection>>,
+) -> CollectionNeighborIndex {
+    CollectionNeighborIndex {
+        collections: collections
+            .iter()
+            .map(|(locale, collections)| {
+                (
+                    locale.clone(),
+                    collections
+                        .iter()
+                        .map(|(name, collection)| {
+                            (
+                                name.to_string(),
+                                OrderedPages::new(collection.page_ids.clone()),
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect(),
+    }
 }
 
 #[derive(Debug, Diagnostic, Error)]

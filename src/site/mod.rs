@@ -48,7 +48,7 @@ use crate::{
 
 pub(crate) use feed::Catalog as FeedCatalog;
 pub(crate) use feed::View as FeedView;
-pub(crate) use index::SiblingIndex;
+pub(crate) use index::{Neighbors, SiblingIndex};
 use page::Task;
 pub(crate) use page::{PageId, PageView, Pager};
 pub(crate) use pagination::{Catalog as PaginationCatalog, View as PaginationView};
@@ -173,6 +173,18 @@ impl PageLinks {
             locale,
             output_path: path.clone(),
             url: self.base_path.join(&path.url_path()),
+        })
+    }
+
+    /// Looks up a relationship that has already been resolved inside the site
+    /// model, without treating its page ID as new authored input.
+    pub(crate) fn target(&self, locale: &Locale, id: &PageId) -> Option<PageLinkTarget> {
+        let output_path = self.targets.get(locale)?.get(id)?.clone();
+        Some(PageLinkTarget {
+            id: id.clone(),
+            locale: locale.clone(),
+            url: self.base_path.join(&output_path.url_path()),
+            output_path,
         })
     }
 
@@ -351,6 +363,7 @@ pub(crate) struct MissingTemplate {
 pub(crate) struct Site {
     pages: PageCatalog,
     siblings: std::sync::Arc<BTreeMap<Locale, index::SiblingIndex>>,
+    collection_neighbors: std::sync::Arc<collection::CollectionNeighborIndex>,
     tasks: Vec<Task>,
     taxonomy_tasks: Vec<taxonomy::Task>,
     taxonomies: std::sync::Arc<taxonomy::Catalog>,
@@ -433,6 +446,7 @@ impl Site {
             }
         }
         let collections = collection::resolve(&pages, &collection_config)?;
+        let collection_neighbors = std::sync::Arc::new(collection::resolve_neighbors(&collections));
         pagination::expand(&pages, &collections, &mut tasks);
         index::resolve_translations(&mut pages).map_err(Error::DuplicateTranslation)?;
         let sources = i18n
@@ -620,6 +634,7 @@ impl Site {
         Ok(Self {
             pages,
             siblings: std::sync::Arc::new(siblings),
+            collection_neighbors,
             tasks,
             taxonomy_tasks,
             taxonomies,
@@ -660,6 +675,7 @@ impl Site {
                 TemplateIndexes {
                     collections: self.collections.clone(),
                     siblings: self.siblings.clone(),
+                    collection_neighbors: self.collection_neighbors.clone(),
                     taxonomies: self.taxonomies.clone(),
                     pagers: self.pagers.clone(),
                     feeds: self.feeds.clone(),

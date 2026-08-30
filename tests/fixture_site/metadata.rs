@@ -205,6 +205,82 @@ fn resolves_explicit_collections_with_inherited_membership_and_page_opt_out() {
 }
 
 #[test]
+fn collection_neighbors_follow_locale_local_collection_order() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n[collections.posts]\norder = 'published-desc'\n",
+    );
+    fixture.write(
+        "content/en/blog/older.page",
+        "template = 'post.tera'\ntitle = 'Older'\npublished = 2026-08-14T09:30:00\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "content/en/blog/newer.page",
+        "template = 'post.tera'\ntitle = 'Newer'\npublished = 2026-08-16T09:30:00\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "content/de/blog/eins.page",
+        "template = 'post.tera'\ntitle = 'Eins'\npublished = 2026-08-14T09:30:00\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "content/de/blog/zwei.page",
+        "template = 'post.tera'\ntitle = 'Zwei'\npublished = 2026-08-16T09:30:00\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "templates/post.tera",
+        "{% set neighbors = collection_neighbors(name='posts') %}{{ page.id }}|{% if neighbors.before %}{{ neighbors.before.id }}:{{ neighbors.before.url }}{% else %}none{% endif %}|{% if neighbors.after %}{{ neighbors.after.id }}:{{ neighbors.after.url }}{% else %}none{% endif %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/blog/newer.html")).expect("newer output"),
+        "blog/newer|none|blog/older:/blog/older.html"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/blog/older.html")).expect("older output"),
+        "blog/older|blog/newer:/blog/newer.html|none"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/de/blog/zwei.html"))
+            .expect("German newer output"),
+        "blog/zwei|none|blog/eins:/de/blog/eins.html"
+    );
+}
+
+#[test]
+fn collection_neighbors_report_unknown_collections_and_non_members_at_the_call_site() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'id-asc'\n");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "templates/page.tera",
+        "{% set neighbors = collection_neighbors(name='missing') %}",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown collection fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("collection \"missing\" was not found"),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "templates/page.tera",
+        "{% set neighbors = collection_neighbors(name='posts') %}",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("non-member fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("is not a member of collection \"posts\""),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn applies_each_collection_order_with_page_id_tie_breaking() {
     let fixture = Fixture::new();
     fixture.write(

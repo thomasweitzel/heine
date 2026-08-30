@@ -449,8 +449,6 @@ pub(super) fn load_page(
         pagination,
         weight,
         weight_span,
-        lighter: None,
-        heavier: None,
         translations: BTreeMap::new(),
     };
     let task = template.zip(output_path).map(

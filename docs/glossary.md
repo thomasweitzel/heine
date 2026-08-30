@@ -178,9 +178,10 @@ requires every member to have a numeric weight.
 ### Sibling navigation
 
 The deterministic sequence of rendered, numeric-weight pages in one page
-directory and locale. It is ordered by weight, then page ID. `page.lighter`
-and `page.heavier` identify the adjacent page IDs; `siblings()` returns the
-other IDs in the same sequence. It is independent of collections.
+directory and locale. It is ordered by weight, then page ID. `siblings()`
+returns the other IDs in the same sequence, while `sibling_neighbors()`
+returns the immediate `before` and `after` pages. It is independent of
+collections.
 
 ### Template
 
@@ -245,6 +246,13 @@ one page for each locale.
 
 A configured, locale-local ordered set of rendered pages. Pages opt in through
 membership; a collection itself does not generate output.
+
+### Collection neighbors
+
+The immediate `before` and `after` members around the current authored page
+in one collection's resolved locale-local order. Templates obtain them with
+`collection_neighbors(name="…")`; this is separate from directory sibling
+navigation.
 
 ### Listing page
 

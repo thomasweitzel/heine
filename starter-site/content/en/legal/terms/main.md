@@ -17,8 +17,8 @@ their contents remain their responsibility.
 ## Reuse
 
 The licensing information for copied assets is collected on the
-[Attributions](page:licenses) page. Other content should not be treated as a
-license grant merely because it is pleasant to copy.
+[Attributions](page:legal/licenses/index) page. Other content should not be
+treated as a license grant merely because it is pleasant to copy.
 
 For the equally illustrative account of data handling, see the
-[Privacy notice](page:privacy/index).
+[Privacy notice](page:legal/privacy/index).

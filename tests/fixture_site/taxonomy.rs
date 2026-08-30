@@ -534,3 +534,31 @@ fn reports_taxonomy_template_render_errors_at_the_template_and_generated_output(
         "{diagnostic}"
     );
 }
+
+#[test]
+fn collection_neighbors_require_an_authored_page_render() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", taxonomy_config());
+    fixture.write(
+        "content/en/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['news']\n",
+    );
+    fixture.write("templates/page.tera", "page");
+    fixture.write(
+        "templates/taxonomy-index.tera",
+        "{% set neighbors = collection_neighbors(name='posts') %}",
+    );
+    fixture.write("templates/taxonomy-term.tera", "term");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("a generated taxonomy render has no authored page");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("templates/taxonomy-index.tera:1"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("authored page render"), "{diagnostic}");
+    assert!(diagnostic.contains("taxonomy tags (en)"), "{diagnostic}");
+    assert!(diagnostic.contains("index.html"), "{diagnostic}");
+}

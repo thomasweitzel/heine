@@ -12,6 +12,7 @@ language-de = Deutsch
 
 # Labels for listing and quiz navigation controls.
 pagination-label = Seitennavigation
+page-navigation = Seitennavigation
 open = Öffnen
 quiz-menu = Quiz-Menü
 
@@ -30,8 +31,9 @@ feed-posts-title = Heine-Beiträge
 feed-posts-subtitle = Notizen über einen kleinen Static-Site-Generator
 feed-subscribe = Atom abonnieren
 
-# Footer text and the configured legal-page links.
+# Footer text and configured standalone-page links.
 footer-label = Fußnavigation
+footer-about = Über Heine
 footer-terms = Nutzungsbedingungen
 footer-privacy = Datenschutz
 footer-imprint = Impressum
