@@ -3,8 +3,8 @@
 use std::{cell::RefCell, collections::BTreeMap};
 
 use icu_datetime::{DateTimeFormatter, fieldsets::YMD, input::Date};
+use jiff::Timestamp;
 use thiserror::Error;
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{locale::Locale, localization::Arguments};
 
@@ -151,14 +151,18 @@ fn format_date(locale: &Locale, value: &str, style: &str) -> Result<String, Stri
 /// `page.updated`; plain ISO dates remain useful for authored template data.
 fn parse_iso_date(value: &str) -> Result<Date<icu_calendar::Iso>, String> {
     let calendar = match value.contains('T') {
-        true => OffsetDateTime::parse(value, &Rfc3339)
-            .map_err(|_| {
+        true => {
+            value.parse::<Timestamp>().map_err(|_| {
+                format!(
+                    "date value {value:?} must be a four-digit ISO calendar date or RFC 3339 offset date-time"
+                )
+            })?;
+            value.get(..10).map(str::to_owned).ok_or_else(|| {
                 format!(
                     "date value {value:?} must be a four-digit ISO calendar date or RFC 3339 offset date-time"
                 )
             })?
-            .date()
-            .to_string(),
+        }
         false => value.to_owned(),
     };
     let bytes = calendar.as_bytes();
@@ -228,5 +232,14 @@ mod tests {
         assert!(parse_iso_date("2026-8-14").is_err());
         assert!(parse_iso_date("-0001-02-03").is_err());
         assert!(parse_iso_date("2026-08-14Tnot-a-time").is_err());
+    }
+
+    #[test]
+    fn retains_the_authored_calendar_date_of_an_offset_timestamp() {
+        let formats = DateFormats::for_locale(&"en".parse().unwrap()).unwrap();
+        assert_eq!(
+            formats.format("2026-08-14T00:30:00+02:00", "long").unwrap(),
+            "August 14, 2026"
+        );
     }
 }

@@ -8,18 +8,17 @@ use std::{
     time::Duration,
 };
 
+use jiff::Timestamp;
 use miette::{Diagnostic, Report};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
-use time::{OffsetDateTime, format_description::FormatItem, macros::format_description};
 use tokio::sync::watch;
 
 use super::{PublishedSite, next_generation};
 use crate::{BuildMode, BuildOptions, build_at_with_publication, project::ProjectPaths};
 
 const DEBOUNCE: Duration = Duration::from_millis(150);
-const TIMESTAMP_FORMAT: &[FormatItem<'static>] =
-    format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z");
+const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S.%3fZ";
 
 /// Holds the watcher thread alive for the lifetime of the HTTP server.
 pub(crate) struct SourceWatcher {
@@ -130,10 +129,7 @@ fn watch_loop(
             Ok(build) => {
                 generation = next_generation(generation);
                 let _ = published.send(PublishedSite::from_build(build, generation));
-                println!(
-                    "{}",
-                    rebuild_message(OffsetDateTime::now_utc(), &changed_paths)
-                );
+                println!("{}", rebuild_message(Timestamp::now(), &changed_paths));
             }
             Err(error) => eprintln!("{error:?}"),
         }
@@ -180,12 +176,11 @@ fn describe_changes(changes: &BTreeMap<PathBuf, SourceChange>) -> String {
     displayed.join(", ")
 }
 
-fn timestamp(time: OffsetDateTime) -> String {
-    time.format(TIMESTAMP_FORMAT)
-        .expect("the current UTC time is always representable in the timestamp format")
+fn timestamp(time: Timestamp) -> String {
+    time.strftime(TIMESTAMP_FORMAT).to_string()
 }
 
-fn rebuild_message(time: OffsetDateTime, changes: &BTreeMap<PathBuf, SourceChange>) -> String {
+fn rebuild_message(time: Timestamp, changes: &BTreeMap<PathBuf, SourceChange>) -> String {
     format!(
         "[{}] Rebuilt site ({})",
         timestamp(time),
@@ -356,17 +351,14 @@ mod tests {
 
     #[test]
     fn prints_an_unambiguous_utc_timestamp() {
-        assert_eq!(
-            timestamp(OffsetDateTime::UNIX_EPOCH),
-            "1970-01-01T00:00:00.000Z"
-        );
+        assert_eq!(timestamp(Timestamp::UNIX_EPOCH), "1970-01-01T00:00:00.000Z");
     }
 
     #[test]
     fn rebuild_messages_are_compact_status_lines() {
         let changes = BTreeMap::from([(PathBuf::from("content/post.md"), SourceChange::Changed)]);
         assert_eq!(
-            rebuild_message(OffsetDateTime::UNIX_EPOCH, &changes),
+            rebuild_message(Timestamp::UNIX_EPOCH, &changes),
             "[1970-01-01T00:00:00.000Z] Rebuilt site (changed content/post.md)"
         );
     }
