@@ -25,7 +25,6 @@ percent-encoding = "2.3.2"
 tokio = { version = "1.53.1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
 tokio-util = { version = "0.7.19", features = ["io"] }
-time = { version = "0.3.55", features = ["formatting", "macros", "parsing"] }
 fluent-bundle = "0.16.0"
 fluent-syntax = "0.12.0"
 unic-langid = "0.9.6"
