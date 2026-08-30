@@ -35,10 +35,14 @@ term_template = "taxonomy-term.tera"
 per_page = 20
 ```
 
-The five fields are required; optional `translations` groups declare explicit
+The five fields are required; optional `counterparts` groups declare explicit
 cross-locale term counterparts. Taxonomy pages always use the HTML `.html`
 suffix; a taxonomy is an HTML listing feature rather than a second general
 output-format mechanism.
+
+A counterpart group is taxonomy structure, not a Fluent resource or a display
+translation. Its name is an opaque local identifier; its locale values name
+the literal terms that correspond across those locales.
 
 | Field            | Meaning                                     | Constraint                              |
 |------------------|---------------------------------------------|-----------------------------------------|
@@ -88,7 +92,7 @@ values.
 Membership is locale-local. Terms with the same spelling in two locale trees
 remain independent, and no counterpart term is inferred for a language
 switcher. Declare only the deliberate counterparts in the taxonomy's optional
-`translations` groups, described in the [template contract](#template-contract).
+`counterparts` groups, described in the [template contract](#template-contract).
 
 ## Generated output
 
@@ -165,11 +169,11 @@ one locale corresponds to a term in another. Declare known counterparts in
 the taxonomy configuration instead:
 
 ```toml
-[taxonomies.tags.translations.rust]
+[taxonomies.tags.counterparts.rust]
 en = "Rust"
 de = "Rust"
 
-[taxonomies.tags.translations.static-sites]
+[taxonomies.tags.counterparts.static-sites]
 en = "Static sites"
 de = "Statische Seiten"
 ```
@@ -183,7 +187,7 @@ only in English simply has no group and therefore no language counterpart.
 The generated term views then expose only the deliberate relationships:
 
 ```tera
-{% for target_locale, target in taxonomy.term.translations %}
+{% for target_locale, target in taxonomy.term.counterparts %}
   <a href="{{ target.url }}" hreflang="{{ target_locale }}">{{ target.name }}</a>
 {% endfor %}
 ```
@@ -191,7 +195,7 @@ The generated term views then expose only the deliberate relationships:
 Each target has its literal `name`, base-path-aware `url`, and
 current-output-relative `relative_url`. This is available both for a term in
 the taxonomy index's `taxonomy.terms` and for the current term listing's
-`taxonomy.term`. Empty `translations` means that no counterpart was declared.
+`taxonomy.term`. Empty `counterparts` means that no counterpart was declared.
 Each counterpart always points to that term's first listing page; Heine does
 not infer a correspondence between later pagers in different locales.
 
