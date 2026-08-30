@@ -53,6 +53,6 @@ reserved [`__heine/`](glossary.md#heine) namespace remains unavailable.
 
 Full builds atomically publish a complete output tree. Consequently, removing
 `deploy/google1234567890.html` removes its generated counterpart on the next
-full build. Quick builds update changed, present deployment files, but—as with
-all quick-build inputs—do not remove output for deleted or renamed files. Run
+full build. Quick builds update changed, present deployment files, but - as with
+all quick-build inputs - do not remove output for deleted or renamed files. Run
 a normal build after such changes.

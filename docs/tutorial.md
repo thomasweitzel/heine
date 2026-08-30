@@ -60,7 +60,7 @@ you follow the tutorial:
 cargo run -- serve --root /path/to/my-site
 ```
 
-Open the local address it prints—normally `http://127.0.0.1:1111/`. Each later
+Open the local address it prints, normally `http://127.0.0.1:1111/`. Each later
 successful rebuild reloads that browser page automatically.
 
 `content/en/index.page` is a [page file](glossary.md#page-file): its filename

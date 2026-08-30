@@ -9,6 +9,8 @@ collections = []
 
 [extra]
 parent = "index"
+home = true
+collection = "posts"
 count_message = "blog-post-summary"
 
 [pagination]
@@ -16,4 +18,4 @@ collection = "posts"
 per_page = 2
 
 [content]
-main = "md/index.md"
+main = "index.md"

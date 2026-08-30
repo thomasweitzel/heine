@@ -40,8 +40,8 @@ sitemap generation itself. Without it, pages may not declare `published` or
 implicit UTC or machine-local default: `Z` appears only when Heine serializes
 an already resolved authored instant as UTC.
 
-The timezone is site-wide. Heine does not infer one from a locale—languages are
-not geographic regions—and pages do not override it in this version. A site
+The timezone is site-wide. Heine does not infer one from a locale, languages are
+not geographic regions, and pages do not override it in this version. A site
 therefore chooses one editorial timezone for its publication chronology.
 
 `[sitemap]` without `site.origin` is an error. A sitemap must contain absolute

@@ -9,3 +9,4 @@ content.main = "content/quiz-list.md"
 
 [extra]
 parent = "index"
+home = true

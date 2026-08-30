@@ -63,8 +63,8 @@ license text has its `id`, base-path-aware `url`, and current-page-relative
 
 For a complete deterministic inventory, use `attributions()`. Each item has
 `asset` (`output_path`, `url`, `relative_url`) and the same `licensing` view.
-`output_path` is the locale-qualified published path—for example,
-`de/images/logo.svg`—rather than the locale-relative ID passed to `asset()`.
+`output_path` is the locale-qualified published path. For example,
+`de/images/logo.svg`,rather than the locale-relative ID passed to `asset()`.
 It is therefore unambiguous across the whole site and suitable as a key for
 localized presentation data. An attribution page is an ordinary authored page,
 so a site decides its route, language, and presentation:
@@ -72,7 +72,7 @@ so a site decides its route, language, and presentation:
 ```tera
 <ul>
 {% for item in attributions() %}
-  <li><a href="{{ item.asset.url }}">{{ item.asset.output_path }}</a> —
+  <li><a href="{{ item.asset.url }}">{{ item.asset.output_path }}</a> -
       {{ item.licensing.copyrights | join(sep=", ") }}
       ({{ item.licensing.expressions | join(sep="; ") }})</li>
 {% endfor %}
@@ -90,5 +90,5 @@ own locale-specific presentation text while retaining the canonical declaration.
 
 License texts participate in normal output ownership and collision checks.
 Full builds publish exactly the current `LICENSES/` tree. Quick builds update
-present license texts and re-render pages when a sidecar changes, but—like
-other quick-build inputs—do not remove stale output after deletion.
+present license texts and re-render pages when a sidecar changes, but - like
+other quick-build inputs - do not remove stale output after deletion.

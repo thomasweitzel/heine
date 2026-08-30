@@ -1,24 +1,24 @@
 <!-- segment: description -->
 <p>This is a quiz, which uses Heine's content-segment feature.</p>
 
-<p>The quiz questions are page-owned content in
-<code>quiz/content/quiz-1.html</code>. It uses custom HTML tags to keep things
-nice and simple.</p>
+<p>The questions use Heine's named content segments. One declared input
+provides a description and repeated question segments, which the template
+renders separately. Native buttons keep answers simple and keyboard-accessible.</p>
 <!-- segment: q -->
-<quiz-q>What is the capital of <strong>Germany</strong>?</quiz-q>
-<quiz-a>Bonn</quiz-a>
-<quiz-a>Bayreuth</quiz-a>
-<quiz-a class="q-correct">Berlin</quiz-a>
-<quiz-a>Bremen</quiz-a>
+<p class="quiz-question">What is the capital of <strong>Germany</strong>?</p>
+<button class="quiz-answer" type="button">Bonn</button>
+<button class="quiz-answer" type="button">Bayreuth</button>
+<button class="quiz-answer q-correct" type="button">Berlin</button>
+<button class="quiz-answer" type="button">Bremen</button>
 <!-- segment: q -->
-<quiz-q>Who wrote <strong>Deutschland. Ein Wintermärchen</strong>?</quiz-q>
-<quiz-a>Johann Wolfgang Goethe</quiz-a>
-<quiz-a>Immanuel Kant</quiz-a>
-<quiz-a class="q-correct">Heinrich Heine</quiz-a>
-<quiz-a>Thomas Mann</quiz-a>
+<p class="quiz-question">Who wrote <strong>Deutschland. Ein Wintermärchen</strong>?</p>
+<button class="quiz-answer" type="button">Johann Wolfgang Goethe</button>
+<button class="quiz-answer" type="button">Immanuel Kant</button>
+<button class="quiz-answer q-correct" type="button">Heinrich Heine</button>
+<button class="quiz-answer" type="button">Thomas Mann</button>
 <!-- segment: q -->
-<quiz-q>Which planet is known as the <strong>Ring Planet</strong>?</quiz-q>
-<quiz-a class="q-correct">Saturn</quiz-a>
-<quiz-a>Mars</quiz-a>
-<quiz-a>Uranus</quiz-a>
-<quiz-a>Venus</quiz-a>
+<p class="quiz-question">Which planet is known as the <strong>Ring Planet</strong>?</p>
+<button class="quiz-answer q-correct" type="button">Saturn</button>
+<button class="quiz-answer" type="button">Mars</button>
+<button class="quiz-answer" type="button">Uranus</button>
+<button class="quiz-answer" type="button">Venus</button>

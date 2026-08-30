@@ -1,4 +1,4 @@
-# First blog post
+# MathML, Audio, and Direction
 
 ## Math
 
@@ -16,7 +16,7 @@ correct when the site is served below its configured base path. It is long
 enough to try seeking while `heine serve` handles byte-range requests.
 
 <audio controls preload="metadata">
-  <source src="md/audio/heine-introduction.mp3" type="audio/mpeg">
+  <source src="audio/heine-introduction.mp3" type="audio/mpeg">
   Your browser does not support the audio element.
 </audio>
 

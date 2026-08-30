@@ -1,5 +1,4 @@
 :root {
-    /* ...existing... */
     --color-wrong-bg: #FDD;
     --color-wrong-border: red;
     --color-wrong-text: black;
@@ -10,7 +9,6 @@
 
 @media (prefers-color-scheme: dark) {
     :root {
-        /* ...existing... */
         --color-wrong-bg: #4A1F1F;
         --color-wrong-border: #E88;
         --color-wrong-text: #EEEEEE;
@@ -36,34 +34,40 @@ h1 {
     margin-bottom: var(--spacing-l);
 }
 
-quiz-q, quiz-a {
-    padding: 1rem;
-    margin-block: 1rem;
-    margin-inline: 2rem;
-    display: block;
+.quiz-question {
+    margin: 0 var(--spacing-l) var(--spacing-m);
     color: var(--fg);
 }
 
-quiz-a {
+.quiz-answer {
+    display: block;
+    width: calc(100% - var(--spacing-l));
+    margin-block: var(--spacing-s);
+    margin-inline-start: var(--spacing-l);
+    padding: var(--spacing-m);
     border: var(--border);
     border-radius: var(--radius);
-    margin-inline-start: 4rem;
+    background-color: transparent;
     cursor: pointer;
+    color: var(--fg);
+    font: inherit;
+    text-align: start;
 }
 
-quiz-a:hover {
+.quiz-answer:hover,
+.quiz-answer:focus-visible {
     background-color: var(--color-1);
     color: var(--fg);
 }
 
-quiz-a.clicked {
+.quiz-answer.clicked {
     border: 2px solid var(--color-wrong-border);
     background-color: var(--color-wrong-bg);
     color: var(--color-wrong-text);
-    padding: calc(1rem - 1px);
+    padding: calc(var(--spacing-m) - 1px);
 }
 
-quiz-a.clicked.q-correct {
+.quiz-answer.clicked.q-correct {
     border: 2px solid var(--color-correct-border);
     background-color: var(--color-correct-bg);
     color: var(--color-correct-text);
