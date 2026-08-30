@@ -220,7 +220,7 @@ fn exposes_only_configured_taxonomy_term_counterparts() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nde = 'Rost'\n",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.counterparts.rust]\nen = 'Rust'\nde = 'Rost'\n",
     );
     fixture.write(
         "content/en/post.page",
@@ -233,11 +233,11 @@ fn exposes_only_configured_taxonomy_term_counterparts() {
     fixture.write("templates/page.tera", "page");
     fixture.write(
         "templates/taxonomy-index.tera",
-        "{% if locale.code == 'en' %}{{ taxonomy.terms[0].translations | length }}|{{ taxonomy.terms[1].translations | length }}{% endif %}",
+        "{% if locale.code == 'en' %}{{ taxonomy.terms[0].counterparts | length }}|{{ taxonomy.terms[1].counterparts | length }}{% endif %}",
     );
     fixture.write(
         "templates/taxonomy-term.tera",
-        "{% if locale.code == 'en' and taxonomy.term.name == 'Rust' %}{{ taxonomy.term.translations.de.name }}|{{ taxonomy.term.translations.de.url }}{% endif %}",
+        "{% if locale.code == 'en' and taxonomy.term.name == 'Rust' %}{{ taxonomy.term.counterparts.de.name }}|{{ taxonomy.term.counterparts.de.url }}{% endif %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("configured counterparts build");
@@ -254,11 +254,27 @@ fn exposes_only_configured_taxonomy_term_counterparts() {
 }
 
 #[test]
-fn rejects_invalid_taxonomy_term_translation_groups_at_their_config_values() {
+fn rejects_the_taxonomy_translations_setting_at_its_table() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.only]\nen = 'Rust'\n",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nde = 'Rost'\n",
+    );
+
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("the taxonomy setting must fail");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("heine.toml:18"), "{diagnostic}");
+    assert!(diagnostic.contains("translations"), "{diagnostic}");
+    assert!(diagnostic.contains("counterparts"), "{diagnostic}");
+}
+
+#[test]
+fn rejects_invalid_taxonomy_term_counterpart_groups_at_their_config_values() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.counterparts.only]\nen = 'Rust'\n",
     );
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("single-member group fails");
     let diagnostic = format!("{error:?}");
@@ -267,7 +283,7 @@ fn rejects_invalid_taxonomy_term_translation_groups_at_their_config_values() {
 
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nde = 'Rost'\n\n[taxonomies.tags.translations.duplicate]\nen = 'Rust'\nde = 'Rost'\n",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.counterparts.rust]\nen = 'Rust'\nde = 'Rost'\n\n[taxonomies.tags.counterparts.duplicate]\nen = 'Rust'\nde = 'Rost'\n",
     );
     fixture.write(
         "content/en/post.page",
@@ -292,11 +308,11 @@ fn rejects_invalid_taxonomy_term_translation_groups_at_their_config_values() {
 }
 
 #[test]
-fn rejects_invalid_or_noncanonical_taxonomy_translation_group_locale_keys() {
+fn rejects_invalid_or_noncanonical_taxonomy_counterpart_group_locale_keys() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\n\"not a locale\" = 'Rost'\n",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.counterparts.rust]\nen = 'Rust'\n\"not a locale\" = 'Rost'\n",
     );
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid locale fails");
     let diagnostic = format!("{error:?}");
@@ -306,7 +322,7 @@ fn rejects_invalid_or_noncanonical_taxonomy_translation_group_locale_keys() {
 
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nDE = 'Rost'\n",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.counterparts.rust]\nen = 'Rust'\nDE = 'Rost'\n",
     );
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("noncanonical locale fails");
     let diagnostic = format!("{error:?}");
@@ -319,11 +335,11 @@ fn rejects_invalid_or_noncanonical_taxonomy_translation_group_locale_keys() {
 }
 
 #[test]
-fn reports_a_missing_taxonomy_term_translation_at_its_config_value() {
+fn reports_a_missing_taxonomy_term_counterpart_at_its_config_value() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.translations.rust]\nen = 'Rust'\nde = 'Nicht vorhanden'\n",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[taxonomies.tags.counterparts.rust]\nen = 'Rust'\nde = 'Nicht vorhanden'\n",
     );
     fixture.write(
         "content/en/post.page",

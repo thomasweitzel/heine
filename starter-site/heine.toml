@@ -39,11 +39,11 @@ index_template = "taxonomy-index.tera"
 term_template = "taxonomy-term.tera"
 per_page = 10
 
-[taxonomies.tags.translations.rust]
+[taxonomies.tags.counterparts.rust]
 en = "Rust"
 de = "Rust"
 
-[taxonomies.tags.translations.static-sites]
+[taxonomies.tags.counterparts.static-sites]
 en = "Static sites"
 de = "Statische Seiten"
 

@@ -295,7 +295,7 @@ pub(crate) struct TaxonomyDefinition {
     index_template: TemplateName,
     term_template: TemplateName,
     per_page: usize,
-    translations: BTreeMap<String, TermTranslationGroup>,
+    counterparts: BTreeMap<String, TermCounterpartGroup>,
     source: Option<Arc<NamedSource<String>>>,
     collection_span: SourceSpan,
     path_span: SourceSpan,
@@ -320,8 +320,8 @@ impl TaxonomyDefinition {
     pub(crate) fn per_page(&self) -> usize {
         self.per_page
     }
-    pub(crate) fn translations(&self) -> &BTreeMap<String, TermTranslationGroup> {
-        &self.translations
+    pub(crate) fn counterparts(&self) -> &BTreeMap<String, TermCounterpartGroup> {
+        &self.counterparts
     }
     pub(crate) fn origin(
         &self,
@@ -350,23 +350,23 @@ impl TaxonomyDefinition {
 /// The group name is opaque; locale members are validated later against the
 /// resolved locale-local taxonomy terms.
 #[derive(Debug, Clone)]
-pub(crate) struct TermTranslationGroup {
-    terms: BTreeMap<Locale, TermTranslation>,
+pub(crate) struct TermCounterpartGroup {
+    terms: BTreeMap<Locale, TermCounterpart>,
 }
 
-impl TermTranslationGroup {
-    pub(crate) fn terms(&self) -> &BTreeMap<Locale, TermTranslation> {
+impl TermCounterpartGroup {
+    pub(crate) fn terms(&self) -> &BTreeMap<Locale, TermCounterpart> {
         &self.terms
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TermTranslation {
+pub(crate) struct TermCounterpart {
     term: String,
     span: SourceSpan,
 }
 
-impl TermTranslation {
+impl TermCounterpart {
     pub(crate) fn term(&self) -> &str {
         &self.term
     }
@@ -679,7 +679,7 @@ struct RawTaxonomyDefinition {
     term_template: toml::Spanned<String>,
     per_page: toml::Spanned<usize>,
     #[serde(default)]
-    translations:
+    counterparts:
         BTreeMap<toml::Spanned<String>, BTreeMap<toml::Spanned<String>, toml::Spanned<String>>>,
 }
 
@@ -1168,15 +1168,15 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     message: format!("taxonomy {name} per_page must be a positive integer"),
                 });
             }
-            let mut translations = BTreeMap::new();
-            for (group, members) in definition.translations {
+            let mut counterparts = BTreeMap::new();
+            for (group, members) in definition.counterparts {
                 let group_span: SourceSpan = group.span().into();
                 let group = group.into_inner();
                 if group.trim().is_empty() {
                     return Err(ConfigValueError {
                         span: group_span,
                         message: format!(
-                            "taxonomy {name} translation group names must not be empty"
+                            "taxonomy {name} counterpart group names must not be empty"
                         ),
                     });
                 }
@@ -1184,7 +1184,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     return Err(ConfigValueError {
                         span: group_span,
                         message: format!(
-                            "taxonomy {name} translation group {group:?} must declare at least two locales"
+                            "taxonomy {name} counterpart group {group:?} must declare at least two locales"
                         ),
                     });
                 }
@@ -1194,13 +1194,13 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     let locale_value = locale.into_inner();
                     let locale: Locale = locale_value.parse().map_err(|error| ConfigValueError {
                         span: locale_span,
-                        message: format!("taxonomy {name} translation group {group:?} locale {locale_value:?} must be a valid BCP-47 locale: {error}"),
+                        message: format!("taxonomy {name} counterpart group {group:?} locale {locale_value:?} must be a valid BCP-47 locale: {error}"),
                     })?;
                     if locale.to_string() != locale_value {
                         return Err(ConfigValueError {
                             span: locale_span,
                             message: format!(
-                                "taxonomy {name} translation group {group:?} locale {locale_value:?} must use canonical BCP-47 spelling {:?}",
+                                "taxonomy {name} counterpart group {group:?} locale {locale_value:?} must use canonical BCP-47 spelling {:?}",
                                 locale.to_string()
                             ),
                         });
@@ -1209,7 +1209,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                         return Err(ConfigValueError {
                             span: locale_span,
                             message: format!(
-                                "taxonomy {name} translation group {group:?} locale {locale:?} is not configured"
+                                "taxonomy {name} counterpart group {group:?} locale {locale:?} is not configured"
                             ),
                         });
                     }
@@ -1219,23 +1219,23 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                         return Err(ConfigValueError {
                             span,
                             message: format!(
-                                "taxonomy {name} translation group {group:?} has an empty term for locale {locale}"
+                                "taxonomy {name} counterpart group {group:?} has an empty term for locale {locale}"
                             ),
                         });
                     }
                     if terms
-                        .insert(locale.clone(), TermTranslation { term, span })
+                        .insert(locale.clone(), TermCounterpart { term, span })
                         .is_some()
                     {
                         return Err(ConfigValueError {
                             span: locale_span,
                             message: format!(
-                                "taxonomy {name} translation group {group:?} declares locale {locale} more than once"
+                                "taxonomy {name} counterpart group {group:?} declares locale {locale} more than once"
                             ),
                         });
                     }
                 }
-                translations.insert(group, TermTranslationGroup { terms });
+                counterparts.insert(group, TermCounterpartGroup { terms });
             }
             taxonomies.insert(
                 name,
@@ -1245,7 +1245,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     index_template,
                     term_template,
                     per_page,
-                    translations,
+                    counterparts,
                     source: None,
                     collection_span,
                     path_span,

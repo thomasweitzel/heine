@@ -3,9 +3,9 @@
 {% block title %}{{ taxonomy.term.name }}{% endblock %}
 
 {% block language_navigation %}
-  {% if taxonomy.term.translations %}
+  {% if taxonomy.term.counterparts %}
     <nav class="language-navigation" aria-label="{{ t(id="language") }}">
-    {% for target_locale, target in taxonomy.term.translations %}
+    {% for target_locale, target in taxonomy.term.counterparts %}
       {% set language_message = "language-" ~ target_locale %}
       {% set flag = asset(id=data.site.language_flags[target_locale].asset) %}
       <a href="{{ target.url }}" hreflang="{{ target_locale }}" aria-label="{{ t(id=language_message) }}">
