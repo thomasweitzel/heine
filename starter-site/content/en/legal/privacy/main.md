@@ -23,4 +23,4 @@ adds analytics, embedded media, a theme switcher, comments, or similar
 features, its privacy notice must explain those choices plainly.
 
 Questions about the fictional operator belong, fittingly, to the
-[Imprint](page:imprint/index).
+[Imprint](page:legal/imprint/index).

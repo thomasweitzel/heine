@@ -18,8 +18,8 @@ zu Seiten anderer Betreiber; für deren Inhalte bleiben diese verantwortlich.
 ## Weiterverwendung
 
 Die Lizenzangaben kopierter Assets stehen auf der Seite
-[Namensnennungen](page:licenses). Andere Inhalte werden nicht allein dadurch
-zu einer Lizenz, dass sie angenehm kopierbar sind.
+[Namensnennungen](page:legal/licenses/index). Andere Inhalte werden nicht
+allein dadurch zu einer Lizenz, dass sie angenehm kopierbar sind.
 
 Die ebenfalls beispielhafte Erklärung zur Datenverarbeitung steht unter
-[Datenschutz](page:privacy/index).
+[Datenschutz](page:legal/privacy/index).

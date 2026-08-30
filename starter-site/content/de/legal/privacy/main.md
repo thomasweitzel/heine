@@ -26,4 +26,4 @@ eine reale Site Analysen, eingebettete Medien, Theme-Schalter, Kommentare oder
 erklären.
 
 Fragen an den erfundenen Betreiber gehören, passend genug, ins
-[Impressum](page:imprint/index).
+[Impressum](page:legal/imprint/index).

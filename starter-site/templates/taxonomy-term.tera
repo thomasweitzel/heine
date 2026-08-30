@@ -9,7 +9,7 @@
       {% set language_message = "language-" ~ target_locale %}
       {% set flag = asset(id=data.site.language_flags[target_locale].asset) %}
       <a href="{{ target.url }}" hreflang="{{ target_locale }}" aria-label="{{ t(id=language_message) }}">
-        <img src="{{ flag.url }}" width="{{ flag.width }}" height="{{ flag.height }}" alt="">
+        <img src="{{ flag.url }}"{% if flag.width %} width="{{ flag.width }}" height="{{ flag.height }}"{% endif %} alt="">
       </a>
     {% endfor %}
     </nav>

@@ -23,17 +23,21 @@ message = "nav-quiz"
 page = "quiz/index"
 
 [[footer.links]]
+message = "footer-about"
+page = "about/index"
+
+[[footer.links]]
 message = "footer-terms"
-page = "terms/index"
+page = "legal/terms/index"
 
 [[footer.links]]
 message = "footer-privacy"
-page = "privacy/index"
+page = "legal/privacy/index"
 
 [[footer.links]]
 message = "footer-imprint"
-page = "imprint/index"
+page = "legal/imprint/index"
 
 [[footer.links]]
 message = "attributions"
-page = "licenses"
+page = "legal/licenses/index"

@@ -50,7 +50,11 @@ fn builds_the_documented_starter_site() {
     assert!(index.contains("Quiz"), "{index}");
     assert!(!index.contains("<h2>Terms</h2>"), "{index}");
     assert!(
-        index.contains("href=\"/my-project/terms/index.html\">Terms</a>"),
+        index.contains("href=\"/my-project/about/index.html\">About Heine</a>"),
+        "{index}"
+    );
+    assert!(
+        index.contains("href=\"/my-project/legal/terms/index.html\">Terms</a>"),
         "{index}"
     );
     assert!(
@@ -66,6 +70,8 @@ fn builds_the_documented_starter_site() {
         index.contains("src=\"/my-project/assets/images/flags/german.svg\""),
         "{index}"
     );
+    assert!(!index.contains("width=\"\""), "{index}");
+    assert!(!index.contains("height=\"\""), "{index}");
     assert!(
         index.contains("So far there are \u{2068}3\u{2069} posts."),
         "{index}"
@@ -138,6 +144,8 @@ fn builds_the_documented_starter_site() {
     assert!(tags.contains("<h1>Tags</h1>"), "{tags}");
     assert!(tags.contains("<ul>"), "{tags}");
     assert!(tags.contains("site-navigation"), "{tags}");
+    assert!(!tags.contains("width=\"\""), "{tags}");
+    assert!(!tags.contains("height=\"\""), "{tags}");
     assert!(
         tags.contains("href=\"/my-project/tags/index.html\">Tags</a>"),
         "{tags}"
@@ -152,7 +160,7 @@ fn builds_the_documented_starter_site() {
         "{tags}"
     );
     assert!(
-        tags.contains("href=\"/my-project/licenses.html\">Attributions</a>"),
+        tags.contains("href=\"/my-project/legal/licenses/index.html\">Attributions</a>"),
         "{tags}"
     );
     assert!(
@@ -171,6 +179,8 @@ fn builds_the_documented_starter_site() {
         rust_tag.contains("href=\"/my-project/de/tags/Rust.html\" hreflang=\"de\""),
         "{rust_tag}"
     );
+    assert!(!rust_tag.contains("width=\"\""), "{rust_tag}");
+    assert!(!rust_tag.contains("height=\"\""), "{rust_tag}");
     let german_static_tag = fs::read_to_string(output.join("de/tags/Statische Seiten.html"))
         .expect("German tag listing");
     assert!(
@@ -193,9 +203,20 @@ fn builds_the_documented_starter_site() {
     assert!(german_post.contains("Schlagwort:"), "{german_post}");
 
     let post = fs::read_to_string(output.join("blog/mathml-audio/index.html")).expect("post page");
+    assert!(
+        post.contains(
+            "href=\"../../blog/explicit-composition/index.html\"><span aria-hidden=\"true\">←</span><span>Composing Content Explicitly</span>"
+        ),
+        "{post}"
+    );
+    assert!(
+        post.contains("class=\"page-navigation\" aria-label=\"Page navigation\""),
+        "{post}"
+    );
     assert!(post.contains("<img"), "{post}");
     assert!(post.contains("width="), "{post}");
-    let attributions = fs::read_to_string(output.join("licenses.html")).expect("attributions page");
+    let attributions =
+        fs::read_to_string(output.join("legal/licenses/index.html")).expect("attributions page");
     assert!(
         attributions.contains("STIXTwoMath-Regular.woff2"),
         "{attributions}"
@@ -205,11 +226,11 @@ fn builds_the_documented_starter_site() {
         "{attributions}"
     );
     assert!(
-        attributions.contains("<a href=\"./LICENSES/OFL-1.1.txt\">OFL-1.1</a>"),
+        attributions.contains("<a href=\"../../LICENSES/OFL-1.1.txt\">OFL-1.1</a>"),
         "{attributions}"
     );
-    let german_attributions =
-        fs::read_to_string(output.join("de/licenses.html")).expect("German attributions page");
+    let german_attributions = fs::read_to_string(output.join("de/legal/licenses/index.html"))
+        .expect("German attributions page");
     assert!(
         german_attributions.contains("Gemeinfreier Kupferstich von Heinrich Heine"),
         "{german_attributions}"
@@ -234,17 +255,27 @@ fn builds_the_documented_starter_site() {
             .is_file()
     );
 
-    let terms = fs::read_to_string(output.join("terms/index.html")).expect("terms page");
+    let terms = fs::read_to_string(output.join("legal/terms/index.html")).expect("terms page");
     assert!(
-        terms.contains("href=\"/my-project/privacy/index.html\""),
+        terms.contains("href=\"/my-project/legal/privacy/index.html\""),
         "{terms}"
     );
     assert!(
-        terms.contains("href=\"/my-project/de/terms/index.html\" hreflang=\"de\""),
+        terms.contains("href=\"/my-project/de/legal/terms/index.html\" hreflang=\"de\""),
         "{terms}"
     );
-    assert!(output.join("privacy/index.html").is_file());
-    assert!(output.join("imprint/index.html").is_file());
+    assert!(output.join("legal/privacy/index.html").is_file());
+    assert!(output.join("legal/imprint/index.html").is_file());
+
+    let about = fs::read_to_string(output.join("about/index.html")).expect("About page");
+    assert!(
+        about.contains("Heinrich Heine was born in Düsseldorf in 1797"),
+        "{about}"
+    );
+    assert!(
+        about.contains("href=\"/my-project/de/about/index.html\" hreflang=\"de\""),
+        "{about}"
+    );
 
     let quiz = fs::read_to_string(output.join("quiz/quiz-1.html")).expect("quiz page");
     assert!(quiz.contains("quiz"), "{quiz}");

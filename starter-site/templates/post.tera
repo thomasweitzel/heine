@@ -1,7 +1,7 @@
 {% extends "base.tera" %}
 
 {% block header %}
-<nav class="page-navigation">
+<nav class="page-navigation" aria-label="{{ t(id="page-navigation") }}">
   {% if page.extra.parent %}
     {% set index = page(id=page.extra.parent) %}
   {% else %}
@@ -9,13 +9,12 @@
     {% set index = page(id=index_id) %}
   {% endif %}
   <a href="{{ index.relative_url }}"><span aria-hidden="true">↑</span><span>{{ index.title }}</span></a>
-  {% if page.lighter %}
-    {% set p = page(id=page.lighter) %}
-    <a href="{{ p.relative_url }}"><span aria-hidden="true">←</span><span>{{ p.title }}</span></a>
+  {% set neighbors = collection_neighbors(name="posts") %}
+  {% if neighbors.before %}
+    <a href="{{ neighbors.before.relative_url }}"><span aria-hidden="true">←</span><span>{{ neighbors.before.title }}</span></a>
   {% endif %}
-  {% if page.heavier %}
-    {% set p = page(id=page.heavier) %}
-    <a href="{{ p.relative_url }}"><span>{{ p.title }}</span><span aria-hidden="true">→</span></a>
+  {% if neighbors.after %}
+    <a href="{{ neighbors.after.relative_url }}"><span>{{ neighbors.after.title }}</span><span aria-hidden="true">→</span></a>
   {% endif %}
 </nav>
 {% endblock %}
