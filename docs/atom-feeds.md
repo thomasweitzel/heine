@@ -74,14 +74,14 @@ For example, `limit` is the same for English and German feeds, while their
 members and Fluent-resolved title text may differ. Heine does not add
 per-locale feed overrides without a concrete use case and a complete contract.
 
-| Field | Required | Meaning |
-|---|---:|---|
-| `collection` | yes | Existing collection whose members supply entries. |
-| `path` | yes | Portable relative output path below each locale's output root. |
-| `title_key` | yes | Fluent message identifier for the feed title. |
-| `subtitle_key` | no | Fluent message identifier for an optional feed subtitle. |
-| `limit` | no | Maximum entries after feed ordering; defaults to `20`. |
-| `empty_updated` | conditionally | Local date-time used only when a locale feed has no entries. |
+| Field           |      Required | Meaning                                                                 |
+|-----------------|--------------:|-------------------------------------------------------------------------|
+| `collection`    |           yes | Existing collection whose members supply entries.                       |
+| `path`          |           yes | Portable relative output path below each locale's output root.          |
+| `title_key`     |           yes | Fluent message identifier for the feed title.                           |
+| `subtitle_key`  |            no | Fluent message identifier for an optional feed subtitle.                |
+| `limit`         |            no | Maximum entries after feed ordering; defaults to `20`.                  |
+| `empty_updated` | conditionally | Local date-time used only when a locale feed has no entries.            |
 | `empty_authors` | conditionally | Non-empty author-name list used only when a locale feed has no entries. |
 
 All feed configuration is strict. Unknown fields, unknown collections,
