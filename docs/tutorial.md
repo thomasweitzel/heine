@@ -633,6 +633,10 @@ Read the [deployment-files guide](deployment-files.md) before publishing.
 Once the site has a stable deployed origin, the [sitemap guide](sitemap.md)
 shows how to generate canonical URLs for search-engine discovery.
 
+To offer recent posts to feed readers, configure an [Atom feed](atom-feeds.md)
+from the post collection after its members have titles, summaries, publication
+times, and authors.
+
 ## 11. Add asset licensing and attributions
 
 When copied assets require rights information, add adjacent `.license`

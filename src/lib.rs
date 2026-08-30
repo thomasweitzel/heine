@@ -3,6 +3,7 @@
 //! separate boundaries so future transformations do not need filesystem access.
 
 mod asset;
+mod author;
 mod config;
 mod content;
 mod data;
@@ -109,6 +110,7 @@ pub(crate) fn build_at_with_publication(
         i18n: config.i18n().clone(),
         collections: config.collections().clone(),
         taxonomies: config.taxonomies().clone(),
+        feeds: config.feeds().clone(),
         site: config.site(),
         sitemap: config.sitemap(),
         deployment: &deployment,

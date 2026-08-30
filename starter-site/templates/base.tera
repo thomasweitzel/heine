@@ -9,6 +9,8 @@
    <link rel="stylesheet" type="text/css" href="{{ highlight_css() }}">
    {% set styles = asset(id="assets/css/styles.css") %}
    <link rel="stylesheet" type="text/css" href="{{ styles.url }}"{% if styles.integrity %} integrity="{{ styles.integrity }}" crossorigin="anonymous"{% endif %}>
+   {% set posts_feed = feed(name="posts") %}
+   <link rel="alternate" type="application/atom+xml" href="{{ posts_feed.url }}" title="{{ posts_feed.title }}">
    {% block head_extra %}{% endblock %}
   </head>
   <body>

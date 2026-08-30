@@ -23,6 +23,15 @@ integrity = "sha384"
 [collections.posts]
 order = "published-desc"
 
+[feeds.posts]
+collection = "posts"
+path = "atom.xml"
+title_key = "feed-posts-title"
+subtitle_key = "feed-posts-subtitle"
+limit = 20
+empty_updated = 2026-08-01T09:30:00
+empty_authors = ["Thomas Weitzel"]
+
 [taxonomies.tags]
 collection = "posts"
 path = "tags"

@@ -6,9 +6,11 @@
 
 mod collation;
 pub(crate) mod collection;
+mod feed;
 mod index;
 mod loader;
 mod locales;
+mod metadata;
 mod page;
 mod pagination;
 mod sitemap;
@@ -27,8 +29,8 @@ use thiserror::Error;
 use crate::{
     asset::{AssetCatalog, AssetSources, SharedAssets},
     config::{
-        BasePath, CollectionsConfig, I18nConfig, SiteConfig, SiteSettings, SitemapConfig,
-        TaxonomiesConfig,
+        BasePath, CollectionsConfig, FeedsConfig, I18nConfig, SiteConfig, SiteSettings,
+        SitemapConfig, TaxonomiesConfig,
     },
     content,
     data::SiteData,
@@ -39,11 +41,13 @@ use crate::{
     markdown::{self, Renderer as MarkdownRenderer},
     output::{GeneratedFile, OutputClaim, OutputPath, OutputPlan},
     template::{
-        LocaleView, RenderContext, RuntimeContext, TemplateEngine, TemplateRelationships,
-        TemplateResources,
+        LocaleView, RenderContext, RuntimeContext, TemplateEngine, TemplateIndexes,
+        TemplateRelationships, TemplateResources,
     },
 };
 
+pub(crate) use feed::Catalog as FeedCatalog;
+pub(crate) use feed::View as FeedView;
 pub(crate) use index::SiblingIndex;
 use page::Task;
 pub(crate) use page::{PageId, PageView, Pager};
@@ -217,6 +221,7 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) i18n: I18nConfig,
     pub(crate) collections: CollectionsConfig,
     pub(crate) taxonomies: TaxonomiesConfig,
+    pub(crate) feeds: FeedsConfig,
     pub(crate) site: &'a SiteSettings,
     pub(crate) sitemap: Option<&'a SitemapConfig>,
     pub(crate) deployment: &'a DeploymentCatalog,
@@ -321,6 +326,9 @@ pub(crate) enum Error {
     Output(#[from] crate::output::Error),
     #[error(transparent)]
     Sitemap(#[from] sitemap::Error),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Feed(Box<feed::Error>),
 }
 
 /// A semantic error tied to the precise source range that referenced a
@@ -355,6 +363,7 @@ pub(crate) struct Site {
     localization: std::sync::Arc<Localization>,
     output_plan: OutputPlan,
     sitemap: Option<sitemap::Sitemap>,
+    feeds: std::sync::Arc<feed::Catalog>,
 }
 
 impl Site {
@@ -367,6 +376,7 @@ impl Site {
             i18n,
             collections: collection_config,
             taxonomies: taxonomy_config,
+            feeds: feed_config,
             site: site_settings,
             sitemap: sitemap_config,
             deployment,
@@ -500,6 +510,16 @@ impl Site {
             .collect();
         let taxonomy_tasks = taxonomies.tasks(&latest_inputs, &shared_latest);
         let taxonomies = std::sync::Arc::new(taxonomies);
+        let feeds = feed::Catalog::resolve(feed::Inputs {
+            pages: &pages,
+            collections: &collections,
+            config: &feed_config,
+            prefixes: &prefixes,
+            origin: site_settings.origin(),
+            base_path: site_settings.base_path(),
+            localization: &localization,
+        })
+        .map_err(|error| Error::Feed(Box::new(error)))?;
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks);
         let sitemap = match (sitemap_config, site_settings.origin()) {
             (Some(config), Some(origin)) => Some(
@@ -563,6 +583,7 @@ impl Site {
         if let Some((_, claims)) = &sitemap {
             output_claims.extend(claims.iter().cloned());
         }
+        output_claims.extend(feeds.output_claims());
         let output_plan = OutputPlan::validate(&output_claims)?;
         let asset_links = assets.links(
             i18n.default_locale().clone(),
@@ -611,6 +632,7 @@ impl Site {
             localization,
             output_plan,
             sitemap: sitemap.map(|(sitemap, _)| sitemap),
+            feeds: std::sync::Arc::new(feeds),
         })
     }
 
@@ -635,10 +657,13 @@ impl Site {
                 self.pages.clone(),
                 self.i18n.default_locale().clone(),
                 base_path.clone(),
-                self.collections.clone(),
-                self.siblings.clone(),
-                self.taxonomies.clone(),
-                self.pagers.clone(),
+                TemplateIndexes {
+                    collections: self.collections.clone(),
+                    siblings: self.siblings.clone(),
+                    taxonomies: self.taxonomies.clone(),
+                    pagers: self.pagers.clone(),
+                    feeds: self.feeds.clone(),
+                },
             ),
             self.localization.clone(),
             markdown_renderer
@@ -796,6 +821,9 @@ impl Site {
             && let Some(sitemap) = &self.sitemap
         {
             rendered.extend(sitemap.generated(&self.output_plan));
+        }
+        if options.mode() == BuildMode::Full {
+            rendered.extend(self.feeds.generated(&self.output_plan));
         }
         Ok(rendered)
     }

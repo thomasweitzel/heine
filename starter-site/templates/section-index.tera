@@ -17,6 +17,8 @@
   {% if page.extra.count_message %}
     <p>{{ t(id=page.extra.count_message, count=pagination.item_count) }}</p>
   {% endif %}
+  {% set posts_feed = feed(name="posts") %}
+  <p><a href="{{ posts_feed.url }}">{{ t(id="feed-subscribe") }}</a></p>
   <hr>
   <nav class="link-stack">
     {% for post in pagination.pages %}

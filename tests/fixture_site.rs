@@ -26,6 +26,8 @@ fn write_bytes(fixture: &Fixture, relative: &str, contents: &[u8]) {
 mod content;
 #[path = "fixture_site/deploy.rs"]
 mod deploy;
+#[path = "fixture_site/feed.rs"]
+mod feed;
 #[path = "fixture_site/i18n.rs"]
 mod i18n;
 #[path = "fixture_site/licensing.rs"]

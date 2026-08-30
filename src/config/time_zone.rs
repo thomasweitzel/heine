@@ -1,6 +1,10 @@
 //! Deterministic editorial time-zone configuration.
 
-use jiff::tz::TimeZone;
+use jiff::{
+    Timestamp,
+    civil::DateTime,
+    tz::{AmbiguousOffset, TimeZone},
+};
 
 /// A named IANA time zone resolved from Heine's bundled database.
 #[derive(Debug, Clone)]
@@ -18,11 +22,37 @@ impl PartialEq for EditorialTimeZone {
 impl Eq for EditorialTimeZone {}
 
 impl EditorialTimeZone {
-    pub(crate) fn zone(&self) -> &TimeZone {
-        &self.zone
-    }
-    pub(crate) fn name(&self) -> &str {
-        &self.name
+    /// Resolves an authored offsetless TOML date-time without consulting host
+    /// timezone data. Callers retain their own source span and field context.
+    pub(crate) fn resolve_local(
+        &self,
+        field: &str,
+        value: &toml::value::Datetime,
+    ) -> Result<Timestamp, String> {
+        let local = value
+            .to_string()
+            .parse::<DateTime>()
+            .map_err(|_| format!("field `{field}` contains an invalid local date-time"))?;
+        let ambiguous = self.zone.to_ambiguous_zoned(local);
+        match ambiguous.offset() {
+            AmbiguousOffset::Unambiguous { .. } => ambiguous
+                .unambiguous()
+                .map(|zoned| zoned.timestamp())
+                .map_err(|_| {
+                    format!(
+                        "field `{field}` could not be resolved in site.time_zone {:?}",
+                        self.name
+                    )
+                }),
+            AmbiguousOffset::Gap { before, after } => Err(format!(
+                "field `{field}` does not exist in site.time_zone {:?}: the clock moves from {before} to {after}; choose a local time outside that gap",
+                self.name
+            )),
+            AmbiguousOffset::Fold { before, after } => Err(format!(
+                "field `{field}` occurs twice in site.time_zone {:?}: the clock moves from {before} to {after}; choose a local time outside that repeated interval",
+                self.name
+            )),
+        }
     }
 }
 
