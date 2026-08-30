@@ -477,3 +477,57 @@ fn rejects_invalid_or_ambiguous_resource_function_arguments_at_the_call_site() {
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(diagnostic.contains("together with id"), "{diagnostic}");
 }
+
+#[test]
+fn sibling_neighbors_follow_numeric_directory_weight_order() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/guide/first.page",
+        "template = 'page.tera'\nweight = 1\n",
+    );
+    fixture.write(
+        "content/en/guide/second.page",
+        "template = 'page.tera'\nweight = 2\n",
+    );
+    fixture.write(
+        "content/en/guide/third.page",
+        "template = 'page.tera'\nweight = 3\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{% set neighbors = sibling_neighbors() %}{% if neighbors.before %}{{ neighbors.before.id }}{% else %}none{% endif %}|{% if neighbors.after %}{{ neighbors.after.id }}{% else %}none{% endif %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/guide/first.html")).expect("first output"),
+        "none|guide/second"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/guide/second.html")).expect("second output"),
+        "guide/first|guide/third"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/guide/third.html")).expect("third output"),
+        "guide/second|none"
+    );
+}
+
+#[test]
+fn sibling_neighbors_report_non_participating_pages_at_the_call_site() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "templates/page.tera",
+        "{% set neighbors = sibling_neighbors() %}",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("page has no weight");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("does not participate in sibling ordering"),
+        "{diagnostic}"
+    );
+}

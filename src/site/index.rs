@@ -93,24 +93,73 @@ pub(super) fn resolve_translations(
     Ok(())
 }
 
-#[derive(Debug, Clone, Default)]
-pub(crate) struct SiblingIndex {
-    eligible: BTreeMap<String, Vec<PageId>>,
+/// Adjacent members of an already ordered page relationship.
+#[derive(Debug, Clone)]
+pub(crate) struct Neighbors {
+    pub(crate) before: Option<PageId>,
+    pub(crate) after: Option<PageId>,
 }
 
-impl SiblingIndex {
-    pub(crate) fn for_page(&self, directory: &str, page: &PageId) -> Vec<PageId> {
-        self.eligible
-            .get(directory)
-            .into_iter()
-            .flatten()
+/// An immutable ordered page relationship with inexpensive neighbor lookup.
+///
+/// Both directory sibling ordering and collection ordering need the same
+/// operation while rendering. Retaining each member's position avoids a
+/// linear scan for every page rendered from a large collection.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct OrderedPages {
+    pages: Vec<PageId>,
+    positions: BTreeMap<PageId, usize>,
+}
+
+impl OrderedPages {
+    pub(crate) fn new(pages: Vec<PageId>) -> Self {
+        let positions = pages
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(position, id)| (id, position))
+            .collect();
+        Self { pages, positions }
+    }
+
+    pub(crate) fn neighbors(&self, page: &PageId) -> Option<Neighbors> {
+        let position = *self.positions.get(page)?;
+        Some(Neighbors {
+            before: position
+                .checked_sub(1)
+                .map(|index| self.pages[index].clone()),
+            after: self.pages.get(position + 1).cloned(),
+        })
+    }
+
+    fn without(&self, page: &PageId) -> Vec<PageId> {
+        self.pages
+            .iter()
             .filter(|id| *id != page)
             .cloned()
             .collect()
     }
 }
 
-pub(super) fn fix_siblings(pages: &mut BTreeMap<PageId, Page>) -> SiblingIndex {
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SiblingIndex {
+    eligible: BTreeMap<String, OrderedPages>,
+}
+
+impl SiblingIndex {
+    pub(crate) fn for_page(&self, directory: &str, page: &PageId) -> Vec<PageId> {
+        self.eligible
+            .get(directory)
+            .map(|pages| pages.without(page))
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn neighbors(&self, directory: &str, page: &PageId) -> Option<Neighbors> {
+        self.eligible.get(directory)?.neighbors(page)
+    }
+}
+
+pub(super) fn resolve_siblings(pages: &BTreeMap<PageId, Page>) -> SiblingIndex {
     let mut eligible: BTreeMap<String, Vec<PageId>> = pages
         .iter()
         .filter(|(_, page)| page.path.is_some() && page.weight.is_some())
@@ -120,12 +169,11 @@ pub(super) fn fix_siblings(pages: &mut BTreeMap<PageId, Page>) -> SiblingIndex {
         });
     for ids in eligible.values_mut() {
         ids.sort_by_key(|id| (pages[id].weight, id.clone()));
-        for (index, id) in ids.iter().enumerate() {
-            if let Some(page) = pages.get_mut(id) {
-                page.lighter = index.checked_sub(1).map(|index| ids[index].clone());
-                page.heavier = ids.get(index + 1).cloned();
-            }
-        }
     }
-    SiblingIndex { eligible }
+    SiblingIndex {
+        eligible: eligible
+            .into_iter()
+            .map(|(directory, pages)| (directory, OrderedPages::new(pages)))
+            .collect(),
+    }
 }

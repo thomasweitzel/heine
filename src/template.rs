@@ -122,6 +122,7 @@ pub(crate) struct TemplateRelationships {
     collections:
         std::sync::Arc<BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>>,
     siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
+    collection_neighbors: std::sync::Arc<crate::site::collection::CollectionNeighborIndex>,
     taxonomies: std::sync::Arc<TaxonomyCatalog>,
     pagers: crate::site::PaginationCatalog,
     feeds: std::sync::Arc<FeedCatalog>,
@@ -135,6 +136,8 @@ pub(crate) struct TemplateIndexes {
     pub(crate) collections:
         std::sync::Arc<BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>>,
     pub(crate) siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
+    pub(crate) collection_neighbors:
+        std::sync::Arc<crate::site::collection::CollectionNeighborIndex>,
     pub(crate) taxonomies: std::sync::Arc<TaxonomyCatalog>,
     pub(crate) pagers: crate::site::PaginationCatalog,
     pub(crate) feeds: std::sync::Arc<FeedCatalog>,
@@ -205,6 +208,7 @@ impl TemplateRelationships {
             page_catalog,
             collections: indexes.collections,
             siblings: indexes.siblings,
+            collection_neighbors: indexes.collection_neighbors,
             taxonomies: indexes.taxonomies,
             pagers: indexes.pagers,
             feeds: indexes.feeds,

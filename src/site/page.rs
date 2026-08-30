@@ -341,8 +341,6 @@ pub(super) struct Page {
     pub(super) pagination: Option<Pagination>,
     pub(super) weight: Option<i64>,
     pub(super) weight_span: Option<SourceSpan>,
-    pub(super) lighter: Option<PageId>,
-    pub(super) heavier: Option<PageId>,
     pub(super) translations: BTreeMap<String, PageLink>,
 }
 
@@ -448,8 +446,6 @@ impl Page {
             translations: self.translations,
             directory: self.directory,
             weight: self.weight,
-            lighter: self.lighter,
-            heavier: self.heavier,
         }
     }
 }
@@ -473,8 +469,6 @@ pub(crate) struct PageView {
     translations: BTreeMap<String, PageLink>,
     directory: DirectoryView,
     weight: Option<i64>,
-    lighter: Option<PageId>,
-    heavier: Option<PageId>,
 }
 
 impl PageView {
