@@ -21,3 +21,19 @@ taxonomy = "tags"
 [[navigation]]
 message = "nav-quiz"
 page = "quiz/index"
+
+[[footer.links]]
+message = "footer-terms"
+page = "terms/index"
+
+[[footer.links]]
+message = "footer-privacy"
+page = "privacy/index"
+
+[[footer.links]]
+message = "footer-imprint"
+page = "imprint/index"
+
+[[footer.links]]
+message = "attributions"
+page = "licenses"

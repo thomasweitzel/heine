@@ -30,7 +30,7 @@ title_key = "feed-posts-title"
 subtitle_key = "feed-posts-subtitle"
 limit = 20
 empty_updated = 2026-08-01T09:30:00
-empty_authors = ["Thomas Weitzel"]
+empty_authors = ["Heinrich Heine"]
 
 [taxonomies.tags]
 collection = "posts"

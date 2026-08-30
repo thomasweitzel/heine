@@ -24,19 +24,19 @@ required prerequisite for the guides.
 
 ## Focused guides
 
-- [Internationalization and localization](internationalization.md) — locale
+- [Internationalization and localization](internationalization.md): locale
   trees, Fluent messages, writing direction, and declared counterparts.
-- [Collections](collections.md) — page membership and ordering.
-- [Pagination](pagination.md) — generated slices of a collection.
-- [Taxonomies](taxonomies.md) — tags and other literal term classifications.
-- [Deployment files](deployment-files.md) — output-root files for hosting and
+- [Collections](collections.md): page membership and ordering.
+- [Pagination](pagination.md): generated slices of a collection.
+- [Taxonomies](taxonomies.md): tags and other literal term classifications.
+- [Deployment files](deployment-files.md): output-root files for hosting and
   verification services.
-- [Asset licensing](asset-licensing.md) — REUSE-style declarations, published
+- [Asset licensing](asset-licensing.md): REUSE-style declarations, published
   license texts, and template attribution data.
-- [Development server](development-server.md) — local serving, live reload,
+- [Development server](development-server.md): local serving, live reload,
   and byte-range responses for media.
-- [Sitemaps](sitemap.md) — canonical discovery documents generated from rendered output.
-- [Atom feeds](atom-feeds.md) — locale-local collection syndication feeds.
+- [Sitemaps](sitemap.md): canonical discovery documents generated from rendered output.
+- [Atom feeds](atom-feeds.md): locale-local collection syndication feeds.
 
 ## Reference material
 

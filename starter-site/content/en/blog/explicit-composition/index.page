@@ -1,8 +1,9 @@
-title = "15th August 2026"
+title = "Composing Content Explicitly"
 published = 2026-08-15T09:30:00
 summary = "A short note on explicit content composition."
 translationid = "second-post"
-content.main = "md/2026-08-15.md"
+content.main = "main.md"
+extra.parent = "blog/index"
 
 [taxonomies]
 tags = ["Rust"]

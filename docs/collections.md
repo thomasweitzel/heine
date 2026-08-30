@@ -138,7 +138,7 @@ template, or with `template = false`, cannot be listed. Ordering diagnostics
 show the relevant membership, publication time, title, or weight value when one exists,
 and the configured ordering declaration.
 
-This is a concise extension of page metadata—not a second
+This is a concise extension of page metadata, not a second
 content-discovery mechanism.
 
 ## Template contract

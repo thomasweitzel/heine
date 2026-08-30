@@ -1,8 +1,9 @@
-title = "16th August 2026"
+title = "Deployment Files, Kept Separate"
 published = 2026-08-16T09:30:00
 summary = "An introduction to the example site's deployment files."
 translationid = "third-post"
-content.main = "md/2026-08-16.md"
+content.main = "main.md"
+extra.parent = "blog/index"
 
 [taxonomies]
 tags = ["Static sites"]

@@ -10,11 +10,8 @@ language = Language
 language-en = English
 language-de = German
 
-# Short labels for page, listing, and quiz navigation controls.
+# Labels for listing and quiz navigation controls.
 pagination-label = Pagination
-up = Up
-previous = Previous
-next = Next
 open = Open
 quiz-menu = Quiz Menu
 
@@ -33,8 +30,12 @@ feed-posts-title = Heine posts
 feed-posts-subtitle = Notes about a small static-site generator
 feed-subscribe = Subscribe with Atom
 
-# Footer text and the generated asset-attribution page.
+# Footer text and the configured legal-page links.
+footer-label = Footer navigation
+footer-terms = Terms
+footer-privacy = Privacy
+footer-imprint = Imprint
 attributions = Attributions
 attributions-introduction = This page lists copied assets with declared licensing information.
 license-texts = License texts
-footer-description = A compact example site built with <a href="https://heine.rs" alt="Link to Heine Homepage">Heine</a>.
+footer-description = A compact example site built with <a href="https://heine.rs">Heine</a>.

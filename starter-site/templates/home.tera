@@ -6,20 +6,21 @@
     {% set index = dir ~ "/index" %}
     {% if page_exists(id=index) %}
       {% set section = page(id=index) %}
-      <div class="section">
-        <h2>{{ section.title }}</h2>
-        <hr>
-        {{ section.summary | markdown }}
-        {% if section.extra.count_message %}
-          {% if section.extra.collection %}
-            {% set entries = collection(name=section.extra.collection) %}
-            <p>{{ t(id=section.extra.count_message, count=entries.count) }}</p>
-          {% else %}
-            <p>{{ t(id=section.extra.count_message, count=siblings(id=index) | length) }}</p>
+      {% if section.extra.home %}
+        <div class="section">
+          <h2>{{ section.title }}</h2>
+          {{ section.summary | markdown }}
+          {% if section.extra.count_message %}
+            {% if section.extra.collection %}
+              {% set entries = collection(name=section.extra.collection) %}
+              <p>{{ t(id=section.extra.count_message, count=entries.count) }}</p>
+            {% else %}
+              <p>{{ t(id=section.extra.count_message, count=siblings(id=index) | length) }}</p>
+            {% endif %}
           {% endif %}
-        {% endif %}
-        <a class="buttonlike" href="{{ section.url }}">{{ t(id="open") }}</a>
-      </div>
+          <a class="buttonlike" href="{{ section.url }}">{{ t(id="open") }}</a>
+        </div>
+      {% endif %}
     {% endif %}
   {% endfor %}
 </div>

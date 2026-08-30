@@ -1,0 +1,7 @@
+template = "document.tera"
+title = "Terms"
+published = 2026-08-30T09:30:00
+translationid = "terms"
+
+[content]
+main = "main.md"

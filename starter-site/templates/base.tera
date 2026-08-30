@@ -57,10 +57,12 @@
     </main>
     <footer>
       {% block footer %}
-        {% if page_exists(id="licenses") %}
-          {% set attributions = page(id="licenses") %}
-          <div><a href="{{ attributions.url }}">{{ t(id="attributions") }}</a></div>
-        {% endif %}
+        <nav class="footer-links" aria-label="{{ t(id="footer-label") }}">
+          {% for item in data.site.footer.links %}
+            {% set target = page(id=item.page) %}
+            <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
+          {% endfor %}
+        </nav>
         <div>{{ t(id="footer-description") }}</div>
       {% endblock %}
     </footer>

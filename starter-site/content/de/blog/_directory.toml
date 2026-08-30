@@ -4,7 +4,7 @@ description = "Notizen über die Entwicklung eines kleinen Static-Site-Generator
 [pages]
 template = "post.tera"
 collections = ["posts"]
-authors = ["Thomas Weitzel"]
+authors = ["Heinrich Heine"]
 
 [pages.metadata]
 required = ["title", "published"]

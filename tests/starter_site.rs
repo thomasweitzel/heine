@@ -48,6 +48,11 @@ fn builds_the_documented_starter_site() {
     );
     assert!(index.contains("Heine Starter Site"), "{index}");
     assert!(index.contains("Quiz"), "{index}");
+    assert!(!index.contains("<h2>Terms</h2>"), "{index}");
+    assert!(
+        index.contains("href=\"/my-project/terms/index.html\">Terms</a>"),
+        "{index}"
+    );
     assert!(
         index.contains("type=\"application/atom+xml\" href=\"/my-project/atom.xml\""),
         "{index}"
@@ -65,6 +70,8 @@ fn builds_the_documented_starter_site() {
         index.contains("So far there are \u{2068}3\u{2069} posts."),
         "{index}"
     );
+    assert!(output.join("assets/css/styles.v2.css").is_file());
+    assert!(!output.join("assets/css/styles.v1.css").exists());
 
     let german_home = fs::read_to_string(output.join("de/index.html")).expect("German home");
     assert!(
@@ -92,7 +99,7 @@ fn builds_the_documented_starter_site() {
 
     let atom = fs::read_to_string(output.join("atom.xml")).expect("English Atom feed");
     assert!(atom.contains("xml:lang=\"en\""), "{atom}");
-    assert!(atom.contains("<name>Thomas Weitzel</name>"), "{atom}");
+    assert!(atom.contains("<name>Heinrich Heine</name>"), "{atom}");
     let german_atom = fs::read_to_string(output.join("de/atom.xml")).expect("German Atom feed");
     assert!(german_atom.contains("xml:lang=\"de\""), "{german_atom}");
 
@@ -141,7 +148,7 @@ fn builds_the_documented_starter_site() {
     );
     assert!(!tags.contains("<main>\n      <p><a"), "{tags}");
     assert!(
-        tags.contains("A compact example site built with <a href=\"https://heine.rs\" alt=\"Link to Heine Homepage\">Heine</a>."),
+        tags.contains("A compact example site built with <a href=\"https://heine.rs\">Heine</a>."),
         "{tags}"
     );
     assert!(
@@ -156,7 +163,10 @@ fn builds_the_documented_starter_site() {
     );
     assert!(output.join("de/tags/index.html").is_file());
     let rust_tag = fs::read_to_string(output.join("tags/Rust.html")).expect("Rust tag listing");
-    assert!(rust_tag.contains("14th August 2026"), "{rust_tag}");
+    assert!(
+        rust_tag.contains("MathML, Audio, and Direction"),
+        "{rust_tag}"
+    );
     assert!(
         rust_tag.contains("href=\"/my-project/de/tags/Rust.html\" hreflang=\"de\""),
         "{rust_tag}"
@@ -168,8 +178,8 @@ fn builds_the_documented_starter_site() {
         "{german_static_tag}"
     );
 
-    let german_post =
-        fs::read_to_string(output.join("de/blog/2026-08-15.html")).expect("German post");
+    let german_post = fs::read_to_string(output.join("de/blog/explicit-composition/index.html"))
+        .expect("German post");
     assert!(
         german_post.contains("aria-label=\"Sprache\""),
         "{german_post}"
@@ -182,7 +192,7 @@ fn builds_the_documented_starter_site() {
     );
     assert!(german_post.contains("Schlagwort:"), "{german_post}");
 
-    let post = fs::read_to_string(output.join("blog/2026-08-14.html")).expect("post page");
+    let post = fs::read_to_string(output.join("blog/mathml-audio/index.html")).expect("post page");
     assert!(post.contains("<img"), "{post}");
     assert!(post.contains("width="), "{post}");
     let attributions = fs::read_to_string(output.join("licenses.html")).expect("attributions page");
@@ -210,7 +220,7 @@ fn builds_the_documented_starter_site() {
         "{post}"
     );
     assert!(
-        post.contains("src=\"md/audio/heine-introduction.mp3\""),
+        post.contains("src=\"audio/heine-introduction.mp3\""),
         "{post}"
     );
     assert!(
@@ -220,12 +230,28 @@ fn builds_the_documented_starter_site() {
     assert!(post.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."), "{post}");
     assert!(
         output
-            .join("blog/md/audio/heine-introduction.mp3")
+            .join("blog/mathml-audio/audio/heine-introduction.mp3")
             .is_file()
     );
 
+    let terms = fs::read_to_string(output.join("terms/index.html")).expect("terms page");
+    assert!(
+        terms.contains("href=\"/my-project/privacy/index.html\""),
+        "{terms}"
+    );
+    assert!(
+        terms.contains("href=\"/my-project/de/terms/index.html\" hreflang=\"de\""),
+        "{terms}"
+    );
+    assert!(output.join("privacy/index.html").is_file());
+    assert!(output.join("imprint/index.html").is_file());
+
     let quiz = fs::read_to_string(output.join("quiz/quiz-1.html")).expect("quiz page");
     assert!(quiz.contains("quiz"), "{quiz}");
+    assert!(
+        quiz.contains("<button class=\"quiz-answer q-correct\" type=\"button\">Berlin</button>"),
+        "{quiz}"
+    );
     assert!(!quiz.contains("language-navigation"), "{quiz}");
     assert!(output.join("quiz/script.js").is_file());
 }
