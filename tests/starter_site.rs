@@ -48,6 +48,10 @@ fn builds_the_documented_starter_site() {
     );
     assert!(index.contains("Heine Starter Site"), "{index}");
     assert!(index.contains("Quiz"), "{index}");
+    assert!(
+        index.contains("type=\"application/atom+xml\" href=\"/my-project/atom.xml\""),
+        "{index}"
+    );
     assert!(index.contains("class=\"language-navigation\""), "{index}");
     assert!(
         index.contains("href=\"/my-project/de/index.html\" hreflang=\"de\" aria-label=\"German\""),
@@ -81,10 +85,24 @@ fn builds_the_documented_starter_site() {
         german_home.contains("src=\"/my-project/assets/images/flags/english.svg\""),
         "{german_home}"
     );
+    assert!(
+        german_home.contains("type=\"application/atom+xml\" href=\"/my-project/de/atom.xml\""),
+        "{german_home}"
+    );
+
+    let atom = fs::read_to_string(output.join("atom.xml")).expect("English Atom feed");
+    assert!(atom.contains("xml:lang=\"en\""), "{atom}");
+    assert!(atom.contains("<name>Thomas Weitzel</name>"), "{atom}");
+    let german_atom = fs::read_to_string(output.join("de/atom.xml")).expect("German Atom feed");
+    assert!(german_atom.contains("xml:lang=\"de\""), "{german_atom}");
 
     let german_blog = fs::read_to_string(output.join("de/blog/index.html")).expect("German blog");
     assert!(
         german_blog.contains("Bisher gibt es \u{2068}2\u{2069} Beiträge auf Deutsch."),
+        "{german_blog}"
+    );
+    assert!(
+        german_blog.contains("href=\"/my-project/de/atom.xml\">Atom abonnieren</a>"),
         "{german_blog}"
     );
     assert!(!german_blog.contains("Quiz"), "{german_blog}");
@@ -93,6 +111,10 @@ fn builds_the_documented_starter_site() {
     let english_blog = fs::read_to_string(output.join("blog/index.html")).expect("English blog");
     assert!(
         english_blog.contains("class=\"page-navigation pagination\""),
+        "{english_blog}"
+    );
+    assert!(
+        english_blog.contains("href=\"/my-project/atom.xml\">Subscribe with Atom</a>"),
         "{english_blog}"
     );
     assert!(

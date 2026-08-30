@@ -36,6 +36,7 @@ required prerequisite for the guides.
 - [Development server](development-server.md) — local serving, live reload,
   and byte-range responses for media.
 - [Sitemaps](sitemap.md) — canonical discovery documents generated from rendered output.
+- [Atom feeds](atom-feeds.md) — locale-local collection syndication feeds.
 
 ## Reference material
 

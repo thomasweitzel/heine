@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::{
+    author::AuthorName,
     config::{CollectionName, TaxonomyName},
     content::MarkdownSource,
     output::{OutputPath, UrlPath},
@@ -126,6 +127,7 @@ pub(super) struct RawPage {
     pub(super) title: Option<toml::Spanned<String>>,
     pub(super) description: Option<toml::Spanned<String>>,
     pub(super) summary: Option<toml::Spanned<String>>,
+    pub(super) authors: Option<toml::Spanned<Vec<toml::Spanned<String>>>>,
     pub(super) translationid: Option<toml::Spanned<String>>,
     #[serde(rename = "date")]
     pub(super) legacy_date: Option<toml::Spanned<toml::Value>>,
@@ -184,6 +186,7 @@ pub(super) struct RawMetadata {
     pub(super) title: Option<toml::Spanned<String>>,
     pub(super) description: Option<toml::Spanned<String>>,
     pub(super) summary: Option<toml::Spanned<String>>,
+    pub(super) authors: Option<ResolvedAuthors>,
     pub(super) published: Option<toml::Spanned<toml::Value>>,
     pub(super) updated: Option<toml::Spanned<toml::Value>>,
     pub(super) extra: Option<toml::Spanned<toml::Value>>,
@@ -201,17 +204,64 @@ impl PublicationTime {
     pub(super) fn render(&self) -> String {
         self.0.to_string()
     }
+    pub(super) fn timestamp(&self) -> Timestamp {
+        self.0
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct Metadata {
     pub(super) title: Option<String>,
+    pub(super) title_span: Option<SourceSpan>,
     pub(super) description: Option<String>,
     pub(super) summary: Option<String>,
+    pub(super) summary_span: Option<SourceSpan>,
+    pub(super) authors: Option<ResolvedAuthors>,
     pub(super) published: Option<PublicationTime>,
     pub(super) updated: Option<PublicationTime>,
     pub(super) updated_span: Option<SourceSpan>,
     pub(super) extra: Value,
+}
+
+/// Page authors with the authored location that supplied the resolved list.
+/// A directory default retains its own source; a page list uses the page
+/// source supplied by the eventual diagnostic consumer.
+#[derive(Debug, Clone)]
+pub(super) struct ResolvedAuthors {
+    names: Vec<AuthorName>,
+    span: SourceSpan,
+    source: Option<Arc<NamedSource<String>>>,
+}
+
+impl ResolvedAuthors {
+    pub(super) fn page(names: Vec<AuthorName>, span: SourceSpan) -> Self {
+        Self {
+            names,
+            span,
+            source: None,
+        }
+    }
+
+    pub(super) fn directory(mut self, source: Arc<NamedSource<String>>) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    pub(super) fn names(&self) -> &[AuthorName] {
+        &self.names
+    }
+
+    pub(super) fn origin(
+        &self,
+        page_source: &NamedSource<String>,
+    ) -> (Arc<NamedSource<String>>, SourceSpan) {
+        (
+            self.source
+                .clone()
+                .unwrap_or_else(|| Arc::new(page_source.clone())),
+            self.span,
+        )
+    }
 }
 
 impl Metadata {
@@ -220,6 +270,7 @@ impl Metadata {
             "title" => self.title.is_some(),
             "description" => self.description.is_some(),
             "summary" => self.summary.is_some(),
+            "authors" => self.authors.is_some(),
             "published" => self.published.is_some(),
             "updated" => self.updated.is_some(),
             _ => name
@@ -374,6 +425,7 @@ impl Page {
             title,
             description,
             summary,
+            authors,
             published,
             updated,
             extra,
@@ -389,6 +441,7 @@ impl Page {
             title,
             description,
             summary,
+            authors: authors.map(|authors| authors.names().to_vec()),
             published: published.as_ref().map(PublicationTime::render),
             updated: updated.as_ref().map(PublicationTime::render),
             extra,
@@ -413,6 +466,7 @@ pub(crate) struct PageView {
     title: Option<String>,
     description: Option<String>,
     summary: Option<String>,
+    authors: Option<Vec<AuthorName>>,
     published: Option<String>,
     updated: Option<String>,
     extra: Value,

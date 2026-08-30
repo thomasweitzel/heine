@@ -23,7 +23,7 @@ use crate::{
     config::BasePath,
     locale::Locale,
     localization::Localization,
-    site::{PageCatalog, PageId, PageLinks, PageView, TaxonomyCatalog},
+    site::{FeedCatalog, PageCatalog, PageId, PageLinks, PageView, TaxonomyCatalog},
     source_diagnostic,
     source_path::LogicalPath,
 };
@@ -124,6 +124,20 @@ pub(crate) struct TemplateRelationships {
     siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
     taxonomies: std::sync::Arc<TaxonomyCatalog>,
     pagers: crate::site::PaginationCatalog,
+    feeds: std::sync::Arc<FeedCatalog>,
+}
+
+/// Resolved indexes exposed through checked template resource functions.
+///
+/// Grouping them keeps relationship construction aligned with the rendering
+/// boundary as generated-resource consumers are added.
+pub(crate) struct TemplateIndexes {
+    pub(crate) collections:
+        std::sync::Arc<BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>>,
+    pub(crate) siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
+    pub(crate) taxonomies: std::sync::Arc<TaxonomyCatalog>,
+    pub(crate) pagers: crate::site::PaginationCatalog,
+    pub(crate) feeds: std::sync::Arc<FeedCatalog>,
 }
 
 /// Values deliberately exposed to one template render. This is the boundary
@@ -184,20 +198,16 @@ impl TemplateRelationships {
         page_catalog: PageCatalog,
         default_locale: Locale,
         base_path: BasePath,
-        collections: std::sync::Arc<
-            BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>,
-        >,
-        siblings: std::sync::Arc<BTreeMap<Locale, crate::site::SiblingIndex>>,
-        taxonomies: std::sync::Arc<TaxonomyCatalog>,
-        pagers: crate::site::PaginationCatalog,
+        indexes: TemplateIndexes,
     ) -> Self {
         Self {
             page_links: page_catalog.links(default_locale, base_path),
             page_catalog,
-            collections,
-            siblings,
-            taxonomies,
-            pagers,
+            collections: indexes.collections,
+            siblings: indexes.siblings,
+            taxonomies: indexes.taxonomies,
+            pagers: indexes.pagers,
+            feeds: indexes.feeds,
         }
     }
 }

@@ -117,6 +117,33 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         },
     );
 
+    let feed_runtime = runtime.clone();
+    tera.register_function(
+        "feed",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("feed", &kwargs, &["name", "locale"])?;
+            let name = kwargs.must_get::<&str>("name")?;
+            let locale = feed_runtime
+                .pages()
+                .with_locale(feed_runtime.locale(state)?)
+                .resolve_locale(kwargs.get::<&str>("locale")?)
+                .map_err(|error| tera::Error::message(error.to_string()))?;
+            let root = feed_runtime.root(state)?;
+            feed_runtime
+                .feed(&locale, name, &root)
+                .map(|feed| {
+                    tera::Value::try_from_serializable(&feed)
+                        .map_err(|_| tera::Error::message("Heine feed view is not serializable"))
+                })
+                .transpose()?
+                .ok_or_else(|| {
+                    let available = feed_runtime.feed_names(&locale);
+                    let detail = available_names("no feeds are configured", "feeds", &available);
+                    tera::Error::message(format!("feed {name:?} was not found; {detail}"))
+                })
+        },
+    );
+
     let collection_runtime = runtime.clone();
     tera.register_function(
         "collection",

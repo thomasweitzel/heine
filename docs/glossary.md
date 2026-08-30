@@ -74,6 +74,13 @@ whether a page is rendered or reachable. A page can opt out with
 `sitemap = false`; a descriptor's `[pages] sitemap = false` establishes a
 recursive, non-overridable boundary for its descendant pages.
 
+### Atom feed
+
+An opt-in XML syndication document generated once per locale from one
+configured collection. It contains chronological page summaries and canonical
+page links. Feed entry requirements are checked during the build; see the
+[Atom-feed guide](atom-feeds.md).
+
 ### Publication chronology
 
 Optional page `published` and `updated` local date-times. They must include a
@@ -154,6 +161,13 @@ the sorted list of its immediate source subdirectories.
 Optional authored page or directory metadata used for a short description in a
 listing. It is written as `summary` in TOML and exposed as `page.summary`;
 Heine never extracts it from Markdown.
+
+### Authors
+
+An optional non-empty list of human names written as `authors = ["Name"]` on
+a page or inherited from `[pages] authors` in a directory descriptor. Atom
+feeds require every selected entry to resolve authors; the feed checks that
+independently of directory requirements.
 
 ### Weight
 

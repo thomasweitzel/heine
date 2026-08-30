@@ -4,6 +4,7 @@ description = "Notes about building a small static-site generator."
 [pages]
 template = "post.tera"
 collections = ["posts"]
+authors = ["Thomas Weitzel"]
 
 [pages.metadata]
 required = ["title", "published"]

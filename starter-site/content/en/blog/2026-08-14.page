@@ -1,5 +1,6 @@
 title = "14th August 2026"
 published = 2026-08-14T09:30:00
+summary = "A practical look at MathML in a small static-site generator."
 content.main = "md/2026-08-14.md"
 
 [taxonomies]

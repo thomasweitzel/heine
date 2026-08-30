@@ -17,6 +17,7 @@ mod origin;
 mod time_zone;
 
 use crate::{
+    author::AuthorName,
     locale::{Locale, TextDirection},
     output::{OutputClaim, OutputPath},
     project, source_path,
@@ -36,6 +37,7 @@ pub(crate) struct SiteConfig {
     collections: CollectionsConfig,
     taxonomies: TaxonomiesConfig,
     sitemap: Option<SitemapConfig>,
+    feeds: FeedsConfig,
 }
 
 impl SiteConfig {
@@ -103,6 +105,10 @@ impl SiteConfig {
     pub(crate) fn sitemap(&self) -> Option<&SitemapConfig> {
         self.sitemap.as_ref()
     }
+
+    pub(crate) fn feeds(&self) -> &FeedsConfig {
+        &self.feeds
+    }
 }
 
 /// Validated, site-wide collection definitions. Membership remains authored in
@@ -164,6 +170,105 @@ impl TaxonomyName {
 impl std::fmt::Display for TaxonomyName {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(formatter)
+    }
+}
+
+/// A feed name is an authored identifier used only by feed configuration and
+/// checked template lookup. It is distinct from collection names even though
+/// both use the same portable spelling rule.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct FeedName(String);
+
+impl FeedName {
+    pub(crate) fn parse(value: String) -> Result<Self, String> {
+        if crate::source_path::is_simple_identifier(&value) {
+            Ok(Self(value))
+        } else {
+            Err(format!(
+                "feed name {value:?} must be a simple template identifier"
+            ))
+        }
+    }
+}
+
+impl std::fmt::Display for FeedName {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// Checked Atom-feed contracts. The feed module turns them into locale-local
+/// generated resources after collection membership has resolved.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FeedsConfig {
+    definitions: BTreeMap<FeedName, FeedDefinition>,
+}
+
+impl FeedsConfig {
+    pub(crate) fn definitions(&self) -> &BTreeMap<FeedName, FeedDefinition> {
+        &self.definitions
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FeedDefinition {
+    collection: CollectionName,
+    path: OutputPath,
+    title_key: String,
+    subtitle_key: Option<String>,
+    limit: usize,
+    empty_updated: Option<jiff::Timestamp>,
+    empty_authors: Option<Vec<AuthorName>>,
+    source: Option<Arc<NamedSource<String>>>,
+    declaration_span: SourceSpan,
+    path_span: SourceSpan,
+    title_key_span: SourceSpan,
+    subtitle_key_span: Option<SourceSpan>,
+    empty_authors_span: Option<SourceSpan>,
+}
+
+impl FeedDefinition {
+    pub(crate) fn collection(&self) -> &CollectionName {
+        &self.collection
+    }
+    pub(crate) fn path(&self) -> &OutputPath {
+        &self.path
+    }
+    pub(crate) fn title_key(&self) -> &str {
+        &self.title_key
+    }
+    pub(crate) fn subtitle_key(&self) -> Option<&str> {
+        self.subtitle_key.as_deref()
+    }
+    pub(crate) fn limit(&self) -> usize {
+        self.limit
+    }
+    pub(crate) fn empty_updated(&self) -> Option<jiff::Timestamp> {
+        self.empty_updated
+    }
+    pub(crate) fn empty_authors(&self) -> Option<&[AuthorName]> {
+        self.empty_authors.as_deref()
+    }
+    pub(crate) fn origin(
+        &self,
+        span: SourceSpan,
+    ) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.source.as_ref().map(|source| (source.clone(), span))
+    }
+    pub(crate) fn declaration_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.declaration_span)
+    }
+    pub(crate) fn path_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.path_span)
+    }
+    pub(crate) fn title_key_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.title_key_span)
+    }
+    pub(crate) fn subtitle_key_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.subtitle_key_span.and_then(|span| self.origin(span))
+    }
+    pub(crate) fn empty_authors_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.empty_authors_span.and_then(|span| self.origin(span))
     }
 }
 
@@ -551,6 +656,8 @@ struct RawSiteConfig {
     #[serde(default)]
     taxonomies: BTreeMap<toml::Spanned<String>, RawTaxonomyDefinition>,
     sitemap: Option<toml::Spanned<RawSitemapConfig>>,
+    #[serde(default)]
+    feeds: BTreeMap<toml::Spanned<String>, RawFeedDefinition>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -574,6 +681,23 @@ struct RawTaxonomyDefinition {
     #[serde(default)]
     translations:
         BTreeMap<toml::Spanned<String>, BTreeMap<toml::Spanned<String>, toml::Spanned<String>>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawFeedDefinition {
+    collection: toml::Spanned<String>,
+    path: toml::Spanned<String>,
+    title_key: toml::Spanned<String>,
+    subtitle_key: Option<toml::Spanned<String>>,
+    #[serde(default = "default_feed_limit")]
+    limit: toml::Spanned<usize>,
+    empty_updated: Option<toml::Spanned<toml::Value>>,
+    empty_authors: Option<toml::Spanned<Vec<toml::Spanned<String>>>>,
+}
+
+fn default_feed_limit() -> toml::Spanned<usize> {
+    toml::Spanned::new(0..0, 20)
 }
 
 #[derive(Debug, Deserialize)]
@@ -793,6 +917,17 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 Ok(SitemapConfig { span, source: None })
             })
             .transpose()?;
+        if origin.is_none()
+            && let Some((name, _)) = raw.feeds.first_key_value()
+        {
+            return Err(ConfigValueError {
+                span: name.span().into(),
+                message: format!(
+                    "feed {:?} requires site.origin so Heine can generate canonical Atom IDs and links",
+                    name.get_ref()
+                ),
+            });
+        }
         let output_dir_span = raw.build.output_dir.span();
         let output_dir: OutputDirectory =
             raw.build
@@ -874,6 +1009,103 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     order: definition.order.into_inner(),
                     order_span,
                     source: None,
+                },
+            );
+        }
+        let mut feeds = BTreeMap::new();
+        for (name, definition) in raw.feeds {
+            let name_span = name.span();
+            let declaration_span: SourceSpan = name_span.clone().into();
+            let name = FeedName::parse(name.into_inner()).map_err(|message| ConfigValueError {
+                span: name_span.into(),
+                message,
+            })?;
+            let collection_span: SourceSpan = definition.collection.span().into();
+            let collection_value = definition.collection.into_inner();
+            let collection =
+                CollectionName::parse(collection_value.clone()).map_err(|message| {
+                    ConfigValueError {
+                        span: collection_span,
+                        message,
+                    }
+                })?;
+            if !collections.contains_key(&collection) {
+                return Err(ConfigValueError {
+                    span: collection_span,
+                    message: format!(
+                        "feed {name} uses collection {collection_value:?}, which is not configured"
+                    ),
+                });
+            }
+            let path_span: SourceSpan = definition.path.span().into();
+            let path_value = PathBuf::from(definition.path.into_inner());
+            let path = OutputPath::try_new(path_value).map_err(|message| ConfigValueError {
+                span: path_span,
+                message: format!("feed {name} path {message}"),
+            })?;
+            if crate::output::is_reserved_output_path(path.as_path()) {
+                return Err(ConfigValueError {
+                    span: path_span,
+                    message: format!(
+                        "feed {name} path must not use Heine's reserved __heine/ namespace"
+                    ),
+                });
+            }
+            let title_key_span: SourceSpan = definition.title_key.span().into();
+            let title_key = required_message_key(
+                definition.title_key.into_inner(),
+                "title_key",
+                &name,
+                title_key_span,
+            )?;
+            let (subtitle_key, subtitle_key_span) = definition
+                .subtitle_key
+                .map(|value| {
+                    let span: SourceSpan = value.span().into();
+                    required_message_key(value.into_inner(), "subtitle_key", &name, span)
+                        .map(|key| (key, span))
+                })
+                .transpose()?
+                .map_or((None, None), |(key, span)| (Some(key), Some(span)));
+            let limit_span: SourceSpan = definition.limit.span().into();
+            let limit = definition.limit.into_inner();
+            if limit == 0 {
+                return Err(ConfigValueError {
+                    span: limit_span,
+                    message: format!("feed {name} limit must be a positive integer"),
+                });
+            }
+            let empty_updated = definition
+                .empty_updated
+                .map(|value| {
+                    let span: SourceSpan = value.span().into();
+                    parse_feed_empty_updated(value.into_inner(), time_zone.as_ref(), span, &name)
+                })
+                .transpose()?;
+            let empty_authors_span = definition
+                .empty_authors
+                .as_ref()
+                .map(|authors| authors.span().into());
+            let empty_authors = definition
+                .empty_authors
+                .map(|authors| parse_feed_authors(authors, &name))
+                .transpose()?;
+            feeds.insert(
+                name,
+                FeedDefinition {
+                    collection,
+                    path,
+                    title_key,
+                    subtitle_key,
+                    limit,
+                    empty_updated,
+                    empty_authors,
+                    source: None,
+                    declaration_span,
+                    path_span,
+                    title_key_span,
+                    subtitle_key_span,
+                    empty_authors_span,
                 },
             );
         }
@@ -1049,6 +1281,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 definitions: taxonomies,
             },
             sitemap,
+            feeds: FeedsConfig { definitions: feeds },
         })
     }
 }
@@ -1067,6 +1300,9 @@ impl SiteConfig {
         for definition in self.taxonomies.definitions.values_mut() {
             definition.source = Some(collection_source.clone());
         }
+        for definition in self.feeds.definitions.values_mut() {
+            definition.source = Some(collection_source.clone());
+        }
         if let Some(sitemap) = &mut self.sitemap {
             sitemap.source = Some(collection_source);
         }
@@ -1077,6 +1313,80 @@ impl SiteConfig {
 struct ConfigValueError {
     span: SourceSpan,
     message: String,
+}
+
+fn required_message_key(
+    value: String,
+    field: &str,
+    feed: &FeedName,
+    span: SourceSpan,
+) -> Result<String, ConfigValueError> {
+    if value.trim().is_empty() {
+        Err(ConfigValueError {
+            span,
+            message: format!("feed {feed} {field} must name a non-empty Fluent message"),
+        })
+    } else {
+        Ok(value)
+    }
+}
+
+fn parse_feed_empty_updated(
+    value: toml::Value,
+    time_zone: Option<&EditorialTimeZone>,
+    span: SourceSpan,
+    feed: &FeedName,
+) -> Result<jiff::Timestamp, ConfigValueError> {
+    let toml::Value::Datetime(value) = value else {
+        return Err(ConfigValueError {
+            span,
+            message: format!(
+                "feed {feed} empty_updated must be a TOML local date-time without a UTC offset"
+            ),
+        });
+    };
+    if value.date.is_none() || value.time.is_none() || value.offset.is_some() {
+        return Err(ConfigValueError {
+            span,
+            message: format!(
+                "feed {feed} empty_updated must be a TOML local date-time without a UTC offset"
+            ),
+        });
+    }
+    let Some(time_zone) = time_zone else {
+        return Err(ConfigValueError {
+            span,
+            message: format!(
+                "feed {feed} empty_updated requires site.time_zone; add an IANA time-zone name under [site]"
+            ),
+        });
+    };
+    time_zone
+        .resolve_local("empty_updated", &value)
+        .map_err(|message| ConfigValueError { span, message })
+}
+
+fn parse_feed_authors(
+    values: toml::Spanned<Vec<toml::Spanned<String>>>,
+    feed: &FeedName,
+) -> Result<Vec<AuthorName>, ConfigValueError> {
+    let span = values.span().into();
+    let values = values.into_inner();
+    if values.is_empty() {
+        return Err(ConfigValueError {
+            span,
+            message: format!("feed {feed} empty_authors must contain at least one name"),
+        });
+    }
+    let mut authors = Vec::with_capacity(values.len());
+    for value in values {
+        let span: SourceSpan = value.span().into();
+        authors.push(
+            AuthorName::parse(value.into_inner())
+                .map_err(|message| ConfigValueError { span, message })?,
+        );
+    }
+    Ok(authors)
 }
 
 impl std::fmt::Display for ConfigValueError {

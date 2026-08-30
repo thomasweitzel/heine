@@ -114,6 +114,26 @@ fn validates_inherited_directory_metadata_requirements() {
 }
 
 #[test]
+fn rejects_page_only_metadata_requirements_for_directories() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/_directory.toml",
+        "[metadata]\nrequired = ['authors']\n",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("authors belong to pages");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/_directory.toml:2"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("directory metadata requirement must name"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn reports_invalid_directory_template_at_its_declaration() {
     let fixture = Fixture::new();
     fixture.write("content/en/_directory.toml", "[pages]\ntemplate = true\n");

@@ -114,7 +114,7 @@ part of the initial feature.
 
 ## Publication chronology
 
-Sitemap timestamps and future Atom feeds need a statement about publication,
+Sitemap timestamps and Atom feeds need a statement about publication,
 not a generic calendar date. Heine therefore replaces the existing `date` page
 field with these optional fields:
 
@@ -176,11 +176,10 @@ apply the same policy to its descendant pages:
 required = ["published"]
 ```
 
-An eventual Atom-feed configuration likewise requires a real publication
-timestamp for every included entry. `updated` remains optional everywhere: a
-page that has not changed significantly since publication uses `published` as
-its initial update instant. Requiring both fields would merely duplicate that
-same fact.
+An Atom feed likewise requires a real publication timestamp for every included
+entry. `updated` remains optional everywhere: a page that has not changed
+significantly since publication uses `published` as its initial update instant.
+Requiring both fields would merely duplicate that same fact.
 
 ## Included URLs
 
@@ -279,5 +278,6 @@ page chronology supplies it. It does not provide:
 
 These omissions keep the sitemap an exact, checked view of output that Heine
 knows it rendered. Later extensions must retain that property and add authored
-metadata only when its semantics are clear. Atom-feed design will use the same
-page chronology, while separately defining feed-level metadata and timestamps.
+metadata only when its semantics are clear. Atom feeds use the same page
+chronology while separately defining feed-level metadata and timestamps; see
+the [Atom-feed guide](atom-feeds.md).

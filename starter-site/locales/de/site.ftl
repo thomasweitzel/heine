@@ -28,6 +28,11 @@ blog-post-summary = { $count ->
    *[other] Bisher gibt es { $count } Beiträge auf Deutsch.
 }
 
+# Atom feed metadata for the locale-local post collection.
+feed-posts-title = Heine-Beiträge
+feed-posts-subtitle = Notizen über einen kleinen Static-Site-Generator
+feed-subscribe = Atom abonnieren
+
 # Footer text and the generated asset-attribution page.
 attributions = Namensnennungen
 attributions-introduction = Diese Seite listet kopierte Dateien mit ihren angegebenen Lizenzinformationen auf.

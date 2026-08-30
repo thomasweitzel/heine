@@ -8,12 +8,12 @@ use std::{
     time::SystemTime,
 };
 
-use jiff::tz::AmbiguousOffset;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error as ThisError;
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{
+    author::AuthorName,
     config::{
         CollectionName, CollectionsConfig, EditorialTimeZone, TaxonomiesConfig, TaxonomyName,
     },
@@ -22,9 +22,13 @@ use crate::{
     output::OutputPath,
     site::{
         Error,
+        metadata::{
+            RawMetadataPolicy, Requirement, RequirementTarget, key_span, parse_metadata,
+            requirements,
+        },
         page::{
             CollectionMembership, DirectoryView, LoadedPage, Metadata, OutputSuffix, Page, PageId,
-            Pagination, PaginationSegment, PublicationTime, RawMetadata, RawPage, Task,
+            Pagination, PaginationSegment, RawMetadata, RawPage, ResolvedAuthors, Task,
             TaxonomyMembership, TaxonomyTermMembership, TranslationId,
         },
     },
@@ -48,16 +52,10 @@ struct RawDirectory {
 
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawMetadataPolicy {
-    #[serde(default)]
-    required: Vec<toml::Spanned<String>>,
-}
-
-#[derive(Debug, Default, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RawPagePolicy {
     template: Option<toml::Spanned<toml::Value>>,
     collections: Option<Vec<toml::Spanned<String>>>,
+    authors: Option<toml::Spanned<Vec<toml::Spanned<String>>>>,
     sitemap: Option<toml::Spanned<bool>>,
     metadata: Option<RawMetadataPolicy>,
 }
@@ -73,6 +71,7 @@ pub(super) struct DirectoryDescriptor {
     page_requirements: Vec<Requirement>,
     template: Option<TemplateChoice>,
     collections: Option<Vec<CollectionMembership>>,
+    authors: Option<ResolvedAuthors>,
     sitemap_exclusion: Option<SourceSpan>,
     modified: SystemTime,
 }
@@ -89,12 +88,6 @@ pub(super) struct PageLoadContext<'a> {
     pub(super) taxonomies: &'a TaxonomiesConfig,
     pub(super) time_zone: Option<&'a EditorialTimeZone>,
     pub(super) sitemap_enabled: bool,
-}
-
-#[derive(Debug, Clone)]
-struct Requirement {
-    name: String,
-    span: SourceSpan,
 }
 
 #[derive(Debug, Diagnostic, ThisError)]
@@ -282,6 +275,7 @@ pub(super) fn load_page(
         path,
         &text,
     )?;
+    let authors = authors_for(raw.authors, &ancestors, path, &text)?;
     let pagination = pagination_for(
         raw.pagination,
         template.is_some(),
@@ -340,6 +334,7 @@ pub(super) fn load_page(
             title: raw.title,
             description: raw.description,
             summary: raw.summary,
+            authors,
             published: raw.published,
             updated: raw.updated,
             extra: raw.extra,
@@ -644,6 +639,7 @@ pub(super) fn load_descriptors(
                 title: raw.title,
                 description: raw.description,
                 summary: raw.summary,
+                authors: None,
                 published: None,
                 updated: None,
                 extra: raw.extra,
@@ -652,7 +648,12 @@ pub(super) fn load_descriptors(
             &text,
             None,
         )?;
-        let metadata_requirements = requirements(raw.metadata_policy, path, &text)?;
+        let metadata_requirements = requirements(
+            raw.metadata_policy,
+            path,
+            &text,
+            RequirementTarget::Directory,
+        )?;
         let page_policy = raw.pages.unwrap_or_default();
         let sitemap_exclusion = page_policy
             .sitemap
@@ -677,7 +678,8 @@ pub(super) fn load_descriptors(
                 Ok(span)
             })
             .transpose()?;
-        let page_requirements = requirements(page_policy.metadata, path, &text)?;
+        let page_requirements =
+            requirements(page_policy.metadata, path, &text, RequirementTarget::Page)?;
         let template = match page_policy.template {
             Some(value) => Some(parse_template(value, path, &text)?),
             None => None,
@@ -685,6 +687,17 @@ pub(super) fn load_descriptors(
         let collections = page_policy
             .collections
             .map(|collections| parse_collections(collections, collection_config, path, &text))
+            .transpose()?;
+        let authors = page_policy
+            .authors
+            .map(|authors| {
+                let author_source = Arc::new(crate::source_diagnostic::named_source(
+                    path,
+                    text.clone(),
+                    "TOML",
+                ));
+                parse_authors(authors, path, &text).map(|authors| authors.directory(author_source))
+            })
             .transpose()?;
         descriptors.insert(
             relative.clone(),
@@ -698,6 +711,7 @@ pub(super) fn load_descriptors(
                 page_requirements,
                 template,
                 collections,
+                authors,
                 sitemap_exclusion,
                 modified: metadata_modified(path)?,
             },
@@ -781,6 +795,49 @@ fn collections_for(
             .map(Ok)
             .unwrap_or_else(|| Ok(Vec::new())),
     }
+}
+
+/// Resolves a page's authors with the same nearest-descriptor replacement
+/// rule used for other page defaults. An omitted value remains absent; an
+/// explicit empty list is rejected because it cannot describe authorship.
+fn authors_for(
+    page: Option<toml::Spanned<Vec<toml::Spanned<String>>>>,
+    ancestors: &[&DirectoryDescriptor],
+    path: &Path,
+    source: &str,
+) -> Result<Option<ResolvedAuthors>, Error> {
+    match page {
+        Some(authors) => parse_authors(authors, path, source).map(Some),
+        None => Ok(ancestors
+            .iter()
+            .rev()
+            .find_map(|descriptor| descriptor.authors.clone())),
+    }
+}
+
+fn parse_authors(
+    values: toml::Spanned<Vec<toml::Spanned<String>>>,
+    path: &Path,
+    source: &str,
+) -> Result<ResolvedAuthors, Error> {
+    let span = values.span().into();
+    let values = values.into_inner();
+    if values.is_empty() {
+        return Err(invalid(
+            path,
+            source,
+            span,
+            "field `authors` must contain at least one non-empty name",
+        ));
+    }
+    let mut authors = Vec::with_capacity(values.len());
+    for value in values {
+        let span: SourceSpan = value.span().into();
+        let name = value.into_inner();
+        authors
+            .push(AuthorName::parse(name).map_err(|message| invalid(path, source, span, message))?);
+    }
+    Ok(ResolvedAuthors::page(authors, span))
 }
 
 fn parse_collections(
@@ -943,204 +1000,6 @@ fn parse_template(
     }
 }
 
-fn parse_metadata(
-    raw: RawMetadata,
-    path: &Path,
-    source: &str,
-    time_zone: Option<&EditorialTimeZone>,
-) -> Result<Metadata, Error> {
-    let updated_span = raw.updated.as_ref().map(|value| value.span().into());
-    let published = raw
-        .published
-        .map(|value| parse_publication_time("published", value, time_zone, path, source))
-        .transpose()?;
-    let updated = raw
-        .updated
-        .map(|value| parse_publication_time("updated", value, time_zone, path, source))
-        .transpose()?;
-    let (extra, extra_span) = raw
-        .extra
-        .map(|value| {
-            let span = value.span().into();
-            (value.into_inner(), span)
-        })
-        .unwrap_or_else(|| (toml::Value::Table(Default::default()), (0, 0).into()));
-    if !matches!(extra, toml::Value::Table(_)) {
-        return Err(invalid(
-            path,
-            source,
-            extra_span,
-            "field `extra` must be a TOML table",
-        ));
-    }
-    validate_extra_keys(&extra, path, source, extra_span)?;
-    Ok(Metadata {
-        title: raw.title.map(toml::Spanned::into_inner),
-        description: raw.description.map(toml::Spanned::into_inner),
-        summary: raw.summary.map(toml::Spanned::into_inner),
-        published,
-        updated,
-        updated_span,
-        extra: serde_json::to_value(extra).expect("toml values are serializable"),
-    })
-}
-
-fn parse_publication_time(
-    field: &str,
-    value: toml::Spanned<toml::Value>,
-    time_zone: Option<&EditorialTimeZone>,
-    path: &Path,
-    source: &str,
-) -> Result<PublicationTime, Error> {
-    let span = value.span().into();
-    let toml::Value::Datetime(value) = value.into_inner() else {
-        return Err(invalid(
-            path,
-            source,
-            span,
-            format!("field `{field}` must be a TOML local date-time without a UTC offset"),
-        ));
-    };
-    if value.date.is_none() || value.time.is_none() || value.offset.is_some() {
-        return Err(invalid(
-            path,
-            source,
-            span,
-            format!("field `{field}` must be a TOML local date-time without a UTC offset"),
-        ));
-    }
-    let Some(time_zone) = time_zone else {
-        return Err(invalid(
-            path,
-            source,
-            span,
-            format!(
-                "field `{field}` requires site.time_zone; add an IANA time-zone name such as \"Europe/Berlin\" under [site]"
-            ),
-        ));
-    };
-    let local = value
-        .to_string()
-        .parse::<jiff::civil::DateTime>()
-        .map_err(|_| {
-            invalid(
-                path,
-                source,
-                span,
-                format!("field `{field}` contains an invalid local date-time"),
-            )
-        })?;
-    let ambiguous = time_zone.zone().to_ambiguous_zoned(local);
-    let zoned = match ambiguous.offset() {
-        AmbiguousOffset::Unambiguous { .. } => ambiguous.unambiguous().map_err(|_| {
-            invalid(
-                path,
-                source,
-                span,
-                format!(
-                    "field `{field}` could not be resolved in site.time_zone {:?}",
-                    time_zone.name(),
-                ),
-            )
-        })?,
-        AmbiguousOffset::Gap { before, after } => {
-            return Err(invalid(
-                path,
-                source,
-                span,
-                format!(
-                    "field `{field}` does not exist in site.time_zone {:?}: the clock moves from {before} to {after}; choose a local time outside that gap",
-                    time_zone.name(),
-                ),
-            ));
-        }
-        AmbiguousOffset::Fold { before, after } => {
-            return Err(invalid(
-                path,
-                source,
-                span,
-                format!(
-                    "field `{field}` occurs twice in site.time_zone {:?}: the clock moves from {before} to {after}; choose a local time outside that repeated interval",
-                    time_zone.name(),
-                ),
-            ));
-        }
-    };
-    Ok(PublicationTime::new(zoned.timestamp()))
-}
-
-fn validate_extra_keys(
-    value: &toml::Value,
-    path: &Path,
-    source: &str,
-    span: SourceSpan,
-) -> Result<(), Error> {
-    match value {
-        toml::Value::Table(table) => {
-            for (key, value) in table {
-                if !source_path::is_simple_identifier(key) {
-                    return Err(invalid(
-                        path,
-                        source,
-                        key_span(source, span, key),
-                        format!(
-                            "field `extra` contains key {key:?}; extra keys must be simple template identifiers"
-                        ),
-                    ));
-                }
-                validate_extra_keys(value, path, source, span)?;
-            }
-        }
-        toml::Value::Array(values) => {
-            for value in values {
-                validate_extra_keys(value, path, source, span)?;
-            }
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-/// Locates a TOML key when serde supplies a span for its value or table rather
-/// than the key itself. Strict schemas ensure a matching assignment cannot be
-/// confused with an unrelated user-defined field outside this namespace.
-fn key_span(source: &str, fallback: SourceSpan, key: &str) -> SourceSpan {
-    let mut offset = 0;
-    for line in source.split_inclusive('\n') {
-        let leading = line.len() - line.trim_start().len();
-        let candidate = &line[leading..];
-        for spelling in [key.to_owned(), format!("{key:?}"), format!("'{key}'")] {
-            if candidate
-                .strip_prefix(&spelling)
-                .is_some_and(|rest| rest.trim_start().starts_with('='))
-            {
-                return (offset + leading, spelling.len()).into();
-            }
-        }
-        offset += line.len();
-    }
-    fallback
-}
-
-fn requirements(
-    raw: Option<RawMetadataPolicy>,
-    path: &Path,
-    source: &str,
-) -> Result<Vec<Requirement>, Error> {
-    raw.unwrap_or_default().required.into_iter().map(|value| {
-        let span = value.span(); let name = value.into_inner();
-        if matches!(name.as_str(), "title" | "description" | "summary" | "published" | "updated") || valid_extra_requirement(&name) {
-            Ok(Requirement { name, span: span.into() })
-        } else { Err(invalid(path, source, span.into(), "metadata requirement must name `title`, `description`, `summary`, `published`, `updated`, or `extra.<name>`")) }
-    }).collect()
-}
-
-fn valid_extra_requirement(name: &str) -> bool {
-    name.strip_prefix("extra.").is_some_and(|path| {
-        !path.is_empty() && path.split('.').all(source_path::is_simple_identifier)
-    })
-}
-
 fn validate_requirements<'a>(
     subject: &str,
     path: &Path,
@@ -1221,7 +1080,12 @@ fn content_modified(path: &Path) -> Result<SystemTime, std::io::Error> {
     metadata.modified()
 }
 
-fn invalid(path: &Path, source: &str, span: SourceSpan, message: impl Into<String>) -> Error {
+pub(super) fn invalid(
+    path: &Path,
+    source: &str,
+    span: SourceSpan,
+    message: impl Into<String>,
+) -> Error {
     Error::InvalidPage(Box::new(PageDiagnostic {
         path: path.into(),
         message: message.into(),
