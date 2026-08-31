@@ -6,7 +6,3 @@ extra.parent = "blog/index"
 
 [taxonomies]
 tags = ["MathML", "Rust"]
-
-[extra.featured_image]
-id = "assets/images/heine.jpg"
-alt = "A small starter-site illustration"

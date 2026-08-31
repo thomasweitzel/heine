@@ -48,6 +48,15 @@ fn builds_the_documented_starter_site() {
     );
     assert!(index.contains("Heine Starter Site"), "{index}");
     assert!(index.contains("Quiz"), "{index}");
+    assert!(index.contains("<h2>Heinrich Heine</h2>"), "{index}");
+    assert!(
+        index.contains("A short, source-linked guide to the writer whose name this site borrows."),
+        "{index}"
+    );
+    assert!(
+        index.contains("href=\"/my-project/heine/index.html\">Heinrich Heine</a>"),
+        "{index}"
+    );
     assert!(!index.contains("<h2>Terms</h2>"), "{index}");
     assert!(
         index.contains("href=\"/my-project/about/index.html\">About Heine</a>"),
@@ -213,8 +222,14 @@ fn builds_the_documented_starter_site() {
         post.contains("class=\"page-navigation\" aria-label=\"Page navigation\""),
         "{post}"
     );
-    assert!(post.contains("<img"), "{post}");
-    assert!(post.contains("width="), "{post}");
+    let guide = fs::read_to_string(output.join("heine/index.html")).expect("Heine guide");
+    assert!(guide.contains("class=\"table-of-contents\""), "{guide}");
+    assert!(guide.contains("href=\"#a-short-guide\""), "{guide}");
+    assert!(guide.contains("<h2 id=\"a-short-guide\">"), "{guide}");
+    assert!(
+        guide.contains("<h2 id=\"sources-and-image-attribution\">"),
+        "{guide}"
+    );
     let attributions =
         fs::read_to_string(output.join("legal/licenses/index.html")).expect("attributions page");
     assert!(

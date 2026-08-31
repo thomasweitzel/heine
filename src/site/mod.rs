@@ -428,6 +428,7 @@ impl Site {
             &taxonomy_config,
             site_settings.time_zone(),
             sitemap_config.is_some(),
+            markdown_renderer.config(),
         )?;
         let mut pages = locales.pages;
         let siblings = locales.siblings;

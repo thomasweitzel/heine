@@ -9,6 +9,7 @@ use std::{
 };
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
+use serde_json::Value;
 use thiserror::Error as ThisError;
 use walkdir::{DirEntry, WalkDir};
 
@@ -36,6 +37,205 @@ use crate::{
     template::TemplateName,
 };
 
+fn parse_toc(
+    raw: toml::Spanned<toml::Value>,
+    path: &Path,
+    source: &str,
+    table_name: &str,
+) -> Result<TocPolicy, Error> {
+    let span: SourceSpan = raw.span().into();
+    match raw.into_inner() {
+        toml::Value::Boolean(false) => Ok(TocPolicy::Disabled(span)),
+        toml::Value::Boolean(true) => Err(invalid(
+            path,
+            source,
+            span,
+            "field `toc` accepts only false; use [toc] to configure a table of contents",
+        )),
+        toml::Value::Table(mut table) => {
+            let content = table
+                .remove("content")
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .ok_or_else(|| {
+                    invalid(
+                        path,
+                        source,
+                        span,
+                        "toc.content must be a string declared content name",
+                    )
+                })?;
+            if !source_path::is_simple_identifier(&content) {
+                return Err(invalid(
+                    path,
+                    source,
+                    toc_key_span(source, span, table_name, "content"),
+                    "toc.content must be a simple declared content name",
+                ));
+            }
+            let min_level = table
+                .remove("min_level")
+                .map(|value| {
+                    value
+                        .as_integer()
+                        .and_then(|value| u8::try_from(value).ok())
+                        .ok_or_else(|| {
+                            invalid(
+                                path,
+                                source,
+                                toc_key_span(source, span, table_name, "min_level"),
+                                "toc.min_level must be an integer from 1 through 6",
+                            )
+                        })
+                })
+                .transpose()?
+                .unwrap_or(1);
+            let max_level = table
+                .remove("max_level")
+                .map(|value| {
+                    value
+                        .as_integer()
+                        .and_then(|value| u8::try_from(value).ok())
+                        .ok_or_else(|| {
+                            invalid(
+                                path,
+                                source,
+                                toc_key_span(source, span, table_name, "max_level"),
+                                "toc.max_level must be an integer from 1 through 6",
+                            )
+                        })
+                })
+                .transpose()?
+                .unwrap_or(6);
+            if let Some((field, _)) = table.into_iter().next() {
+                return Err(invalid(
+                    path,
+                    source,
+                    toc_key_span(source, span, table_name, &field),
+                    format!("unknown toc field {field:?}"),
+                ));
+            }
+            if !(1..=6).contains(&min_level) {
+                return Err(invalid(
+                    path,
+                    source,
+                    toc_key_span(source, span, table_name, "min_level"),
+                    "toc.min_level must be an integer from 1 through 6",
+                ));
+            }
+            if !(1..=6).contains(&max_level) {
+                return Err(invalid(
+                    path,
+                    source,
+                    toc_key_span(source, span, table_name, "max_level"),
+                    "toc.max_level must be an integer from 1 through 6",
+                ));
+            }
+            if min_level > max_level {
+                return Err(invalid(
+                    path,
+                    source,
+                    toc_key_span(source, span, table_name, "min_level"),
+                    "toc.min_level must not exceed toc.max_level",
+                ));
+            }
+            Ok(TocPolicy::Enabled(TocSettings {
+                content,
+                content_span: toc_key_span(source, span, table_name, "content"),
+                min_level,
+                max_level,
+                span,
+            }))
+        }
+        _ => Err(invalid(
+            path,
+            source,
+            span,
+            "field `toc` must be false or a [toc] table",
+        )),
+    }
+}
+
+/// Locates a ToC key inside its named TOML table, rather than allowing an
+/// identically named key in arbitrary site metadata to claim the diagnostic
+/// label. Serde's span for a TOML table names only its header, so it cannot
+/// delimit the table body itself.
+fn toc_key_span(source: &str, table_span: SourceSpan, table_name: &str, key: &str) -> SourceSpan {
+    let table_header = format!("[{table_name}]");
+    let mut offset = 0;
+    let mut in_table = false;
+    for line in source.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if !in_table {
+            if trimmed == table_header {
+                in_table = true;
+            }
+            offset += line.len();
+            continue;
+        }
+        if trimmed.starts_with('[') {
+            break;
+        }
+        let leading = line.len() - line.trim_start().len();
+        let candidate = &line[leading..];
+        for spelling in [key.to_owned(), format!("{key:?}"), format!("'{key}'")] {
+            if candidate
+                .strip_prefix(&spelling)
+                .is_some_and(|rest| rest.trim_start().starts_with('='))
+            {
+                return (offset + leading, spelling.len()).into();
+            }
+        }
+        offset += line.len();
+    }
+    table_span
+}
+
+fn effective_toc<'a>(ancestors: &'a [&'a DirectoryDescriptor]) -> Option<&'a DirectoryDescriptor> {
+    ancestors
+        .iter()
+        .rev()
+        .find(|descriptor| descriptor.toc.is_some())
+        .copied()
+}
+
+fn toc_for<'a>(
+    raw: Option<&'a TocPolicy>,
+    ancestors: &'a [&'a DirectoryDescriptor],
+    path: &'a Path,
+    source: &'a str,
+) -> Result<Option<TocSettingsRef<'a>>, Error> {
+    match raw {
+        Some(TocPolicy::Disabled(span)) => match effective_toc(ancestors) {
+            Some(DirectoryDescriptor {
+                toc: Some(TocPolicy::Enabled(_)),
+                ..
+            }) => Ok(None),
+            _ => Err(invalid(
+                path,
+                source,
+                *span,
+                "toc = false requires an otherwise effective inherited table of contents",
+            )),
+        },
+        Some(TocPolicy::Enabled(settings)) => Ok(Some(TocSettingsRef {
+            settings,
+            path,
+            source,
+        })),
+        None => match effective_toc(ancestors) {
+            Some(descriptor) => match descriptor.toc.as_ref() {
+                Some(TocPolicy::Enabled(settings)) => Ok(Some(TocSettingsRef {
+                    settings,
+                    path: &descriptor.path,
+                    source: &descriptor.text,
+                })),
+                Some(TocPolicy::Disabled(_)) | None => Ok(None),
+            },
+            None => Ok(None),
+        },
+    }
+}
+
 pub(super) const DIRECTORY_FILE: &str = "_directory.toml";
 
 #[derive(Debug, serde::Deserialize)]
@@ -57,6 +257,7 @@ struct RawPagePolicy {
     collections: Option<Vec<toml::Spanned<String>>>,
     authors: Option<toml::Spanned<Vec<toml::Spanned<String>>>>,
     sitemap: Option<toml::Spanned<bool>>,
+    toc: Option<toml::Spanned<toml::Value>>,
     metadata: Option<RawMetadataPolicy>,
 }
 
@@ -73,7 +274,29 @@ pub(super) struct DirectoryDescriptor {
     collections: Option<Vec<CollectionMembership>>,
     authors: Option<ResolvedAuthors>,
     sitemap_exclusion: Option<SourceSpan>,
+    toc: Option<TocPolicy>,
     modified: SystemTime,
+}
+
+#[derive(Debug, Clone)]
+enum TocPolicy {
+    Disabled(SourceSpan),
+    Enabled(TocSettings),
+}
+
+#[derive(Debug, Clone)]
+struct TocSettings {
+    content: String,
+    content_span: SourceSpan,
+    min_level: u8,
+    max_level: u8,
+    span: SourceSpan,
+}
+
+struct TocSettingsRef<'a> {
+    settings: &'a TocSettings,
+    path: &'a Path,
+    source: &'a str,
 }
 
 /// Shared locale-loading inputs for one page. Keeping this as one domain
@@ -88,6 +311,7 @@ pub(super) struct PageLoadContext<'a> {
     pub(super) taxonomies: &'a TaxonomiesConfig,
     pub(super) time_zone: Option<&'a EditorialTimeZone>,
     pub(super) sitemap_enabled: bool,
+    pub(super) markdown: &'a crate::config::MarkdownConfig,
 }
 
 #[derive(Debug, Diagnostic, ThisError)]
@@ -261,6 +485,23 @@ pub(super) fn load_page(
     let directory_path = relative.parent().unwrap_or(Path::new(""));
     let ancestors = descriptor_ancestors(directory_path, context.descriptors);
     let template = template_for(raw.template, &ancestors, path, &text)?;
+    let page_toc = raw
+        .toc
+        .map(|value| parse_toc(value, path, &text, "toc"))
+        .transpose()?;
+    let toc_config = toc_for(page_toc.as_ref(), &ancestors, path, &text)?;
+    if let Some(toc) = &toc_config
+        && template.is_none()
+    {
+        return Err(invalid(
+            toc.path,
+            toc.source,
+            toc.settings.span,
+            format!(
+                "a table of contents for page {id:?} requires that page to have a template; configure one or suppress the inherited default with toc = false"
+            ),
+        ));
+    }
     let suffix_span = raw.suffix.span();
     let suffix: OutputSuffix = raw
         .suffix
@@ -293,6 +534,7 @@ pub(super) fn load_page(
     let mut content = BTreeMap::new();
     let mut content_inputs = BTreeSet::new();
     let mut markdown_sources = Vec::new();
+    let mut markdown_names = BTreeSet::new();
     for (name, file) in raw.content {
         let file_span: SourceSpan = file.span().into();
         if !source_path::is_simple_identifier(&name) {
@@ -325,10 +567,45 @@ pub(super) fn load_page(
             error => Error::Content(error),
         })?;
         if let Some(source) = loaded.markdown_source {
+            markdown_names.insert(name.clone());
             markdown_sources.push(source);
         }
         content.insert(name, loaded.value);
     }
+    let toc = if let Some(config) = toc_config {
+        let settings = config.settings;
+        if !markdown_names.contains(&settings.content) {
+            return Err(invalid(
+                config.path,
+                config.source,
+                settings.content_span,
+                format!(
+                    "toc.content {:?} must name a declared Markdown file on page {id:?}",
+                    settings.content
+                ),
+            ));
+        }
+        let Some(markdown) = content.get(&settings.content).and_then(Value::as_str) else {
+            return Err(invalid(
+                config.path,
+                config.source,
+                settings.content_span,
+                format!(
+                    "toc.content {:?} must be one unsegmented Markdown document on page {id:?}",
+                    settings.content
+                ),
+            ));
+        };
+        Some(crate::markdown::toc_plan(
+            settings.content.clone(),
+            markdown,
+            context.markdown,
+            settings.min_level,
+            settings.max_level,
+        ))
+    } else {
+        None
+    };
     let metadata = parse_metadata(
         RawMetadata {
             title: raw.title,
@@ -435,6 +712,8 @@ pub(super) fn load_page(
         filename,
         subdirs,
         content,
+        markdown_content: markdown_names,
+        toc,
         metadata,
         translationid,
         translationid_span,
@@ -676,6 +955,10 @@ pub(super) fn load_descriptors(
                 Ok(span)
             })
             .transpose()?;
+        let toc = page_policy
+            .toc
+            .map(|value| parse_toc(value, path, &text, "pages.toc"))
+            .transpose()?;
         let page_requirements =
             requirements(page_policy.metadata, path, &text, RequirementTarget::Page)?;
         let template = match page_policy.template {
@@ -711,6 +994,7 @@ pub(super) fn load_descriptors(
                 collections,
                 authors,
                 sitemap_exclusion,
+                toc,
                 modified: metadata_modified(path)?,
             },
         );
@@ -730,6 +1014,25 @@ pub(super) fn load_descriptors(
             &descriptor.metadata,
             requirements,
         )?;
+        if let Some(TocPolicy::Disabled(span)) = descriptor.toc {
+            let ancestors = descriptor_ancestors(&descriptor.relative, &descriptors);
+            let inherited = ancestors
+                .iter()
+                .rev()
+                .find(|ancestor| ancestor.relative != descriptor.relative && ancestor.toc.is_some())
+                .copied();
+            if !matches!(
+                inherited.and_then(|ancestor| ancestor.toc.as_ref()),
+                Some(TocPolicy::Enabled(_))
+            ) {
+                return Err(invalid(
+                    &descriptor.path,
+                    &descriptor.text,
+                    span,
+                    "pages.toc = false requires an otherwise effective inherited table of contents",
+                ));
+            }
+        }
     }
     Ok(descriptors)
 }

@@ -2,19 +2,20 @@
 
 ## Status
 
-This is an accepted implementation design for a future Heine feature. Tables
-of contents are not implemented yet, so this document is not part of the
-current user-facing contract.
+This is the accepted design implemented by Heine. The
+[table-of-contents guide](../table-of-contents.md) introduces it for site
+authors, and the [reference](../reference.md) defines the exact public
+contract. This document records the design rationale and boundaries.
 
 ## Decision
 
-Heine will provide an opt-in, page-owned table of contents derived from one
-selected declared Markdown content input. It will expose a structural,
-render-facing view and assign stable HTML fragment identifiers while rendering
-that same selected source. Templates decide whether and how to display the
-structure.
+Heine provides an opt-in, page-owned table of contents derived from one
+selected declared Markdown content input. It exposes a structural,
+render-facing view and assigns deterministic HTML fragment identifiers while
+rendering that same selected source. Templates decide whether and how to
+display the structure.
 
-Heine will not infer a page body, scrape rendered HTML, generate a fixed
+Heine does not infer a page body, scrape rendered HTML, generate a fixed
 navigation element, or treat collections and taxonomies as documents.
 
 ## Motivation
@@ -33,82 +34,18 @@ layout.
 `main` remains a useful conventional name for a page's primary document, but
 it has no privileged meaning to Heine.
 
-## Authored configuration
-
-A rendered page enables a table of contents with a complete `[toc]` table:
-
-```toml
-[content]
-main = "article.md"
-
-[toc]
-content = "main"
-min_level = 2
-max_level = 3
-```
-
-`content` is required. It names a key in the page's `[content]` table, not a
-filename. The selected declaration must name one unsegmented `.md` file.
-`min_level` and `max_level` are optional integers from `1` through `6`; they
-default to `1` and `6`. `min_level` must not exceed `max_level`.
-
-The complete heading sequence receives anchors. The configured range selects
-only the headings exposed through the table of contents, so changing the range
-does not rename anchors.
-
-### Directory defaults and opt-outs
-
-`_directory.toml` may establish a recursive default for descendant rendered
-pages:
-
-```toml
-[pages.toc]
-content = "main"
-min_level = 2
-max_level = 3
-```
-
-The nearest ancestor descriptor setting is the effective directory default.
-A page's own `[toc]` table replaces that default as a complete setting. Its
-fields do not merge with descriptor fields. This keeps the inheritance model
-small and visible: a page that changes a range repeats its selected content
-name.
-
-A page may suppress an inherited default:
-
-```toml
-toc = false
-```
-
-A nested descriptor may do the same for its subtree:
-
-```toml
-[pages]
-toc = false
-```
-
-Directory settings are defaults, not irreversible policy. A descendant page
-or nested descriptor may establish a new complete `[toc]` or `[pages.toc]`
-table after an ancestor disables its inherited default. A `toc = false`
-setting is valid only when it suppresses an otherwise effective inherited ToC
-configuration. The same rule applies to `[pages] toc = false`. A disabling
-setting must not become inert metadata.
-
 ## Eligibility and scope
 
-Only a rendered authored page may have an effective ToC table. An unrendered
-page may still use `toc = false` to suppress an inherited directory default.
-The selected content declaration must:
+The authored model is intentionally narrow: a complete page `[toc]` table or
+recursive `[pages.toc]` directory default selects one declared, unsegmented
+Markdown input of a rendered authored page. A page or descriptor can use
+`toc = false` only to suppress an inherited setting. Nearest settings replace,
+rather than merge with, earlier settings. The [guide](../table-of-contents.md)
+and [reference](../reference.md#_directorytoml) define that public syntax and
+its complete constraints.
 
-- exist on that page after normal page loading;
-- name a Markdown file;
-- produce one plain Markdown string rather than segmented content.
-
-An effective ToC table on an unrendered page, a missing declaration, a
-non-Markdown declaration, or a segmented Markdown file is a checked
-configuration error. Segmented Markdown has multiple independently rendered
-values, so it has no single heading order to which one table of contents could
-reliably refer.
+Segmented Markdown has multiple independently rendered values, so it has no
+single heading order to which one table of contents could reliably refer.
 
 Collections do not have ToC configuration. A collection member remains an
 ordinary page and may use a ToC independently. An authored collection listing
@@ -121,80 +58,23 @@ render taxonomy navigation from taxonomy data, but that is a distinct feature.
 
 ## Template contract
 
-`page.toc` is `null` when the current authored page has no effective ToC
-setting. Otherwise it is an object with these fields:
+`page.toc` is a flat, source-order view. Its numeric depth describes
+indentation relative to the configured minimum heading level, not a
+parent-child relationship. This leaves list markup, labels, styling, and
+disclosure behavior with the template instead of making heading skips an
+engine concern.
 
-| Field      | Meaning                                                        |
-|------------|----------------------------------------------------------------|
-| `content`  | The selected declared content name                             |
-| `headings` | A flat, source-order array of headings in the configured range |
+The `markdown(content="…")` function reads named declared Markdown from the
+current authored page. When it renders the selected source, it applies the
+precomputed IDs. The existing `markdown` filter remains for arbitrary trusted
+template text. The exact render-facing fields and function behavior are in the
+[reference](../reference.md#template-contract); the
+[guide](../table-of-contents.md) shows the complete template pattern.
 
-Every entry in `page.toc.headings` has:
-
-| Field      | Meaning                                                    |
-|------------|------------------------------------------------------------|
-| `level`    | Numeric Markdown heading level, from `1` through `6`       |
-| `depth`    | One-based level relative to the effective minimum level    |
-| `text`     | Plain heading text                                         |
-| `fragment` | Stable generated HTML fragment identifier, without the `#` |
-
-`depth` is `level - effective_min_level + 1`. It describes indentation, not a
-parent-child relationship: a source may legitimately move directly from one
-heading level to another. The structure is intentionally flat. Nesting,
-omitted levels, list markup, labels, styling, and disclosure behavior are
-presentation decisions for the template. A flat list with CSS classes such as
-`toc-depth-2` is the recommended rendering approach.
-
-Heine adds a source-aware `markdown()` template function alongside the
-existing `markdown` filter:
-
-```tera
-{% if page.toc and page.toc.headings %}
-  <nav aria-label="Table of contents">
-    <ol>
-      {% for heading in page.toc.headings %}
-        <li class="toc-depth-{{ heading.depth }}">
-          <a href="#{{ heading.fragment }}">{{ heading.text }}</a>
-        </li>
-      {% endfor %}
-    </ol>
-  </nav>
-{% endif %}
-
-{{ markdown(content="main") }}
-```
-
-The function reads the named declared Markdown input of the current authored
-page. It checks the content name and its Markdown eligibility at the template
-call site. When that name is the page's selected ToC content, it renders the
-headings with the corresponding generated `id` attributes. Otherwise it
-renders ordinary Markdown.
-
-The existing filter keeps its distinct role for arbitrary template text:
-
-```tera
-{{ data.notice | markdown }}
-```
-
-Tera2 keeps function and filter registrations in separate namespaces, so both
-operations use the familiar name without ambiguity in template syntax. The
-function form is the supported way to render a selected ToC source. Heine does
-not inspect rendered HTML to determine whether a template chose to display a
-table of contents or its selected document. While rendering a ToC-enabled
-page, the filter checks for an exact match with its selected raw Markdown
-source. Such a match is a checked template error that directs the author to
-`markdown(content="…")`; it prevents the ordinary habitual use of
-`page.content.main | markdown` from silently omitting generated IDs.
-
-Tera passes the filter a string rather than the value's authored provenance.
-Heine therefore cannot reliably identify transformed copies of the selected
-source. A template that transforms selected Markdown before rendering has
-changed the source from which the ToC was derived and must not use that ToC.
-
-The function is unavailable while rendering a generated resource without an
-authored page, such as a taxonomy page. Calling it there is a checked template
-error. A pager is not such a resource: it is a generated view of an authored
-listing page and retains that page's declared content.
+Tera passes the filter a string rather than its authored provenance. Heine can
+therefore reject only an exact selected-source match passed through the filter.
+A transformed selected source has changed the input from which the ToC was
+derived and must not use that ToC.
 
 ## Fragment identifiers
 
@@ -253,33 +133,13 @@ highlighting behavior remain unchanged. The ToC representation retains heading
 metadata, not pre-rendered HTML; it adds memory proportional only to headings
 on opted-in pages.
 
-## Errors and diagnostics
+## Diagnostics
 
-Authored configuration errors retain the `.page` or `_directory.toml` source
-and span for the offending field. When a descriptor default fails for a
-particular descendant, the diagnostic also identifies that page and relevant
-content declaration.
-
-Checked errors include:
-
-- invalid ToC table fields, levels, or level range;
-- `toc = false` with no inherited ToC to suppress;
-- ToC configuration on an unrendered page;
-- a selected content name that is absent, non-Markdown, or segmented;
-- `markdown(content=...)` with an unknown, non-Markdown, or segmented declared
-  content value;
-- `markdown(content=...)` while rendering without an authored page.
-
-The ordinary `markdown` filter reports an error at its call site when its input
-is an exact match for the selected ToC source. It directs the author to the
-source-aware function.
-
-The function-specific errors point to the Tera call site. They explain whether
-the requested name is absent, ineligible, or unavailable in the current
-rendering context.
-
-Duplicate headings are not errors. Their deterministic suffixes are the
-defined resolution.
+Configuration diagnostics name the authored `.page` or `_directory.toml`
+field. Template-function and exact-filter-match diagnostics name the Tera call
+site. Duplicate headings are not errors: source-order suffixes resolve them.
+The [reference](../reference.md#markdown) is the canonical list of current
+constraints and error behavior.
 
 ## Intentional boundaries
 

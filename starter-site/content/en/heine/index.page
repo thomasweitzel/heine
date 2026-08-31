@@ -1,0 +1,10 @@
+title = "Heinrich Heine"
+summary = """
+A short, source-linked guide to the writer whose name this site borrows.
+"""
+
+[content]
+main = "main.md"
+
+[extra]
+home = true

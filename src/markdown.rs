@@ -3,7 +3,7 @@
 //! Templates may invoke the `markdown` filter, while content loading uses the
 //! same renderer to validate MathML input with its original source available.
 
-use std::{ops::Range, path::Path, sync::Arc};
+use std::{collections::HashSet, ops::Range, path::Path, sync::Arc};
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd, html};
@@ -12,7 +12,9 @@ use pulldown_latex::{
     config::{DisplayMode, RenderConfig},
     push_mathml,
 };
+use serde::Serialize;
 use thiserror::Error;
+use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
 use crate::{
     asset::AssetLinks,
@@ -49,6 +51,125 @@ pub(crate) enum InitializationError {
 pub(crate) struct Renderer {
     config: MarkdownConfig,
     highlighter: Option<Arc<Highlighter>>,
+}
+
+/// The one source-backed heading model shared by the template view and
+/// anchor-aware Markdown rendering.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct TocPlan {
+    content: String,
+    #[serde(rename = "headings")]
+    view: Vec<TocHeading>,
+    #[serde(skip)]
+    anchors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct TocHeading {
+    level: u8,
+    depth: u8,
+    text: String,
+    fragment: String,
+}
+
+impl TocPlan {
+    pub(crate) fn content(&self) -> &str {
+        &self.content
+    }
+    pub(crate) fn anchors(&self) -> &[String] {
+        &self.anchors
+    }
+}
+
+pub(crate) fn toc_plan(
+    content: String,
+    input: &str,
+    config: &MarkdownConfig,
+    min_level: u8,
+    max_level: u8,
+) -> TocPlan {
+    let mut used = HashSet::new();
+    let mut anchors = Vec::new();
+    let mut view = Vec::new();
+    let mut heading: Option<(u8, String)> = None;
+    for event in Parser::new_ext(input, options(config)) {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                heading = Some((level as u8, String::new()))
+            }
+            Event::Text(text) | Event::Code(text) => {
+                if let Some((_, value)) = &mut heading {
+                    value.push_str(&text);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some((_, value)) = &mut heading
+                    && !value.ends_with(' ')
+                {
+                    value.push(' ');
+                }
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some((level, text)) = heading.take() {
+                    let fragment = unique_fragment(&text, &mut used);
+                    anchors.push(fragment.clone());
+                    if (min_level..=max_level).contains(&level) {
+                        view.push(TocHeading {
+                            level,
+                            depth: level - min_level + 1,
+                            text,
+                            fragment,
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    TocPlan {
+        content,
+        view,
+        anchors,
+    }
+}
+
+fn unique_fragment(text: &str, used: &mut HashSet<String>) -> String {
+    let base = fragment_base(text);
+    let mut candidate = base.clone();
+    let mut suffix = 2;
+    while !used.insert(candidate.clone()) {
+        candidate = format!("{base}-{suffix}");
+        suffix += 1;
+    }
+    candidate
+}
+
+fn fragment_base(text: &str) -> String {
+    let mut output = String::new();
+    let mut separator = false;
+    let mut has_base = false;
+    let mut can_mark = false;
+    for character in text.nfc().collect::<String>().to_lowercase().chars() {
+        if is_combining_mark(character) {
+            if can_mark {
+                output.push(character);
+            } else {
+                separator = !output.is_empty();
+            }
+        } else if character.is_alphanumeric() {
+            if separator && !output.is_empty() {
+                output.push('-');
+            }
+            output.push(character);
+            has_base = true;
+            can_mark = true;
+            separator = false;
+        } else {
+            separator = !output.is_empty();
+            can_mark = false;
+        }
+    }
+    if has_base { output } else { "section".into() }
 }
 
 impl Renderer {
@@ -159,6 +280,17 @@ pub(crate) fn render_with_links(
     assets: Option<&AssetLinks>,
     pages: Option<&PageLinks>,
 ) -> Result<String, RenderError> {
+    render_with_links_anchors(input, renderer, assets, pages, None)
+}
+
+pub(crate) fn render_with_links_anchors(
+    input: &str,
+    renderer: &Renderer,
+    assets: Option<&AssetLinks>,
+    pages: Option<&PageLinks>,
+    anchors: Option<&[String]>,
+) -> Result<String, RenderError> {
+    let mut anchors = anchors.unwrap_or_default().iter();
     let events = Parser::new_ext(input, options(renderer.config()))
         .into_offset_iter()
         .map(|(event, span)| {
@@ -167,6 +299,7 @@ pub(crate) fn render_with_links(
                 renderer.config().math(),
                 assets,
                 pages,
+                &mut anchors,
             )
             .map(|event| (event, span))
         })
@@ -308,8 +441,26 @@ fn transform_event(
     math: MathMode,
     assets: Option<&AssetLinks>,
     pages: Option<&PageLinks>,
+    anchors: &mut std::slice::Iter<'_, String>,
 ) -> Result<Event<'static>, RenderError> {
     match event {
+        Event::Start(Tag::Heading {
+            level,
+            classes,
+            attrs,
+            ..
+        }) => Ok(Event::Start(Tag::Heading {
+            level,
+            id: anchors.next().map(|value| value.clone().into()),
+            classes: classes
+                .into_iter()
+                .map(|value| value.into_static())
+                .collect(),
+            attrs: attrs
+                .into_iter()
+                .map(|(name, value)| (name.into_static(), value.map(|value| value.into_static())))
+                .collect(),
+        })),
         Event::InlineMath(tex) => match math {
             MathMode::Mathml => render_math(&tex, DisplayMode::Inline, "inline", span)
                 .map(|mathml| Event::InlineHtml(mathml.into())),
@@ -487,5 +638,33 @@ mod tests {
         assert!(requires_source_validation(MathMode::Mathml, false, false));
         assert!(requires_source_validation(MathMode::Off, true, false));
         assert!(requires_source_validation(MathMode::Off, false, true));
+    }
+
+    #[test]
+    fn toc_fragments_preserve_unicode_and_make_collisions_unique() {
+        let plan = toc_plan(
+            "main".into(),
+            "## Überblick\n\n## Überblick\n\n## Introduction 2\n\n## Introduction\n\n## Introduction\n",
+            &MarkdownConfig::default(),
+            2,
+            3,
+        );
+
+        assert_eq!(
+            plan.anchors(),
+            [
+                "überblick",
+                "überblick-2",
+                "introduction-2",
+                "introduction",
+                "introduction-3",
+            ]
+        );
+    }
+
+    #[test]
+    fn toc_fragments_discard_standalone_marks_and_keep_attached_marks() {
+        assert_eq!(fragment_base("\u{11c3a}"), "section");
+        assert_eq!(fragment_base("a\u{11c3a}"), "a\u{11c3a}");
     }
 }

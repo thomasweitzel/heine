@@ -104,7 +104,8 @@ The [documentation map](docs/README.md) explains the available reading paths.
   [collections](docs/collections.md), [pagination](docs/pagination.md),
   [taxonomies](docs/taxonomies.md), [deployment files](docs/deployment-files.md),
   [asset licensing](docs/asset-licensing.md), [sitemaps](docs/sitemap.md),
-  [Atom feeds](docs/atom-feeds.md), or the [development server](docs/development-server.md).
+  [Atom feeds](docs/atom-feeds.md), [table of contents](docs/table-of-contents.md),
+  or the [development server](docs/development-server.md).
 - Use the [reference](docs/reference.md) for exact fields, defaults, template
   functions, and constraints.
 

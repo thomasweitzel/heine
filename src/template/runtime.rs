@@ -183,6 +183,11 @@ impl TemplateRuntime {
     }
 
     pub(super) fn page_id(&self, state: &tera::State) -> tera::TeraResult<PageId> {
+        self.authored_page_id(state)?
+            .ok_or_else(|| tera::Error::message("this operation requires an authored page render"))
+    }
+
+    fn authored_page_id(&self, state: &tera::State) -> tera::TeraResult<Option<PageId>> {
         let value = state
             .get::<tera::Value>("__heine_runtime")?
             .and_then(|runtime| {
@@ -190,13 +195,50 @@ impl TemplateRuntime {
                     .get_from_path("page_id")?
                     .as_str()
                     .map(str::to_owned)
-            })
-            .ok_or_else(|| {
-                tera::Error::message("this operation requires an authored page render")
-            })?;
-        PageId::parse(&value).ok_or_else(|| {
+            });
+        let Some(value) = value else {
+            return Ok(None);
+        };
+        PageId::parse(&value).map(Some).ok_or_else(|| {
             tera::Error::message("Heine internal render context has an invalid page ID")
         })
+    }
+
+    pub(super) fn markdown_content<'a>(
+        &'a self,
+        state: &tera::State,
+        name: &str,
+    ) -> tera::TeraResult<(&'a str, Option<&'a crate::markdown::TocPlan>)> {
+        let locale = self.locale(state)?;
+        let id = self.page_id(state)?;
+        let page = self.page_view(&locale, &id).ok_or_else(|| {
+            tera::Error::message("Heine render context has no current authored page")
+        })?;
+        let content = page.content_markdown(name).ok_or_else(|| {
+            tera::Error::message(format!(
+                "Markdown content {name:?} is not declared on the current page; use a declared unsegmented .md content name"
+            ))
+        })?;
+        let toc = page.toc().filter(|toc| toc.content() == name);
+        Ok((content, toc))
+    }
+
+    pub(super) fn is_selected_toc_source(
+        &self,
+        state: &tera::State,
+        input: &str,
+    ) -> tera::TeraResult<bool> {
+        let locale = self.locale(state)?;
+        let Some(id) = self.authored_page_id(state)? else {
+            return Ok(false);
+        };
+        let page = self.page_view(&locale, &id).ok_or_else(|| {
+            tera::Error::message("Heine render context has no current authored page")
+        })?;
+        Ok(page
+            .toc()
+            .and_then(|toc| page.content_markdown(toc.content()))
+            .is_some_and(|content| content == input))
     }
 
     fn runtime_string(&self, state: &tera::State, field: &str) -> tera::TeraResult<String> {

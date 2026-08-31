@@ -1,6 +1,247 @@
 use super::*;
 
 #[test]
+fn source_aware_markdown_exposes_a_toc_and_matching_heading_ids() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/_directory.toml",
+        "[pages]\ntemplate = 'page.tera'\n\n[pages.toc]\ncontent = 'main'\nmin_level = 2\nmax_level = 3\n",
+    );
+    fixture.write("content/en/index.page", "content.main = 'index.md'\n");
+    fixture.write(
+        "content/en/index.md",
+        "# Title\n\n## Über **view**\n\n### Über view\n\n## Über view\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{% for heading in page.toc.headings %}[{{ heading.level }},{{ heading.depth }},{{ heading.fragment }}:{{ heading.text }}]{% endfor %}|{{ markdown(content='main') }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("[2,1,über-view:Über view]"), "{output}");
+    assert!(output.contains("[3,2,über-view-2:Über view]"), "{output}");
+    assert!(output.contains("[2,1,über-view-3:Über view]"), "{output}");
+    assert!(output.contains("<h1 id=\"title\">Title</h1>"), "{output}");
+    assert!(
+        output.contains("<h2 id=\"über-view\">Über <strong>view</strong></h2>"),
+        "{output}"
+    );
+}
+
+#[test]
+fn rejects_the_plain_filter_for_selected_toc_content_at_its_call_site() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n",
+    );
+    fixture.write("content/en/index.md", "## Heading\n");
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("filter use fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("markdown(content="), "{diagnostic}");
+}
+
+#[test]
+fn page_toc_replaces_a_directory_default_and_ignores_raw_html_headings() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/_directory.toml",
+        "[pages]\ntemplate = 'page.tera'\n\n[pages.toc]\ncontent = 'main'\nmin_level = 2\nmax_level = 2\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "content.main = 'index.md'\n\n[toc]\ncontent = 'main'\nmin_level = 3\nmax_level = 3\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "## Outside\n\n### Inside\n\n<h3>Raw heading</h3>\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{% for heading in page.toc.headings %}[{{ heading.level }}:{{ heading.fragment }}]{% endfor %}{{ markdown(content='main') }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("[3:inside]"), "{output}");
+    assert!(!output.contains("[2:outside]"), "{output}");
+    assert!(
+        output.contains("<h2 id=\"outside\">Outside</h2>"),
+        "{output}"
+    );
+    assert!(output.contains("<h3 id=\"inside\">Inside</h3>"), "{output}");
+    assert!(output.contains("<h3>Raw heading</h3>"), "{output}");
+}
+
+#[test]
+fn nearest_directory_toc_default_wins() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/_directory.toml",
+        "[pages]\ntemplate = 'page.tera'\n\n[pages.toc]\ncontent = 'main'\nmin_level = 2\nmax_level = 2\n",
+    );
+    fixture.write(
+        "content/en/guide/_directory.toml",
+        "[pages.toc]\ncontent = 'main'\nmin_level = 3\nmax_level = 3\n",
+    );
+    fixture.write("content/en/guide/index.page", "content.main = 'main.md'\n");
+    fixture.write("content/en/guide/main.md", "## Outer\n\n### Inner\n");
+    fixture.write(
+        "templates/page.tera",
+        "{% for heading in page.toc.headings %}[{{ heading.level }}:{{ heading.fragment }}]{% endfor %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let output =
+        fs::read_to_string(fixture.path().join("public/guide/index.html")).expect("output");
+    assert_eq!(output, "[3:inner]");
+}
+
+#[test]
+fn toc_opt_out_requires_an_inherited_default() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ntoc = false\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("inert opt-out fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:2"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("otherwise effective inherited table of contents"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn toc_configuration_errors_point_to_the_authored_field() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'main.md'\n\n[toc]\ncontent = 'main'\nmin_level = 7\n",
+    );
+    fixture.write("content/en/main.md", "## Heading\n");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid level fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:6"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("toc.min_level must be an integer"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn toc_diagnostics_do_not_label_an_unrelated_extra_key() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'main.md'\n\n[extra]\nmin_level = 2\n\n[toc]\ncontent = 'main'\nmin_level = 7\n",
+    );
+    fixture.write("content/en/main.md", "## Heading\n");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid level fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:9"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn directory_toc_diagnostics_do_not_label_an_unrelated_extra_key() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/_directory.toml",
+        "[extra]\nmin_level = 2\n\n[pages]\ntemplate = 'page.tera'\n\n[pages.toc]\ncontent = 'main'\nmin_level = 7\n",
+    );
+    fixture.write("content/en/index.page", "content.main = 'main.md'\n");
+    fixture.write("content/en/main.md", "## Heading\n");
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid level fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/_directory.toml:9"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn toc_requires_one_unsegmented_markdown_content_file() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "<!-- segment: first -->\n## Heading\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("segmented source fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:5"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("one unsegmented Markdown document"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn source_aware_markdown_requires_current_page_markdown_content() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.data = 'data.toml'\n",
+    );
+    fixture.write("content/en/data.toml", "name = 'Heine'\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='data') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("non-Markdown content fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("declared unsegmented .md content name"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn source_aware_markdown_without_a_toc_renders_ordinary_markdown() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'main.md'\n",
+    );
+    fixture.write("content/en/main.md", "## Heading\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<h2>Heading</h2>"), "{output}");
+    assert!(!output.contains("id=\"heading\""), "{output}");
+}
+
+#[test]
 fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
     let fixture = Fixture::new();
     fixture.write(

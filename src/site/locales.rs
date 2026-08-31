@@ -8,7 +8,7 @@ use std::{
 use walkdir::DirEntry;
 
 use crate::{
-    config::{CollectionsConfig, EditorialTimeZone, I18nConfig, TaxonomiesConfig},
+    config::{CollectionsConfig, EditorialTimeZone, I18nConfig, MarkdownConfig, TaxonomiesConfig},
     content::MarkdownSource,
     locale::Locale,
 };
@@ -39,6 +39,7 @@ pub(super) fn load(
     taxonomies: &TaxonomiesConfig,
     time_zone: Option<&EditorialTimeZone>,
     sitemap_enabled: bool,
+    markdown: &MarkdownConfig,
 ) -> Result<LocalizedContent, Error> {
     validate_root(content_root, i18n)?;
     let shared_root = content_root.join("assets");
@@ -96,6 +97,7 @@ pub(super) fn load(
                     taxonomies,
                     time_zone,
                     sitemap_enabled,
+                    markdown,
                 },
             )?;
             if let Some(task) = loaded.task {

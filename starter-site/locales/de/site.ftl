@@ -4,6 +4,8 @@ nav-home = Startseite
 nav-blog = Blog
 nav-tags = Schlagwörter
 nav-quiz = Quiz
+nav-heine = Heinrich Heine
+toc-label = Inhaltsverzeichnis
 
 # Accessible labels for switching to a page's available language versions.
 language = Sprache

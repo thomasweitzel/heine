@@ -600,6 +600,10 @@ add the generated highlighting stylesheet:
 KaTeX or MathJax that you add yourself. The [reference](reference.md#heinetoml)
 lists all allowed modes and highlighting settings.
 
+For a long Markdown guide, the [table-of-contents guide](table-of-contents.md)
+shows how to expose selected headings and render matching anchor IDs without
+adding a site-wide navigation rule.
+
 To see highlighting, replace `content/en/blog/second.md` with:
 
 ````markdown

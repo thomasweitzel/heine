@@ -1,0 +1,19 @@
+{% extends "base.tera" %}
+
+{% block content %}
+<article class="guide-article">
+  <h1>{{ page.title }}</h1>
+  {% if page.toc and page.toc.headings %}
+    <nav class="table-of-contents" aria-label="{{ t(id="toc-label") }}">
+      <ol>
+        {% for heading in page.toc.headings %}
+          <li class="toc-depth-{{ heading.depth }}">
+            <a href="#{{ heading.fragment }}">{{ heading.text }}</a>
+          </li>
+        {% endfor %}
+      </ol>
+    </nav>
+  {% endif %}
+  {{ markdown(content="main") }}
+</article>
+{% endblock %}

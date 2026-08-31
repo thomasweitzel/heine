@@ -16,6 +16,7 @@ use crate::{
     author::AuthorName,
     config::{CollectionName, TaxonomyName},
     content::MarkdownSource,
+    markdown::TocPlan,
     output::{OutputPath, UrlPath},
     source_path::LogicalPath,
     template::TemplateName,
@@ -134,6 +135,7 @@ pub(super) struct RawPage {
     pub(super) published: Option<toml::Spanned<toml::Value>>,
     pub(super) updated: Option<toml::Spanned<toml::Value>>,
     pub(super) sitemap: Option<toml::Spanned<bool>>,
+    pub(super) toc: Option<toml::Spanned<toml::Value>>,
     pub(super) extra: Option<toml::Spanned<toml::Value>>,
     #[serde(default)]
     pub(super) content: BTreeMap<String, toml::Spanned<String>>,
@@ -331,6 +333,8 @@ pub(super) struct Page {
     pub(super) filename: Option<String>,
     pub(super) subdirs: Vec<String>,
     pub(super) content: BTreeMap<String, Value>,
+    pub(super) markdown_content: BTreeSet<String>,
+    pub(super) toc: Option<TocPlan>,
     pub(super) metadata: Metadata,
     pub(super) translationid: Option<TranslationId>,
     pub(super) translationid_span: Option<SourceSpan>,
@@ -436,6 +440,8 @@ impl Page {
             filename: self.filename,
             subdirs: self.subdirs,
             content: self.content,
+            markdown_content: self.markdown_content,
+            toc: self.toc,
             title,
             description,
             summary,
@@ -459,6 +465,9 @@ pub(crate) struct PageView {
     filename: Option<String>,
     subdirs: Vec<String>,
     content: BTreeMap<String, Value>,
+    #[serde(skip)]
+    markdown_content: BTreeSet<String>,
+    toc: Option<TocPlan>,
     title: Option<String>,
     description: Option<String>,
     summary: Option<String>,
@@ -474,6 +483,17 @@ pub(crate) struct PageView {
 impl PageView {
     pub(crate) fn directory(&self) -> &str {
         &self.dir
+    }
+
+    pub(crate) fn toc(&self) -> Option<&TocPlan> {
+        self.toc.as_ref()
+    }
+
+    pub(crate) fn content_markdown(&self, name: &str) -> Option<&str> {
+        self.markdown_content
+            .contains(name)
+            .then(|| self.content.get(name)?.as_str())
+            .flatten()
     }
 }
 
