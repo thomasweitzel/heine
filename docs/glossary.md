@@ -162,6 +162,13 @@ Optional authored page or directory metadata used for a short description in a
 listing. It is written as `summary` in TOML and exposed as `page.summary`;
 Heine never extracts it from Markdown.
 
+### Table of contents
+
+An optional, page-owned view of headings from one selected declared Markdown
+file. Configure it with `[toc]` on a page or `[pages.toc]` in a directory
+descriptor. Templates read `page.toc` and render the selected source with
+`markdown(content="…")`, which gives its headings matching fragment IDs.
+
 ### Authors
 
 An optional non-empty list of human names written as `authors = ["Name"]` on

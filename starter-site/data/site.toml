@@ -22,6 +22,10 @@ taxonomy = "tags"
 message = "nav-quiz"
 page = "quiz/index"
 
+[[navigation]]
+message = "nav-heine"
+page = "heine/index"
+
 [[footer.links]]
 message = "footer-about"
 page = "about/index"

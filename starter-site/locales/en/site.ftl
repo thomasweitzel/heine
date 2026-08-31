@@ -4,6 +4,8 @@ nav-home = Home
 nav-blog = Blog
 nav-tags = Tags
 nav-quiz = Quiz
+nav-heine = Heinrich Heine
+toc-label = Table of contents
 
 # Accessible labels for switching to a page's available language versions.
 language = Language
