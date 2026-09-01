@@ -26,6 +26,7 @@ pub(crate) struct LoadedContent {
     pub(crate) markdown_source: Option<MarkdownSource>,
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct MarkdownSource {
     pub(crate) path: Box<Path>,
     pub(crate) source: String,

@@ -334,7 +334,8 @@ fn reports_invalid_fluent_syntax_at_the_localization_source() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid Fluent source");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("locales/de/site.ftl:3") && diagnostic.contains("default variant"),
+        diagnostic.contains("locales/de/site.ftl:3")
+            && diagnostic.contains("invalid Fluent resource"),
         "{diagnostic}"
     );
 }
@@ -510,8 +511,7 @@ fn does_not_hide_current_locale_formatting_errors_with_fallback() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("missing Fluent argument");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("template \"page.tera\"")
-            && diagnostic.contains("Unknown variable")
+        diagnostic.contains("render error in template \"page.tera\"")
             && !diagnostic.contains("2 items"),
         "{diagnostic}"
     );

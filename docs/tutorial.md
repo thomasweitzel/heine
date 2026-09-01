@@ -641,6 +641,10 @@ To offer recent posts to feed readers, configure an [Atom feed](atom-feeds.md)
 from the post collection after its members have titles, summaries, publication
 times, and authors.
 
+To add a site-owned browser search experience over one or more collections,
+generate a [search index](search.md). The starter site includes a working
+accessible example with URL-backed result navigation.
+
 ## 11. Add asset licensing and attributions
 
 When copied assets require rights information, add adjacent `.license`

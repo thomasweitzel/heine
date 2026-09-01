@@ -2,7 +2,7 @@
 //! passed through the build pipeline as validated domain data.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs, io,
     path::{Path, PathBuf},
     sync::Arc,
@@ -38,6 +38,7 @@ pub(crate) struct SiteConfig {
     taxonomies: TaxonomiesConfig,
     sitemap: Option<SitemapConfig>,
     feeds: FeedsConfig,
+    search: SearchConfig,
 }
 
 impl SiteConfig {
@@ -108,6 +109,10 @@ impl SiteConfig {
 
     pub(crate) fn feeds(&self) -> &FeedsConfig {
         &self.feeds
+    }
+
+    pub(crate) fn search(&self) -> &SearchConfig {
+        &self.search
     }
 }
 
@@ -194,6 +199,76 @@ impl FeedName {
 impl std::fmt::Display for FeedName {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(formatter)
+    }
+}
+
+/// A search-index name is an authored identifier used by configuration and
+/// checked template lookup. It remains distinct from collection and feed names
+/// although all three use the same portable spelling rule.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct SearchName(String);
+
+impl SearchName {
+    pub(crate) fn parse(value: String) -> Result<Self, String> {
+        if crate::source_path::is_simple_identifier(&value) {
+            Ok(Self(value))
+        } else {
+            Err(format!(
+                "search index name {value:?} must be a simple template identifier"
+            ))
+        }
+    }
+}
+
+impl std::fmt::Display for SearchName {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// Checked contracts for collection-derived, locale-local JSON search indexes.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SearchConfig {
+    definitions: BTreeMap<SearchName, SearchDefinition>,
+}
+
+impl SearchConfig {
+    pub(crate) fn definitions(&self) -> &BTreeMap<SearchName, SearchDefinition> {
+        &self.definitions
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SearchDefinition {
+    collections: Vec<CollectionName>,
+    path: OutputPath,
+    versioned: bool,
+    source: Option<Arc<NamedSource<String>>>,
+    path_span: SourceSpan,
+}
+
+impl SearchDefinition {
+    pub(crate) fn collections(&self) -> &[CollectionName] {
+        &self.collections
+    }
+
+    pub(crate) fn path(&self) -> &OutputPath {
+        &self.path
+    }
+
+    pub(crate) fn versioned(&self) -> bool {
+        self.versioned
+    }
+
+    pub(crate) fn origin(
+        &self,
+        span: SourceSpan,
+    ) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.source.as_ref().map(|source| (source.clone(), span))
+    }
+
+    pub(crate) fn path_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.path_span)
     }
 }
 
@@ -658,6 +733,8 @@ struct RawSiteConfig {
     sitemap: Option<toml::Spanned<RawSitemapConfig>>,
     #[serde(default)]
     feeds: BTreeMap<toml::Spanned<String>, RawFeedDefinition>,
+    #[serde(default)]
+    search: BTreeMap<toml::Spanned<String>, RawSearchDefinition>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -694,6 +771,19 @@ struct RawFeedDefinition {
     limit: toml::Spanned<usize>,
     empty_updated: Option<toml::Spanned<toml::Value>>,
     empty_authors: Option<toml::Spanned<Vec<toml::Spanned<String>>>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSearchDefinition {
+    collections: toml::Spanned<Vec<toml::Spanned<String>>>,
+    path: toml::Spanned<String>,
+    #[serde(default = "default_search_versioned")]
+    versioned: toml::Spanned<bool>,
+}
+
+fn default_search_versioned() -> toml::Spanned<bool> {
+    toml::Spanned::new(0..0, true)
 }
 
 fn default_feed_limit() -> toml::Spanned<usize> {
@@ -1109,6 +1199,84 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 },
             );
         }
+        let mut search = BTreeMap::new();
+        for (name, definition) in raw.search {
+            let name_span = name.span();
+            let name =
+                SearchName::parse(name.into_inner()).map_err(|message| ConfigValueError {
+                    span: name_span.into(),
+                    message,
+                })?;
+            let collections_span: SourceSpan = definition.collections.span().into();
+            let collection_values = definition.collections.into_inner();
+            if collection_values.is_empty() {
+                return Err(ConfigValueError {
+                    span: collections_span,
+                    message: format!("search index {name} collections must not be empty"),
+                });
+            }
+            let mut selected_collections = Vec::with_capacity(collection_values.len());
+            let mut seen = BTreeSet::new();
+            for collection in collection_values {
+                let span: SourceSpan = collection.span().into();
+                let value = collection.into_inner();
+                let parsed = CollectionName::parse(value.clone())
+                    .map_err(|message| ConfigValueError { span, message })?;
+                if !collections.contains_key(&parsed) {
+                    return Err(ConfigValueError {
+                        span,
+                        message: format!(
+                            "search index {name} uses collection {value:?}, which is not configured"
+                        ),
+                    });
+                }
+                if !seen.insert(parsed.clone()) {
+                    return Err(ConfigValueError {
+                        span,
+                        message: format!(
+                            "search index {name} lists collection {value:?} more than once"
+                        ),
+                    });
+                }
+                selected_collections.push(parsed);
+            }
+            let path_span: SourceSpan = definition.path.span().into();
+            let path_value = PathBuf::from(definition.path.into_inner());
+            let path = OutputPath::try_new(path_value).map_err(|message| ConfigValueError {
+                span: path_span,
+                message: format!("search index {name} path {message}"),
+            })?;
+            if path
+                .as_path()
+                .extension()
+                .is_none_or(|extension| extension != "json")
+            {
+                return Err(ConfigValueError {
+                    span: path_span,
+                    message: format!(
+                        "search index {name} path must use the lowercase .json suffix"
+                    ),
+                });
+            }
+            if crate::output::is_reserved_output_path(path.as_path()) {
+                return Err(ConfigValueError {
+                    span: path_span,
+                    message: format!(
+                        "search index {name} path must not use Heine's reserved __heine/ namespace"
+                    ),
+                });
+            }
+            search.insert(
+                name,
+                SearchDefinition {
+                    collections: selected_collections,
+                    path,
+                    versioned: definition.versioned.into_inner(),
+                    source: None,
+                    path_span,
+                },
+            );
+        }
         let mut taxonomies = BTreeMap::new();
         for (name, definition) in raw.taxonomies {
             let name_span = name.span();
@@ -1282,6 +1450,9 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             },
             sitemap,
             feeds: FeedsConfig { definitions: feeds },
+            search: SearchConfig {
+                definitions: search,
+            },
         })
     }
 }
@@ -1301,6 +1472,9 @@ impl SiteConfig {
             definition.source = Some(collection_source.clone());
         }
         for definition in self.feeds.definitions.values_mut() {
+            definition.source = Some(collection_source.clone());
+        }
+        for definition in self.search.definitions.values_mut() {
             definition.source = Some(collection_source.clone());
         }
         if let Some(sitemap) = &mut self.sitemap {

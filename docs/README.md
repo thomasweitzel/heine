@@ -37,6 +37,8 @@ required prerequisite for the guides.
   and byte-range responses for media.
 - [Sitemaps](sitemap.md): canonical discovery documents generated from rendered output.
 - [Atom feeds](atom-feeds.md): locale-local collection syndication feeds.
+- [Search indexes](search.md): locale-local JSON documents for a site-owned
+  browser search experience.
 - [Table of contents](table-of-contents.md): page-owned Markdown heading
   navigation.
 

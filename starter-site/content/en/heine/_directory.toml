@@ -1,5 +1,6 @@
 [pages]
 template = "guide.tera"
+collections = ["documentation"]
 
 [pages.toc]
 content = "main"

@@ -13,6 +13,7 @@ mod locales;
 mod metadata;
 mod page;
 mod pagination;
+mod search;
 mod sitemap;
 mod taxonomy;
 
@@ -29,8 +30,8 @@ use thiserror::Error;
 use crate::{
     asset::{AssetCatalog, AssetSources, SharedAssets},
     config::{
-        BasePath, CollectionsConfig, FeedsConfig, I18nConfig, SiteConfig, SiteSettings,
-        SitemapConfig, TaxonomiesConfig,
+        BasePath, CollectionsConfig, FeedsConfig, I18nConfig, SearchConfig, SiteConfig,
+        SiteSettings, SitemapConfig, TaxonomiesConfig,
     },
     content,
     data::SiteData,
@@ -52,6 +53,8 @@ pub(crate) use index::{Neighbors, SiblingIndex};
 use page::Task;
 pub(crate) use page::{PageId, PageView, Pager};
 pub(crate) use pagination::{Catalog as PaginationCatalog, View as PaginationView};
+pub(crate) use search::Catalog as SearchCatalog;
+pub(crate) use search::View as SearchView;
 pub(crate) use taxonomy::View as TaxonomyView;
 pub(crate) use taxonomy::{
     Catalog as TaxonomyCatalog, IndexView as TaxonomyIndexView, PageTermView,
@@ -93,6 +96,30 @@ impl PageCatalog {
 
     pub(crate) fn links(&self, current_locale: Locale, base_path: BasePath) -> PageLinks {
         PageLinks::from_targets(current_locale, base_path, self.targets.clone())
+    }
+
+    fn links_from_pages(
+        pages: &BTreeMap<Locale, BTreeMap<PageId, page::Page>>,
+        current_locale: Locale,
+        base_path: BasePath,
+    ) -> PageLinks {
+        let targets = pages
+            .iter()
+            .map(|(locale, pages)| {
+                (
+                    locale.clone(),
+                    pages
+                        .iter()
+                        .filter_map(|(id, page)| {
+                            page.output_path
+                                .as_ref()
+                                .map(|output| (id.clone(), output.clone()))
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+        PageLinks::from_targets(current_locale, base_path, std::sync::Arc::new(targets))
     }
 
     pub(crate) fn view(&self, locale: &Locale, id: &PageId) -> Option<&PageView> {
@@ -234,6 +261,7 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) collections: CollectionsConfig,
     pub(crate) taxonomies: TaxonomiesConfig,
     pub(crate) feeds: FeedsConfig,
+    pub(crate) search: SearchConfig,
     pub(crate) site: &'a SiteSettings,
     pub(crate) sitemap: Option<&'a SitemapConfig>,
     pub(crate) deployment: &'a DeploymentCatalog,
@@ -341,6 +369,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Feed(Box<feed::Error>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Search(Box<search::Error>),
 }
 
 /// A semantic error tied to the precise source range that referenced a
@@ -377,6 +408,7 @@ pub(crate) struct Site {
     output_plan: OutputPlan,
     sitemap: Option<sitemap::Sitemap>,
     feeds: std::sync::Arc<feed::Catalog>,
+    search: std::sync::Arc<search::Catalog>,
 }
 
 impl Site {
@@ -390,6 +422,7 @@ impl Site {
             collections: collection_config,
             taxonomies: taxonomy_config,
             feeds: feed_config,
+            search: search_config,
             site: site_settings,
             sitemap: sitemap_config,
             deployment,
@@ -535,6 +568,16 @@ impl Site {
             localization: &localization,
         })
         .map_err(|error| Error::Feed(Box::new(error)))?;
+        let search = search::Catalog::resolve(search::Inputs {
+            pages: &pages,
+            collections: &collections,
+            config: &search_config,
+            prefixes: &prefixes,
+            base_path: site_settings.base_path(),
+            markdown: markdown_renderer.config(),
+            taxonomies: &taxonomy_config,
+        })
+        .map_err(|error| Error::Search(Box::new(error)))?;
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks);
         let sitemap = match (sitemap_config, site_settings.origin()) {
             (Some(config), Some(origin)) => Some(
@@ -599,25 +642,31 @@ impl Site {
             output_claims.extend(claims.iter().cloned());
         }
         output_claims.extend(feeds.output_claims());
+        output_claims.extend(search.output_claims());
         let output_plan = OutputPlan::validate(&output_claims)?;
         let asset_links = assets.links(
             i18n.default_locale().clone(),
             BasePath::root(),
             BTreeMap::new(),
         );
-        let pages = PageCatalog::from_pages(pages);
-        let page_links = pages.links(i18n.default_locale().clone(), BasePath::root());
-        for (locale, source) in &locales.markdown_sources {
+        let page_links =
+            PageCatalog::links_from_pages(&pages, i18n.default_locale().clone(), BasePath::root());
+        for (locale, locale_pages) in &pages {
             let asset_links = asset_links.with_locale(locale.clone());
             let page_links = page_links.with_locale(locale.clone());
-            markdown::validate_source_with_links(
-                &source.path,
-                &source.source,
-                markdown_renderer,
-                Some(&asset_links),
-                Some(&page_links),
-            )?;
+            for page in locale_pages.values() {
+                for source in &page.markdown_sources {
+                    markdown::validate_source_with_links(
+                        &source.path,
+                        &source.source,
+                        markdown_renderer,
+                        Some(&asset_links),
+                        Some(&page_links),
+                    )?;
+                }
+            }
         }
+        let pages = PageCatalog::from_pages(pages);
         let collections = std::sync::Arc::new(
             collections
                 .into_iter()
@@ -649,6 +698,7 @@ impl Site {
             output_plan,
             sitemap: sitemap.map(|(sitemap, _)| sitemap),
             feeds: std::sync::Arc::new(feeds),
+            search: std::sync::Arc::new(search),
         })
     }
 
@@ -680,6 +730,7 @@ impl Site {
                     taxonomies: self.taxonomies.clone(),
                     pagers: self.pagers.clone(),
                     feeds: self.feeds.clone(),
+                    search: self.search.clone(),
                 },
             ),
             self.localization.clone(),
@@ -841,6 +892,7 @@ impl Site {
         }
         if options.mode() == BuildMode::Full {
             rendered.extend(self.feeds.generated(&self.output_plan));
+            rendered.extend(self.search.generated(&self.output_plan));
         }
         Ok(rendered)
     }

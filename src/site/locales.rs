@@ -9,7 +9,6 @@ use walkdir::DirEntry;
 
 use crate::{
     config::{CollectionsConfig, EditorialTimeZone, I18nConfig, MarkdownConfig, TaxonomiesConfig},
-    content::MarkdownSource,
     locale::Locale,
 };
 
@@ -27,7 +26,6 @@ pub(super) struct LocalizedContent {
     pub(super) tasks: Vec<Task>,
     pub(super) entries: BTreeMap<Locale, Vec<DirEntry>>,
     pub(super) content_inputs: BTreeMap<Locale, BTreeSet<PathBuf>>,
-    pub(super) markdown_sources: Vec<(Locale, MarkdownSource)>,
     pub(super) shared_root: PathBuf,
     pub(super) shared_entries: Vec<DirEntry>,
 }
@@ -53,7 +51,6 @@ pub(super) fn load(
     let mut tasks = Vec::new();
     let mut entries_by_locale = BTreeMap::new();
     let mut content_inputs = BTreeMap::new();
-    let mut markdown_sources = Vec::new();
 
     for locale in i18n.locales() {
         let root = content_root.join(locale.to_string());
@@ -104,12 +101,6 @@ pub(super) fn load(
                 tasks.push(task);
             }
             locale_inputs.extend(loaded.content_inputs);
-            markdown_sources.extend(
-                loaded
-                    .markdown_sources
-                    .into_iter()
-                    .map(|source| (locale.clone(), source)),
-            );
             locale_pages.insert(loaded.page.id.clone(), loaded.page);
         }
         siblings.insert(locale.clone(), index::resolve_siblings(&locale_pages));
@@ -128,7 +119,6 @@ pub(super) fn load(
         tasks,
         entries: entries_by_locale,
         content_inputs,
-        markdown_sources,
         shared_root,
         shared_entries,
     })

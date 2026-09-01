@@ -1,6 +1,6 @@
 [package]
 name = "heine"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 
 [dependencies]
@@ -13,6 +13,7 @@ toml = "1.1.4"
 tera = { version = "2.3.0", features = ["glob_fs"] }
 walkdir = "2.5.0"
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+html5ever = "0.39.0"
 pulldown-latex = "0.8.0"
 giallo = { version = "0.5.2", features = ["dump"] }
 image = { version = "0.25.10", default-features = false, features = ["gif", "jpeg", "png", "webp"] }

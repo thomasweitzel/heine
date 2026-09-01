@@ -24,7 +24,12 @@
             {% if item.page is defined %}
               {% if page_exists(id=item.page) %}
                 {% set target = page(id=item.page) %}
-                <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
+                {% if item.icon is defined %}
+                  {% set icon = asset(id=item.icon) %}
+                  <a class="navigation-icon" href="{{ target.url }}"><img src="{{ icon.url }}" alt="{{ t(id=item.message) }}"></a>
+                {% else %}
+                  <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
+                {% endif %}
               {% endif %}
             {% elif item.taxonomy is defined %}
               {% set target = taxonomy(name=item.taxonomy) %}

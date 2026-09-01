@@ -1,9 +1,10 @@
-# About Heinrich Heine
+# About Heine
 
-Heinrich Heine was born in Düsseldorf in 1797 and later lived in Paris. A poet
-and prose writer, he combined lyrical clarity, political sharpness, and a wit
-not easily intimidated by important people.
+Heine is a small static-site generator written in Rust. It turns a configured
+content tree and Tera2 templates into deterministic output, checking internal
+relationships while the site is built rather than leaving broken links for a
+browser to discover.
 
-This small site follows the naming tradition of Hugo and Zola. It cannot match
-Heine's command of language. It does, however, take clear prose and broken
-links seriously.
+Its name follows the literary convention of Hugo and Zola. The writer who
+supplied it has [his own section](page:heine/index), where the generator wisely
+does not attempt to compete with him.

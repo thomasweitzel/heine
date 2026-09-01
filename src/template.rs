@@ -23,7 +23,7 @@ use crate::{
     config::BasePath,
     locale::Locale,
     localization::Localization,
-    site::{FeedCatalog, PageCatalog, PageId, PageLinks, PageView, TaxonomyCatalog},
+    site::{FeedCatalog, PageCatalog, PageId, PageLinks, PageView, SearchCatalog, TaxonomyCatalog},
     source_diagnostic,
     source_path::LogicalPath,
 };
@@ -126,6 +126,7 @@ pub(crate) struct TemplateRelationships {
     taxonomies: std::sync::Arc<TaxonomyCatalog>,
     pagers: crate::site::PaginationCatalog,
     feeds: std::sync::Arc<FeedCatalog>,
+    search: std::sync::Arc<SearchCatalog>,
 }
 
 /// Resolved indexes exposed through checked template resource functions.
@@ -141,6 +142,7 @@ pub(crate) struct TemplateIndexes {
     pub(crate) taxonomies: std::sync::Arc<TaxonomyCatalog>,
     pub(crate) pagers: crate::site::PaginationCatalog,
     pub(crate) feeds: std::sync::Arc<FeedCatalog>,
+    pub(crate) search: std::sync::Arc<SearchCatalog>,
 }
 
 /// Values deliberately exposed to one template render. This is the boundary
@@ -212,6 +214,7 @@ impl TemplateRelationships {
             taxonomies: indexes.taxonomies,
             pagers: indexes.pagers,
             feeds: indexes.feeds,
+            search: indexes.search,
         }
     }
 }

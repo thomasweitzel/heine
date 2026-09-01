@@ -120,6 +120,37 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         },
     );
 
+    let search_runtime = runtime.clone();
+    tera.register_function(
+        "search",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("search", &kwargs, &["name", "locale"])?;
+            let name = kwargs.must_get::<&str>("name")?;
+            let locale = search_runtime
+                .pages()
+                .with_locale(search_runtime.locale(state)?)
+                .resolve_locale(kwargs.get::<&str>("locale")?)
+                .map_err(|error| tera::Error::message(error.to_string()))?;
+            let root = search_runtime.root(state)?;
+            search_runtime
+                .search(&locale, name, &root)
+                .map(|index| {
+                    tera::Value::try_from_serializable(&index)
+                        .map_err(|_| tera::Error::message("Heine search view is not serializable"))
+                })
+                .transpose()?
+                .ok_or_else(|| {
+                    let available = search_runtime.search_names(&locale);
+                    let detail = available_names(
+                        "no search indexes are configured",
+                        "search indexes",
+                        &available,
+                    );
+                    tera::Error::message(format!("search index {name:?} was not found; {detail}"))
+                })
+        },
+    );
+
     let collection_runtime = runtime.clone();
     tera.register_function(
         "collection",

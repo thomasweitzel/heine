@@ -2,10 +2,10 @@
 
 ## Status
 
-This is an accepted implementation design for a future Heine feature. Search
-is not implemented yet, so this document is not part of the current
-user-facing contract. It records a library-neutral document-index boundary;
-the browser search experience remains site-owned.
+This design is implemented. The [search-index guide](../search.md) and
+[reference](../reference.md#search-indexes) define the current user-facing
+contract. This document records the design reasoning and the library-neutral
+boundary: the browser search experience remains site-owned.
 
 ## Decision
 
@@ -74,9 +74,10 @@ expects one search box to cover, for example, articles and documentation.
 Every listed collection must exist. Duplicate collection names are an error at
 the later duplicate entry. The array must not be empty.
 
-`path` is a portable relative output path ending in `.json` and outside
-`__heine/`, using the same path rules as other authored generated resources.
-It is a logical base path, not necessarily the final published filename.
+`path` is a portable relative output path ending in literal lowercase `.json`
+and outside `__heine/`, using the same path rules as other authored generated
+resources. It is a logical base path, not necessarily the final published
+filename.
 
 Search indexes are versioned by default. Heine serializes the complete
 locale-local JSON document, calculates its SHA-256 digest, and inserts the
@@ -254,7 +255,6 @@ It returns the current locale's configured index view:
 
 ```text
 name
-locale
 count
 url
 relative_url
@@ -297,12 +297,20 @@ its documented behavior and accessibility, not a claim that its scoring policy
 is universally correct or permanently frozen.
 
 The search page has one ordinary form, a live status region, an ordered result
-list, and result-navigation controls. The script:
+list, and result-navigation controls. Its query input uses HTML `dir="auto"`,
+so browser editing follows the first strong directional character in a query
+without changing the page locale or search-document selection. The script:
 
-1. fetches the JSON once when the search interface is used, retaining the
-   resolved fetch promise for the life of that page;
-2. NFC-normalizes the query and searchable fields at comparison time, then
-   collapses Unicode whitespace runs to one ASCII space;
+1. fetches the JSON once when the search interface is used, retaining a
+   successful result for the life of that page and clearing a failed request so
+   a later interaction retries it;
+2. NFC-normalizes searchable fields once after a successful fetch and each
+   query when it is entered. Before collapsing remaining Unicode whitespace to
+   one ASCII space, it removes a single source line feed between adjacent
+   characters from scripts that commonly do not use spaces between words: Han,
+   Hiragana, Katakana, Hangul, Thai, Lao, Khmer, and Myanmar, plus East Asian
+   punctuation. This is a narrow matching convenience, not universal Unicode
+   word segmentation;
 3. uses `toLocaleLowerCase(document.documentElement.lang)` for its local,
    simple case-insensitive matching policy;
 4. splits a query into non-empty whitespace fragments and requires every
@@ -311,9 +319,8 @@ list, and result-navigation controls. The script:
    summary or description `2`, and search text `1`; and
 6. preserves JSON document order for score ties;
 7. presents ten results per client-side result page; and
-8. renders Previous, Next, and a one-link page-number window around the
-   current page, retaining first and last page links and collapsing gaps with
-   ellipses.
+8. renders a one-link page-number window around the current page, retaining
+   first and last page links and collapsing gaps with ellipses.
 
 Typing uses a short debounce and resets the result page to one. The form's
 ordinary submit behavior performs the same search immediately, so keyboard
@@ -400,11 +407,10 @@ index URL and places all visible and assistive text in Fluent resources,
 including the input label, placeholder, loading state, result count,
 zero-results text, network-failure text, pagination labels, and
 JavaScript-required fallback. The result-navigation element has a
-Fluent-supplied `aria-label`; its current link has `aria-current="page"`, its
-end controls are disabled when unavailable, and ellipses are non-interactive
-and hidden from assistive technology. The script creates result and navigation
-elements with DOM APIs and `textContent`, never inserting authored titles,
-summaries, search text, or query text as HTML.
+Fluent-supplied `aria-label`; its current-page span has `aria-current="page"`,
+and ellipses are non-interactive and hidden from assistive technology. The
+script creates result and navigation elements with DOM APIs and `textContent`,
+never inserting authored titles, summaries, search text, or query text as HTML.
 
 ## Resolution and output model
 

@@ -8,8 +8,8 @@ use crate::{
     localization::Localization,
     site::{
         FeedCatalog, FeedView, PageCatalog, PageId, PageLinks, PageTermView, PageView, Pager,
-        PaginationCatalog, SiblingIndex, TaxonomyCatalog, TaxonomyIndexView,
-        collection::CollectionView,
+        PaginationCatalog, SearchCatalog, SearchView, SiblingIndex, TaxonomyCatalog,
+        TaxonomyIndexView, collection::CollectionView,
     },
 };
 
@@ -28,6 +28,7 @@ pub(super) struct TemplateRuntime {
     taxonomies: Arc<TaxonomyCatalog>,
     pagers: PaginationCatalog,
     feeds: Arc<FeedCatalog>,
+    search: Arc<SearchCatalog>,
     localization: Arc<Localization>,
     highlight_css: Option<String>,
 }
@@ -43,6 +44,7 @@ impl From<TemplateResources> for TemplateRuntime {
             taxonomies,
             pagers,
             feeds,
+            search,
         } = resources.relationships;
         Self {
             assets: resources.asset_links,
@@ -54,6 +56,7 @@ impl From<TemplateResources> for TemplateRuntime {
             taxonomies,
             pagers,
             feeds,
+            search,
             localization: resources.localization,
             highlight_css: resources.highlight_css,
         }
@@ -158,6 +161,15 @@ impl TemplateRuntime {
 
     pub(super) fn feed_names(&self, locale: &Locale) -> Vec<String> {
         self.feeds.names(locale)
+    }
+
+    pub(super) fn search(&self, locale: &Locale, name: &str, root: &str) -> Option<SearchView> {
+        self.search
+            .view(locale, name, root, self.page_links.base_path())
+    }
+
+    pub(super) fn search_names(&self, locale: &Locale) -> Vec<String> {
+        self.search.names(locale)
     }
 
     pub(super) fn localization(&self) -> &Localization {

@@ -1,0 +1,32 @@
+{% extends "base.tera" %}
+
+{% block content %}
+{% set index = search(name="site") %}
+<article class="search-page">
+  <h1>{{ page.title }}</h1>
+  <form
+      class="search-form"
+      data-search-url="{{ index.url }}"
+      data-loading="{{ t(id="search-loading") }}"
+      data-results-zero="{{ t(id="search-results-count", attribute="zero", count="__count__") }}"
+      data-results-one="{{ t(id="search-results-count", attribute="one", count="__count__") }}"
+      data-results-two="{{ t(id="search-results-count", attribute="two", count="__count__") }}"
+      data-results-few="{{ t(id="search-results-count", attribute="few", count="__count__") }}"
+      data-results-many="{{ t(id="search-results-count", attribute="many", count="__count__") }}"
+      data-results-other="{{ t(id="search-results-count", attribute="other", count="__count__") }}"
+      data-no-results="{{ t(id="search-no-results") }}"
+      data-failure="{{ t(id="search-failure") }}">
+    <label for="search-query">{{ t(id="search-label") }}</label>
+    <div class="search-form-controls">
+      <input id="search-query" name="q" type="search" dir="auto" placeholder="{{ t(id="search-placeholder") }}" autocomplete="off">
+      <button type="submit">{{ t(id="search-submit") }}</button>
+    </div>
+  </form>
+  <p class="search-status" role="status" aria-live="polite"></p>
+  <ol class="page-list search-results"></ol>
+  <nav class="page-navigation pagination search-pagination" aria-label="{{ t(id="search-pagination-label") }}" hidden></nav>
+  <noscript><p>{{ t(id="search-javascript-required") }}</p></noscript>
+</article>
+{% set script = asset(id="assets/js/search.js") %}
+<script src="{{ script.url }}"{% if script.integrity %} integrity="{{ script.integrity }}" crossorigin="anonymous"{% endif %} defer></script>
+{% endblock %}
