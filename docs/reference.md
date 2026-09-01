@@ -42,6 +42,9 @@ fields use the following defaults.
 | `i18n.locales`                                    | table                | required                              | Non-empty table keyed by canonical BCP-47 locale codes                                                                                                                | Finite locale source trees to render                                                        |
 | `i18n.locales.<code>.direction`                   | string               | required                              | `"ltr"` or `"rtl"`                                                                                                                                                    | Base HTML writing direction for that locale                                                 |
 | `collections.<name>.order`                        | string               | required                              | `"published-asc"`, `"published-desc"`, `"title-asc"`, `"title-desc"`, `"weight-asc"`, `"weight-desc"`, `"id-asc"`, or `"id-desc"`; `<name>` is a simple identifier    | Defines a named, locale-local ordered set of rendered pages                                 |
+| `search.<name>.collections`                       | array of strings     | required                              | Non-empty array of distinct configured collection names; `<name>` is a simple identifier                                                                                  | Selects and unions locale-local members for one JSON search index                           |
+| `search.<name>.path`                              | string               | required                              | Portable relative output path ending in lowercase `.json`, outside [`__heine/`](glossary.md#heine)                                                                         | Locale-relative logical JSON output path                                                    |
+| `search.<name>.versioned`                         | boolean              | `true`                                | `true` or `false`                                                                                                                                                         | Inserts a full JSON SHA-256 digest before `.json`, or retains the stable configured path    |
 | `feeds.<name>.collection`                         | string               | required                              | Configured collection name; `<name>` is a simple identifier                                                                                                           | Selects the locale-local members that supply Atom entries                                   |
 | `feeds.<name>.path`                               | string               | required                              | Portable relative output path outside [`__heine/`](glossary.md#heine)                                                                                                 | Locale-relative Atom output path                                                            |
 | `feeds.<name>.title_key`                          | string               | required                              | Non-empty Fluent message identifier                                                                                                                                   | Locale-local Atom feed title                                                                |
@@ -80,11 +83,57 @@ They use collection membership but order entries by `published` descending,
 then page ID. See [Atom feeds](atom-feeds.md) for entry requirements, empty
 locale feeds, and template discovery links.
 
+Search indexes turn one or more configured collections into one JSON document
+per locale. Their union is ordered by page ID, independently of every
+collection's display order. The complete document is content-hashed by default;
+`--quick` does not update it. See [search indexes](search.md) for the JSON and
+browser-boundary contract.
+
 The complete set of accepted theme names is in
 [Giallo's source README](https://docs.rs/crate/giallo/latest/source/README.md)
 under “Themes”; the linked source matches Heine's bundled registry.
 Use those exact names; Heine reports an unknown name at its configuration
 location.
+
+## Search indexes
+
+Each configured index writes one UTF-8 JSON document per configured locale:
+
+```json
+{
+  "format": 1,
+  "locale": "en",
+  "documents": [
+    {
+      "id": "blog/example/index",
+      "url": "/guide/blog/example/index.html",
+      "title": "Example",
+      "description": null,
+      "summary": "A short example.",
+      "published": "2026-08-14T07:30:00Z",
+      "updated": null,
+      "taxonomies": { "tags": ["Rust"] },
+      "text": "Source-derived searchable text."
+    }
+  ]
+}
+```
+
+`format` is the positive schema version, currently `1`. `id` is the
+locale-relative page ID and `url` names the literal generated page file with
+`site.base_path` applied. `title`, `description`, `summary`, `published`, and
+`updated` are their authored page facts or `null`. `taxonomies` has configured
+taxonomy names in deterministic lexical order, with literal locale-local terms
+in authored order. Documents are ordered by page ID.
+
+`text` combines every declared `.md` input in content-name order, separated by
+two line feeds. It includes parsed text, headings, link labels, image
+alternatives, code, and recognized math source. Source-authored raw HTML adds
+text nodes and `img` `alt` values, while markup, comments, URLs, attributes,
+and `script`, `style`, or `template` contents do not contribute. Soft and hard
+Markdown breaks remain line feeds; block boundaries become two line feeds.
+Heine does not lower-case, tokenize, stem, truncate, or derive text from
+rendered HTML.
 
 ## `_directory.toml`
 
@@ -249,7 +298,7 @@ The following boundaries are part of the current contract:
 |---------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Metadata                              | Heine does not parse Markdown front matter. YAML or TOML front matter is ordinary Markdown source; page metadata belongs in the adjacent `.page` file.                                                                                           |
 | Extensions                            | Only the configured `tables`, `strikethrough`, `task_lists`, and `footnotes` extensions are enabled.                                                                                                                                             |
-| Raw HTML                              | Trusted Markdown HTML is passed through unsanitized. Do not use untrusted Markdown as site input.                                                                                                                                                |
+| Raw HTML                              | Trusted Markdown HTML is passed through unsanitized. Do not use untrusted Markdown as site input. Search indexes read semantic text and `img` alternatives from authored raw HTML, but never scrape rendered template HTML. |
 | Heading anchors and table of contents | An opted-in page table of contents creates IDs only on headings in its selected source when rendered with `markdown(content="…")`; other Markdown remains unanchored. See [table of contents](table-of-contents.md).                       |
 | Ordinary links and images             | Ordinary URLs, including relative URLs such as `./other.md`, are emitted unchanged. Heine does not resolve, convert, or check them.                                                                                                              |
 | Checked internal links                | In Markdown links, use `page:<id>` or `page:<locale>:<id>` for a rendered page. In links or image sources, use `asset:<id>` for a copied asset. These forms resolve during the build and report invalid targets at the authored source location. |
@@ -338,6 +387,7 @@ tables below are the complete Heine additions to a template environment.
 | `page_exists`          | `page_exists(id="quiz/index")`                                  | Whether a rendered page exists in the current locale. It returns `false` for a missing page, but invalid IDs and locales still fail at the call site.                                                                                                                                                                                        |
 | `collection`           | `collection(name="posts")`                                      | A configured current-locale collection with `name`, `count`, and ordered `page_ids`.                                                                                                                                                                                                                                                         |
 | `collection_neighbors` | `collection_neighbors(name="posts")`                            | Immediate rendered-page views around the current authored page in the named current-locale collection order. `before` is the preceding member and `after` the following member; either is `null` at an end. It fails if the collection is unknown or the current page is not a member.                                                       |
+| `search`               | `search(name="site")` or `search(name="site", locale="de")` | A configured JSON search index for the current or exact configured locale: `name`, selected-document `count`, base-path-aware `url`, and current-output-relative `relative_url`. Invalid or unknown names and locales fail at the call site.                                                                                                  |
 | `feed`                 | `feed(name="posts")` or `feed(name="posts", locale="de")`       | A configured Atom feed for the current or exact configured locale: `name`, Fluent-resolved `title`, base-path-aware `url`, and current-output-relative `relative_url`. Invalid or unknown names and locales fail at the call site.                                                                                                           |
 | `taxonomy`             | `taxonomy(name="tags")` or `taxonomy(name="tags", locale="de")` | A configured taxonomy index in the current or an exact configured locale, with `name`, base-path-aware `url`, and current-output-relative `relative_url`. Invalid or unknown names and locales fail at the call site.                                                                                                                        |
 | `siblings`             | `siblings()` or `siblings(id="blog/index")`                     | Ordered IDs for the other eligible pages in the selected page’s directory. See [sibling navigation](#sibling-navigation). `locale=` is allowed only with `id=`.                                                                                                                                                                              |

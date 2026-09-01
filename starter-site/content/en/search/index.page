@@ -1,0 +1,3 @@
+template = "search.tera"
+title = "Search"
+translationid = "search"

@@ -20,8 +20,8 @@ all-in-one web-development workflow. Heine is not published to crates.io yet:
 install a current stable Rust toolchain, clone this repository, and run it with
 `cargo run`.
 
-Atom feeds are available for configured collections. RSS and plugins are not
-implemented yet.
+Atom feeds and collection-derived search indexes are available. RSS and
+plugins are not implemented yet.
 
 ## First site
 
@@ -105,6 +105,7 @@ The [documentation map](docs/README.md) explains the available reading paths.
   [taxonomies](docs/taxonomies.md), [deployment files](docs/deployment-files.md),
   [asset licensing](docs/asset-licensing.md), [sitemaps](docs/sitemap.md),
   [Atom feeds](docs/atom-feeds.md), [table of contents](docs/table-of-contents.md),
+  [search indexes](docs/search.md),
   or the [development server](docs/development-server.md).
 - Use the [reference](docs/reference.md) for exact fields, defaults, template
   functions, and constraints.

@@ -713,6 +713,7 @@ pub(super) fn load_page(
         subdirs,
         content,
         markdown_content: markdown_names,
+        markdown_sources,
         toc,
         metadata,
         translationid,
@@ -750,7 +751,6 @@ pub(super) fn load_page(
         page,
         task,
         content_inputs,
-        markdown_sources,
     })
 }
 

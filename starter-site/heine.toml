@@ -23,6 +23,13 @@ integrity = "sha384"
 [collections.posts]
 order = "published-desc"
 
+[collections.documentation]
+order = "title-asc"
+
+[search.site]
+collections = ["posts", "documentation"]
+path = "search/site.json"
+
 [feeds.posts]
 collection = "posts"
 path = "atom.xml"

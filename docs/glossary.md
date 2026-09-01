@@ -81,6 +81,13 @@ configured collection. It contains chronological page summaries and canonical
 page links. Feed entry requirements are checked during the build; see the
 [Atom-feed guide](atom-feeds.md).
 
+### Search index
+
+An opt-in locale-local generated JSON document selected from one or more
+collections. Heine supplies checked source-derived page facts and output URLs;
+the site supplies the browser search library, ranking, and interface. See the
+[search-index guide](search.md).
+
 ### Publication chronology
 
 Optional page `published` and `updated` local date-times. They must include a

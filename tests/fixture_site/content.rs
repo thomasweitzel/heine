@@ -84,7 +84,10 @@ fn reports_the_page_location_for_invalid_toml() {
         diagnostic.contains("content/en/index.page:1"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("unclosed array"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("invalid TOML in content definition"),
+        "{diagnostic}"
+    );
 }
 
 #[test]
@@ -104,7 +107,7 @@ fn reports_the_content_location_for_invalid_json() {
         diagnostic.contains("content/en/data.json:1"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("key must be a string"), "{diagnostic}");
+    assert!(diagnostic.contains("invalid JSON content"), "{diagnostic}");
 }
 
 #[test]

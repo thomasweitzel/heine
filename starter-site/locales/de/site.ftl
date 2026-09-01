@@ -1,8 +1,8 @@
 # Labels for the primary site navigation.
 nav-label = Hauptnavigation
-nav-home = Startseite
 nav-blog = Blog
 nav-tags = Schlagwörter
+nav-search = Suche
 nav-quiz = Quiz
 nav-heine = Heinrich Heine
 toc-label = Inhaltsverzeichnis
@@ -32,6 +32,23 @@ blog-post-summary = { $count ->
 feed-posts-title = Heine-Beiträge
 feed-posts-subtitle = Notizen über einen kleinen Static-Site-Generator
 feed-subscribe = Atom abonnieren
+
+# Labels and status text for the client-side search example.
+search-label = Beiträge und Dokumentation durchsuchen
+search-placeholder = Suchbegriff eingeben
+search-submit = Suchen
+search-loading = Suchindex wird geladen…
+search-results-count =
+    .zero = { $count } Ergebnisse
+    .one = { $count } Ergebnis
+    .two = { $count } Ergebnisse
+    .few = { $count } Ergebnisse
+    .many = { $count } Ergebnisse
+    .other = { $count } Ergebnisse
+search-no-results = Keine Ergebnisse gefunden.
+search-failure = Der Suchindex konnte nicht geladen werden.
+search-pagination-label = Suchergebnisseiten
+search-javascript-required = Die Suche benötigt auf dieser Beispielseite JavaScript.
 
 # Footer text and configured standalone-page links.
 footer-label = Fußnavigation

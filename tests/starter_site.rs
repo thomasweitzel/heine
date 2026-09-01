@@ -57,6 +57,15 @@ fn builds_the_documented_starter_site() {
         index.contains("href=\"/my-project/heine/index.html\">Heinrich Heine</a>"),
         "{index}"
     );
+    assert!(
+        index.contains(
+            "<a class=\"navigation-icon\" href=\"/my-project/search/index.html\"><img src=\"/my-project/assets/images/search.svg\" alt=\"Search\"></a>"
+        ),
+        "{index}"
+    );
+    let heine_navigation = index.find("Heinrich Heine</a>").expect("Heine navigation");
+    let search_navigation = index.find("alt=\"Search\"").expect("search icon");
+    assert!(heine_navigation < search_navigation, "{index}");
     assert!(!index.contains("<h2>Terms</h2>"), "{index}");
     assert!(
         index.contains("href=\"/my-project/about/index.html\">About Heine</a>"),
@@ -87,6 +96,48 @@ fn builds_the_documented_starter_site() {
     );
     assert!(output.join("assets/css/styles.v2.css").is_file());
     assert!(!output.join("assets/css/styles.v1.css").exists());
+    assert!(output.join("assets/js/search.js").is_file());
+    let search_script =
+        fs::read_to_string(output.join("assets/js/search.js")).expect("search script");
+    assert!(
+        search_script.contains("const pageSize = 10;"),
+        "{search_script}"
+    );
+    assert!(
+        search_script.contains("joinUnspacedLineBreaks"),
+        "{search_script}"
+    );
+    assert!(
+        search_script.contains("documentsPromise = undefined;"),
+        "{search_script}"
+    );
+    let search_page = fs::read_to_string(output.join("search/index.html")).expect("search page");
+    assert!(
+        search_page.contains("data-search-url=\"/my-project/search/site."),
+        "{search_page}"
+    );
+    assert!(
+        search_page.contains("src=\"/my-project/assets/js/search.js\" integrity=\"sha384-"),
+        "{search_page}"
+    );
+    assert!(
+        search_page.contains("data-results-one=\"\u{2068}__count__\u{2069} result\""),
+        "{search_page}"
+    );
+    assert!(
+        search_page.contains("name=\"q\" type=\"search\" dir=\"auto\""),
+        "{search_page}"
+    );
+    let search_index = generated_file_with_extension(&output.join("search"), "json");
+    let search_json = fs::read_to_string(search_index).expect("search index");
+    assert!(
+        search_json.contains("MathML, Audio, and Direction"),
+        "{search_json}"
+    );
+    assert!(
+        search_json.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."),
+        "{search_json}"
+    );
 
     let german_home = fs::read_to_string(output.join("de/index.html")).expect("German home");
     assert!(
@@ -106,6 +157,20 @@ fn builds_the_documented_starter_site() {
     assert!(
         german_home.contains("src=\"/my-project/assets/images/flags/english.svg\""),
         "{german_home}"
+    );
+    assert!(
+        german_home.contains("src=\"/my-project/assets/images/search.svg\" alt=\"Suche\""),
+        "{german_home}"
+    );
+    let german_search =
+        fs::read_to_string(output.join("de/search/index.html")).expect("German search page");
+    assert!(
+        german_search.contains("data-search-url=\"/my-project/de/search/site."),
+        "{german_search}"
+    );
+    assert!(
+        german_search.contains("data-results-one=\"\u{2068}__count__\u{2069} Ergebnis\""),
+        "{german_search}"
     );
     assert!(
         german_home.contains("type=\"application/atom+xml\" href=\"/my-project/de/atom.xml\""),
@@ -284,12 +349,22 @@ fn builds_the_documented_starter_site() {
 
     let about = fs::read_to_string(output.join("about/index.html")).expect("About page");
     assert!(
-        about.contains("Heinrich Heine was born in Düsseldorf in 1797"),
+        about.contains("Heine is a small static-site generator written in Rust."),
         "{about}"
     );
     assert!(
         about.contains("href=\"/my-project/de/about/index.html\" hreflang=\"de\""),
         "{about}"
+    );
+    let german_about =
+        fs::read_to_string(output.join("de/about/index.html")).expect("German About page");
+    assert!(
+        german_about.contains("Heine ist ein kleiner statischer Site-Generator"),
+        "{german_about}"
+    );
+    assert!(
+        german_about.contains("href=\"/my-project/heine/index.html\""),
+        "{german_about}"
     );
 
     let quiz = fs::read_to_string(output.join("quiz/quiz-1.html")).expect("quiz page");
@@ -300,6 +375,14 @@ fn builds_the_documented_starter_site() {
     );
     assert!(!quiz.contains("language-navigation"), "{quiz}");
     assert!(output.join("quiz/script.js").is_file());
+}
+
+fn generated_file_with_extension(directory: &Path, extension: &str) -> std::path::PathBuf {
+    fs::read_dir(directory)
+        .expect("generated resource directory")
+        .map(|entry| entry.expect("generated resource entry").path())
+        .find(|path| path.extension().is_some_and(|value| value == extension))
+        .expect("generated resource")
 }
 
 fn copy_tree(source: &Path, destination: &Path) {

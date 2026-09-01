@@ -7,10 +7,6 @@ asset = "assets/images/flags/english.svg"
 asset = "assets/images/flags/german.svg"
 
 [[navigation]]
-message = "nav-home"
-page = "index"
-
-[[navigation]]
 message = "nav-blog"
 page = "blog/index"
 
@@ -25,6 +21,11 @@ page = "quiz/index"
 [[navigation]]
 message = "nav-heine"
 page = "heine/index"
+
+[[navigation]]
+message = "nav-search"
+page = "search/index"
+icon = "assets/images/search.svg"
 
 [[footer.links]]
 message = "footer-about"

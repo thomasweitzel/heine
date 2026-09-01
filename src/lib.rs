@@ -111,6 +111,7 @@ pub(crate) fn build_at_with_publication(
         collections: config.collections().clone(),
         taxonomies: config.taxonomies().clone(),
         feeds: config.feeds().clone(),
+        search: config.search().clone(),
         site: config.site(),
         sitemap: config.sitemap(),
         deployment: &deployment,

@@ -116,7 +116,6 @@ pub(super) struct LoadedPage {
     pub(super) page: Page,
     pub(super) task: Option<Task>,
     pub(super) content_inputs: BTreeSet<PathBuf>,
-    pub(super) markdown_sources: Vec<MarkdownSource>,
 }
 
 /// The TOML shape written by site authors. This is intentionally separate
@@ -334,6 +333,9 @@ pub(super) struct Page {
     pub(super) subdirs: Vec<String>,
     pub(super) content: BTreeMap<String, Value>,
     pub(super) markdown_content: BTreeSet<String>,
+    /// Original declared Markdown inputs are retained for source-derived
+    /// generated-resource consumers such as search, not for template rendering.
+    pub(super) markdown_sources: Vec<MarkdownSource>,
     pub(super) toc: Option<TocPlan>,
     pub(super) metadata: Metadata,
     pub(super) translationid: Option<TranslationId>,
