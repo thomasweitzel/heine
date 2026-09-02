@@ -166,11 +166,14 @@ version as related context.
 
 The manifest's `[public]` table is the kit's supported integration API. A kit
 author uses semantic versioning for this surface: removing or renaming a
-public template, asset, component, message prefix, or extra setting requires a
-major version increment. Adding a public member is a minor version change.
-Adding an optional extra setting with a manifest default is also a minor
-version change: sites that do not override it receive that default. Correcting
-behavior without changing the contract is a patch version change.
+public template, asset, component, kit message or term, or extra setting
+requires a major version increment. The message prefix and every kit-defined
+message or term using it are part of that surface: a root site may override a
+specific existing entry, so removing or renaming that entry is breaking.
+Adding a public member is a minor version change. Adding an optional extra
+setting with a manifest default is also a minor version change: sites that do
+not override it receive that default. Correcting behavior without changing the
+contract is a patch version change.
 
 The values below manifest `[extra]` are defaults and the complete schema for
 the site's `[kit.extra]` table. Tables merge recursively down to existing leaf
@@ -182,6 +185,13 @@ incompatible array element types are errors at the authored setting. This one
 explicit, checked configuration overlay is the only configuration merging kits
 perform.
 
+Every manifest declaration is checked against the selected kit before runtime
+loading begins. A declared public template, asset, or component must name one
+existing kit resource exactly once. Template and asset paths use the existing
+portable relative-path rules; an asset declaration must use its `assets/`
+logical ID. A misleading manifest is an error at its authored declaration,
+rather than a later missing-resource failure in the consuming site.
+
 ## Runtime sources and precedence
 
 Only one kit may be selected. It contributes these runtime domains:
@@ -190,7 +200,7 @@ Only one kit may be selected. It contributes these runtime domains:
 |---------------------|--------------------------|---------------------|-------------------------------------------------------------------------------------------------------------|
 | Templates           | `kits/<name>/templates/` | `templates/`        | Root wins only for a manifest-declared public template path.                                                |
 | Copied assets       | `kits/<name>/assets/`    | `content/assets/`   | Both use IDs beginning with `assets/`; root wins only for a manifest-declared public asset ID.              |
-| Fluent UI messages  | `kits/<name>/locales/`   | `locales/`          | Root messages may override kit messages with the kit's declared prefix.                                     |
+| Fluent UI messages  | `kits/<name>/locales/`   | `locales/`          | Root entries may override existing prefixed kit messages and terms only.                                    |
 | Asset license texts | `kits/<name>/LICENSES/`  | `LICENSES/`         | Root wins for the same logical license-text path.                                                           |
 | Components          | not applicable           | no replacement path | Defined within kit templates; root templates may invoke declared public components, but cannot replace one. |
 
@@ -198,7 +208,9 @@ Root resources with no kit counterpart continue to work normally. A root
 resource that collides with a private kit template or asset is a build error
 showing both locations and the kit's declared public alternatives. Components
 have no root override path: root templates may invoke only
-manifest-declared public kit components.
+manifest-declared public kit components. A root component definition in the
+selected kit's component namespace is a build error, so invocation can never
+quietly become replacement.
 
 Public template and asset paths are literal logical paths in the first version.
 Glob patterns are deliberately unsupported: a public override surface is a
@@ -224,9 +236,12 @@ root-first lookup and by an unambiguous original namespace:
 The namespaced form always selects the kit original. A root override may use
 it to extend a kit template rather than replace it. A root template may name
 only a public kit template through this namespace; kit templates may also name
-their own private originals. Kit components must use the kit-name namespace,
-for example `paper.card`, and only manifest-declared public components are
-available to root templates.
+their own private originals. An unqualified reference made from a kit template
+uses the same root-first lookup: a root override of a public kit template is
+therefore visible consistently to both root and kit templates. The namespaced
+form remains available whenever the kit requires its original bytes. Kit
+components must use the kit-name namespace, for example `paper.card`, and only
+manifest-declared public components are available to root templates.
 
 When a site needs different component markup, it overrides the public kit
 template that invokes the component, using the extension mechanism above when
@@ -239,9 +254,14 @@ block when that form of customization is expected.
 Kit messages are only for kit interface text. Every kit Fluent message and
 term must use the manifest's message prefix; Heine checks this when it loads
 the kit. The prefix prevents message collisions and keeps kit-internal term
-references visibly distinct from site terminology. Heine also checks that
-every component defined by a kit uses its kit-name namespace. These are build
-errors at the kit-authored definition, not informal authoring conventions.
+references visibly distinct from site terminology. A root entry using that
+prefix must correspond to an existing kit message or term, so a spelling error
+in an intended override is diagnosed instead of becoming a dormant root
+message. Root-owned interface text uses ordinary, non-kit IDs. Heine also
+checks that every component defined by a kit uses its kit-name namespace.
+These are build errors at the kit-authored or root-authored definition, not
+informal authoring conventions.
+
 The lookup order for a message is:
 
 1. root resource for the current locale;
@@ -261,9 +281,10 @@ missing template at the authored page or template reference.
 
 ## Assets and licensing
 
-Kit assets follow the same copied-asset and REUSE-style sidecar rules as root
-assets. A sidecar belongs to the asset from the source layer that won lookup.
-If a root asset overrides a kit asset, the kit sidecar does not carry over.
+Kit assets and license inputs follow the same copied-asset, REUSE-style
+sidecar, source-root safety, and portable-path rules as their root equivalents.
+A sidecar belongs to the asset from the source layer that won lookup. If a root
+asset overrides a kit asset, the kit sidecar does not carry over.
 
 A root `LICENSES/<path>` file overrides the selected kit's same logical
 license-text path, even when the bytes differ. This lets a site correct a kit
@@ -358,11 +379,14 @@ Implementation must include focused and fixture-site coverage for:
 - copying a kit reference site into a root and building it successfully;
 - root precedence for declared public templates, assets, messages, and license
   texts;
+- manifest declarations for missing, duplicate, or unsafe public resources;
 - errors for private template and asset collisions, with both locations;
 - namespaced kit-template extension, missing-selected-kit diagnostics, and
-  component namespace isolation;
+  component namespace isolation, including a root definition that attempts to
+  occupy the selected kit namespace;
 - locale fallback across root and kit messages;
-- message-prefix and component-namespace enforcement at kit-authored spans;
+- message-prefix and component-namespace enforcement at the responsible kit
+  or root-authored spans;
 - kit asset integrity, image metadata, licensing, attributions, and output
   collisions;
 - source discovery and watcher behavior for selected, non-selected, and
