@@ -1,4 +1,8 @@
 title = "Life and exile"
 
+[[series]]
+id = "heinrich-heine"
+position = 10
+
 [content]
 main = "main.md"

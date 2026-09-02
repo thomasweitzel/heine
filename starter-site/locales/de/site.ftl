@@ -5,18 +5,31 @@ nav-tags = Schlagwörter
 nav-search = Suche
 nav-quiz = Quiz
 nav-heine = Heinrich Heine
+nav-series = Reihen
+
+# Labels and metadata for generated Series indexes.
+series-index-title = Reihen
+series-index-description = Geordnete Lesepfade durch diese Beispielseite.
+series-index-empty = In dieser Sprache gibt es derzeit keine Reihen.
+series-navigation = Reihennavigation
+series-label = Reihe
+series-position = Teil { $number } von { $total }
+
+# Labels for post publication facts.
+post-published = Veröffentlicht am
+post-byline = Von { $authors }
+post-updated = Aktualisiert am
+
+# Labels for page-local navigation controls.
 toc-label = Inhaltsverzeichnis
+pagination-label = Seitennavigation
+page-navigation = Seitennavigation
+quiz-menu = Quiz-Menü
 
 # Accessible labels for switching to a page's available language versions.
 language = Sprache
 language-en = Englisch
 language-de = Deutsch
-
-# Labels for listing and quiz navigation controls.
-pagination-label = Seitennavigation
-page-navigation = Seitennavigation
-open = Öffnen
-quiz-menu = Quiz-Menü
 
 # Taxonomy labels and plural-aware summaries for collection listings.
 tags = { $count ->
@@ -59,4 +72,5 @@ footer-imprint = Impressum
 attributions = Namensnennungen
 attributions-introduction = Diese Seite listet kopierte Dateien mit ihren angegebenen Lizenzinformationen auf.
 license-texts = Lizenztexte
+# Behalte das <a>-Element bei und übersetze seinen sichtbaren Text.
 footer-description = Eine kompakte Beispielseite mit <a href="https://heine.rs">Heine</a>.

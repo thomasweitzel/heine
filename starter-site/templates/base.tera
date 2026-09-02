@@ -34,6 +34,11 @@
             {% elif item.taxonomy is defined %}
               {% set target = taxonomy(name=item.taxonomy) %}
               <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
+            {% elif item.series is defined %}
+              {% set target = series() %}
+              {% if target.count > 0 %}
+                <a href="{{ target.url }}">{{ t(id=item.message) }}</a>
+              {% endif %}
             {% endif %}
             {% endfor %}
           </nav>
@@ -59,6 +64,9 @@
       {% block content %}
       {{ page.content.main }}
       {% endblock %}
+      {% if page %}
+        {% include "series-navigation.tera" %}
+      {% endif %}
     </main>
     <footer>
       {% block footer %}

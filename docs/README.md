@@ -41,6 +41,7 @@ required prerequisite for the guides.
   browser search experience.
 - [Table of contents](table-of-contents.md): page-owned Markdown heading
   navigation.
+- [Series](series.md): checked page-local ordered reading sequences.
 
 ## Reference material
 

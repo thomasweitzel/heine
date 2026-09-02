@@ -1,0 +1,36 @@
+{% extends "base.tera" %}
+
+{% block title %}{{ series.title }}{% endblock %}
+
+{% block language_navigation %}
+  <nav class="language-navigation" aria-label="{{ t(id="language") }}">
+  {% for target_locale, language in data.site.language_flags %}
+    {% if target_locale != locale.code %}
+      {% set target = series(locale=target_locale) %}
+      {% set language_message = "language-" ~ target_locale %}
+      {% set flag = asset(id=language.asset) %}
+      <a href="{{ target.url }}" hreflang="{{ target_locale }}" aria-label="{{ t(id=language_message) }}">
+        <img src="{{ flag.url }}"{% if flag.width %} width="{{ flag.width }}" height="{{ flag.height }}"{% endif %} alt="">
+      </a>
+    {% endif %}
+  {% endfor %}
+  </nav>
+{% endblock %}
+
+{% block content %}
+<section>
+  <h1>{{ series.title }}</h1>
+  {% if series.description %}
+    <p>{{ series.description }}</p>
+  {% endif %}
+  {% if series.series %}
+    <ul>
+      {% for item in series.series %}
+        <li><a href="{{ item.relative_url }}">{{ item.title }}</a> <span class="item-count">{{ item.count }}</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>{{ t(id="series-index-empty") }}</p>
+  {% endif %}
+</section>
+{% endblock %}

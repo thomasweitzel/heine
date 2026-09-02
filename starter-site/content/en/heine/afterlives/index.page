@@ -1,4 +1,8 @@
 title = "Afterlives"
 
+[[series]]
+id = "heinrich-heine"
+position = 30
+
 [content]
 main = "main.md"

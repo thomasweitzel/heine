@@ -16,7 +16,8 @@ use walkdir::{DirEntry, WalkDir};
 use crate::{
     author::AuthorName,
     config::{
-        CollectionName, CollectionsConfig, EditorialTimeZone, TaxonomiesConfig, TaxonomyName,
+        CollectionName, CollectionsConfig, EditorialTimeZone, SeriesConfig, SeriesName,
+        TaxonomiesConfig, TaxonomyName,
     },
     content,
     locale::Locale,
@@ -29,8 +30,8 @@ use crate::{
         },
         page::{
             CollectionMembership, DirectoryView, LoadedPage, Metadata, OutputSuffix, Page, PageId,
-            Pagination, PaginationSegment, RawMetadata, RawPage, ResolvedAuthors, Task,
-            TaxonomyMembership, TaxonomyTermMembership, TranslationId,
+            Pagination, PaginationSegment, RawMetadata, RawPage, ResolvedAuthors, SeriesMembership,
+            Task, TaxonomyMembership, TaxonomyTermMembership, TranslationId,
         },
     },
     source_path,
@@ -308,6 +309,7 @@ pub(super) struct PageLoadContext<'a> {
     pub(super) subdirectories: &'a BTreeMap<PathBuf, Vec<String>>,
     pub(super) descriptors: &'a BTreeMap<PathBuf, DirectoryDescriptor>,
     pub(super) collections: &'a CollectionsConfig,
+    pub(super) series: Option<&'a SeriesConfig>,
     pub(super) taxonomies: &'a TaxonomiesConfig,
     pub(super) time_zone: Option<&'a EditorialTimeZone>,
     pub(super) sitemap_enabled: bool,
@@ -325,6 +327,28 @@ pub(crate) struct DuplicateCollectionMembership {
     span: SourceSpan,
     #[related]
     first: Vec<FirstCollectionMembership>,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("Series {series:?} is declared more than once")]
+#[diagnostic(code(heine::series::duplicate_membership))]
+pub(crate) struct DuplicateSeriesMembership {
+    series: String,
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("duplicate membership declared here")]
+    span: SourceSpan,
+    #[related]
+    first: Vec<FirstSeriesMembership>,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("first Series membership is declared here")]
+struct FirstSeriesMembership {
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("first membership")]
+    span: SourceSpan,
 }
 
 #[derive(Debug, Diagnostic, ThisError)]
@@ -516,6 +540,7 @@ pub(super) fn load_page(
         path,
         &text,
     )?;
+    let series = series_for(raw.series, context.series, path, &text)?;
     let authors = authors_for(raw.authors, &ancestors, path, &text)?;
     let pagination = pagination_for(
         raw.pagination,
@@ -726,6 +751,7 @@ pub(super) fn load_page(
             .unwrap_or_else(|| DirectoryView::new(directory.clone(), &Metadata::default())),
         taxonomies,
         collections,
+        series,
         pagination,
         weight,
         weight_span,
@@ -1198,6 +1224,95 @@ fn parse_collections(
         });
     }
     Ok(collections)
+}
+
+/// Parses page-local Series memberships. Unlike collections, Series never
+/// inherit from a directory because each page owns its own position.
+fn series_for(
+    values: Vec<super::page::RawSeriesMembership>,
+    config: Option<&SeriesConfig>,
+    path: &Path,
+    source: &str,
+) -> Result<Vec<SeriesMembership>, Error> {
+    if values.is_empty() {
+        return Ok(Vec::new());
+    }
+    let first_span: SourceSpan = values[0].id.span().into();
+    let config = config.ok_or_else(|| {
+        invalid(
+            path,
+            source,
+            first_span,
+            "field `series` requires a [series] table in heine.toml",
+        )
+    })?;
+    let named_source = Arc::new(crate::source_diagnostic::named_source(
+        path,
+        source.to_owned(),
+        "TOML",
+    ));
+    let mut memberships = Vec::with_capacity(values.len());
+    for value in values {
+        let span: SourceSpan = value.id.span().into();
+        let raw = value.id.into_inner();
+        let name = SeriesName::parse(raw.clone())
+            .map_err(|message| invalid(path, source, span, message))?;
+        if !config.contains(&name) {
+            let available = config
+                .definitions()
+                .keys()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            let detail = if available.is_empty() {
+                "no Series definitions are configured".to_owned()
+            } else {
+                format!("available Series: {}", available.join(", "))
+            };
+            return Err(invalid(
+                path,
+                source,
+                span,
+                format!("series {raw:?} is not configured; {detail}"),
+            ));
+        }
+        if let Some(first) = memberships
+            .iter()
+            .find(|membership: &&SeriesMembership| membership.name == name)
+        {
+            return Err(Error::DuplicateSeriesMembership(Box::new(
+                DuplicateSeriesMembership {
+                    series: raw,
+                    source_code: named_source.clone(),
+                    span,
+                    first: vec![FirstSeriesMembership {
+                        source_code: first.source.clone(),
+                        span: first.span,
+                    }],
+                },
+            )));
+        }
+        let position_span: SourceSpan = value.position.span().into();
+        let position = value.position.into_inner();
+        let position = usize::try_from(position)
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| {
+                invalid(
+                    path,
+                    source,
+                    position_span,
+                    "series position must be a positive integer",
+                )
+            })?;
+        memberships.push(SeriesMembership {
+            name,
+            position,
+            source: named_source.clone(),
+            span,
+            position_span,
+        });
+    }
+    Ok(memberships)
 }
 
 fn taxonomies_for(

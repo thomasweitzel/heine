@@ -2,32 +2,29 @@
 
 ## Status
 
-This is the accepted architectural direction for a future Heine extension
-system. It is not implemented and is not part of the current public contract.
-It records the first concrete use case, Markdown-aware rendering, and the
-boundaries that any later implementation must preserve. Package discovery,
-installation, and distribution remain deliberately undecided until a second
-concrete extension use case requires them.
+This is the accepted design for Heine's first future extension boundary,
+Markdown-aware renderer adapters. It is not implemented and is not part of the
+current public contract. Other extension kinds remain undecided until a
+separate concrete use case requires them. Package discovery, installation, and
+distribution are likewise undecided.
 
 ## Decision
 
-Heine will not add generic pre-build or post-build hooks. An in-Heine
-extension must start from an explicit authored construct or declared local
-input and return one of these host-owned results:
-
-- a checked rendered replacement;
-- a structured site fact in a declared namespace; or
-- a generated-resource description.
+Heine will not add generic pre-build or post-build hooks. Its first in-Heine
+extension boundary is a renderer adapter: one explicit authored construct or
+declared local input produces one checked rendered replacement and, where
+requested, generated-resource bytes. PlantUML, Mermaid, Graphviz DOT, and
+Typst are representative uses.
 
 The host retains source discovery, input checking, ordering, output-path
 allocation, collision detection, publication, caching, watching, and
-diagnostics. Extensions neither mutate Heine's resolved site model nor write
+diagnostics. An adapter neither mutates Heine's resolved site model nor writes
 to `public/` directly.
 
-The first concrete extension use case is a renderer adapter. It keeps an
-authored diagram, mathematical expression, or document source unchanged while
-producing a rendered replacement and, where requested, a generated resource.
-PlantUML, Mermaid, Graphviz DOT, and Typst are representative uses.
+Structured site facts, render-context extensions, rendered-output
+transformations, and a general plugin API are not part of this accepted
+boundary. Each needs its own concrete use case and design before it can become
+a Heine feature.
 
 ## Motivation
 
@@ -46,11 +43,12 @@ and one checked result.
 
 ## Terms
 
-- **Plugin**: a future in-process extension that receives project-owned
-  serializable views and returns typed, patch-based results. It has no direct
-  Tera, output, filesystem, or process authority. Its implementation language
-  or runtime is intentionally undecided; Rhai is one possible future choice,
-  not a current dependency or contract.
+- **Plugin**: a possible later in-process extension. It has no accepted public
+  API today. If justified, it must receive project-owned serializable views and
+  return typed, checked results without direct Tera, output, filesystem, or
+  process authority. Its implementation language or runtime is intentionally
+  undecided; Rhai is one possible future choice, not a current dependency or
+  contract.
 - **Renderer adapter**: a content-transformation capability that accepts one
   explicit renderer request and returns a typed replacement and optional
   generated resources.
@@ -65,37 +63,16 @@ and one checked result.
 - **Named renderer source**: a page-owned checked file or source bundle that
   an adapter may consume instead of an inline directive body.
 
-## Extension stages
-
-Only content transformation has a concrete use case and a design today. The
-host may later need boundaries resembling these stages:
-
-1. content transformation;
-2. site transformation;
-3. render-context extension; and
-4. rendered-output transformation.
-
-The renderer-adapter use case belongs to content transformation. These later
-stage names are provisional, not a committed public pipeline or registration
-API. If a later stage is justified, it may consume only deliberate output from
-an earlier one. No stage receives a mutable internal site structure, direct
-Tera access, or output-writing authority.
-
 ## Ownership and conflicts
 
-Heine never resolves extension conflicts by last-write-wins behavior.
+For renderer adapters, a request selects exactly one adapter and generated
+resources are normal output claims with existing collision diagnostics.
+Adapters have no incidental ordering relationship.
 
-- A plugin that returns structured site facts owns one declared namespace. Two
-  plugins cannot claim the same namespace.
-- A renderer request selects exactly one adapter.
-- Generated resources are normal output claims and use the existing collision
-  diagnostics.
-- A future rendered-output transformation must claim each exact target it may
-  replace. Overlapping claims are a checked error naming both extensions.
-
-This makes same-stage operations independent of incidental registration order.
-Ordering is relevant only when a deliberately designed later stage consumes
-the checked output of an earlier one.
+No generic conflict or ordering policy is accepted for unimplemented plugin
+kinds. If a future kind is justified, its design must define checked ownership
+and overlap behavior before an API exists. Heine will not resolve conflicts by
+last-write-wins behavior.
 
 ## Markdown renderer requests
 
@@ -154,10 +131,10 @@ begins literal text rather than a request.
 
 The syntactic form determines placement:
 
-| Form | Placement |
-|---|---|
-| Inline role | Inline |
-| Block directive | Block |
+| Form            | Placement |
+|-----------------|-----------|
+| Inline role     | Inline    |
+| Block directive | Block     |
 
 An adapter declares the placements it supports. A PlantUML adapter will
 normally support blocks only. A Typst math adapter may support both.
@@ -177,9 +154,9 @@ a checked error at the header span.
 
 `output` is the common materialization option:
 
-| Value | Meaning |
-|---|---|
-| `"embedded"` | The adapter returns an HTML or SVG replacement directly embedded in the rendered page. |
+| Value        | Meaning                                                                                             |
+|--------------|-----------------------------------------------------------------------------------------------------|
+| `"embedded"` | The adapter returns an HTML or SVG replacement directly embedded in the rendered page.              |
 | `"resource"` | The adapter returns one or more generated resources and a semantic replacement that refers to them. |
 
 An adapter declares supported output values and may declare a documented
@@ -426,9 +403,8 @@ An implementation must include focused and fixture-site coverage for:
   code-span and code-fence suppression;
 - header, option, placement, output-mode, body, nesting, and adapter-capability
   diagnostics with source spans;
-- declared plugin namespaces, single-adapter selection, generated-resource
-  claims, and future transformation-claim conflicts rejecting overlaps rather
-  than applying last-write-wins behavior;
+- single-adapter selection and generated-resource claims rejecting output
+  collisions rather than applying last-write-wins behavior;
 - ordinary code-fence highlighting remaining unchanged;
 - checked named file and source-bundle discovery, path containment, symbolic
   links, overlapping declarations, and non-publication;

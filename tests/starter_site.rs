@@ -162,6 +162,16 @@ fn builds_the_documented_starter_site() {
         german_home.contains("src=\"/my-project/assets/images/search.svg\" alt=\"Suche\""),
         "{german_home}"
     );
+    assert!(
+        !german_home.contains("href=\"/my-project/de/series/index.html\">Reihen</a>"),
+        "{german_home}"
+    );
+    let german_series_index =
+        fs::read_to_string(output.join("de/series/index.html")).expect("German Series index");
+    assert!(
+        german_series_index.contains("In dieser Sprache gibt es derzeit keine Reihen."),
+        "{german_series_index}"
+    );
     let german_search =
         fs::read_to_string(output.join("de/search/index.html")).expect("German search page");
     assert!(
@@ -239,11 +249,25 @@ fn builds_the_documented_starter_site() {
     );
     assert!(
         tags.contains(
-            "<a href=\"../tags/MathML.html\">MathML</a> <span class=\"taxonomy-count\">1</span>"
+            "<a href=\"../tags/MathML.html\">MathML</a> <span class=\"item-count\">1</span>"
         ),
         "{tags}"
     );
     assert!(output.join("de/tags/index.html").is_file());
+    let series_index =
+        fs::read_to_string(output.join("series/index.html")).expect("English Series index");
+    assert!(series_index.contains("<h1>Series</h1>"), "{series_index}");
+    assert!(series_index.contains("<ul>"), "{series_index}");
+    assert!(
+        series_index.contains(
+            "<a href=\"../series/heinrich-heine/index.html\">Heinrich Heine</a> <span class=\"item-count\">3</span>"
+        ),
+        "{series_index}"
+    );
+    assert!(
+        series_index.contains("href=\"/my-project/de/series/index.html\" hreflang=\"de\""),
+        "{series_index}"
+    );
     let rust_tag = fs::read_to_string(output.join("tags/Rust.html")).expect("Rust tag listing");
     assert!(
         rust_tag.contains("MathML, Audio, and Direction"),

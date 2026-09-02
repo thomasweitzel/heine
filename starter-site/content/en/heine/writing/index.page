@@ -1,4 +1,8 @@
 title = "Writing and politics"
 
+[[series]]
+id = "heinrich-heine"
+position = 20
+
 [content]
 main = "main.md"

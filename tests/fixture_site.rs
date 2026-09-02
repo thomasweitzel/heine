@@ -44,6 +44,8 @@ mod pagination;
 mod resources;
 #[path = "fixture_site/search.rs"]
 mod search;
+#[path = "fixture_site/series.rs"]
+mod series;
 #[path = "fixture_site/site_data.rs"]
 mod site_data;
 #[path = "fixture_site/sitemap.rs"]

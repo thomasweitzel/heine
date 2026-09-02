@@ -48,6 +48,10 @@ Taxonomy term listings use the same `pagination` view and
 term route, and later pages use `path/<term>/page/<number>.html`; their compact
 navigation window is `1`.
 
+[Series](series.md) listings also use this view. Their route segment and
+navigation window are fixed by the Series contract rather than an authored
+`[pagination]` table.
+
 ## Routes
 
 Later pagers use the `page` route segment by default. For an authored listing
@@ -83,6 +87,7 @@ receives this value:
 | `pages`                    | render-facing page views in the current slice, each with `url` and pager-relative `relative_url` |
 | `item_count`               | total collection members                                                                         |
 | `per_page`                 | configured slice size                                                                            |
+| `first_item_number`        | one-based number of the first current-slice item, or `0` for an empty listing                  |
 | `page_number`              | current one-based pager number                                                                   |
 | `page_count`               | total pager count; at least one                                                                  |
 | `current`, `first`, `last` | pager link views                                                                                 |

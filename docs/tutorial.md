@@ -645,6 +645,10 @@ To add a site-owned browser search experience over one or more collections,
 generate a [search index](search.md). The starter site includes a working
 accessible example with URL-backed result navigation.
 
+For an ordered reading path whose pages may also have other relationships, use
+a [Series](series.md). Its page-local positions are independent of collection
+order and its generated listings use the same pager view.
+
 ## 11. Add asset licensing and attributions
 
 When copied assets require rights information, add adjacent `.license`

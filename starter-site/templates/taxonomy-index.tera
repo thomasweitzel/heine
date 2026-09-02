@@ -21,7 +21,7 @@
 <h1>{{ t(id=taxonomy.name, count=taxonomy.terms | length) }}</h1>
 <ul>
 {% for tag in taxonomy.terms %}
-  <li><a href="{{ tag.relative_url }}">{{ tag.name }}</a> <span class="taxonomy-count">{{ tag.count }}</span></li>
+  <li><a href="{{ tag.relative_url }}">{{ tag.name }}</a> <span class="item-count">{{ tag.count }}</span></li>
 {% endfor %}
 </ul>
 {% endblock %}
