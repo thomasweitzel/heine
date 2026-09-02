@@ -21,7 +21,16 @@
 
 {% block content %}
 {% set published = format_date(value=page.published, style="long") %}
-<p><time datetime="{{ page.published }}">{{ published }}</time></p>
+<div class="post-meta">
+  <p>{{ t(id="post-published") }} <time datetime="{{ page.published }}">{{ published }}</time></p>
+  {% if page.authors %}
+    <p>{{ t(id="post-byline", authors=page.authors | join(sep=", ")) }}</p>
+  {% endif %}
+  {% if page.updated %}
+    {% set updated = format_date(value=page.updated, style="long") %}
+    <p>{{ t(id="post-updated") }} <time datetime="{{ page.updated }}">{{ updated }}</time></p>
+  {% endif %}
+</div>
 {% if page.taxonomies.tags %}
   <p>{{ t(id="tags", count=page.taxonomies.tags | length) }}:
     {% for tag in page.taxonomies.tags %}
@@ -35,5 +44,6 @@
     <img src="{{ image.url }}"{% if image.width %} width="{{ image.width }}" height="{{ image.height }}"{% endif %} alt="{{ page.extra.featured_image.alt }}">
   </figure>
 {% endif %}
-{{ page.content.main | markdown }}
+{% include "table-of-contents.tera" %}
+{{ markdown(content="main") }}
 {% endblock %}

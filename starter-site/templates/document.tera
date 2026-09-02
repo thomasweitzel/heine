@@ -1,5 +1,6 @@
 {% extends "base.tera" %}
 
 {% block content %}
-{{ page.content.main | markdown }}
+{% include "table-of-contents.tera" %}
+{{ markdown(content="main") }}
 {% endblock %}

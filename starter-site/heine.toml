@@ -26,6 +26,18 @@ order = "published-desc"
 [collections.documentation]
 order = "title-asc"
 
+[series]
+path = "series"
+index_template = "series-index.tera"
+listing_template = "series.tera"
+index_title_key = "series-index-title"
+index_description_key = "series-index-description"
+per_page = 10
+
+[series.definitions.heinrich-heine]
+title_key = "series-heinrich-heine-title"
+description_key = "series-heinrich-heine-description"
+
 [search.site]
 collections = ["posts", "documentation"]
 path = "search/site.json"

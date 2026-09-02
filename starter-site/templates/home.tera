@@ -7,9 +7,11 @@
     {% if page_exists(id=index) %}
       {% set section = page(id=index) %}
       {% if section.extra.home %}
-        <div class="section">
+        <a class="section" href="{{ section.url }}">
           <h2>{{ section.title }}</h2>
-          {{ section.summary | markdown }}
+          {% if section.summary %}
+            <p>{{ section.summary }}</p>
+          {% endif %}
           {% if section.extra.count_message %}
             {% if section.extra.collection %}
               {% set entries = collection(name=section.extra.collection) %}
@@ -18,8 +20,7 @@
               <p>{{ t(id=section.extra.count_message, count=siblings(id=index) | length) }}</p>
             {% endif %}
           {% endif %}
-          <a class="buttonlike" href="{{ section.url }}">{{ t(id="open") }}</a>
-        </div>
+        </a>
       {% endif %}
     {% endif %}
   {% endfor %}

@@ -1,9 +1,7 @@
 template = "section-index.tera"
 title = "Quiz"
 summary = """
-An example of how one might do a quiz.
-
-Only three questions so far.
+A short, three-question example of a quiz.
 """
 content.main = "content/quiz-list.md"
 

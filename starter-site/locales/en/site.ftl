@@ -5,18 +5,33 @@ nav-tags = Tags
 nav-search = Search
 nav-quiz = Quiz
 nav-heine = Heinrich Heine
+nav-series = Series
+
+# Labels and metadata for generated Series indexes and member navigation.
+series-index-title = Series
+series-index-description = Ordered reading paths through this example site.
+series-index-empty = There are currently no Series in this language.
+series-heinrich-heine-title = Heinrich Heine
+series-heinrich-heine-description = Three short chapters on the poet and prose writer.
+series-navigation = Series navigation
+series-label = Series
+series-position = Part { $number } of { $total }
+
+# Labels for post publication facts.
+post-published = Published
+post-byline = By { $authors }
+post-updated = Updated
+
+# Labels for page-local navigation controls.
 toc-label = Table of contents
+pagination-label = Pagination
+page-navigation = Page navigation
+quiz-menu = Quiz Menu
 
 # Accessible labels for switching to a page's available language versions.
 language = Language
 language-en = English
 language-de = German
-
-# Labels for listing and quiz navigation controls.
-pagination-label = Pagination
-page-navigation = Page navigation
-open = Open
-quiz-menu = Quiz Menu
 
 # Taxonomy labels and plural-aware summaries for collection listings.
 tags = { $count ->
@@ -59,4 +74,5 @@ footer-imprint = Imprint
 attributions = Attributions
 attributions-introduction = This page lists copied assets with declared licensing information.
 license-texts = License texts
+# Keep the <a> element while translating its visible text.
 footer-description = A compact example site built with <a href="https://heine.rs">Heine</a>.

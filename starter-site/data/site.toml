@@ -23,6 +23,10 @@ message = "nav-heine"
 page = "heine/index"
 
 [[navigation]]
+message = "nav-series"
+series = true
+
+[[navigation]]
 message = "nav-search"
 page = "search/index"
 icon = "assets/images/search.svg"

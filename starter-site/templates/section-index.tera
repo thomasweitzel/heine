@@ -10,15 +10,18 @@
 {% block content %}
 
 {% if page.content.main %}
-  {{ page.content.main | markdown }}
+  {% include "table-of-contents.tera" %}
+  {{ markdown(content="main") }}
 {% endif %}
 
 {% if pagination %}
   {% if page.extra.count_message %}
     <p>{{ t(id=page.extra.count_message, count=pagination.item_count) }}</p>
   {% endif %}
-  {% set posts_feed = feed(name="posts") %}
-  <p><a href="{{ posts_feed.url }}">{{ t(id="feed-subscribe") }}</a></p>
+  {% if page.extra.feed is defined %}
+    {% set subscription = feed(name=page.extra.feed) %}
+    <p><a href="{{ subscription.url }}">{{ t(id="feed-subscribe") }}</a></p>
+  {% endif %}
   <nav aria-label="{{ page.title }}">
     <ol class="page-list">
     {% for post in pagination.pages %}
