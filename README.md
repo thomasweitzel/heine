@@ -1,27 +1,32 @@
 # Heine
 
-Heine is a small, synchronous static-site generator written in Rust.
+Heine is a small, synchronous Rust static-site generator. It compiles a
+configured content tree and [Tera2](https://github.com/Keats/tera) templates
+into a checked, managed output tree.
 
-Hei·ne, [ˈhaɪ̯nə], _Heineken_ without _ken_
+Pronounced Hei·ne, [ˈhaɪ̯nə], “Heineken” without “ken.” Named after Heinrich
+Heine, the German poet and prose writer known for his wit and irony. Heine is
+not affiliated with Heineken.
 
-Named after Heinrich Heine, the German poet and prose writer known for his wit
-and irony.
-
-Heine turns a configured content tree and [Tera2](https://github.com/Keats/tera)
-templates into a generated output tree. It emphasizes deterministic builds and
-build-time checks: a missing internal page or copied file fails where it is
-authored instead of becoming a browser 404.
+Heine owns the relationships it can check from a site's resolved model:
+rendered pages, copied assets, locale-aware content, generated routes, and
+generated resources. A missing internal page or copied asset therefore fails
+where it is authored instead of becoming a browser 404.
 
 ## Status
 
-Heine is an early-stage static-site generator. It focuses on authored content
-relationships and checking them during builds rather than providing an
-all-in-one web-development workflow. Heine is not published to crates.io yet:
-install a current stable Rust toolchain, clone this repository, and run it with
-`cargo run`.
+Heine is pre-release and is not published to crates.io yet. Install a current
+stable Rust toolchain, clone this repository, and run it with `cargo run`.
 
-Atom feeds and collection-derived search indexes are available. RSS and
-plugins are not implemented yet.
+It currently provides Markdown rendering, Tera2 templates, locale-aware
+content and Fluent localization, checked page and asset links, collections,
+pagination, taxonomies, Atom feeds, sitemaps, search-document indexes, and a
+development server with live reload and media range requests.
+
+Heine does not bundle a frontend toolchain or deployment integration. Use
+ordinary tools for general CSS and JavaScript processing, general media
+transformation, deployment, audits, and external services. Kits, Series,
+plugins, and RSS are not implemented yet.
 
 ## First site
 
@@ -133,6 +138,10 @@ Heine copies final assets; it does not compile Sass, process images, bundle
 JavaScript, or generate content-hashed filenames. Run such tools separately
 and have them write their final files below `content/assets/` (or a locale's
 asset tree). Heine then copies those files and `asset()` can link to them.
+
+Run an asset transformation before Heine when a template references the asset
+through `asset()`. Modifying managed output afterward can invalidate a
+Heine-generated versioned URL or integrity value.
 
 `heine serve` watches copied assets but does not start or supervise another
 tool's watcher. Filename-based [versioned assets](docs/glossary.md#versioned-asset)
