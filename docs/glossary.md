@@ -283,6 +283,13 @@ listing page's template model plus its pagination view.
 A configured classification built from one collection. It turns literal terms
 assigned by member pages into generated taxonomy-index and term-listing pages.
 
+### Series
+
+A configured, locale-local ordered reading sequence. Pages declare a positive
+position for each Series they join. A Series produces an index and listing
+pages, but does not select a collection or alter taxonomy, feed, or search
+membership. See the [Series guide](series.md).
+
 ### Term
 
 A literal taxonomy value such as `Rust` or `Static sites`. A term is both its

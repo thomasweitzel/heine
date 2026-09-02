@@ -2,21 +2,22 @@
 
 ## Status
 
-This is the accepted implementation design for a future Heine feature. Series
-are not implemented yet, so this document is not part of the current
-user-facing contract.
+This is the accepted design for Series. The implemented user-facing contract
+is documented in the [Series guide](../series.md) and
+[reference](../reference.md).
 
 ## Decision
 
-Heine will provide **Series** as checked, locale-local ordered reading
+Heine provides **Series** as checked, locale-local ordered reading
 sequences. A rendered page may belong to zero or more named Series. Each
 membership declares its own positive position, so the same page can occupy a
 different place in every Series it joins.
 
 Heine resolves every membership into template-facing facts, including the
-Series title, its position and size, and the immediately preceding and
-following members of that particular Series. A template renders zero, one, or
-several clearly labelled navigation blocks. Heine does not invent a primary
+Series title, its authored position, resolved one-based number and size, and
+the immediately preceding and following members of that particular Series. A
+template renders zero, one, or several clearly labelled navigation blocks.
+Heine does not invent a primary
 Series, infer visitor state from a referrer, or make one page URL vary by the
 path used to reach it.
 
@@ -89,10 +90,12 @@ authored-page `[pagination]` settings do not apply. A template may use
 
 `index_title_key` is a required Fluent message identifier. Its optional
 description counterpart supplies descriptive text for the generated index.
-Every definition has a simple identifier that is also a portable output path
-component. `title_key` is required; `description_key` is optional. These keys
+Every definition ID is a literal portable URL component without percent
+escapes. `title_key` is required; `description_key` is optional. These keys
 are references to localized resources, not interface text stored in generator
-configuration.
+configuration. Index keys are resolved in every locale because every locale
+receives an index. Definition keys are resolved only for locales where that
+Series has members and therefore receives a listing.
 
 A definition may be unused. This permits a site to prepare a planned Series
 without creating placeholder content. Unknown definition fields, malformed
@@ -211,6 +214,7 @@ id
 title
 description
 position
+number
 total
 url
 relative_url
@@ -238,7 +242,7 @@ A normal page template can render every navigation path directly:
 ```tera
 {% for membership in page.series %}
   <nav aria-label="{{ membership.title }}">
-    <p>{{ membership.title }}, {{ membership.position }} of {{ membership.total }}</p>
+    <p>{{ membership.title }}, {{ membership.number }} of {{ membership.total }}</p>
     {% if membership.previous %}
       <a href="{{ membership.previous.url }}">‹ {{ membership.previous.title }}</a>
     {% endif %}
@@ -360,7 +364,7 @@ necessary ordering fact.
 
 ## Starter-site example
 
-The starter site will use the existing English Heinrich Heine documentation
+The starter site uses the existing English Heinrich Heine documentation
 pages, `life`, `writing`, and `afterlives`, as members of a
 `heinrich-heine` Series. Its section index remains an ordinary authored
 overview. The shared page template iterates over `page.series`, even though
@@ -403,8 +407,8 @@ Implementation must cover at least:
 - unknown IDs, duplicate page memberships, duplicate positions, zero and
   negative positions, non-rendered members, and members without titles, with
   useful source spans and related locations;
-- checked definition paths, template names, Fluent keys, `per_page`, and all
-  generated output collisions;
+- checked definition paths, template names, index keys and definition keys for
+  emitted listings, `per_page`, and all generated output collisions;
 - generated locale-local index, listing, and pager paths, including their
   fixed `page` segment, fixed navigation window, literal output-file URLs, and
   sitemap inventory;

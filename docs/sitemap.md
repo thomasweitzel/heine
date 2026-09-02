@@ -185,16 +185,16 @@ Requiring both fields would merely duplicate that same fact.
 
 Heine derives sitemap entries from its resolved rendered-output inventory, not
 by scanning files below `public/`. This includes every rendered authored page
-and every generated pagination, taxonomy-index, and taxonomy-term page across
-all configured locales.
+and every generated pagination, taxonomy-index, taxonomy-term, Series-index,
+and Series-listing page across all configured locales.
 
 It excludes copied assets, declared content files, deployment files, published
 license texts, non-rendered pages, `sitemap.xml` itself, and the reserved
 `__heine/` development-server namespace. Each route appears once, in
 deterministic URL-path order.
 
-Generated pagination and taxonomy pages have no authored chronology of their
-own. Their initial sitemap entries therefore omit `<lastmod>`.
+Generated pagination, taxonomy, and Series pages have no authored chronology
+of their own. Their initial sitemap entries therefore omit `<lastmod>`.
 
 For a multilingual site, the default locale's routes remain unprefixed and
 other locales retain their normal locale prefixes. The initial sitemap lists

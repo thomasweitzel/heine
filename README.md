@@ -20,13 +20,13 @@ stable Rust toolchain, clone this repository, and run it with `cargo run`.
 
 It currently provides Markdown rendering, Tera2 templates, locale-aware
 content and Fluent localization, checked page and asset links, collections,
-pagination, taxonomies, Atom feeds, sitemaps, search-document indexes, and a
+pagination, taxonomies, Series, Atom feeds, sitemaps, search-document indexes, and a
 development server with live reload and media range requests.
 
 Heine does not bundle a frontend toolchain or deployment integration. Use
 ordinary tools for general CSS and JavaScript processing, general media
-transformation, deployment, audits, and external services. Kits, Series,
-plugins, and RSS are not implemented yet.
+transformation, deployment, audits, and external services. Kits, plugins, and
+RSS are not implemented yet.
 
 ## First site
 
@@ -110,7 +110,7 @@ The [documentation map](docs/README.md) explains the available reading paths.
   [taxonomies](docs/taxonomies.md), [deployment files](docs/deployment-files.md),
   [asset licensing](docs/asset-licensing.md), [sitemaps](docs/sitemap.md),
   [Atom feeds](docs/atom-feeds.md), [table of contents](docs/table-of-contents.md),
-  [search indexes](docs/search.md),
+  [search indexes](docs/search.md), [Series](docs/series.md),
   or the [development server](docs/development-server.md).
 - Use the [reference](docs/reference.md) for exact fields, defaults, template
   functions, and constraints.
