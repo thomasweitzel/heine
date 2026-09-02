@@ -8,7 +8,10 @@ use std::{
 use walkdir::DirEntry;
 
 use crate::{
-    config::{CollectionsConfig, EditorialTimeZone, I18nConfig, MarkdownConfig, TaxonomiesConfig},
+    config::{
+        CollectionsConfig, EditorialTimeZone, I18nConfig, MarkdownConfig, SeriesConfig,
+        TaxonomiesConfig,
+    },
     locale::Locale,
 };
 
@@ -30,15 +33,31 @@ pub(super) struct LocalizedContent {
     pub(super) shared_entries: Vec<DirEntry>,
 }
 
-pub(super) fn load(
-    content_root: &Path,
-    i18n: &I18nConfig,
-    collections: &CollectionsConfig,
-    taxonomies: &TaxonomiesConfig,
-    time_zone: Option<&EditorialTimeZone>,
-    sitemap_enabled: bool,
-    markdown: &MarkdownConfig,
-) -> Result<LocalizedContent, Error> {
+/// Inputs for locale-owned source discovery. Grouping the configuration that
+/// controls page parsing keeps this filesystem stage from accumulating a long
+/// positional argument list as checked relationships grow.
+pub(super) struct Inputs<'a> {
+    pub(super) content_root: &'a Path,
+    pub(super) i18n: &'a I18nConfig,
+    pub(super) collections: &'a CollectionsConfig,
+    pub(super) series: Option<&'a SeriesConfig>,
+    pub(super) taxonomies: &'a TaxonomiesConfig,
+    pub(super) time_zone: Option<&'a EditorialTimeZone>,
+    pub(super) sitemap_enabled: bool,
+    pub(super) markdown: &'a MarkdownConfig,
+}
+
+pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
+    let Inputs {
+        content_root,
+        i18n,
+        collections,
+        series,
+        taxonomies,
+        time_zone,
+        sitemap_enabled,
+        markdown,
+    } = inputs;
     validate_root(content_root, i18n)?;
     let shared_root = content_root.join("assets");
     let shared_entries = if directory_exists(&shared_root)? {
@@ -91,6 +110,7 @@ pub(super) fn load(
                     subdirectories: &subdirectories,
                     descriptors: &descriptors,
                     collections,
+                    series,
                     taxonomies,
                     time_zone,
                     sitemap_enabled,

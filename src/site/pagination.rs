@@ -25,7 +25,11 @@ pub(crate) struct Catalog {
 }
 
 impl Catalog {
-    pub(super) fn from_tasks(tasks: &[Task], taxonomy_tasks: &[super::taxonomy::Task]) -> Self {
+    pub(super) fn from_tasks(
+        tasks: &[Task],
+        taxonomy_tasks: &[super::taxonomy::Task],
+        series_tasks: &[super::series::Task],
+    ) -> Self {
         Self {
             pagers: Arc::new(
                 tasks
@@ -39,6 +43,14 @@ impl Catalog {
                         })
                     })
                     .chain(taxonomy_tasks.iter().filter_map(|task| {
+                        task.pagination.as_ref().map(|pager| {
+                            (
+                                (task.locale.clone(), task.output_path.clone()),
+                                pager.clone(),
+                            )
+                        })
+                    }))
+                    .chain(series_tasks.iter().filter_map(|task| {
                         task.pagination.as_ref().map(|pager| {
                             (
                                 (task.locale.clone(), task.output_path.clone()),
@@ -176,6 +188,7 @@ pub(crate) struct View {
     pages: Vec<ListingPage>,
     item_count: usize,
     per_page: usize,
+    first_item_number: usize,
     page_number: usize,
     page_count: usize,
     current: Link,
@@ -250,6 +263,11 @@ impl Pager {
             pages,
             item_count: self.item_count,
             per_page: self.per_page,
+            first_item_number: if self.item_count == 0 {
+                0
+            } else {
+                (self.page_number - 1) * self.per_page + 1
+            },
             page_number: self.page_number,
             page_count: self.page_count,
             current: self.link(self.page_number, base_path, root),

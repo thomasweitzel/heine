@@ -8,8 +8,8 @@ use crate::{
     localization::Localization,
     site::{
         FeedCatalog, FeedView, PageCatalog, PageId, PageLinks, PageTermView, PageView, Pager,
-        PaginationCatalog, SearchCatalog, SearchView, SiblingIndex, TaxonomyCatalog,
-        TaxonomyIndexView, collection::CollectionView,
+        PaginationCatalog, SearchCatalog, SearchView, SeriesCatalog, SeriesView, SiblingIndex,
+        TaxonomyCatalog, TaxonomyIndexView, collection::CollectionView,
     },
 };
 
@@ -29,6 +29,7 @@ pub(super) struct TemplateRuntime {
     pagers: PaginationCatalog,
     feeds: Arc<FeedCatalog>,
     search: Arc<SearchCatalog>,
+    series: Arc<SeriesCatalog>,
     localization: Arc<Localization>,
     highlight_css: Option<String>,
 }
@@ -45,6 +46,7 @@ impl From<TemplateResources> for TemplateRuntime {
             pagers,
             feeds,
             search,
+            series,
         } = resources.relationships;
         Self {
             assets: resources.asset_links,
@@ -57,6 +59,7 @@ impl From<TemplateResources> for TemplateRuntime {
             pagers,
             feeds,
             search,
+            series,
             localization: resources.localization,
             highlight_css: resources.highlight_css,
         }
@@ -170,6 +173,24 @@ impl TemplateRuntime {
 
     pub(super) fn search_names(&self, locale: &Locale) -> Vec<String> {
         self.search.names(locale)
+    }
+
+    pub(super) fn series(&self) -> &SeriesCatalog {
+        &self.series
+    }
+
+    pub(super) fn series_view(
+        &self,
+        locale: &Locale,
+        name: &crate::config::SeriesName,
+        root: &str,
+    ) -> Option<SeriesView> {
+        self.series
+            .view(locale, name, self.page_links.base_path(), root)
+    }
+
+    pub(super) fn series_index(&self, locale: &Locale, root: &str) -> Option<SeriesView> {
+        self.series.index(locale, self.page_links.base_path(), root)
     }
 
     pub(super) fn localization(&self) -> &Localization {

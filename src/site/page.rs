@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use crate::{
     author::AuthorName,
-    config::{CollectionName, TaxonomyName},
+    config::{CollectionName, SeriesName, TaxonomyName},
     content::MarkdownSource,
     markdown::TocPlan,
     output::{OutputPath, UrlPath},
@@ -141,10 +141,19 @@ pub(super) struct RawPage {
     #[serde(default)]
     pub(super) taxonomies: BTreeMap<toml::Spanned<String>, Vec<toml::Spanned<String>>>,
     pub(super) collections: Option<Vec<toml::Spanned<String>>>,
+    #[serde(default)]
+    pub(super) series: Vec<RawSeriesMembership>,
     pub(super) weight: Option<toml::Spanned<toml::Value>>,
     pub(super) pagination: Option<RawPagination>,
     #[serde(default = "default_suffix")]
     pub(super) suffix: toml::Spanned<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawSeriesMembership {
+    pub(super) id: toml::Spanned<String>,
+    pub(super) position: toml::Spanned<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -344,6 +353,7 @@ pub(super) struct Page {
     pub(super) directory: DirectoryView,
     pub(super) taxonomies: Vec<TaxonomyMembership>,
     pub(super) collections: Vec<CollectionMembership>,
+    pub(super) series: Vec<SeriesMembership>,
     pub(super) pagination: Option<Pagination>,
     pub(super) weight: Option<i64>,
     pub(super) weight_span: Option<SourceSpan>,
@@ -396,6 +406,16 @@ pub(super) struct CollectionMembership {
     pub(super) name: CollectionName,
     pub(super) source: Arc<NamedSource<String>>,
     pub(super) span: SourceSpan,
+}
+
+/// One page-local position in a checked Series relationship.
+#[derive(Debug, Clone)]
+pub(super) struct SeriesMembership {
+    pub(super) name: SeriesName,
+    pub(super) position: usize,
+    pub(super) source: Arc<NamedSource<String>>,
+    pub(super) span: SourceSpan,
+    pub(super) position_span: SourceSpan,
 }
 
 /// One literal term assignment, retaining its source range for taxonomy
@@ -483,6 +503,10 @@ pub(crate) struct PageView {
 }
 
 impl PageView {
+    pub(crate) fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
     pub(crate) fn directory(&self) -> &str {
         &self.dir
     }

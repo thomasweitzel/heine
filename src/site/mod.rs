@@ -14,6 +14,7 @@ mod metadata;
 mod page;
 mod pagination;
 mod search;
+mod series;
 mod sitemap;
 mod taxonomy;
 
@@ -30,8 +31,8 @@ use thiserror::Error;
 use crate::{
     asset::{AssetCatalog, AssetSources, SharedAssets},
     config::{
-        BasePath, CollectionsConfig, FeedsConfig, I18nConfig, SearchConfig, SiteConfig,
-        SiteSettings, SitemapConfig, TaxonomiesConfig,
+        BasePath, CollectionsConfig, FeedsConfig, I18nConfig, SearchConfig, SeriesConfig,
+        SiteConfig, SiteSettings, SitemapConfig, TaxonomiesConfig,
     },
     content,
     data::SiteData,
@@ -55,6 +56,9 @@ pub(crate) use page::{PageId, PageView, Pager};
 pub(crate) use pagination::{Catalog as PaginationCatalog, View as PaginationView};
 pub(crate) use search::Catalog as SearchCatalog;
 pub(crate) use search::View as SearchView;
+pub(crate) use series::{
+    Catalog as SeriesCatalog, MembershipView as SeriesMembershipView, View as SeriesView,
+};
 pub(crate) use taxonomy::View as TaxonomyView;
 pub(crate) use taxonomy::{
     Catalog as TaxonomyCatalog, IndexView as TaxonomyIndexView, PageTermView,
@@ -260,6 +264,7 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) i18n: I18nConfig,
     pub(crate) collections: CollectionsConfig,
     pub(crate) taxonomies: TaxonomiesConfig,
+    pub(crate) series: Option<&'a SeriesConfig>,
     pub(crate) feeds: FeedsConfig,
     pub(crate) search: SearchConfig,
     pub(crate) site: &'a SiteSettings,
@@ -305,6 +310,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Taxonomy(#[from] Box<taxonomy::Error>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Series(#[from] series::Error),
     #[error("could not inspect {path}")]
     Io {
         path: PathBuf,
@@ -340,6 +348,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateCollectionMembership(#[from] Box<loader::DuplicateCollectionMembership>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateSeriesMembership(#[from] Box<loader::DuplicateSeriesMembership>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateTaxonomyTerm(#[from] Box<loader::DuplicateTaxonomyTerm>),
@@ -398,6 +409,7 @@ pub(crate) struct Site {
     tasks: Vec<Task>,
     taxonomy_tasks: Vec<taxonomy::Task>,
     taxonomies: std::sync::Arc<taxonomy::Catalog>,
+    series: std::sync::Arc<series::Catalog>,
     collections: std::sync::Arc<BTreeMap<Locale, BTreeMap<String, collection::CollectionView>>>,
     pagers: pagination::Catalog,
     assets: std::sync::Arc<AssetCatalog>,
@@ -421,6 +433,7 @@ impl Site {
             i18n,
             collections: collection_config,
             taxonomies: taxonomy_config,
+            series: series_config,
             feeds: feed_config,
             search: search_config,
             site: site_settings,
@@ -454,15 +467,16 @@ impl Site {
             i18n.locales(),
             i18n.default_locale().clone(),
         )?);
-        let locales = locales::load(
+        let locales = locales::load(locales::Inputs {
             content_root,
-            &i18n,
-            &collection_config,
-            &taxonomy_config,
-            site_settings.time_zone(),
-            sitemap_config.is_some(),
-            markdown_renderer.config(),
-        )?;
+            i18n: &i18n,
+            collections: &collection_config,
+            series: series_config,
+            taxonomies: &taxonomy_config,
+            time_zone: site_settings.time_zone(),
+            sitemap_enabled: sitemap_config.is_some(),
+            markdown: markdown_renderer.config(),
+        })?;
         let mut pages = locales.pages;
         let siblings = locales.siblings;
         let mut tasks = locales.tasks;
@@ -503,6 +517,8 @@ impl Site {
         let taxonomies =
             taxonomy::resolve(&pages, &collections, &taxonomy_config, prefixes.clone())
                 .map_err(|error| Error::Taxonomy(Box::new(error)))?;
+        let mut series = series::resolve(&pages, series_config, &prefixes, &localization)
+            .map_err(Error::Series)?;
         let asset_sources = sources
             .iter()
             .map(|(locale, root)| {
@@ -558,6 +574,8 @@ impl Site {
             .collect();
         let taxonomy_tasks = taxonomies.tasks(&latest_inputs, &shared_latest);
         let taxonomies = std::sync::Arc::new(taxonomies);
+        series.update_latest_inputs(&latest_inputs, &shared_latest);
+        let series = std::sync::Arc::new(series);
         let feeds = feed::Catalog::resolve(feed::Inputs {
             pages: &pages,
             collections: &collections,
@@ -578,7 +596,7 @@ impl Site {
             taxonomies: &taxonomy_config,
         })
         .map_err(|error| Error::Search(Box::new(error)))?;
-        let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks);
+        let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks, series.tasks());
         let sitemap = match (sitemap_config, site_settings.origin()) {
             (Some(config), Some(origin)) => Some(
                 sitemap::Sitemap::new(
@@ -587,6 +605,7 @@ impl Site {
                     site_settings.base_path(),
                     &tasks,
                     &taxonomy_tasks,
+                    series.tasks(),
                 )
                 .map_err(Error::Sitemap)?,
             ),
@@ -619,6 +638,7 @@ impl Site {
                 task.output_span,
             )
         }));
+        output_claims.extend(self_series_claims(&series));
         output_claims.extend(
             assets
                 .paths()
@@ -688,6 +708,7 @@ impl Site {
             tasks,
             taxonomy_tasks,
             taxonomies,
+            series,
             collections,
             pagers,
             assets,
@@ -731,6 +752,7 @@ impl Site {
                     pagers: self.pagers.clone(),
                     feeds: self.feeds.clone(),
                     search: self.search.clone(),
+                    series: self.series.clone(),
                 },
             ),
             self.localization.clone(),
@@ -756,6 +778,13 @@ impl Site {
                 taxonomies: self.taxonomies.page_terms(
                     &task.locale,
                     &task.page_id,
+                    &base_path,
+                    &root,
+                ),
+                series: self.series.page_memberships(
+                    &task.locale,
+                    &task.page_id,
+                    &self.pages,
                     &base_path,
                     &root,
                 ),
@@ -792,6 +821,7 @@ impl Site {
                     },
                     page: Some(render_page),
                     taxonomy: None,
+                    series: None,
                     pagination,
                     data: self.data.value(),
                     locale_data: self.locale_data[&task.locale].value(),
@@ -840,6 +870,7 @@ impl Site {
                     },
                     page: None,
                     taxonomy: Some(task.taxonomy_view(&base_path, &root)),
+                    series: None,
                     pagination,
                     data: self.data.value(),
                     locale_data: self.locale_data[&task.locale].value(),
@@ -873,6 +904,68 @@ impl Site {
                 .output_plan
                 .planned_path(&task.output_path)
                 .expect("taxonomy task output was validated in the output plan");
+            rendered.push(GeneratedFile::text(path, contents));
+        }
+        for task in self.series.tasks() {
+            if !needs_render_generated(
+                task.latest_input,
+                &task.output_path,
+                existing_output,
+                options.mode(),
+            )? {
+                continue;
+            }
+            let root = root_for(task.output_path.as_path());
+            let series = match &task.series_id {
+                Some(id) => self.series.view(&task.locale, id, &base_path, &root),
+                None => self.series.index(&task.locale, &base_path, &root),
+            }
+            .expect("resolved Series task keeps its corresponding view");
+            let contents = engine.render(
+                &task.template,
+                RenderContext {
+                    locale: LocaleView {
+                        code: task.locale.to_string(),
+                        direction: self.i18n.direction(&task.locale).as_str().into(),
+                    },
+                    page: None,
+                    taxonomy: None,
+                    series: Some(series),
+                    pagination: task
+                        .pagination
+                        .as_ref()
+                        .map(|pager| pager.view(&self.pages, &task.locale, &base_path, &root)),
+                    data: self.data.value(),
+                    locale_data: self.locale_data[&task.locale].value(),
+                    root: &root,
+                    runtime: RuntimeContext {
+                        locale: task.locale.to_string(),
+                        page_dir: task
+                            .output_path
+                            .as_path()
+                            .parent()
+                            .and_then(|path| path.to_str())
+                            .unwrap_or(""),
+                        page_id: None,
+                        output_path: task
+                            .output_path
+                            .as_path()
+                            .to_str()
+                            .expect("validated output paths are UTF-8"),
+                        root: &root,
+                        pagination_page: task.pagination.as_ref().map(|pager| pager.page_number),
+                    },
+                },
+                &format!(
+                    "Series ({}) to {}",
+                    task.locale,
+                    task.output_path.as_path().display()
+                ),
+            )?;
+            let path = self
+                .output_plan
+                .planned_path(&task.output_path)
+                .expect("Series task output was validated in the output plan");
             rendered.push(GeneratedFile::text(path, contents));
         }
         if let (Some(stylesheet), Some(path)) = (
@@ -918,8 +1011,33 @@ impl Site {
                 reference.span,
             )?;
         }
+        for reference in self.series.template_references() {
+            validate_template_reference(
+                engine,
+                &reference.template,
+                reference.source.as_ref().clone(),
+                reference.span,
+            )?;
+        }
         Ok(())
     }
+}
+
+fn self_series_claims(series: &series::Catalog) -> Vec<OutputClaim> {
+    series
+        .tasks()
+        .iter()
+        .map(|task| {
+            OutputClaim::authored(
+                task.output_path.clone(),
+                task.series_id
+                    .as_ref()
+                    .map_or_else(|| "Series index".into(), |id| format!("Series {id}")),
+                task.output_source.as_ref().clone(),
+                task.output_span,
+            )
+        })
+        .collect()
 }
 
 fn validate_template_reference(

@@ -21,22 +21,22 @@ fn paginates_a_collection_with_generated_routes_and_navigation() {
     );
     fixture.write(
         "templates/listing.tera",
-        "{{ page.id }}|{{ pagination.page_number }}/{{ pagination.page_count }}|{{ pagination.item_count }}:{% for post in pagination.pages %}{{ post.title }};{% endfor %}|{% for item in pagination.navigation %}{{ item.kind }}{% if item.kind == 'link' %}:{{ item.page_number }}{% endif %};{% endfor %}|{% for link in pagination_links() %}{{ link.page_number }}={{ link.current }};{% endfor %}",
+        "{{ page.id }}|{{ pagination.page_number }}/{{ pagination.page_count }}|{{ pagination.item_count }}|{{ pagination.first_item_number }}:{% for post in pagination.pages %}{{ post.title }};{% endfor %}|{% for item in pagination.navigation %}{{ item.kind }}{% if item.kind == 'link' %}:{{ item.page_number }}{% endif %};{% endfor %}|{% for link in pagination_links() %}{{ link.page_number }}={{ link.current }};{% endfor %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/blog/index.html")).expect("pager one"),
-        "blog/index|1/3|5:Post 1;Post 2;|link:1;link:2;link:3;|1=true;2=false;3=false;"
+        "blog/index|1/3|5|1:Post 1;Post 2;|link:1;link:2;link:3;|1=true;2=false;3=false;"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/blog/page/2.html")).expect("pager two"),
-        "blog/index|2/3|5:Post 3;Post 4;|link:1;link:2;link:3;|1=false;2=true;3=false;"
+        "blog/index|2/3|5|3:Post 3;Post 4;|link:1;link:2;link:3;|1=false;2=true;3=false;"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/blog/page/3.html")).expect("pager three"),
-        "blog/index|3/3|5:Post 5;|link:1;link:2;link:3;|1=false;2=false;3=true;"
+        "blog/index|3/3|5|5:Post 5;|link:1;link:2;link:3;|1=false;2=false;3=true;"
     );
     assert!(!fixture.path().join("public/blog/page/1.html").exists());
 }
@@ -100,12 +100,12 @@ fn custom_segments_and_empty_collections_have_one_unambiguous_route() {
     );
     empty.write(
         "templates/listing.tera",
-        "{{ pagination.page_count }}|{{ pagination.item_count }}",
+        "{{ pagination.page_count }}|{{ pagination.item_count }}|{{ pagination.first_item_number }}",
     );
     build_at(empty.path(), BuildMode::Full).expect("empty listing builds");
     assert_eq!(
         fs::read_to_string(empty.path().join("public/index.html")).expect("empty listing"),
-        "1|0"
+        "1|0|0"
     );
 }
 

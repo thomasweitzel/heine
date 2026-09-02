@@ -7,7 +7,7 @@ use crate::{
     output::{GeneratedFile, OutputClaim, OutputPath, OutputPlan},
 };
 
-use super::{page::Task, taxonomy};
+use super::{page::Task, series, taxonomy};
 
 const ENTRY_LIMIT: usize = 45_000;
 const BYTE_LIMIT: usize = 45_000_000;
@@ -39,6 +39,7 @@ impl Sitemap {
         base_path: &BasePath,
         tasks: &[Task],
         taxonomy_tasks: &[taxonomy::Task],
+        series_tasks: &[series::Task],
     ) -> Result<(Self, Vec<OutputClaim>), Error> {
         let mut entries = tasks
             .iter()
@@ -51,6 +52,12 @@ impl Sitemap {
             })
             .collect::<Result<Vec<_>, _>>()?;
         for task in taxonomy_tasks {
+            entries.push(Entry {
+                url: canonical(origin, base_path, &task.output_path)?,
+                lastmod: None,
+            });
+        }
+        for task in series_tasks {
             entries.push(Entry {
                 url: canonical(origin, base_path, &task.output_path)?,
                 lastmod: None,

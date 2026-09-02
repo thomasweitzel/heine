@@ -175,6 +175,84 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         },
     );
 
+    let series_runtime = runtime.clone();
+    tera.register_function(
+        "series",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("series", &kwargs, &["id", "locale"])?;
+            if !series_runtime.series().configured() {
+                return Err(tera::Error::message(
+                    "series() requires a [series] table in heine.toml",
+                ));
+            }
+            let locale = series_runtime
+                .pages()
+                .with_locale(series_runtime.locale(state)?)
+                .resolve_locale(kwargs.get::<&str>("locale")?)
+                .map_err(|error| tera::Error::message(error.to_string()))?;
+            let root = series_runtime.root(state)?;
+            match kwargs.get::<&str>("id")? {
+                None => series_runtime.series_index(&locale, &root),
+                Some(id) => {
+                    let name = crate::config::SeriesName::parse(id.to_owned())
+                        .map_err(tera::Error::message)?;
+                    if !series_runtime.series().definition_exists(&name) {
+                        return Err(tera::Error::message(format!(
+                            "series {id:?} is not configured"
+                        )));
+                    }
+                    Some(series_runtime
+                        .series_view(&locale, &name, &root)
+                        .ok_or_else(|| {
+                            tera::Error::message(format!(
+                                "series {id:?} has no members for locale {locale}; use series_has_members() before an optional lookup"
+                            ))
+                        })?)
+                }
+            }
+            .map(|value| {
+                tera::Value::try_from_serializable(&value)
+                    .map_err(|_| tera::Error::message("Heine Series view is not serializable"))
+            })
+            .transpose()?
+            .ok_or_else(|| {
+                let available = series_runtime.series().names(&locale);
+                let detail = available_names("no Series have local members", "Series", &available);
+                tera::Error::message(format!("requested Series was not found; {detail}"))
+            })
+        },
+    );
+
+    let series_has_members_runtime = runtime.clone();
+    tera.register_function(
+        "series_has_members",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("series_has_members", &kwargs, &["id", "locale"])?;
+            if !series_has_members_runtime.series().configured() {
+                return Err(tera::Error::message(
+                    "series_has_members() requires a [series] table in heine.toml",
+                ));
+            }
+            let id = kwargs.must_get::<&str>("id")?;
+            let name =
+                crate::config::SeriesName::parse(id.to_owned()).map_err(tera::Error::message)?;
+            let locale = series_has_members_runtime
+                .pages()
+                .with_locale(series_has_members_runtime.locale(state)?)
+                .resolve_locale(kwargs.get::<&str>("locale")?)
+                .map_err(|error| tera::Error::message(error.to_string()))?;
+            if !series_has_members_runtime.series().definition_exists(&name) {
+                return Err(tera::Error::message(format!(
+                    "series {id:?} is not configured"
+                )));
+            }
+            Ok(series_has_members_runtime
+                .series()
+                .has_members(&locale, &name)
+                .into())
+        },
+    );
+
     let taxonomy_runtime = runtime.clone();
     tera.register_function(
         "taxonomy",

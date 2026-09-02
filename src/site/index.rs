@@ -123,13 +123,29 @@ impl OrderedPages {
     }
 
     pub(crate) fn neighbors(&self, page: &PageId) -> Option<Neighbors> {
-        let position = *self.positions.get(page)?;
+        let position = self.position(page)?;
         Some(Neighbors {
             before: position
                 .checked_sub(1)
                 .map(|index| self.pages[index].clone()),
             after: self.pages.get(position + 1).cloned(),
         })
+    }
+
+    /// Lets relationship consumers reuse the retained order for compact
+    /// ordinal views instead of rescanning every member.
+    pub(crate) fn position(&self, page: &PageId) -> Option<usize> {
+        self.positions.get(page).copied()
+    }
+
+    /// Lets generated listings reuse the relationship's canonical order
+    /// without duplicating its member IDs.
+    pub(crate) fn page_ids(&self) -> &[PageId] {
+        &self.pages
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.pages.len()
     }
 
     fn without(&self, page: &PageId) -> Vec<PageId> {

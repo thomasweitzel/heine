@@ -23,7 +23,10 @@ use crate::{
     config::BasePath,
     locale::Locale,
     localization::Localization,
-    site::{FeedCatalog, PageCatalog, PageId, PageLinks, PageView, SearchCatalog, TaxonomyCatalog},
+    site::{
+        FeedCatalog, PageCatalog, PageId, PageLinks, PageView, SearchCatalog, SeriesCatalog,
+        TaxonomyCatalog,
+    },
     source_diagnostic,
     source_path::LogicalPath,
 };
@@ -35,6 +38,7 @@ pub(crate) struct RenderedPage<'a> {
     #[serde(flatten)]
     pub(crate) page: &'a PageView,
     pub(crate) taxonomies: BTreeMap<String, Vec<crate::site::PageTermView>>,
+    pub(crate) series: Vec<crate::site::SeriesMembershipView>,
 }
 
 /// A validated template identifier relative to `templates/`.
@@ -127,6 +131,7 @@ pub(crate) struct TemplateRelationships {
     pagers: crate::site::PaginationCatalog,
     feeds: std::sync::Arc<FeedCatalog>,
     search: std::sync::Arc<SearchCatalog>,
+    series: std::sync::Arc<SeriesCatalog>,
 }
 
 /// Resolved indexes exposed through checked template resource functions.
@@ -143,6 +148,7 @@ pub(crate) struct TemplateIndexes {
     pub(crate) pagers: crate::site::PaginationCatalog,
     pub(crate) feeds: std::sync::Arc<FeedCatalog>,
     pub(crate) search: std::sync::Arc<SearchCatalog>,
+    pub(crate) series: std::sync::Arc<SeriesCatalog>,
 }
 
 /// Values deliberately exposed to one template render. This is the boundary
@@ -152,6 +158,7 @@ pub(crate) struct RenderContext<'a> {
     pub(crate) locale: LocaleView,
     pub(crate) page: Option<RenderedPage<'a>>,
     pub(crate) taxonomy: Option<crate::site::TaxonomyView>,
+    pub(crate) series: Option<crate::site::SeriesView>,
     pub(crate) pagination: Option<crate::site::PaginationView>,
     pub(crate) data: &'a serde_json::Value,
     pub(crate) locale_data: &'a serde_json::Value,
@@ -215,6 +222,7 @@ impl TemplateRelationships {
             pagers: indexes.pagers,
             feeds: indexes.feeds,
             search: indexes.search,
+            series: indexes.series,
         }
     }
 }

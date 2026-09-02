@@ -36,6 +36,7 @@ pub(crate) struct SiteConfig {
     i18n: I18nConfig,
     collections: CollectionsConfig,
     taxonomies: TaxonomiesConfig,
+    series: Option<SeriesConfig>,
     sitemap: Option<SitemapConfig>,
     feeds: FeedsConfig,
     search: SearchConfig,
@@ -101,6 +102,10 @@ impl SiteConfig {
 
     pub(crate) fn taxonomies(&self) -> &TaxonomiesConfig {
         &self.taxonomies
+    }
+
+    pub(crate) fn series(&self) -> Option<&SeriesConfig> {
+        self.series.as_ref()
     }
 
     pub(crate) fn sitemap(&self) -> Option<&SitemapConfig> {
@@ -175,6 +180,142 @@ impl TaxonomyName {
 impl std::fmt::Display for TaxonomyName {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(formatter)
+    }
+}
+
+/// A Series identifier is both a template lookup key and a generated route
+/// component. It deliberately remains distinct from collections and
+/// taxonomies because its membership has independent authored positions.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct SeriesName(String);
+
+impl SeriesName {
+    pub(crate) fn parse(value: String) -> Result<Self, String> {
+        if !value.is_empty()
+            && !matches!(value.as_str(), "." | "..")
+            && !value.contains('%')
+            && valid_url_segment(&value)
+            && crate::output::is_safe_output_component(&value)
+        {
+            Ok(Self(value))
+        } else {
+            Err(format!(
+                "series ID {value:?} must be a literal portable URL-path component without percent escapes"
+            ))
+        }
+    }
+}
+
+impl std::fmt::Display for SeriesName {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// Checked contracts for generated Series indexes and listings.
+#[derive(Debug, Clone)]
+pub(crate) struct SeriesConfig {
+    path: OutputPath,
+    index_template: TemplateName,
+    listing_template: TemplateName,
+    index_title_key: String,
+    index_description_key: Option<String>,
+    per_page: usize,
+    definitions: BTreeMap<SeriesName, SeriesDefinition>,
+    source: Option<Arc<NamedSource<String>>>,
+    path_span: SourceSpan,
+    index_template_span: SourceSpan,
+    listing_template_span: SourceSpan,
+    index_title_key_span: SourceSpan,
+    index_description_key_span: Option<SourceSpan>,
+    per_page_span: SourceSpan,
+}
+
+impl SeriesConfig {
+    pub(crate) fn path(&self) -> &OutputPath {
+        &self.path
+    }
+    pub(crate) fn index_template(&self) -> &TemplateName {
+        &self.index_template
+    }
+    pub(crate) fn listing_template(&self) -> &TemplateName {
+        &self.listing_template
+    }
+    pub(crate) fn index_title_key(&self) -> &str {
+        &self.index_title_key
+    }
+    pub(crate) fn index_description_key(&self) -> Option<&str> {
+        self.index_description_key.as_deref()
+    }
+    pub(crate) fn per_page(&self) -> usize {
+        self.per_page
+    }
+    pub(crate) fn definitions(&self) -> &BTreeMap<SeriesName, SeriesDefinition> {
+        &self.definitions
+    }
+    pub(crate) fn contains(&self, name: &SeriesName) -> bool {
+        self.definitions.contains_key(name)
+    }
+    pub(crate) fn origin(
+        &self,
+        span: SourceSpan,
+    ) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.source.as_ref().map(|source| (source.clone(), span))
+    }
+    pub(crate) fn path_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.path_span)
+    }
+    pub(crate) fn index_template_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.index_template_span)
+    }
+    pub(crate) fn listing_template_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.listing_template_span)
+    }
+    pub(crate) fn index_title_key_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.index_title_key_span)
+    }
+    pub(crate) fn index_description_key_origin(
+        &self,
+    ) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.index_description_key_span
+            .and_then(|span| self.origin(span))
+    }
+    pub(crate) fn per_page_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.per_page_span)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SeriesDefinition {
+    title_key: String,
+    description_key: Option<String>,
+    source: Option<Arc<NamedSource<String>>>,
+    name_span: SourceSpan,
+    title_key_span: SourceSpan,
+    description_key_span: Option<SourceSpan>,
+}
+
+impl SeriesDefinition {
+    pub(crate) fn title_key(&self) -> &str {
+        &self.title_key
+    }
+    pub(crate) fn description_key(&self) -> Option<&str> {
+        self.description_key.as_deref()
+    }
+    pub(crate) fn origin(
+        &self,
+        span: SourceSpan,
+    ) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.source.as_ref().map(|source| (source.clone(), span))
+    }
+    pub(crate) fn name_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.name_span)
+    }
+    pub(crate) fn title_key_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.origin(self.title_key_span)
+    }
+    pub(crate) fn description_key_origin(&self) -> Option<(Arc<NamedSource<String>>, SourceSpan)> {
+        self.description_key_span.and_then(|span| self.origin(span))
     }
 }
 
@@ -730,6 +871,7 @@ struct RawSiteConfig {
     collections: BTreeMap<toml::Spanned<String>, RawCollectionDefinition>,
     #[serde(default)]
     taxonomies: BTreeMap<toml::Spanned<String>, RawTaxonomyDefinition>,
+    series: Option<toml::Spanned<RawSeriesConfig>>,
     sitemap: Option<toml::Spanned<RawSitemapConfig>>,
     #[serde(default)]
     feeds: BTreeMap<toml::Spanned<String>, RawFeedDefinition>,
@@ -758,6 +900,25 @@ struct RawTaxonomyDefinition {
     #[serde(default)]
     counterparts:
         BTreeMap<toml::Spanned<String>, BTreeMap<toml::Spanned<String>, toml::Spanned<String>>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSeriesConfig {
+    path: toml::Spanned<String>,
+    index_template: toml::Spanned<String>,
+    listing_template: toml::Spanned<String>,
+    index_title_key: toml::Spanned<String>,
+    index_description_key: Option<toml::Spanned<String>>,
+    per_page: toml::Spanned<usize>,
+    definitions: BTreeMap<toml::Spanned<String>, RawSeriesDefinition>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSeriesDefinition {
+    title_key: toml::Spanned<String>,
+    description_key: Option<toml::Spanned<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1277,6 +1438,10 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 },
             );
         }
+        let series = raw
+            .series
+            .map(|raw| parse_series_config(raw.into_inner()))
+            .transpose()?;
         let mut taxonomies = BTreeMap::new();
         for (name, definition) in raw.taxonomies {
             let name_span = name.span();
@@ -1448,6 +1613,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             taxonomies: TaxonomiesConfig {
                 definitions: taxonomies,
             },
+            series,
             sitemap,
             feeds: FeedsConfig { definitions: feeds },
             search: SearchConfig {
@@ -1477,9 +1643,135 @@ impl SiteConfig {
         for definition in self.search.definitions.values_mut() {
             definition.source = Some(collection_source.clone());
         }
+        if let Some(series) = &mut self.series {
+            series.source = Some(collection_source.clone());
+            for definition in series.definitions.values_mut() {
+                definition.source = Some(collection_source.clone());
+            }
+        }
         if let Some(sitemap) = &mut self.sitemap {
             sitemap.source = Some(collection_source);
         }
+    }
+}
+
+fn parse_series_config(raw: RawSeriesConfig) -> Result<SeriesConfig, ConfigValueError> {
+    let path_span: SourceSpan = raw.path.span().into();
+    let path = OutputPath::try_new(PathBuf::from(raw.path.into_inner())).map_err(|message| {
+        ConfigValueError {
+            span: path_span,
+            message: format!("series path {message}"),
+        }
+    })?;
+    if crate::output::is_reserved_output_path(path.as_path()) {
+        return Err(ConfigValueError {
+            span: path_span,
+            message: "series path must not use Heine's reserved __heine/ namespace".into(),
+        });
+    }
+    let index_template_span: SourceSpan = raw.index_template.span().into();
+    let index_template =
+        TemplateName::parse(raw.index_template.into_inner()).map_err(|message| {
+            ConfigValueError {
+                span: index_template_span,
+                message: format!("series index_template {message}"),
+            }
+        })?;
+    let listing_template_span: SourceSpan = raw.listing_template.span().into();
+    let listing_template =
+        TemplateName::parse(raw.listing_template.into_inner()).map_err(|message| {
+            ConfigValueError {
+                span: listing_template_span,
+                message: format!("series listing_template {message}"),
+            }
+        })?;
+    let index_title_key_span: SourceSpan = raw.index_title_key.span().into();
+    let index_title_key = nonempty_series_key(
+        raw.index_title_key.into_inner(),
+        "index_title_key",
+        index_title_key_span,
+    )?;
+    let (index_description_key, index_description_key_span) = raw
+        .index_description_key
+        .map(|value| {
+            let span: SourceSpan = value.span().into();
+            nonempty_series_key(value.into_inner(), "index_description_key", span)
+                .map(|key| (key, span))
+        })
+        .transpose()?
+        .map_or((None, None), |(key, span)| (Some(key), Some(span)));
+    let per_page_span: SourceSpan = raw.per_page.span().into();
+    let per_page = raw.per_page.into_inner();
+    if per_page == 0 {
+        return Err(ConfigValueError {
+            span: per_page_span,
+            message: "series per_page must be a positive integer".into(),
+        });
+    }
+    let mut definitions = BTreeMap::new();
+    for (name, definition) in raw.definitions {
+        let name_span: SourceSpan = name.span().into();
+        let name = SeriesName::parse(name.into_inner()).map_err(|message| ConfigValueError {
+            span: name_span,
+            message,
+        })?;
+        let title_key_span: SourceSpan = definition.title_key.span().into();
+        let title_key = nonempty_series_key(
+            definition.title_key.into_inner(),
+            "title_key",
+            title_key_span,
+        )?;
+        let (description_key, description_key_span) = definition
+            .description_key
+            .map(|value| {
+                let span: SourceSpan = value.span().into();
+                nonempty_series_key(value.into_inner(), "description_key", span)
+                    .map(|key| (key, span))
+            })
+            .transpose()?
+            .map_or((None, None), |(key, span)| (Some(key), Some(span)));
+        definitions.insert(
+            name,
+            SeriesDefinition {
+                title_key,
+                description_key,
+                source: None,
+                name_span,
+                title_key_span,
+                description_key_span,
+            },
+        );
+    }
+    Ok(SeriesConfig {
+        path,
+        index_template,
+        listing_template,
+        index_title_key,
+        index_description_key,
+        per_page,
+        definitions,
+        source: None,
+        path_span,
+        index_template_span,
+        listing_template_span,
+        index_title_key_span,
+        index_description_key_span,
+        per_page_span,
+    })
+}
+
+fn nonempty_series_key(
+    value: String,
+    field: &str,
+    span: SourceSpan,
+) -> Result<String, ConfigValueError> {
+    if value.trim().is_empty() {
+        Err(ConfigValueError {
+            span,
+            message: format!("series {field} must name a non-empty Fluent message"),
+        })
+    } else {
+        Ok(value)
     }
 }
 

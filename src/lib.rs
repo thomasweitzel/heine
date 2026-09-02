@@ -110,6 +110,7 @@ pub(crate) fn build_at_with_publication(
         i18n: config.i18n().clone(),
         collections: config.collections().clone(),
         taxonomies: config.taxonomies().clone(),
+        series: config.series(),
         feeds: config.feeds().clone(),
         search: config.search().clone(),
         site: config.site(),
