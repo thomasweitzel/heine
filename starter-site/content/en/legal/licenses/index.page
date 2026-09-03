@@ -1,3 +1,4 @@
 template = "licenses.tera"
 title = "Attributions"
+description = "Credits and license information for copied assets used by the Heine starter site."
 translationid = "attributions"

@@ -1,5 +1,6 @@
 template = "section-index.tera"
 title = "Quiz"
+description = "A short three-question quiz demonstrating interactive content in a Heine site."
 summary = """
 A short, three-question example of a quiz.
 """

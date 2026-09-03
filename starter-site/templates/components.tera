@@ -13,3 +13,7 @@
     </nav>
   {% endif %}
 {% endcomponent ui.pagination %}
+
+{% component ui.meta_description(value: string) %}
+  <meta name="description" content="{{ value }}">
+{% endcomponent ui.meta_description %}

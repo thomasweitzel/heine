@@ -14,6 +14,7 @@ series-index-empty = In dieser Sprache gibt es derzeit keine Reihen.
 series-navigation = Reihennavigation
 series-label = Reihe
 series-position = Teil { $number } von { $total }
+series-listing-description = Lies die Reihe { $series } in ihrer vorgesehenen Reihenfolge.
 
 # Labels for post publication facts.
 post-published = Veröffentlicht am
@@ -31,7 +32,7 @@ language = Sprache
 language-en = Englisch
 language-de = Deutsch
 
-# Taxonomy labels and plural-aware summaries for collection listings.
+# Taxonomy labels, metadata descriptions, and plural-aware collection summaries.
 tags = { $count ->
     [one] Schlagwort
    *[other] Schlagwörter
@@ -40,6 +41,8 @@ blog-post-summary = { $count ->
    [one] Bisher gibt es einen Beitrag auf Deutsch.
    *[other] Bisher gibt es { $count } Beiträge auf Deutsch.
 }
+taxonomy-index-description = Durchsuche die Schlagwörter der Beiträge in dieser Heine-Starter-Site.
+taxonomy-term-description = Beiträge mit dem Schlagwort { $term } in dieser Heine-Starter-Site.
 
 # Atom feed metadata for the locale-local post collection.
 feed-posts-title = Heine-Beiträge

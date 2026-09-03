@@ -2,6 +2,10 @@
 
 {% block title %}{{ taxonomy.term.name }}{% endblock %}
 
+{% block head_description %}
+  {{ <ui.meta_description value={t(id="taxonomy-term-description", term=taxonomy.term.name)} /> }}
+{% endblock %}
+
 {% block language_navigation %}
   {% if taxonomy.term.counterparts %}
     <nav class="language-navigation" aria-label="{{ t(id="language") }}">

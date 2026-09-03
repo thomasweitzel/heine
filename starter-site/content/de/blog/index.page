@@ -1,5 +1,6 @@
 template = "section-index.tera"
 title = "Blog"
+description = "Notizen über den Aufbau und die Nutzung eines kleinen, klar gegliederten Static-Site-Generators."
 published = 2026-08-01T09:30:00
 summary = """
 Ein Beispiel-Blog mit lokalisierten Beiträgen.

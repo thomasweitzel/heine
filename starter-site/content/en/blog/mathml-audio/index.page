@@ -1,4 +1,5 @@
 title = "MathML, Audio, and Direction"
+description = "A Heine starter post demonstrating MathML, audio, syntax highlighting, and right-to-left text."
 published = 2026-08-14T09:30:00
 summary = "A practical look at MathML in a small static-site generator."
 content.main = "main.md"

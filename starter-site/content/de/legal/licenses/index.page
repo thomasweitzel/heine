@@ -1,3 +1,4 @@
 template = "licenses.tera"
 title = "Namensnennungen"
+description = "Namensnennungen und Lizenzinformationen für kopierte Assets der Heine-Starter-Site."
 translationid = "attributions"

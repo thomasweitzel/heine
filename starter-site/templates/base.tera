@@ -4,6 +4,11 @@
    <meta charset='UTF-8'>
    <title>{{ data.site.name }} - {% block title %}{{ page.title }}{% endblock %}</title>
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   {% block head_description %}
+     {% if page and page.description %}
+       {{ <ui.meta_description value={page.description} /> }}
+     {% endif %}
+   {% endblock %}
    {% set favicon = asset(id="assets/favicon.svg") %}
    <link rel="icon" href="{{ favicon.url }}" type="image/svg+xml"{% if favicon.integrity %} integrity="{{ favicon.integrity }}" crossorigin="anonymous"{% endif %}>
    <link rel="stylesheet" type="text/css" href="{{ highlight_css() }}">

@@ -1,5 +1,6 @@
 template = "document.tera"
 title = "Über Heine"
+description = "Über Heine, einen kleinen Rust-basierten Static-Site-Generator für geprüfte, deterministische Website-Builds."
 published = 2026-08-30T09:30:00
 translationid = "about"
 

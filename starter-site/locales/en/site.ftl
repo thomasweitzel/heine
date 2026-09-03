@@ -16,6 +16,7 @@ series-heinrich-heine-description = Three short chapters on the poet and prose w
 series-navigation = Series navigation
 series-label = Series
 series-position = Part { $number } of { $total }
+series-listing-description = Read the { $series } Series in order.
 
 # Labels for post publication facts.
 post-published = Published
@@ -33,7 +34,7 @@ language = Language
 language-en = English
 language-de = German
 
-# Taxonomy labels and plural-aware summaries for collection listings.
+# Taxonomy labels, metadata descriptions, and plural-aware collection summaries.
 tags = { $count ->
     [one] Tag
    *[other] Tags
@@ -42,6 +43,8 @@ blog-post-summary = { $count ->
    [one] So far there is one post.
    *[other] So far there are { $count } posts.
 }
+taxonomy-index-description = Browse the tags used by posts in this Heine starter site.
+taxonomy-term-description = Posts filed under { $term } in this Heine starter site.
 
 # Atom feed metadata for the locale-local post collection.
 feed-posts-title = Heine posts
