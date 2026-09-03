@@ -3,7 +3,7 @@
 {% if page.extra.parent %}
   {% set up = page(id=page.extra.parent) %}
   <nav class="page-navigation" aria-label="{{ t(id="page-navigation") }}">
-    <a href="{{ up.url }}"><span aria-hidden="true">↑</span><span>{{ up.title }}</span></a>
+    <a href="{{ up.url }}">{{ <ui.arrow direction="up" /> }}<span>{{ up.title }}</span></a>
   </nav>
 {% endif %}
 {% endblock %}
@@ -25,14 +25,7 @@
   <nav aria-label="{{ page.title }}">
     <ol class="page-list">
     {% for post in pagination.pages %}
-      <li>
-        <a href="{{ post.relative_url }}">
-          <span class="page-list-copy">
-            <span class="page-list-title">{{ post.title or post.filename }}</span>
-            {% if post.summary %}<span class="page-list-summary">{{ post.summary }}</span>{% endif %}
-          </span>
-        </a>
-      </li>
+      {{ <ui.page_list_item entry={post} /> }}
     {% endfor %}
     </ol>
   </nav>
@@ -47,14 +40,7 @@
       <ol class="page-list">
       {% for p in entries %}
         {% set sibling = page(id=p) %}
-        <li>
-          <a href="{{ sibling.relative_url }}">
-            <span class="page-list-copy">
-              <span class="page-list-title">{{ sibling.title or sibling.filename }}</span>
-              {% if sibling.summary %}<span class="page-list-summary">{{ sibling.summary }}</span>{% endif %}
-            </span>
-          </a>
-        </li>
+        {{ <ui.page_list_item entry={sibling} /> }}
       {% endfor %}
       </ol>
     </nav>

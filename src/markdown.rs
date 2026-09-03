@@ -518,6 +518,16 @@ pub(crate) fn render_with_links_anchors(
     anchors: Option<&[String]>,
 ) -> Result<String, RenderError> {
     let mut anchors = anchors.unwrap_or_default().iter();
+    let task_lists_enabled = renderer
+        .config()
+        .extensions()
+        .contains(&MarkdownExtension::TaskLists);
+    let task_labels = if task_lists_enabled {
+        task_labels(input, renderer.config())
+    } else {
+        Vec::new()
+    };
+    let mut task_labels = task_labels.iter();
     let events = Parser::new_ext(input, options(renderer.config()))
         .into_offset_iter()
         .map(|(event, span)| {
@@ -527,6 +537,7 @@ pub(crate) fn render_with_links_anchors(
                 assets,
                 pages,
                 &mut anchors,
+                &mut task_labels,
             )
             .map(|event| (event, span))
         })
@@ -669,6 +680,7 @@ fn transform_event(
     assets: Option<&AssetLinks>,
     pages: Option<&PageLinks>,
     anchors: &mut std::slice::Iter<'_, String>,
+    task_labels: &mut std::slice::Iter<'_, Option<String>>,
 ) -> Result<Event<'static>, RenderError> {
     match event {
         Event::Start(Tag::Heading {
@@ -726,7 +738,118 @@ fn transform_event(
                 id: id.into_static(),
             })
         }),
+        Event::TaskListMarker(checked) => Ok(Event::Html(
+            task_list_marker(
+                checked,
+                task_labels.next().and_then(|label| label.as_deref()),
+            )
+            .into(),
+        )),
         event => Ok(event.into_static()),
+    }
+}
+
+#[derive(Default)]
+struct ListItem {
+    task: Option<(usize, usize)>,
+}
+
+/// Collects each task item's direct authored text for its native checkbox.
+/// Nested list text is a separate task or list item, never part of its parent.
+fn task_labels(input: &str, config: &MarkdownConfig) -> Vec<Option<String>> {
+    let mut labels = Vec::new();
+    let mut items = Vec::<ListItem>::new();
+    let mut list_depth = 0;
+
+    for event in Parser::new_ext(input, options(config)) {
+        match event {
+            Event::Start(Tag::List(_)) => list_depth += 1,
+            Event::End(TagEnd::List(_)) => list_depth -= 1,
+            Event::Start(Tag::Item) => items.push(ListItem::default()),
+            Event::End(TagEnd::Item) => {
+                items.pop();
+            }
+            Event::TaskListMarker(_) => {
+                let index = labels.len();
+                labels.push(Some(String::new()));
+                if let Some(item) = items.last_mut() {
+                    item.task = Some((index, list_depth));
+                }
+            }
+            Event::Text(text)
+            | Event::Code(text)
+            | Event::InlineMath(text)
+            | Event::DisplayMath(text) => {
+                append_task_label(&mut labels, &items, list_depth, &text);
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                append_task_label(&mut labels, &items, list_depth, " ");
+            }
+            Event::Html(html) | Event::InlineHtml(html) => {
+                let text = raw_html_text(&html);
+                append_task_label(&mut labels, &items, list_depth, &text);
+            }
+            _ => {}
+        }
+    }
+
+    labels
+        .into_iter()
+        .map(|label| label.and_then(collapse_task_label))
+        .collect()
+}
+
+fn append_task_label(
+    labels: &mut [Option<String>],
+    items: &[ListItem],
+    list_depth: usize,
+    text: &str,
+) {
+    let Some((index, task_depth)) = items.last().and_then(|item| item.task) else {
+        return;
+    };
+    if task_depth == list_depth
+        && let Some(label) = &mut labels[index]
+    {
+        label.push_str(text);
+    }
+}
+
+fn collapse_task_label(label: String) -> Option<String> {
+    let mut collapsed = String::with_capacity(label.len());
+    for word in label.split_whitespace() {
+        if !collapsed.is_empty() {
+            collapsed.push(' ');
+        }
+        collapsed.push_str(word);
+    }
+    (!collapsed.is_empty()).then_some(collapsed)
+}
+
+fn task_list_marker(checked: bool, label: Option<&str>) -> String {
+    let mut output = String::from("<input disabled=\"\" type=\"checkbox\"");
+    if checked {
+        output.push_str(" checked=\"\"");
+    }
+    if let Some(label) = label {
+        output.push_str(" aria-label=\"");
+        push_html_attribute(label, &mut output);
+        output.push('"');
+    }
+    output.push_str("/>");
+    output
+}
+
+fn push_html_attribute(value: &str, output: &mut String) {
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&#39;"),
+            _ => output.push(character),
+        }
     }
 }
 

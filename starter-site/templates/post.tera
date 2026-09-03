@@ -8,13 +8,13 @@
     {% set index_id = page.dir ~ "/index" %}
     {% set index = page(id=index_id) %}
   {% endif %}
-  <a href="{{ index.relative_url }}"><span aria-hidden="true">↑</span><span>{{ index.title }}</span></a>
+  <a href="{{ index.relative_url }}">{{ <ui.arrow direction="up" /> }}<span>{{ index.title }}</span></a>
   {% set neighbors = collection_neighbors(name="posts") %}
   {% if neighbors.before %}
-    <a href="{{ neighbors.before.relative_url }}"><span aria-hidden="true">←</span><span>{{ neighbors.before.title }}</span></a>
+    <a href="{{ neighbors.before.relative_url }}">{{ <ui.arrow direction="previous" /> }}<span>{{ neighbors.before.title }}</span></a>
   {% endif %}
   {% if neighbors.after %}
-    <a href="{{ neighbors.after.relative_url }}"><span>{{ neighbors.after.title }}</span><span aria-hidden="true">→</span></a>
+    <a href="{{ neighbors.after.relative_url }}"><span>{{ neighbors.after.title }}</span>{{ <ui.arrow direction="next" /> }}</a>
   {% endif %}
 </nav>
 {% endblock %}

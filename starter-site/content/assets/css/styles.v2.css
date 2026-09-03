@@ -172,7 +172,7 @@ header {
 .page-navigation a {
     display: inline-flex;
     gap: 0.3rem;
-    align-items: baseline;
+    align-items: center;
 }
 
 .series-navigation {
@@ -216,8 +216,14 @@ header {
 .series-navigation-links a {
     display: inline-flex;
     gap: 0.3rem;
-    align-items: baseline;
+    align-items: center;
     min-width: 0;
+}
+
+.navigation-arrow {
+    flex: 0 0 1em;
+    width: 1em;
+    height: 1em;
 }
 
 .series-navigation-links a span:last-child {
@@ -321,6 +327,24 @@ code {
     font-size: 0.95rem;
 }
 
+table {
+    width: 100%;
+    margin-block: var(--spacing-m);
+    border-collapse: collapse;
+}
+
+th,
+td {
+    padding: 0.35rem var(--spacing-s);
+    border-bottom: var(--border);
+    text-align: start;
+    vertical-align: top;
+}
+
+th {
+    background-color: var(--color-1);
+}
+
 a {
     color: var(--color-2);
     border-radius: 0.2rem;
@@ -419,8 +443,88 @@ a:focus-visible {
 blockquote {
     margin-block: var(--spacing-m);
     margin-inline: 0;
-    padding-inline-start: var(--spacing-m);
+    padding: var(--spacing-s) var(--spacing-m);
     border-inline-start: 0.25rem solid var(--border-color);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background-color: var(--color-1);
+    color: var(--muted-fg);
+    font-style: italic;
+}
+
+blockquote > :first-child {
+    margin-top: 0;
+}
+
+blockquote > :last-child {
+    margin-bottom: 0;
+}
+
+sup.footnote-reference {
+    margin-inline: 0.1em;
+    font-size: 0.72em;
+    line-height: 0;
+    vertical-align: super;
+}
+
+.footnote-reference a {
+    display: inline-flex;
+    min-width: 1.45em;
+    min-height: 1.45em;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--muted-fg);
+    font-weight: 600;
+    line-height: 1;
+}
+
+.footnote-reference a:hover,
+.footnote-reference a:focus-visible {
+    border-color: var(--color-2);
+    background-color: var(--badge-bg);
+    color: var(--color-2);
+    box-shadow: none;
+}
+
+.footnote-definition:nth-child(1 of .footnote-definition) {
+    position: relative;
+    margin-top: var(--spacing-l);
+    padding-top: var(--spacing-m);
+}
+
+.footnote-definition:nth-child(1 of .footnote-definition)::before {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    width: 4rem;
+    border-top: var(--border);
+    content: "";
+}
+
+.footnote-definition {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: var(--spacing-s);
+    align-items: start;
+    margin-top: var(--spacing-s);
+    color: var(--muted-fg);
+    font-size: 0.9rem;
+}
+
+.footnote-definition-label {
+    color: var(--color-2);
+    font-size: 0.8em;
+    line-height: 1.6;
+}
+
+.footnote-definition p {
+    grid-column: 2;
+    margin: 0;
+}
+
+.footnote-definition p + p {
+    margin-top: var(--spacing-s);
 }
 
 pre,

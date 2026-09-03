@@ -254,7 +254,7 @@ fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
     );
     fixture.write(
         "content/en/index.md",
-        "~~old~~\n\n| Name |\n| --- |\n| Heine |\n\n- [x] done\n\nA note[^one].\n\n[^one]: Footnote\n\n$x^2$\n\n$$\\frac{1}{2}$$\n",
+        "~~old~~\n\n| Name |\n| --- |\n| Heine |\n\n- [x] **Publish** `site`\n  - [ ] Nested task\n- [ ] <span>Quote \"and\" escape</span>\n- [ ]\n\nA note[^one].\n\n[^one]: Footnote\n\n$x^2$\n\n$$\\frac{1}{2}$$\n",
     );
     fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
 
@@ -263,7 +263,19 @@ fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
 
     assert!(output.contains("<del>old</del>"), "{output}");
     assert!(output.contains("<table>"), "{output}");
-    assert!(output.contains("type=\"checkbox\""), "{output}");
+    assert!(
+        output.contains("type=\"checkbox\" checked=\"\" aria-label=\"Publish site\""),
+        "{output}"
+    );
+    assert!(output.contains("aria-label=\"Nested task\""), "{output}");
+    assert!(
+        output.contains("aria-label=\"Quote &quot;and&quot; escape\""),
+        "{output}"
+    );
+    assert!(
+        output.contains("<input disabled=\"\" type=\"checkbox\"/>"),
+        "{output}"
+    );
     assert!(output.contains("footnote-reference"), "{output}");
     assert!(output.contains("<math"), "{output}");
     assert!(output.contains("display=\"block\""), "{output}");
