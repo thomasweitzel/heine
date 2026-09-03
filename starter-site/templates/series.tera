@@ -20,9 +20,7 @@
           {% set target = series(id=series.id, locale=target_locale) %}
           {% set language_message = "language-" ~ target_locale %}
           {% set flag = asset(id=language.asset) %}
-          <a href="{{ target.url }}" hreflang="{{ target_locale }}" aria-label="{{ t(id=language_message) }}">
-            <img src="{{ flag.url }}"{% if flag.width %} width="{{ flag.width }}" height="{{ flag.height }}"{% endif %} alt="">
-          </a>
+          {{ <ui.language_link locale={target_locale} target={target} flag={flag} label={t(id=language_message)} /> }}
         {% endif %}
       {% endfor %}
     </nav>

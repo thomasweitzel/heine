@@ -67,6 +67,7 @@ en = "Static sites"
 de = "Statische Seiten"
 
 [markdown]
+extensions = ["tables", "strikethrough", "task_lists", "footnotes"]
 math = "mathml"
 
 [markdown.highlighting]

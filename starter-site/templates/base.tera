@@ -54,9 +54,7 @@
                   {% set translated = page(locale=locale, id=translation.id) %}
                   {% set language_message = "language-" ~ locale %}
                   {% set flag = asset(id=data.site.language_flags[locale].asset) %}
-                  <a href="{{ translated.url }}" hreflang="{{ locale }}" aria-label="{{ t(id=language_message) }}">
-                    <img src="{{ flag.url }}"{% if flag.width %} width="{{ flag.width }}" height="{{ flag.height }}"{% endif %} alt="">
-                  </a>
+                  {{ <ui.language_link locale={locale} target={translated} flag={flag} label={t(id=language_message)} /> }}
                 {% endfor %}
               </nav>
             {% endif %}

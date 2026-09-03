@@ -137,7 +137,7 @@ fn builds_the_documented_starter_site() {
     let search_index = generated_file_with_extension(&output.join("search"), "json");
     let search_json = fs::read_to_string(search_index).expect("search index");
     assert!(
-        search_json.contains("MathML, Audio, and Direction"),
+        search_json.contains("Math, Markdown, and Media"),
         "{search_json}"
     );
     assert!(
@@ -293,10 +293,7 @@ fn builds_the_documented_starter_site() {
         "{series_index}"
     );
     let rust_tag = fs::read_to_string(output.join("tags/Rust.html")).expect("Rust tag listing");
-    assert!(
-        rust_tag.contains("MathML, Audio, and Direction"),
-        "{rust_tag}"
-    );
+    assert!(rust_tag.contains("Math, Markdown, and Media"), "{rust_tag}");
     assert!(
         rust_tag.contains("href=\"/my-project/de/tags/Rust.html\" hreflang=\"de\""),
         "{rust_tag}"
@@ -326,11 +323,10 @@ fn builds_the_documented_starter_site() {
 
     let post = fs::read_to_string(output.join("blog/mathml-audio/index.html")).expect("post page");
     assert!(
-        post.contains(
-            "href=\"../../blog/explicit-composition/index.html\"><span aria-hidden=\"true\">←</span><span>Composing Content Explicitly</span>"
-        ),
+        post.contains("href=\"../../blog/explicit-composition/index.html\""),
         "{post}"
     );
+    assert!(post.contains("class=\"navigation-arrow\""), "{post}");
     assert!(
         post.contains("class=\"page-navigation\" aria-label=\"Page navigation\""),
         "{post}"
@@ -383,6 +379,17 @@ fn builds_the_documented_starter_site() {
         "{post}"
     );
     assert!(post.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."), "{post}");
+    assert!(post.contains("<del>unnecessary ceremony</del>"), "{post}");
+    assert!(
+        post.contains(
+            "<input disabled=\"\" type=\"checkbox\" checked=\"\" aria-label=\"Keep the formula in the article.\"/>"
+        ),
+        "{post}"
+    );
+    assert!(post.contains("<table>"), "{post}");
+    assert!(post.contains("class=\"footnote-reference\""), "{post}");
+    assert!(post.contains("<math display=\"inline\">"), "{post}");
+    assert!(post.contains("class=\"table-of-contents\""), "{post}");
     assert!(
         output
             .join("blog/mathml-audio/audio/heine-introduction.mp3")

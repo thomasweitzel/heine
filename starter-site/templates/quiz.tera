@@ -8,7 +8,7 @@
 {% block header %}
 <nav class="page-navigation" aria-label="{{ t(id="page-navigation") }}">
   {% set quiz_index = page(id="quiz/index") %}
-  <a href="{{ quiz_index.relative_url }}"><span aria-hidden="true">↑</span><span>{{ t(id="quiz-menu") }}</span></a>
+  <a href="{{ quiz_index.relative_url }}">{{ <ui.arrow direction="up" /> }}<span>{{ t(id="quiz-menu") }}</span></a>
 </nav>
 {% endblock %}
 {% block content %}
