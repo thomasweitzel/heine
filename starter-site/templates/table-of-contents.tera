@@ -1,11 +1,11 @@
 {% if page.toc and page.toc.headings %}
   <nav class="table-of-contents" aria-label="{{ t(id="toc-label") }}">
-    <ol>
+    <ul>
       {% for heading in page.toc.headings %}
         <li class="toc-depth-{{ heading.depth }}">
           <a href="#{{ heading.fragment }}">{{ heading.text }}</a>
         </li>
       {% endfor %}
-    </ol>
+    </ul>
   </nav>
 {% endif %}
