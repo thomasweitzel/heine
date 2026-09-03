@@ -2,6 +2,10 @@
 
 {% block title %}{{ t(id=taxonomy.name, count=taxonomy.terms | length) }}{% endblock %}
 
+{% block head_description %}
+  {{ <ui.meta_description value={t(id="taxonomy-index-description")} /> }}
+{% endblock %}
+
 {% block language_navigation %}
   <nav class="language-navigation" aria-label="{{ t(id="language") }}">
   {% for target_locale, language in data.site.language_flags %}

@@ -1,5 +1,6 @@
 template = "home.tera"
 title = "Startseite"
+description = "Eine deutschsprachige Ansicht der kleinen Heine-Beispielseite mit Blog, Schlagwörtern und Suche."
 translationid = "home"
 
 [content]

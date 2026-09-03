@@ -363,9 +363,21 @@ a:focus-visible {
     background-color: var(--color-1);
 }
 
-.table-of-contents ol {
+.table-of-contents ul {
     margin: 0;
     padding-inline-start: var(--spacing-m);
+}
+
+.table-of-contents li::marker {
+    color: var(--muted-fg);
+}
+
+.table-of-contents .toc-depth-2,
+.table-of-contents .toc-depth-3,
+.table-of-contents .toc-depth-4,
+.table-of-contents .toc-depth-5,
+.table-of-contents .toc-depth-6 {
+    list-style-type: circle;
 }
 
 .table-of-contents .toc-depth-2 {

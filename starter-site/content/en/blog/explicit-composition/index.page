@@ -1,4 +1,5 @@
 title = "Composing Content Explicitly"
+description = "How Heine keeps page metadata, content, and templates explicit and independently checked."
 published = 2026-08-15T09:30:00
 summary = "A short note on explicit content composition."
 translationid = "second-post"

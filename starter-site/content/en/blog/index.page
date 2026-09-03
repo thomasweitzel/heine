@@ -1,5 +1,6 @@
 template = "section-index.tera"
 title = "Blog"
+description = "Notes on building and using a small, explicit static-site generator."
 published = 2026-08-01T09:30:00
 summary = """
 An example blog with locale-specific posts.

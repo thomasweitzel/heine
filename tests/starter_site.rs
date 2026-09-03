@@ -47,6 +47,12 @@ fn builds_the_documented_starter_site() {
         "{index}"
     );
     assert!(index.contains("Heine Starter Site"), "{index}");
+    assert!(
+        index.contains(
+            "<meta name=\"description\" content=\"A small multilingual example site built with Heine, featuring posts, a quiz, and a short guide to Heinrich Heine.\">"
+        ),
+        "{index}"
+    );
     assert!(index.contains("Quiz"), "{index}");
     assert!(index.contains("<h2>Heinrich Heine</h2>"), "{index}");
     assert!(
@@ -146,6 +152,12 @@ fn builds_the_documented_starter_site() {
         "{german_home}"
     );
     assert!(
+        german_home.contains(
+            "<meta name=\"description\" content=\"Eine deutschsprachige Ansicht der kleinen Heine-Beispielseite mit Blog, Schlagwörtern und Suche.\">"
+        ),
+        "{german_home}"
+    );
+    assert!(
         german_home.contains("Bisher gibt es \u{2068}2\u{2069} Beiträge auf Deutsch."),
         "{german_home}"
     );
@@ -226,6 +238,12 @@ fn builds_the_documented_starter_site() {
     );
     let tags = fs::read_to_string(output.join("tags/index.html")).expect("English tag index");
     assert!(tags.contains("<h1>Tags</h1>"), "{tags}");
+    assert!(
+        tags.contains(
+            "<meta name=\"description\" content=\"Browse the tags used by posts in this Heine starter site.\">"
+        ),
+        "{tags}"
+    );
     assert!(tags.contains("<ul>"), "{tags}");
     assert!(tags.contains("site-navigation"), "{tags}");
     assert!(!tags.contains("width=\"\""), "{tags}");
@@ -257,6 +275,12 @@ fn builds_the_documented_starter_site() {
     let series_index =
         fs::read_to_string(output.join("series/index.html")).expect("English Series index");
     assert!(series_index.contains("<h1>Series</h1>"), "{series_index}");
+    assert!(
+        series_index.contains(
+            "<meta name=\"description\" content=\"Ordered reading paths through this example site.\">"
+        ),
+        "{series_index}"
+    );
     assert!(series_index.contains("<ul>"), "{series_index}");
     assert!(
         series_index.contains(
@@ -313,6 +337,12 @@ fn builds_the_documented_starter_site() {
     );
     let guide = fs::read_to_string(output.join("heine/index.html")).expect("Heine guide");
     assert!(guide.contains("class=\"table-of-contents\""), "{guide}");
+    assert!(
+        guide.contains(
+            "<nav class=\"table-of-contents\" aria-label=\"Table of contents\">\n    <ul>"
+        ),
+        "{guide}"
+    );
     assert!(guide.contains("href=\"#a-short-guide\""), "{guide}");
     assert!(guide.contains("<h2 id=\"a-short-guide\">"), "{guide}");
     assert!(

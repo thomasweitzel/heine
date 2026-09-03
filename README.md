@@ -114,6 +114,8 @@ The [documentation map](docs/README.md) explains the available reading paths.
   or the [development server](docs/development-server.md).
 - Use the [reference](docs/reference.md) for exact fields, defaults, template
   functions, and constraints.
+- Consult the [roadmap](docs/roadmap.md) for planned work and intentionally
+  undecided boundaries.
 
 ## Starter site
 

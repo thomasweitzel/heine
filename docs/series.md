@@ -64,6 +64,14 @@ The first listing page is `index.html`. Later pages always use the fixed
 in ordinary output ownership and sitemaps. It does not create collection,
 taxonomy, feed, or search membership.
 
+## Build behavior
+
+Series relationships are full-build concerns. A quick build may re-render an
+already resolved Series index or listing when a present member page changes,
+but it does not resolve configuration, membership, position, template, rename,
+deletion, or other relationship changes. Run a full build, or use the
+development server's normal full rebuild, after those changes.
+
 ## Page navigation
 
 Every authored page receives `page.series` in the same order as its
@@ -110,10 +118,16 @@ the current slice through `pagination.pages`.
 
 Use `series()` for the current locale's generated index, or
 `series(id="getting-started")` for one local Series. `locale="de"` selects an
-exact configured locale. A configured but locally empty Series is not a
-listing, so use `series_has_members(id="getting-started")` before an optional
-cross-page link. Invalid IDs, unknown locales, disabled Series, and direct
-lookups of an empty local Series fail at the template call site.
+exact configured locale for `series()` and `series_has_members()`. A configured
+but locally empty Series is not a listing, so use
+`series_has_members(id="getting-started")` before an optional cross-page link.
+It returns `false` only for that case.
+
+All three functions require `[series]` in `heine.toml`. Invalid IDs and
+unknown locales are checked template errors. `series(id="…")` also fails for
+an empty local Series, while `series_has_members(id="…")` makes that one
+condition available as `false` rather than forcing error-handling-shaped
+template code.
 
 ## Checks
 

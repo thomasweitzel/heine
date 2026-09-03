@@ -1,5 +1,6 @@
 template = "home.tera"
 title = "Home"
+description = "A small multilingual example site built with Heine, featuring posts, a quiz, and a short guide to Heinrich Heine."
 translationid = "home"
 
 [content]

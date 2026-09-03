@@ -1,3 +1,4 @@
 template = "search.tera"
 title = "Search"
+description = "Search the posts and documentation included in this Heine starter site."
 translationid = "search"

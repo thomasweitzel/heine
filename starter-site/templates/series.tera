@@ -2,6 +2,10 @@
 
 {% block title %}{{ series.title }}{% endblock %}
 
+{% block head_description %}
+  {{ <ui.meta_description value={t(id="series-listing-description", series=series.title)} /> }}
+{% endblock %}
+
 {% block language_navigation %}
   {% set has_series_translation = false %}
   {% for target_locale, language in data.site.language_flags %}

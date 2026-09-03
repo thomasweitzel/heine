@@ -52,3 +52,6 @@ repeat the tutorials and examples from the guides.
 
 The [glossary](glossary.md) defines Heine's public vocabulary. Guides explain
 terms in context on first use; use the glossary when returning to a term later.
+
+The [roadmap](roadmap.md) records the next deliberately scoped capabilities
+and the few open questions that need a concrete design before implementation.
