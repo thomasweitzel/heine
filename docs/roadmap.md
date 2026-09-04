@@ -26,6 +26,9 @@ and a cohesive starter-site example where one fits naturally.
 - **Markdown facts:** begin with deterministic Unicode-aware word counts.
   Reading time needs an explicit locale-aware policy, not an invented universal
   rate.
+- **Margin footnotes:** present ordinary selected-source Markdown footnotes as
+  local CSS-only disclosures, in a wide margin when a site layout permits and
+  below their prose otherwise. See the [design](design/margin-footnotes.md).
 - **Collection-specific membership weights:** model a page's distinct curated
   position in more than one weight-ordered collection without overloading its
   directory sibling weight.
