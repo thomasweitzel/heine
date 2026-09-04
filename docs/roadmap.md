@@ -29,6 +29,14 @@ and a cohesive starter-site example where one fits naturally.
 - **Collection-specific membership weights:** model a page's distinct curated
   position in more than one weight-ordered collection without overloading its
   directory sibling weight.
+- **Required copied-asset licensing coverage:** an opt-in mode that requires a
+  REUSE-style sidecar for every resolved copied asset Heine publishes,
+  regardless of file type or whether a page links to it. It must retain the
+  existing checked SPDX, copyright, and local license-text rules, report all
+  missing sidecars deterministically, and include selected kit assets when
+  kits exist. It is a provenance-coverage guarantee, not a claim of legal
+  compliance: external URLs, inline media, raw HTML, generated output, and
+  deployment configuration remain outside Heine's copied-asset inventory.
 - **Dependency-aware incremental builds** and, if large sites justify it,
   streaming rendering into the staging tree while preserving atomic
   publication.
