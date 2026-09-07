@@ -12,7 +12,8 @@ elsewhere in a site.
 ## Start with one page
 
 Enable the existing Markdown extension and name a Fluent message for the
-accessible note controls:
+accessible note controls. Heine supplies its `$number` argument when it formats
+that message:
 
 ```toml
 # heine.toml

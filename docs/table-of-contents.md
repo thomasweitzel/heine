@@ -69,6 +69,10 @@ list.
 with the selected `content` name and a flat source-order `headings` array. Each
 heading has `level`, `depth`, `text`, and `fragment` fields.
 
+If the same content is also selected for [margin footnotes](margin-footnotes.md),
+this one `markdown(content="…")` call deliberately supplies both the heading
+anchors and the local notes.
+
 ## Apply one default to a directory
 
 Documentation sections often use the same primary document. A descriptor can

@@ -44,8 +44,12 @@ and a cohesive starter-site example where one fits naturally.
 - **Dependency-aware incremental builds** and, if large sites justify it,
   streaming rendering into the staging tree while preserving atomic
   publication.
-- **Release hygiene:** CI, versioning, crate publication, and licensing
-  metadata.
+- **Release hygiene:** add Codeberg CI that runs the required formatting,
+  Clippy, and test checks for every pull request. Before a release, verify
+  `cargo package` and a release build. Decide a dependency policy for
+  advisories, source provenance, duplicate versions, and acceptable licenses
+  before automating those checks. Versioning, crate publication, and licensing
+  metadata remain part of this work.
 
 ## Under consideration
 
