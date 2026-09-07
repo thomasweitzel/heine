@@ -2,6 +2,8 @@
 name = "heine"
 version = "0.2.2"
 edition = "2024"
+license = "EUPL-1.2"
+license-file = "LICENSE"
 
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
