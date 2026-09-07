@@ -37,9 +37,13 @@ and a cohesive starter-site example where one fits naturally.
   regardless of file type or whether a page links to it. It must retain the
   existing checked SPDX, copyright, and local license-text rules, report all
   missing sidecars deterministically, and include selected kit assets when
-  kits exist. It is a provenance-coverage guarantee, not a claim of legal
-  compliance: external URLs, inline media, raw HTML, generated output, and
-  deployment configuration remain outside Heine's copied-asset inventory.
+  kits exist. Design explicit shared licensing groups with this mode: a group
+  names an exact non-empty asset list and one shared sidecar-style declaration,
+  then resolves to individual asset facts. Do not add recursive directory
+  inheritance or globs, which could silently cover a later unrelated asset. It is a
+  provenance-coverage guarantee, not a claim of legal compliance: external
+  URLs, inline media, raw HTML, generated output, and deployment configuration
+  remain outside Heine's copied-asset inventory.
 - **Dependency-aware incremental builds** and, if large sites justify it,
   streaming rendering into the staging tree while preserving atomic
   publication.

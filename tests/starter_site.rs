@@ -342,6 +342,18 @@ fn builds_the_documented_starter_site() {
     assert!(guide.contains("href=\"#a-short-guide\""), "{guide}");
     assert!(guide.contains("<h2 id=\"a-short-guide\">"), "{guide}");
     assert!(
+        guide.contains(
+            "<source media=\"(prefers-color-scheme: dark)\" srcset=\"/my-project/assets/images/heine-dark.jpg\">"
+        ),
+        "{guide}"
+    );
+    assert!(
+        guide.contains(
+            "<img src=\"/my-project/assets/images/heine-light.jpg\" width=\"480\" height=\"540\" alt=\"Portrait of Heinrich Heine\">"
+        ),
+        "{guide}"
+    );
+    assert!(
         guide.contains("<h2 id=\"sources-and-image-attribution\">"),
         "{guide}"
     );
@@ -349,6 +361,11 @@ fn builds_the_documented_starter_site() {
         fs::read_to_string(output.join("legal/licenses/index.html")).expect("attributions page");
     assert!(
         attributions.contains("STIXTwoMath-Regular.woff2"),
+        "{attributions}"
+    );
+    assert!(
+        attributions
+            .contains("Public-domain portrait of Heinrich Heine by Moritz Daniel Oppenheim"),
         "{attributions}"
     );
     assert!(
@@ -361,6 +378,11 @@ fn builds_the_documented_starter_site() {
     );
     let german_attributions = fs::read_to_string(output.join("de/legal/licenses/index.html"))
         .expect("German attributions page");
+    assert!(
+        german_attributions
+            .contains("Gemeinfreies Porträt Heinrich Heines von Moritz Daniel Oppenheim"),
+        "{german_attributions}"
+    );
     assert!(
         german_attributions.contains("Gemeinfreier Kupferstich von Heinrich Heine"),
         "{german_attributions}"

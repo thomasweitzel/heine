@@ -653,9 +653,10 @@ order and its generated listings use the same pager view.
 
 When copied assets require rights information, add adjacent `.license`
 [asset sidecars](glossary.md#asset-sidecar) and matching texts under
-`LICENSES/`. An authored attribution page can render `attributions()`. Read
-the [asset-licensing guide](asset-licensing.md) before publishing assets that
-carry those requirements.
+`LICENSES/`; Heine publishes author-supplied texts unchanged and never fetches
+them. An authored attribution page can render `attributions()`. Read the
+[asset-licensing guide](asset-licensing.md) before publishing assets that carry
+those requirements.
 
 ## 12. Development server details
 

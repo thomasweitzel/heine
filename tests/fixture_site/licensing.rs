@@ -214,6 +214,30 @@ fn rejects_sidecars_without_matching_license_text_or_asset() {
 }
 
 #[test]
+fn requires_license_texts_for_every_compound_spdx_requirement() {
+    for operator in ["AND", "OR"] {
+        let fixture = Fixture::new();
+        fixture.write("content/assets/logo.svg", "<svg/>");
+        let sidecar = format!(
+            "SPDX-FileCopyrightText: Example Authors\nSPDX-License-Identifier: MIT {operator} Apache-2.0\n"
+        );
+        fixture.write("content/assets/logo.svg.license", &sidecar);
+        fixture.write("LICENSES/MIT.txt", "MIT license text\n");
+        fixture.write("content/en/index.page", "template = 'page.tera'\n");
+        fixture.write("templates/page.tera", "site");
+
+        let error = build_at(fixture.path(), BuildMode::Full)
+            .expect_err("every SPDX expression requirement needs a text");
+        let diagnostic = format!("{error:?}");
+        assert!(
+            diagnostic.contains("LICENSES/Apache-2.0.txt"),
+            "{diagnostic}"
+        );
+        assert!(diagnostic.contains(operator), "{diagnostic}");
+    }
+}
+
+#[test]
 fn validates_license_text_layout_and_spdx_exceptions() {
     let fixture = Fixture::new();
     fixture.write("content/assets/logo.svg", "<svg/>");

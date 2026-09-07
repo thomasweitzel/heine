@@ -16,7 +16,10 @@ page.
 Put each license text directly in the optional project-root `LICENSES/`
 directory. Its filename is an SPDX license or exception identifier, or a local
 `LicenseRef-…`, followed by `.txt`. Heine copies it unchanged to
-`public/LICENSES/`.
+`public/LICENSES/`. It never downloads, supplies, or rewrites license texts:
+the site author chooses and provides the text that backs each declaration.
+Look up standard identifiers in the [SPDX License List](https://spdx.org/licenses/);
+use its exact identifier as the filename stem.
 
 Put a sidecar named `<asset filename>.license` next to every copied asset that
 needs an attribution. A sidecar is never copied as an asset. It must contain at
@@ -37,6 +40,11 @@ as `LicenseRef-Public-Domain` similarly requires
 `LICENSES/LicenseRef-Public-Domain.txt`. Heine checks expressions with the
 SPDX license list, diagnoses malformed sidecars at their authored value, and
 rejects an orphaned sidecar rather than silently ignoring it.
+
+This rule applies to every identifier named by a compound expression. For
+example, `OFL-1.1 AND MIT` requires both `LICENSES/OFL-1.1.txt` and
+`LICENSES/MIT.txt`; `OFL-1.1 OR MIT` requires those same two texts. Heine does
+not choose one branch of an `OR` expression on the site's behalf.
 
 The license-text directory is deliberately local to the site. Heine accepts
 local `LicenseRef-…` values, but rejects `DocumentRef-…` and `AdditionRef-…`
@@ -64,7 +72,7 @@ license text has its `id`, base-path-aware `url`, and current-page-relative
 For a complete deterministic inventory, use `attributions()`. Each item has
 `asset` (`output_path`, `url`, `relative_url`) and the same `licensing` view.
 `output_path` is the locale-qualified published path. For example,
-`de/images/logo.svg`,rather than the locale-relative ID passed to `asset()`.
+`de/images/logo.svg`, rather than the locale-relative ID passed to `asset()`.
 It is therefore unambiguous across the whole site and suitable as a key for
 localized presentation data. An attribution page is an ordinary authored page,
 so a site decides its route, language, and presentation:
