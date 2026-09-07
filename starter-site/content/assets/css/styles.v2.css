@@ -12,6 +12,7 @@
 
     --border: 1px solid var(--border-color);
     --radius: 0.25rem;
+    --image-border-radius: 0.5rem;
     --spacing-s: 0.5rem;
     --spacing-m: 1rem;
     --spacing-l: 2rem;
@@ -373,6 +374,7 @@ a:focus-visible {
     max-width: 100%;
     height: auto;
     margin: var(--spacing-m) auto;
+    border-radius: var(--image-border-radius);
 }
 
 .guide-article > h1 {

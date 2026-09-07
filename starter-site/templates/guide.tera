@@ -4,6 +4,13 @@
 <article class="guide-article">
   <h1>{{ page.title }}</h1>
   {% include "table-of-contents.tera" %}
+  {% if page.extra.color_scheme_image %}
+    {% set light = asset(id=page.extra.color_scheme_image.light) %}
+    {% set dark = asset(id=page.extra.color_scheme_image.dark) %}
+    <figure class="featured-image">
+      {{ <ui.color_scheme_image light={light} dark={dark} alt={page.extra.color_scheme_image.alt} /> }}
+    </figure>
+  {% endif %}
   {{ markdown(content="main") }}
 </article>
 {% endblock %}

@@ -9,3 +9,8 @@ main = "main.md"
 
 [extra]
 home = true
+
+[extra.color_scheme_image]
+light = "assets/images/heine-light.jpg"
+dark = "assets/images/heine-dark.jpg"
+alt = "Portrait of Heinrich Heine"

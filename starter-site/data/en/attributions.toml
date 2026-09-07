@@ -1,2 +1,5 @@
-["assets/images/heine.jpg"]
+["assets/images/heine-dark.jpg"]
+label = "Public-domain portrait of Heinrich Heine by Moritz Daniel Oppenheim"
+
+["assets/images/heine-light.jpg"]
 label = "Public-domain copperplate engraving of Heinrich Heine"
