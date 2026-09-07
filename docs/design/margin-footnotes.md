@@ -105,7 +105,9 @@ The nearest complete table wins. Tables do not merge. A page or nested
 descriptor may use `footnotes = false` only to suppress an otherwise effective
 inherited setting. This avoids inactive configuration accumulating after a
 directory default is removed. Using `footnotes = false` without an inherited
-effective setting is a checked error at that field.
+effective setting is a checked error at that field, rather than an advisory
+warning: ineffective structural policy is an authored mistake that should be
+removed, not a dormant fallback to preserve.
 
 No footnote reference is required in a selected source. This permits a useful
 directory default for pages that happen not to need notes.
@@ -311,31 +313,37 @@ CSS such as:
   }
 }
 
-@media (min-width: 72rem) {
-  .heine-annotated-block {
-    display: grid;
-    grid-template-columns: minmax(0, 44rem) minmax(14rem, 20rem);
-    column-gap: 2rem;
-  }
+@supports selector(.heine-annotated-block:has(.heine-footnote-toggle:focus-visible)) {
+  @media (min-width: 72rem) {
+    .heine-annotated-block {
+      display: grid;
+      grid-template-columns: minmax(0, 44rem) minmax(14rem, 20rem);
+      column-gap: 2rem;
+    }
 
-  .heine-annotated-block > p,
-  .heine-annotated-block > h1,
-  .heine-annotated-block > h2,
-  .heine-annotated-block > h3,
-  .heine-annotated-block > h4,
-  .heine-annotated-block > h5,
-  .heine-annotated-block > h6 {
-    grid-column: 1;
-  }
+    .heine-annotated-block > p,
+    .heine-annotated-block > h1,
+    .heine-annotated-block > h2,
+    .heine-annotated-block > h3,
+    .heine-annotated-block > h4,
+    .heine-annotated-block > h5,
+    .heine-annotated-block > h6 {
+      grid-column: 1;
+    }
 
-  .heine-footnote-toggle:checked + .heine-footnote {
-    grid-column: 2;
+    .heine-footnote-toggle:checked + .heine-footnote {
+      grid-column: 2;
+    }
   }
 }
 
 @media print {
   .heine-annotated-block {
     display: block;
+  }
+
+  .heine-footnote-toggle {
+    display: none;
   }
 
   .heine-footnote {
@@ -348,9 +356,20 @@ The example is illustrative, not generated or required Heine CSS. Its order
 matters: the note is hidden until its own marker selects it. At a wide
 breakpoint it appears in the second grid column; otherwise it expands below
 the relevant prose. Several notes in one block may remain expanded together.
+Grid layout prevents expanded notes from overlapping later prose, but a tall
+note can make its row taller than the associated paragraph and leave visible
+space before the next block. That is the deliberate CSS-only trade-off for
+reliable local placement. A site or kit may choose a denser responsive layout,
+including below-prose notes, but Heine does not attempt note-collision
+avoidance.
+For printing, the grid is removed and every note follows its annotated prose
+in ordinary document flow. This makes a printed page or PDF readable without
+depending on a page-margin layout. It does not promise that a long note and
+its marker stay on the same physical printed page: forcing that constraint can
+produce more disruptive blank space.
 The focus enhancement is guarded: a browser without `:has()` keeps the native
-checkbox visible, so keyboard focus remains apparent and note disclosure still
-works.
+checkbox visible and retains the below-prose disclosure layout, so keyboard
+focus remains apparent and note disclosure still works.
 
 No JavaScript, URL-fragment mutation, browser history entry, or distant scroll
 is involved. Without the CSS, controls and their note content remain in logical
@@ -394,7 +413,8 @@ inherited to suppress is likewise reported at its authored setting.
 Footnote-graph and placement errors identify the original Markdown source.
 Missing definitions name the reference. Duplicate definitions name the later
 definition and related earlier definition. An unused definition identifies its
-definition. Unsupported placement identifies the reference and explains the
+definition. Unsupported placement identifies the reference, explains that a
+margin footnote needs a valid locally placeable prose wrapper, and names the
 supported paragraph and heading contexts.
 
 Template errors identify an invalid `markdown(content="…")` call, an omitted or
@@ -409,6 +429,8 @@ The first version does not provide:
 - a JavaScript runtime, browser-history behavior, or animated disclosure;
 - automatic margin presentation for every Markdown document;
 - notes in all possible Markdown structures;
+- multiple independently selected Markdown sources, each with its own local
+  footnote stream, on one page;
 - a global footnote counter across several separately rendered content inputs;
 - generated CSS, a required page sidebar, or a fixed breakpoint; or
 - checks for `id` values authored in trusted template or raw HTML markup; or
@@ -465,15 +487,22 @@ Implementation must include focused and fixture-site coverage for:
   heading anchors and footnote-definition headings excluded from that ToC;
 - rejected references in unsupported structural contexts, including a footnote
   definition and raw-HTML-containing prose;
-- ordinary checked Markdown transformations inside rendered definition bodies;
+- multi-paragraph definition bodies containing lists, code blocks, and links,
+  with valid sibling `aside` structure and ordinary checked Markdown
+  transformations;
 - source-aware `markdown(content="…")` rendering, exactly-one selected-content
   invocation, and raw-filter misuse;
 - valid, distinct Heine-generated local control and note IDs for repeated
   references, localized accessible control names, semantic note roles, and
   source-ordered no-CSS output;
+- manual screen-reader checks of marker discovery, localized control naming,
+  checked-state announcement, and local note text exposure, including a
+  multi-paragraph note with a list and code block;
 - quick and full-build behavior; and
 - a responsive, keyboard-visible, print-safe starter-site example in every
-  comparable authored-page template boundary where notes naturally belong.
+  comparable authored-page template boundary where notes naturally belong,
+  including a manual browser print-to-PDF check that notes follow their prose
+  in readable document flow.
 
 Public documentation, the reference, tutorial, glossary, and starter site must
 be updated together when the feature is implemented.
