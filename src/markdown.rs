@@ -29,7 +29,9 @@ use crate::{
 };
 
 mod highlighting;
+pub(crate) mod margin_footnotes;
 use highlighting::Highlighter;
+pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum InitializationError {
@@ -98,8 +100,12 @@ pub(crate) fn toc_plan(
     let mut anchors = Vec::new();
     let mut view = Vec::new();
     let mut heading: Option<(u8, String)> = None;
+    let mut footnote_definition_depth = 0usize;
     for event in Parser::new_ext(input, options(config)) {
         match event {
+            Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
+            Event::End(TagEnd::FootnoteDefinition) => footnote_definition_depth -= 1,
+            _ if footnote_definition_depth > 0 => {}
             Event::Start(Tag::Heading { level, .. }) => {
                 heading = Some((level as u8, String::new()))
             }
@@ -473,6 +479,8 @@ pub(crate) enum RenderError {
         message: String,
         span: Range<usize>,
     },
+    #[error("could not render margin footnotes: {message}")]
+    MarginFootnote { message: String, span: Range<usize> },
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -528,20 +536,25 @@ pub(crate) fn render_with_links_anchors(
         Vec::new()
     };
     let mut task_labels = task_labels.iter();
-    let events = Parser::new_ext(input, options(renderer.config()))
-        .into_offset_iter()
-        .map(|(event, span)| {
-            transform_event(
-                (event, span.clone()),
-                renderer.config().math(),
-                assets,
-                pages,
-                &mut anchors,
-                &mut task_labels,
-            )
-            .map(|event| (event, span))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut footnote_definition_depth = 0usize;
+    let mut events = Vec::new();
+    for (event, span) in Parser::new_ext(input, options(renderer.config())).into_offset_iter() {
+        let transformed = transform_event(
+            (event.clone(), span.clone()),
+            renderer.config().math(),
+            assets,
+            pages,
+            &mut anchors,
+            &mut task_labels,
+            footnote_definition_depth == 0,
+        )?;
+        match event {
+            Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
+            Event::End(TagEnd::FootnoteDefinition) => footnote_definition_depth -= 1,
+            _ => {}
+        }
+        events.push((transformed, span));
+    }
     let events = highlight_code_blocks(events, renderer.highlighter.as_deref())?;
     let mut output = String::new();
     html::push_html(&mut output, events.into_iter().map(|(event, _)| event));
@@ -587,6 +600,12 @@ pub(crate) fn validate_source_with_links(
                 "code fence",
                 "invalid language here",
                 "use a bundled Giallo language name, omit the fence language, or set markdown.highlighting.missing_language = \"plain\"",
+                span.clone(),
+            ),
+            RenderError::MarginFootnote { span, .. } => (
+                "margin footnotes",
+                "margin-footnote rendering is inconsistent here",
+                "rebuild the site after correcting the selected Markdown source",
                 span.clone(),
             ),
         };
@@ -681,6 +700,7 @@ fn transform_event(
     pages: Option<&PageLinks>,
     anchors: &mut std::slice::Iter<'_, String>,
     task_labels: &mut std::slice::Iter<'_, Option<String>>,
+    anchors_enabled: bool,
 ) -> Result<Event<'static>, RenderError> {
     match event {
         Event::Start(Tag::Heading {
@@ -690,7 +710,9 @@ fn transform_event(
             ..
         }) => Ok(Event::Start(Tag::Heading {
             level,
-            id: anchors.next().map(|value| value.clone().into()),
+            id: anchors_enabled
+                .then(|| anchors.next().map(|value| value.clone().into()))
+                .flatten(),
             classes: classes
                 .into_iter()
                 .map(|value| value.into_static())

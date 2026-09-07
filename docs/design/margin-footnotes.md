@@ -2,9 +2,9 @@
 
 ## Status
 
-This is a proposed implementation design for a future Heine feature. Margin
-footnotes are not implemented yet and are not part of the current user-facing
-contract.
+Implemented. The focused [margin-footnotes guide](../margin-footnotes.md) and
+[reference](../reference.md) are the current user-facing contract. This record
+retains the design rationale and accepted boundaries.
 
 ## Decision
 
@@ -245,30 +245,33 @@ independent native checkbox and note aside for each local instance:
     aria-describedby="heine-footnote-1"
   >
   <aside class="heine-footnote" id="heine-footnote-1" role="doc-footnote">
+    <span class="heine-footnote-number" aria-hidden="true">1</span>
     <p>During an autumn daylight-saving transition, the same wall-clock time
     can name two distinct instants.</p>
   </aside>
 </div>
 ```
 
-The visible numeric label remains the marker's click target. Heine obtains the
-checkbox's `aria-label` from the site-wide `marker_message`, passing the
-displayed number as `$number`; `aria-describedby` supplies the associated note
-text. Assistive technology therefore receives the note body when it encounters
-the control, even when CSS has visually collapsed that note. This is
-intentional: note content is never gated behind a discoverability step for
-non-visual readers. The checkbox's checked state truthfully describes whether
-its local note is shown. `aria-controls` additionally declares the
-control-to-note relationship for assistive technology that recognizes it; it
-does not imply a JavaScript runtime. The marker is a disclosure control, not a
-link: activating it changes nearby content and does not navigate the document.
-A site or kit may visually hide the checkbox only with a clear focus treatment
-for the real native control. Styling its corresponding marker is an optional
-progressive enhancement, not a guarantee of the generated structure. The
-control must remain available to keyboard and assistive-technology users. The
-`aside` uses the publishing-specific `doc-footnote` role for ancillary note
-content within a work. Heine HTML-escapes the formatted Fluent value before
-placing it in the attribute.
+The visible numeric label remains the marker's click target. A matching number
+at the start of each note is visual association only, so it is hidden from
+assistive technology. Heine obtains the checkbox's `aria-label` from the
+site-wide `marker_message`, passing the displayed number as `$number`;
+`aria-describedby` supplies the associated note text. Assistive technology
+therefore receives the note body when it encounters the control, even when CSS
+has visually collapsed that note. This is intentional: note content is never
+gated behind a discoverability step for non-visual readers. The checkbox's
+checked state truthfully describes whether its local note is shown.
+`aria-controls` additionally declares the control-to-note relationship for
+assistive technology that recognizes it; it does not imply a JavaScript
+runtime. The marker is a disclosure control, not a link: activating it changes
+nearby content and does not navigate the document. A site or kit may visually
+hide the checkbox only with a clear focus treatment for the real native
+control. Styling its corresponding marker is an optional progressive
+enhancement, not a guarantee of the generated structure. The control must
+remain available to keyboard and assistive-technology users. The `aside` uses
+the publishing-specific `doc-footnote` role for ancillary note content within
+a work. Heine HTML-escapes the formatted Fluent value before placing it in the
+attribute.
 
 The exact generated IDs are implementation details. They use a reserved Heine
 prefix and are unique among Heine-generated margin-footnote controls and notes.
@@ -493,8 +496,8 @@ Implementation must include focused and fixture-site coverage for:
 - source-aware `markdown(content="…")` rendering, exactly-one selected-content
   invocation, and raw-filter misuse;
 - valid, distinct Heine-generated local control and note IDs for repeated
-  references, localized accessible control names, semantic note roles, and
-  source-ordered no-CSS output;
+  references, matching visible note numbers, localized accessible control
+  names, semantic note roles, and source-ordered no-CSS output;
 - manual screen-reader checks of marker discovery, localized control naming,
   checked-state announcement, and local note text exposure, including a
   multi-paragraph note with a list and code block;

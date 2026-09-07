@@ -1,11 +1,15 @@
 //! Private, validated services shared by Tera built-ins.
 
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
     asset::AssetLinks,
     locale::Locale,
-    localization::Localization,
+    localization::{Arguments, Localization},
     site::{
         FeedCatalog, FeedView, PageCatalog, PageId, PageLinks, PageTermView, PageView, Pager,
         PaginationCatalog, SearchCatalog, SearchView, SeriesCatalog, SeriesView, SiblingIndex,
@@ -32,6 +36,13 @@ pub(super) struct TemplateRuntime {
     series: Arc<SeriesCatalog>,
     localization: Arc<Localization>,
     highlight_css: Option<String>,
+    margin_footnote_renders: Arc<Mutex<Option<MarginFootnoteRender>>>,
+}
+
+#[derive(Debug)]
+struct MarginFootnoteRender {
+    content: String,
+    calls: usize,
 }
 
 impl From<TemplateResources> for TemplateRuntime {
@@ -62,6 +73,7 @@ impl From<TemplateResources> for TemplateRuntime {
             series,
             localization: resources.localization,
             highlight_css: resources.highlight_css,
+            margin_footnote_renders: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -241,7 +253,11 @@ impl TemplateRuntime {
         &'a self,
         state: &tera::State,
         name: &str,
-    ) -> tera::TeraResult<(&'a str, Option<&'a crate::markdown::TocPlan>)> {
+    ) -> tera::TeraResult<(
+        &'a str,
+        Option<&'a crate::markdown::TocPlan>,
+        Option<&'a crate::site::FootnotesView>,
+    )> {
         let locale = self.locale(state)?;
         let id = self.page_id(state)?;
         let page = self.page_view(&locale, &id).ok_or_else(|| {
@@ -253,10 +269,13 @@ impl TemplateRuntime {
             ))
         })?;
         let toc = page.toc().filter(|toc| toc.content() == name);
-        Ok((content, toc))
+        let footnotes = page
+            .footnotes()
+            .filter(|footnotes| footnotes.content() == name);
+        Ok((content, toc, footnotes))
     }
 
-    pub(super) fn is_selected_toc_source(
+    pub(super) fn is_selected_source(
         &self,
         state: &tera::State,
         input: &str,
@@ -268,10 +287,68 @@ impl TemplateRuntime {
         let page = self.page_view(&locale, &id).ok_or_else(|| {
             tera::Error::message("Heine render context has no current authored page")
         })?;
-        Ok(page
+        let selected_toc = page
             .toc()
             .and_then(|toc| page.content_markdown(toc.content()))
-            .is_some_and(|content| content == input))
+            .is_some_and(|content| content == input);
+        let selected_footnotes = page
+            .footnotes()
+            .and_then(|footnotes| page.content_markdown(footnotes.content()))
+            .is_some_and(|content| content == input);
+        Ok(selected_toc || selected_footnotes)
+    }
+
+    pub(super) fn margin_footnote_labels(
+        &self,
+        state: &tera::State,
+        plan: &crate::markdown::MarginFootnotePlan,
+    ) -> tera::TeraResult<Vec<String>> {
+        let locale = self.locale(state)?;
+        (1..=plan.number_count())
+            .map(|number| {
+                let mut arguments = Arguments::new();
+                arguments.set("number", number as i64);
+                self.localization
+                    .format(&locale, plan.marker_message(), None, &arguments)
+                    .map_err(tera::Error::message)
+            })
+            .collect()
+    }
+
+    pub(super) fn begin_margin_footnote_render(
+        &self,
+        footnotes: Option<&crate::site::FootnotesView>,
+    ) -> Result<(), String> {
+        let mut current = self
+            .margin_footnote_renders
+            .lock()
+            .map_err(|_| "Heine margin-footnote render tracking is unavailable".to_owned())?;
+        *current = footnotes.map(|footnotes| MarginFootnoteRender {
+            content: footnotes.content().to_owned(),
+            calls: 0,
+        });
+        Ok(())
+    }
+
+    pub(super) fn record_margin_footnote_render(&self, content: &str) -> tera::TeraResult<()> {
+        let mut current = self.margin_footnote_renders.lock().map_err(|_| {
+            tera::Error::message("Heine margin-footnote render tracking is unavailable")
+        })?;
+        if let Some(selected) = current.as_mut()
+            && selected.content == content
+        {
+            selected.calls += 1;
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish_margin_footnote_render(&self) -> Result<Option<usize>, String> {
+        self.margin_footnote_renders
+            .lock()
+            .map_err(|_| "Heine margin-footnote render tracking is unavailable".to_owned())?
+            .take()
+            .map(|selected| selected.calls)
+            .map_or(Ok(None), |calls| Ok(Some(calls)))
     }
 
     fn runtime_string(&self, state: &tera::State, field: &str) -> tera::TeraResult<String> {

@@ -52,7 +52,7 @@ pub(crate) use feed::Catalog as FeedCatalog;
 pub(crate) use feed::View as FeedView;
 pub(crate) use index::{Neighbors, SiblingIndex};
 use page::Task;
-pub(crate) use page::{PageId, PageView, Pager};
+pub(crate) use page::{FootnotesView, PageId, PageView, Pager};
 pub(crate) use pagination::{Catalog as PaginationCatalog, View as PaginationView};
 pub(crate) use search::Catalog as SearchCatalog;
 pub(crate) use search::View as SearchView;
@@ -362,6 +362,12 @@ pub(crate) enum Error {
     Markdown(#[from] Box<markdown::SourceError>),
     #[error(transparent)]
     #[diagnostic(transparent)]
+    MarginFootnotes(#[from] Box<markdown::MarginFootnoteDiagnostic>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MarginFootnoteConfiguration(#[from] Box<loader::MarginFootnoteConfigurationDiagnostic>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     Asset(#[from] crate::asset::Error),
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -476,6 +482,7 @@ impl Site {
             time_zone: site_settings.time_zone(),
             sitemap_enabled: sitemap_config.is_some(),
             markdown: markdown_renderer.config(),
+            localization: &localization,
         })?;
         let mut pages = locales.pages;
         let siblings = locales.siblings;

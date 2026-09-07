@@ -111,6 +111,7 @@ struct FluentEntry {
 /// locale first, then the configured default locale, and no implicit chain.
 pub(crate) struct Localization {
     bundles: BTreeMap<Locale, FluentBundle<FluentResource>>,
+    message_sources: BTreeMap<Locale, BTreeMap<String, MessageSource>>,
     latest_inputs: BTreeMap<Locale, SystemTime>,
     default_locale: Locale,
 }
@@ -148,6 +149,7 @@ impl Localization {
             }
         }
         let mut bundles = BTreeMap::new();
+        let mut message_sources = BTreeMap::new();
         let mut latest_inputs = BTreeMap::new();
         for locale in locales {
             let directory = root.join(locale.to_string());
@@ -309,9 +311,11 @@ impl Localization {
                 latest_inputs.insert(locale.clone(), latest_input);
             }
             bundles.insert(locale.clone(), bundle);
+            message_sources.insert(locale.clone(), messages);
         }
         Ok(Self {
             bundles,
+            message_sources,
             latest_inputs,
             default_locale,
         })
@@ -353,6 +357,30 @@ impl Localization {
             (Some(input), None) | (None, Some(input)) => Some(input),
             (None, None) => None,
         }
+    }
+
+    /// Returns the authored resource selected by the same current-locale then
+    /// default-locale lookup rule used for message formatting.
+    pub(crate) fn message_origin(
+        &self,
+        locale: &Locale,
+        id: &str,
+    ) -> Option<(PathBuf, String, SourceSpan)> {
+        self.message_sources
+            .get(locale)
+            .and_then(|messages| messages.get(id))
+            .or_else(|| {
+                self.message_sources
+                    .get(&self.default_locale)
+                    .and_then(|messages| messages.get(id))
+            })
+            .map(|source| {
+                (
+                    source.path.clone(),
+                    source.source.as_ref().clone(),
+                    source.span,
+                )
+            })
     }
 
     fn format_in(

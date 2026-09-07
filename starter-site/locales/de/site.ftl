@@ -21,8 +21,9 @@ post-published = Veröffentlicht am
 post-byline = Von { $authors }
 post-updated = Aktualisiert am
 
-# Labels for page-local navigation controls.
+# Beschriftungen für lokale Navigation und Fußnotensteuerungen.
 toc-label = Inhaltsverzeichnis
+footnote-marker = Fußnote { $number }
 pagination-label = Seitennavigation
 page-navigation = Seitennavigation
 quiz-menu = Quiz-Menü

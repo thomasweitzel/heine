@@ -70,6 +70,9 @@ de = "Statische Seiten"
 extensions = ["tables", "strikethrough", "task_lists", "footnotes"]
 math = "mathml"
 
+[markdown.margin_footnotes]
+marker_message = "footnote-marker"
+
 [markdown.highlighting]
 stylesheet = "css/highlighting.css"
 

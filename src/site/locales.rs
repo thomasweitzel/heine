@@ -13,6 +13,7 @@ use crate::{
         TaxonomiesConfig,
     },
     locale::Locale,
+    localization::{Arguments, Localization},
 };
 
 use super::{
@@ -45,6 +46,7 @@ pub(super) struct Inputs<'a> {
     pub(super) time_zone: Option<&'a EditorialTimeZone>,
     pub(super) sitemap_enabled: bool,
     pub(super) markdown: &'a MarkdownConfig,
+    pub(super) localization: &'a Localization,
 }
 
 pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
@@ -57,6 +59,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         time_zone,
         sitemap_enabled,
         markdown,
+        localization,
     } = inputs;
     validate_root(content_root, i18n)?;
     let shared_root = content_root.join("assets");
@@ -128,6 +131,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         entries_by_locale.insert(locale.clone(), entries);
         content_inputs.insert(locale.clone(), locale_inputs);
     }
+    validate_margin_footnote_messages(&pages, markdown, localization)?;
     tasks.sort_by(|left, right| {
         left.locale
             .cmp(&right.locale)
@@ -142,6 +146,61 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         shared_root,
         shared_entries,
     })
+}
+
+fn validate_margin_footnote_messages(
+    pages: &BTreeMap<Locale, BTreeMap<PageId, Page>>,
+    markdown: &MarkdownConfig,
+    localization: &Localization,
+) -> Result<(), Error> {
+    let Some(config) = markdown.margin_footnotes() else {
+        return Ok(());
+    };
+    let Some((source, span)) = config.marker_message_origin() else {
+        return Ok(());
+    };
+    let effective_locales = pages
+        .iter()
+        .filter_map(|(locale, locale_pages)| {
+            let count = locale_pages
+                .values()
+                .filter_map(|page| page.footnotes.as_ref())
+                .map(crate::markdown::MarginFootnotePlan::number_count)
+                .max()?;
+            Some((locale, count.max(1)))
+        })
+        .collect::<BTreeMap<_, _>>();
+    if effective_locales.is_empty() {
+        return Err(Error::MarginFootnoteConfiguration(Box::new(
+            loader::MarginFootnoteConfigurationDiagnostic::unused(source.clone(), span),
+        )));
+    }
+    for (locale, highest_number) in effective_locales {
+        for number in 1..=highest_number {
+            let mut arguments = Arguments::new();
+            arguments.set("number", number as i64);
+            let formatted = localization.format(locale, config.marker_message(), None, &arguments);
+            let problem = match formatted {
+                Ok(value) if value.trim().is_empty() => Some(format!(
+                    "message formats to empty text for footnote {number}"
+                )),
+                Ok(_) => None,
+                Err(message) => Some(message),
+            };
+            if let Some(message) = problem {
+                return Err(Error::MarginFootnoteConfiguration(Box::new(
+                    loader::MarginFootnoteConfigurationDiagnostic::localization(
+                        source.clone(),
+                        span,
+                        locale,
+                        message,
+                        localization.message_origin(locale, config.marker_message()),
+                    ),
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_root(content_root: &Path, i18n: &I18nConfig) -> Result<(), Error> {

@@ -246,6 +246,7 @@ pub(crate) struct TemplateDiagnostic {
 pub(crate) struct TemplateEngine {
     tera: tera::Tera,
     sources: BTreeMap<TemplateName, miette::NamedSource<String>>,
+    runtime: runtime::TemplateRuntime,
 }
 
 impl TemplateEngine {
@@ -317,7 +318,11 @@ impl TemplateEngine {
             .map(|(name, source)| (name.as_str(), source.inner().as_str()));
         tera.add_raw_templates(raw_templates)
             .map_err(|source| Error::from_tera("parse", templates, &sources, source, None))?;
-        Ok(Self { tera, sources })
+        Ok(Self {
+            tera,
+            sources,
+            runtime,
+        })
     }
 
     pub(crate) fn render(
@@ -326,9 +331,17 @@ impl TemplateEngine {
         context: RenderContext<'_>,
         rendering: &str,
     ) -> Result<String, Error> {
+        self.runtime
+            .begin_margin_footnote_render(
+                context.page.as_ref().and_then(|page| page.page.footnotes()),
+            )
+            .map_err(|message| {
+                Error::margin_footnote_render_error(template, rendering, &self.sources, message)
+            })?;
         let context =
             tera::Context::from_serialize(&context).expect("render context is serializable");
-        self.tera
+        let rendered = self
+            .tera
             .render(template.as_str(), &context)
             .map_err(|source| {
                 Error::from_tera(
@@ -338,7 +351,30 @@ impl TemplateEngine {
                     source,
                     Some(rendering),
                 )
-            })
+            });
+        let calls = self
+            .runtime
+            .finish_margin_footnote_render()
+            .map_err(|message| {
+                Error::margin_footnote_render_error(template, rendering, &self.sources, message)
+            })?;
+        let rendered = rendered?;
+        if let Some(calls) = calls
+            && calls != 1
+        {
+            let message = if calls == 0 {
+                "this page's selected margin-footnote source was not rendered with markdown(content=\"…\")".into()
+            } else {
+                "this page's selected margin-footnote source was rendered more than once with markdown(content=\"…\")".into()
+            };
+            return Err(Error::margin_footnote_render_error(
+                template,
+                rendering,
+                &self.sources,
+                message,
+            ));
+        }
+        Ok(rendered)
     }
 
     pub(crate) fn contains(&self, template: &TemplateName) -> bool {
@@ -347,6 +383,27 @@ impl TemplateEngine {
 }
 
 impl Error {
+    fn margin_footnote_render_error(
+        template: &TemplateName,
+        rendering: &str,
+        sources: &BTreeMap<TemplateName, miette::NamedSource<String>>,
+        message: String,
+    ) -> Self {
+        let source_code = sources
+            .get(template)
+            .cloned()
+            .unwrap_or_else(|| miette::NamedSource::new(template.to_string(), String::new()));
+        Self::Detailed(Box::new(TemplateDiagnostic {
+            stage: "render",
+            rendering: format!(" (while rendering {rendering})"),
+            template: template.to_string(),
+            message,
+            source_code,
+            label: "selected margin-footnote source applies to this template render".into(),
+            span: (0, 0).into(),
+        }))
+    }
+
     fn from_tera(
         stage: &'static str,
         location: &Path,

@@ -6,3 +6,6 @@ collections = ["documentation"]
 content = "main"
 min_level = 2
 max_level = 3
+
+[pages.footnotes]
+content = "main"

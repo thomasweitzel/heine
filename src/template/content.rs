@@ -29,9 +29,9 @@ pub(super) fn register(
               state: &tera::State|
               -> tera::TeraResult<tera::Value> {
             arguments::only("markdown", &kwargs, &[])?;
-            if markdown_runtime.is_selected_toc_source(state, input)? {
+            if markdown_runtime.is_selected_source(state, input)? {
                 return Err(tera::Error::message(
-                    "this page's selected table-of-contents source must use markdown(content=\"…\") so its headings receive matching fragment IDs",
+                    "this page's selected source-aware Markdown content must use markdown(content=\"…\") so Heine can apply its checked rendering plan",
                 ));
             }
             let locale = markdown_runtime.locale(state)?;
@@ -59,16 +59,33 @@ pub(super) fn register(
                 .assets()
                 .with_locale(locale.clone());
             let page_links = markdown_content_runtime.pages().with_locale(locale);
-            let (content, toc) = markdown_content_runtime.markdown_content(state, name)?;
-            crate::markdown::render_with_links_anchors(
-                content,
-                &markdown_renderer,
-                Some(&asset_links),
-                Some(&page_links),
-                toc.map(|toc| toc.anchors()),
-            )
-            .map(|output| tera::Value::safe_string(&output))
-            .map_err(|error| tera::Error::message(error.to_string()))
+            let (content, toc, footnotes) =
+                markdown_content_runtime.markdown_content(state, name)?;
+            let rendered = if let Some(footnotes) = footnotes {
+                markdown_content_runtime.record_margin_footnote_render(name)?;
+                let labels =
+                    markdown_content_runtime.margin_footnote_labels(state, footnotes.plan())?;
+                crate::markdown::margin_footnotes::render(
+                    content,
+                    &markdown_renderer,
+                    Some(&asset_links),
+                    Some(&page_links),
+                    toc.map(|toc| toc.anchors()),
+                    footnotes.plan(),
+                    &labels,
+                )
+            } else {
+                crate::markdown::render_with_links_anchors(
+                    content,
+                    &markdown_renderer,
+                    Some(&asset_links),
+                    Some(&page_links),
+                    toc.map(|toc| toc.anchors()),
+                )
+            };
+            rendered
+                .map(|output| tera::Value::safe_string(&output))
+                .map_err(|error| tera::Error::message(error.to_string()))
         },
     );
 }
