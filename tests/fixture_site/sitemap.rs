@@ -151,7 +151,7 @@ fn sitemap_settings_accept_only_false() {
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("true is invalid");
     assert!(
-        format!("{error:?}").contains("accepts only false"),
+        error.to_string().contains("accepts only false"),
         "{error:?}"
     );
 
@@ -163,7 +163,7 @@ fn sitemap_settings_accept_only_false() {
     fixture.write("content/en/_directory.toml", "[pages]\nsitemap = true\n");
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("true is invalid");
     assert!(
-        format!("{error:?}").contains("accepts only false"),
+        error.to_string().contains("accepts only false"),
         "{error:?}"
     );
 }
@@ -175,7 +175,9 @@ fn directory_sitemap_boundary_requires_global_sitemap_generation() {
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("sitemap is required");
     assert!(
-        format!("{error:?}").contains("pages.sitemap` requires [sitemap]"),
+        error
+            .to_string()
+            .contains("pages.sitemap` requires [sitemap]"),
         "{error:?}"
     );
 }

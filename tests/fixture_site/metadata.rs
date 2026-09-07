@@ -128,7 +128,9 @@ fn rejects_page_only_metadata_requirements_for_directories() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("directory metadata requirement must name"),
+        error
+            .to_string()
+            .contains("directory metadata requirement must name"),
         "{diagnostic}"
     );
 }
@@ -148,6 +150,15 @@ fn reports_invalid_directory_template_at_its_declaration() {
     );
     assert!(
         diagnostic.contains("template name or `false`"),
+        "{diagnostic}"
+    );
+    assert_eq!(
+        diagnostic.matches("template name or `false`").count(),
+        1,
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("this content setting is invalid"),
         "{diagnostic}"
     );
 }
@@ -374,8 +385,8 @@ fn reports_invalid_collection_membership_at_its_authored_value() {
         diagnostic.contains("content/en/index.page:2"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("posts"), "{diagnostic}");
-    assert!(diagnostic.contains("not configured"), "{diagnostic}");
+    assert!(error.to_string().contains("posts"), "{diagnostic}");
+    assert!(error.to_string().contains("not configured"), "{diagnostic}");
 }
 
 #[test]
@@ -567,8 +578,8 @@ fn distinguishes_nonexistent_and_repeated_publication_times() {
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("time is in a gap");
     let diagnostic = format!("{error:?}");
-    assert!(diagnostic.contains("does not exist"), "{diagnostic}");
-    assert!(diagnostic.contains("Europe/Berlin"), "{diagnostic}");
+    assert!(error.to_string().contains("does not exist"), "{diagnostic}");
+    assert!(error.to_string().contains("Europe/Berlin"), "{diagnostic}");
     assert!(diagnostic.contains("02:30:00"), "{diagnostic}");
 
     fixture.write(
@@ -577,8 +588,8 @@ fn distinguishes_nonexistent_and_repeated_publication_times() {
     );
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("time is repeated");
     let diagnostic = format!("{error:?}");
-    assert!(diagnostic.contains("occurs twice"), "{diagnostic}");
-    assert!(diagnostic.contains("Europe/Berlin"), "{diagnostic}");
+    assert!(error.to_string().contains("occurs twice"), "{diagnostic}");
+    assert!(error.to_string().contains("Europe/Berlin"), "{diagnostic}");
     assert!(diagnostic.contains("02:30:00"), "{diagnostic}");
 }
 
@@ -648,7 +659,7 @@ fn requires_a_time_zone_for_publication_times() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("requires site.time_zone"),
+        error.to_string().contains("requires site.time_zone"),
         "{diagnostic}"
     );
 }
@@ -668,8 +679,11 @@ fn rejects_legacy_and_offset_bearing_publication_values_at_their_fields() {
         diagnostic.contains("content/en/index.page:2"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("no longer supported"), "{diagnostic}");
-    assert!(diagnostic.contains("published"), "{diagnostic}");
+    assert!(
+        error.to_string().contains("no longer supported"),
+        "{diagnostic}"
+    );
+    assert!(error.to_string().contains("published"), "{diagnostic}");
 
     fixture.write(
         "content/en/index.page",
@@ -681,7 +695,10 @@ fn rejects_legacy_and_offset_bearing_publication_values_at_their_fields() {
         diagnostic.contains("content/en/index.page:2"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("without a UTC offset"), "{diagnostic}");
+    assert!(
+        error.to_string().contains("without a UTC offset"),
+        "{diagnostic}"
+    );
 }
 
 #[test]

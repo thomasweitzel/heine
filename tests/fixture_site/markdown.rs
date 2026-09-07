@@ -139,7 +139,9 @@ fn toc_configuration_errors_point_to_the_authored_field() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("toc.min_level must be an integer"),
+        error
+            .to_string()
+            .contains("toc.min_level must be an integer"),
         "{diagnostic}"
     );
 }

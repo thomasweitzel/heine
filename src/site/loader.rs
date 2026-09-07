@@ -1837,7 +1837,7 @@ pub(crate) struct PageDiagnostic {
     message: String,
     #[source_code]
     source_code: NamedSource<String>,
-    #[label("{message}")]
+    #[label("this content setting is invalid")]
     span: SourceSpan,
 }
 
