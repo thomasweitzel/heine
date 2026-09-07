@@ -746,6 +746,7 @@ pub(crate) struct MarkdownConfig {
     extensions: Vec<MarkdownExtension>,
     math: MathMode,
     highlighting: Option<HighlightingConfig>,
+    margin_footnotes: Option<MarginFootnotesConfig>,
 }
 
 impl MarkdownConfig {
@@ -759,6 +760,31 @@ impl MarkdownConfig {
 
     pub(crate) fn highlighting(&self) -> Option<&HighlightingConfig> {
         self.highlighting.as_ref()
+    }
+
+    pub(crate) fn margin_footnotes(&self) -> Option<&MarginFootnotesConfig> {
+        self.margin_footnotes.as_ref()
+    }
+}
+
+/// Global localization required by every effective margin-footnote setting.
+/// Page and directory policy decide whether the feature is used at all.
+#[derive(Debug, Clone)]
+pub(crate) struct MarginFootnotesConfig {
+    marker_message: String,
+    marker_message_span: SourceSpan,
+    marker_message_source: Option<NamedSource<String>>,
+}
+
+impl MarginFootnotesConfig {
+    pub(crate) fn marker_message(&self) -> &str {
+        &self.marker_message
+    }
+
+    pub(crate) fn marker_message_origin(&self) -> Option<(&NamedSource<String>, SourceSpan)> {
+        self.marker_message_source
+            .as_ref()
+            .map(|source| (source, self.marker_message_span))
     }
 }
 
@@ -1019,6 +1045,7 @@ struct RawMarkdownConfig {
     #[serde(default)]
     math: MathMode,
     highlighting: Option<RawHighlightingConfig>,
+    margin_footnotes: Option<RawMarginFootnotesConfig>,
 }
 
 impl Default for RawMarkdownConfig {
@@ -1027,8 +1054,15 @@ impl Default for RawMarkdownConfig {
             extensions: default_extensions(),
             math: MathMode::default(),
             highlighting: None,
+            margin_footnotes: None,
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMarginFootnotesConfig {
+    marker_message: toml::Spanned<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1245,6 +1279,26 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 stylesheet_source: None,
             })
         }).transpose()?;
+        let margin_footnotes = raw
+            .markdown
+            .margin_footnotes
+            .map(|raw| {
+                let span = raw.marker_message.span();
+                let marker_message = raw.marker_message.into_inner();
+                if marker_message.trim().is_empty() {
+                    return Err(ConfigValueError {
+                        span: span.into(),
+                        message: "markdown.margin_footnotes.marker_message must not be empty"
+                            .into(),
+                    });
+                }
+                Ok(MarginFootnotesConfig {
+                    marker_message,
+                    marker_message_span: span.into(),
+                    marker_message_source: None,
+                })
+            })
+            .transpose()?;
         let mut collections = BTreeMap::new();
         for (name, definition) in raw.collections {
             let span = name.span();
@@ -1602,6 +1656,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 extensions,
                 math: raw.markdown.math,
                 highlighting,
+                margin_footnotes,
             },
             i18n: I18nConfig {
                 default_locale,
@@ -1625,6 +1680,10 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
 
 impl SiteConfig {
     fn attach_source(&mut self, path: &Path, source: &str) {
+        if let Some(margin_footnotes) = &mut self.markdown.margin_footnotes {
+            margin_footnotes.marker_message_source =
+                Some(crate::source_diagnostic::named_source(path, source, "TOML"));
+        }
         if let Some(highlighting) = &mut self.markdown.highlighting {
             highlighting.stylesheet_source =
                 Some(crate::source_diagnostic::named_source(path, source, "TOML"));

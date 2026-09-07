@@ -31,8 +31,8 @@ fn reports_unknown_taxonomies_and_duplicate_terms_at_their_authored_values() {
         diagnostic.contains("content/en/post.page:4"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("unknown"), "{diagnostic}");
-    assert!(diagnostic.contains("not configured"), "{diagnostic}");
+    assert!(error.to_string().contains("unknown"), "{diagnostic}");
+    assert!(error.to_string().contains("not configured"), "{diagnostic}");
 
     fixture.write(
         "content/en/post.page",

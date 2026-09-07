@@ -529,6 +529,130 @@ sup.footnote-reference {
     margin-top: var(--spacing-s);
 }
 
+.heine-annotated-block {
+    position: relative;
+}
+
+.heine-footnote-marker {
+    margin-inline: 0.1em;
+    font-size: 0.72em;
+    line-height: 0;
+    vertical-align: super;
+}
+
+.heine-footnote-marker label {
+    display: inline-flex;
+    min-width: 1.45em;
+    min-height: 1.45em;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--muted-fg);
+    cursor: pointer;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.heine-footnote-toggle:checked + .heine-footnote {
+    display: block;
+}
+
+.heine-footnote {
+    display: none;
+    margin-top: var(--spacing-s);
+    padding: var(--spacing-s) var(--spacing-m);
+    border-inline-start: 0.2rem solid var(--border-color);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background-color: var(--color-1);
+    color: var(--muted-fg);
+    font-size: 0.9rem;
+}
+
+.heine-footnote-number {
+    display: inline-flex;
+    float: inline-start;
+    width: 1.45em;
+    height: 1.45em;
+    align-items: center;
+    justify-content: center;
+    margin: 0.1em var(--spacing-s) 0 0;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    color: var(--muted-fg);
+    font-size: 0.8em;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.heine-footnote > :nth-child(2) {
+    margin-top: 0;
+}
+
+.heine-footnote > :last-child {
+    margin-bottom: 0;
+}
+
+@supports selector(.heine-annotated-block:has(.heine-footnote-toggle:focus-visible)) {
+    .heine-footnote-toggle {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+
+    .heine-annotated-block:has(.heine-footnote-toggle:focus-visible)
+        .heine-footnote-marker label {
+        outline: 2px solid var(--color-2);
+        outline-offset: 2px;
+    }
+
+    .heine-footnote-marker label:hover {
+        border-color: var(--color-2);
+        background-color: var(--badge-bg);
+        color: var(--color-2);
+    }
+
+    @media (min-width: 84rem) {
+        .has-margin-footnotes .heine-annotated-block {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(14rem, 20rem);
+            column-gap: var(--spacing-l);
+            width: calc(100% + 22rem);
+        }
+
+        .has-margin-footnotes .heine-annotated-block > p,
+        .has-margin-footnotes .heine-annotated-block > h1,
+        .has-margin-footnotes .heine-annotated-block > h2,
+        .has-margin-footnotes .heine-annotated-block > h3,
+        .has-margin-footnotes .heine-annotated-block > h4,
+        .has-margin-footnotes .heine-annotated-block > h5,
+        .has-margin-footnotes .heine-annotated-block > h6 {
+            grid-column: 1;
+        }
+
+        .has-margin-footnotes .heine-footnote-toggle:checked + .heine-footnote {
+            grid-column: 2;
+            margin-top: 0;
+        }
+    }
+}
+
+@media print {
+    .heine-annotated-block {
+        display: block !important;
+    }
+
+    .heine-footnote-toggle {
+        display: none;
+    }
+
+    .heine-footnote {
+        display: block !important;
+    }
+}
+
 pre,
 code {
     direction: ltr;

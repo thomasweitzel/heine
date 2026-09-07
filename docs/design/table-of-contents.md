@@ -76,19 +76,17 @@ therefore reject only an exact selected-source match passed through the filter.
 A transformed selected source has changed the input from which the ToC was
 derived and must not use that ToC.
 
-### Future margin-footnote composition
+### Margin-footnote composition
 
-[Margin footnotes](margin-footnotes.md) are proposed, not part of the current
-ToC implementation. When that feature is implemented, a source selected by a
-ToC, margin-footnote presentation, or both must be rendered exactly once per
-output document through `markdown(content="…")`. Zero or repeated calls are
-template errors: generated heading and local-note identifiers need one rendered
-source occurrence. One call satisfies both consumers when they select the same
-source.
+[Margin footnotes](margin-footnotes.md) may select the same source as a ToC.
+The source must be rendered exactly once per output document through
+`markdown(content="…")`. Zero or repeated calls are template errors: generated
+heading and local-note identifiers need one rendered source occurrence. One
+call satisfies both consumers when they select the same source.
 
 A Markdown heading inside a margin-footnote definition is ancillary note
-content. It will not enter `page.toc` or receive a generated ToC anchor. This
-is the only planned exception to the usual selected-source heading rule.
+content. It does not enter `page.toc` or receive a generated ToC anchor. This
+is the only exception to the usual selected-source heading rule.
 
 ## Fragment identifiers
 

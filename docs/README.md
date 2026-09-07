@@ -41,6 +41,8 @@ required prerequisite for the guides.
   browser search experience.
 - [Table of contents](table-of-contents.md): page-owned Markdown heading
   navigation.
+- [Margin footnotes](margin-footnotes.md): checked local presentation of
+  ordinary Markdown footnotes.
 - [Series](series.md): checked page-local ordered reading sequences.
 
 ## Reference material

@@ -16,7 +16,7 @@ use crate::{
     author::AuthorName,
     config::{CollectionName, SeriesName, TaxonomyName},
     content::MarkdownSource,
-    markdown::TocPlan,
+    markdown::{MarginFootnotePlan, TocPlan},
     output::{OutputPath, UrlPath},
     source_path::LogicalPath,
     template::TemplateName,
@@ -135,6 +135,7 @@ pub(super) struct RawPage {
     pub(super) updated: Option<toml::Spanned<toml::Value>>,
     pub(super) sitemap: Option<toml::Spanned<bool>>,
     pub(super) toc: Option<toml::Spanned<toml::Value>>,
+    pub(super) footnotes: Option<toml::Spanned<toml::Value>>,
     pub(super) extra: Option<toml::Spanned<toml::Value>>,
     #[serde(default)]
     pub(super) content: BTreeMap<String, toml::Spanned<String>>,
@@ -346,6 +347,7 @@ pub(super) struct Page {
     /// generated-resource consumers such as search, not for template rendering.
     pub(super) markdown_sources: Vec<MarkdownSource>,
     pub(super) toc: Option<TocPlan>,
+    pub(super) footnotes: Option<MarginFootnotePlan>,
     pub(super) metadata: Metadata,
     pub(super) translationid: Option<TranslationId>,
     pub(super) translationid_span: Option<SourceSpan>,
@@ -464,6 +466,7 @@ impl Page {
             content: self.content,
             markdown_content: self.markdown_content,
             toc: self.toc,
+            footnotes: self.footnotes.map(FootnotesView::from),
             title,
             description,
             summary,
@@ -490,6 +493,7 @@ pub(crate) struct PageView {
     #[serde(skip)]
     markdown_content: BTreeSet<String>,
     toc: Option<TocPlan>,
+    footnotes: Option<FootnotesView>,
     title: Option<String>,
     description: Option<String>,
     summary: Option<String>,
@@ -515,11 +519,42 @@ impl PageView {
         self.toc.as_ref()
     }
 
+    pub(crate) fn footnotes(&self) -> Option<&FootnotesView> {
+        self.footnotes.as_ref()
+    }
+
     pub(crate) fn content_markdown(&self, name: &str) -> Option<&str> {
         self.markdown_content
             .contains(name)
             .then(|| self.content.get(name)?.as_str())
             .flatten()
+    }
+}
+
+/// The small render-facing view for one source selected for margin footnotes.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct FootnotesView {
+    content: String,
+    #[serde(skip)]
+    plan: MarginFootnotePlan,
+}
+
+impl From<MarginFootnotePlan> for FootnotesView {
+    fn from(plan: MarginFootnotePlan) -> Self {
+        Self {
+            content: plan.content().to_owned(),
+            plan,
+        }
+    }
+}
+
+impl FootnotesView {
+    pub(crate) fn content(&self) -> &str {
+        &self.content
+    }
+
+    pub(crate) fn plan(&self) -> &MarginFootnotePlan {
+        &self.plan
     }
 }
 

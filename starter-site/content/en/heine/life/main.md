@@ -1,8 +1,8 @@
 ## Düsseldorf, Bonn, Berlin
 
 Heine grew up in Düsseldorf and studied at several universities, including
-Bonn and Berlin. His early poems made him widely known, although fame is not
-always the same thing as freedom.
+Bonn and Berlin.[^studies] His early poems made him widely known, although
+fame is not always the same thing as freedom.
 
 ### A changing public world
 
@@ -19,4 +19,12 @@ French intellectual life.
 ## Exile as perspective
 
 Distance did not make Germany disappear from his work. It gave him a sharper
-way to write about nationalism, censorship, and the habits of public virtue.
+way to write about nationalism, censorship, and the habits of public virtue.[^exile]
+
+[^studies]: His university years included Bonn, Göttingen, Berlin, and a law
+degree from Göttingen. A short biography has no reason to make that itinerary
+look tidier than it was.
+
+[^exile]: Exile did not make one opinion automatically correct. It did give
+Heine a vantage point that was difficult to acquire from a comfortable desk at
+home.

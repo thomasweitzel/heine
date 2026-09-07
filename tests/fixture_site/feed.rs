@@ -177,7 +177,7 @@ fn author_lists_report_empty_values_at_their_authored_fields() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("must contain at least one"),
+        error.to_string().contains("must contain at least one"),
         "{diagnostic}"
     );
 }

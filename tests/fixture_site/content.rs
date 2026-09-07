@@ -173,7 +173,10 @@ fn reports_the_page_value_for_an_invalid_weight() {
         diagnostic.contains("content/en/index.page:2"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("must be an integer"), "{diagnostic}");
+    assert!(
+        error.to_string().contains("must be an integer"),
+        "{diagnostic}"
+    );
 }
 
 #[test]

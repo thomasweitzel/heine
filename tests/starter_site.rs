@@ -357,6 +357,22 @@ fn builds_the_documented_starter_site() {
         guide.contains("<h2 id=\"sources-and-image-attribution\">"),
         "{guide}"
     );
+    let guide_life =
+        fs::read_to_string(output.join("heine/life/index.html")).expect("Heine guide chapter");
+    assert!(
+        guide_life.contains("<main class=\"has-margin-footnotes\">"),
+        "{guide_life}"
+    );
+    assert!(
+        guide_life.contains("class=\"heine-annotated-block\""),
+        "{guide_life}"
+    );
+    assert!(guide_life.contains("aria-label=\"Footnote"), "{guide_life}");
+    assert!(
+        guide_life.contains("class=\"heine-footnote-number\" aria-hidden=\"true\">1</span>"),
+        "{guide_life}"
+    );
+    assert!(guide_life.contains("role=\"doc-footnote\""), "{guide_life}");
     let attributions =
         fs::read_to_string(output.join("legal/licenses/index.html")).expect("attributions page");
     assert!(

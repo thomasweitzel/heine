@@ -139,7 +139,9 @@ fn toc_configuration_errors_point_to_the_authored_field() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("toc.min_level must be an integer"),
+        error
+            .to_string()
+            .contains("toc.min_level must be an integer"),
         "{diagnostic}"
     );
 }
@@ -239,6 +241,269 @@ fn source_aware_markdown_without_a_toc_renders_ordinary_markdown() {
     let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
     assert!(output.contains("<h2>Heading</h2>"), "{output}");
     assert!(!output.contains("id=\"heading\""), "{output}");
+}
+
+#[test]
+fn margin_footnotes_render_local_checked_note_instances() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "A locally explained claim.[^one] Another claim.[^two] The first claim again.[^one]\n\n[^one]: Its local explanation.\n\n[^two]: A second explanation.\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<div class=\"heine-annotated-block\"><p>A locally explained claim."),
+        "{output}"
+    );
+    assert!(
+        output.contains("<label for=\"heine-footnote-toggle-1\">1</label>"),
+        "{output}"
+    );
+    assert!(output.contains("aria-label=\"Footnote"), "{output}");
+    assert!(
+        output.contains("<aside class=\"heine-footnote\" id=\"heine-footnote-1\" role=\"doc-footnote\"><span class=\"heine-footnote-number\" aria-hidden=\"true\">1</span><p>Its local explanation.</p>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<label for=\"heine-footnote-toggle-2\">2</label>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<label for=\"heine-footnote-toggle-3\">1</label>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("id=\"heine-footnote-3\" role=\"doc-footnote\""),
+        "{output}"
+    );
+    assert!(!output.contains("footnote-definition"), "{output}");
+}
+
+#[test]
+fn margin_footnotes_require_one_source_aware_render() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "A note.[^one]\n\n[^one]: Explanation.\n",
+    );
+    fixture.write("templates/page.tera", "<p>Nothing renders the source.</p>");
+
+    let missing = build_at(fixture.path(), BuildMode::Full).expect_err("source must render");
+    assert!(
+        missing
+            .to_string()
+            .contains("was not rendered with markdown"),
+        "{missing:?}"
+    );
+
+    fixture.write(
+        "templates/page.tera",
+        "{{ markdown(content='main') }}{{ markdown(content='main') }}",
+    );
+    let repeated = build_at(fixture.path(), BuildMode::Full).expect_err("source must render once");
+    assert!(
+        repeated.to_string().contains("was rendered more than once"),
+        "{repeated:?}"
+    );
+}
+
+#[test]
+fn margin_footnote_relationships_and_placement_are_checked_at_markdown() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    fixture.write("content/en/index.md", "A missing note.[^missing]\n");
+
+    let missing = build_at(fixture.path(), BuildMode::Full).expect_err("definition is required");
+    assert!(
+        missing.to_string().contains("has no definition"),
+        "{missing:?}"
+    );
+
+    fixture.write(
+        "content/en/index.md",
+        "- A list note.[^one]\n\n[^one]: Explanation.\n",
+    );
+    let placement =
+        build_at(fixture.path(), BuildMode::Full).expect_err("list placement is rejected");
+    assert!(
+        placement
+            .to_string()
+            .contains("need an ordinary paragraph or heading"),
+        "{placement:?}"
+    );
+
+    fixture.write(
+        "content/en/index.md",
+        "A note.[^one]\n\n[^one]: First definition.\n\n[^one]: Second definition.\n",
+    );
+    let duplicate = build_at(fixture.path(), BuildMode::Full).expect_err("definition is unique");
+    assert!(
+        duplicate.to_string().contains("declared more than once"),
+        "{duplicate:?}"
+    );
+
+    fixture.write(
+        "content/en/index.md",
+        "A footnote definition remains.[^used]\n\n[^used]: Used.\n\n[^unused]: Unused.\n",
+    );
+    let unused = build_at(fixture.path(), BuildMode::Full).expect_err("definition is used");
+    assert!(
+        unused.to_string().contains("is not referenced"),
+        "{unused:?}"
+    );
+
+    fixture.write(
+        "content/en/index.md",
+        "A note.[^one]\n\n[^one]: A nested unresolved note.[^missing]\n",
+    );
+    let nested_missing =
+        build_at(fixture.path(), BuildMode::Full).expect_err("nested references are rejected");
+    assert!(
+        nested_missing
+            .to_string()
+            .contains("need an ordinary paragraph or heading"),
+        "{nested_missing:?}"
+    );
+
+    fixture.write(
+        "content/en/index.md",
+        "A [linked unresolved note[^missing]](https://example.test).\n",
+    );
+    let linked_missing =
+        build_at(fixture.path(), BuildMode::Full).expect_err("linked references are rejected");
+    assert!(
+        linked_missing
+            .to_string()
+            .contains("need an ordinary paragraph or heading"),
+        "{linked_missing:?}"
+    );
+}
+
+#[test]
+fn margin_footnote_defaults_and_marker_configuration_are_checked() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/guide/_directory.toml",
+        "[pages]\ntemplate = 'page.tera'\n\n[pages.footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write("content/en/guide/index.page", "content.main = 'index.md'\n");
+    fixture.write(
+        "content/en/guide/index.md",
+        "A note.[^one]\n\n[^one]: Explanation.\n",
+    );
+    fixture.write("content/en/guide/other.page", "content.main = 'other.md'\n");
+    fixture.write(
+        "content/en/guide/other.md",
+        "Another note.[^one]\n\n[^one]: Explanation.\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("inherited setting builds");
+
+    fixture.write(
+        "content/en/guide/index.page",
+        "content.main = 'index.md'\nfootnotes = false\n",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("page may suppress inherited setting");
+
+    let unused = Fixture::new();
+    unused.write(
+        "heine.toml",
+        "[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    unused.write("content/en/index.page", "template = 'page.tera'\n");
+    unused.write("templates/page.tera", "<p>Ordinary page.</p>");
+    let error = build_at(unused.path(), BuildMode::Full).expect_err("inactive global setting");
+    assert!(
+        error
+            .to_string()
+            .contains("invalid margin-footnote marker-message configuration"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn margin_footnotes_share_source_aware_toc_rendering_and_reject_the_raw_filter() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "## Chronology[^one]\n\nProse.\n\n[^one]: A note heading\n\n    ## Not a page heading\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("shared source builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<h2 id=\"chronology\">Chronology"),
+        "{output}"
+    );
+    assert!(!output.contains("id=\"not-a-page-heading\""), "{output}");
+
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("raw filter is ambiguous");
+    assert!(
+        error.to_string().contains("must use markdown(content"),
+        "{error:?}"
+    );
 }
 
 #[test]

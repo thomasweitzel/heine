@@ -69,7 +69,7 @@ fn parse_toc(
                 return Err(invalid(
                     path,
                     source,
-                    toc_key_span(source, span, table_name, "content"),
+                    table_key_span(source, span, table_name, "content"),
                     "toc.content must be a simple declared content name",
                 ));
             }
@@ -83,7 +83,7 @@ fn parse_toc(
                             invalid(
                                 path,
                                 source,
-                                toc_key_span(source, span, table_name, "min_level"),
+                                table_key_span(source, span, table_name, "min_level"),
                                 "toc.min_level must be an integer from 1 through 6",
                             )
                         })
@@ -100,7 +100,7 @@ fn parse_toc(
                             invalid(
                                 path,
                                 source,
-                                toc_key_span(source, span, table_name, "max_level"),
+                                table_key_span(source, span, table_name, "max_level"),
                                 "toc.max_level must be an integer from 1 through 6",
                             )
                         })
@@ -111,7 +111,7 @@ fn parse_toc(
                 return Err(invalid(
                     path,
                     source,
-                    toc_key_span(source, span, table_name, &field),
+                    table_key_span(source, span, table_name, &field),
                     format!("unknown toc field {field:?}"),
                 ));
             }
@@ -119,7 +119,7 @@ fn parse_toc(
                 return Err(invalid(
                     path,
                     source,
-                    toc_key_span(source, span, table_name, "min_level"),
+                    table_key_span(source, span, table_name, "min_level"),
                     "toc.min_level must be an integer from 1 through 6",
                 ));
             }
@@ -127,7 +127,7 @@ fn parse_toc(
                 return Err(invalid(
                     path,
                     source,
-                    toc_key_span(source, span, table_name, "max_level"),
+                    table_key_span(source, span, table_name, "max_level"),
                     "toc.max_level must be an integer from 1 through 6",
                 ));
             }
@@ -135,13 +135,13 @@ fn parse_toc(
                 return Err(invalid(
                     path,
                     source,
-                    toc_key_span(source, span, table_name, "min_level"),
+                    table_key_span(source, span, table_name, "min_level"),
                     "toc.min_level must not exceed toc.max_level",
                 ));
             }
             Ok(TocPolicy::Enabled(TocSettings {
                 content,
-                content_span: toc_key_span(source, span, table_name, "content"),
+                content_span: table_key_span(source, span, table_name, "content"),
                 min_level,
                 max_level,
                 span,
@@ -156,11 +156,69 @@ fn parse_toc(
     }
 }
 
-/// Locates a ToC key inside its named TOML table, rather than allowing an
+fn parse_footnotes(
+    raw: toml::Spanned<toml::Value>,
+    path: &Path,
+    source: &str,
+    table_name: &str,
+) -> Result<FootnotesPolicy, Error> {
+    let span: SourceSpan = raw.span().into();
+    match raw.into_inner() {
+        toml::Value::Boolean(false) => Ok(FootnotesPolicy::Disabled(span)),
+        toml::Value::Boolean(true) => Err(invalid(
+            path,
+            source,
+            span,
+            "field `footnotes` accepts only false; use [footnotes] to select a Markdown source",
+        )),
+        toml::Value::Table(mut table) => {
+            let content = table
+                .remove("content")
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .ok_or_else(|| {
+                    invalid(
+                        path,
+                        source,
+                        span,
+                        "footnotes.content must be a string declared content name",
+                    )
+                })?;
+            if !source_path::is_simple_identifier(&content) {
+                return Err(invalid(
+                    path,
+                    source,
+                    table_key_span(source, span, table_name, "content"),
+                    "footnotes.content must be a simple declared content name",
+                ));
+            }
+            if let Some((field, _)) = table.into_iter().next() {
+                return Err(invalid(
+                    path,
+                    source,
+                    table_key_span(source, span, table_name, &field),
+                    format!("unknown footnotes field {field:?}"),
+                ));
+            }
+            Ok(FootnotesPolicy::Enabled(FootnotesSettings {
+                content,
+                content_span: table_key_span(source, span, table_name, "content"),
+                span,
+            }))
+        }
+        _ => Err(invalid(
+            path,
+            source,
+            span,
+            "field `footnotes` must be false or a [footnotes] table",
+        )),
+    }
+}
+
+/// Locates a policy key inside its named TOML table, rather than allowing an
 /// identically named key in arbitrary site metadata to claim the diagnostic
 /// label. Serde's span for a TOML table names only its header, so it cannot
 /// delimit the table body itself.
-fn toc_key_span(source: &str, table_span: SourceSpan, table_name: &str, key: &str) -> SourceSpan {
+fn table_key_span(source: &str, table_span: SourceSpan, table_name: &str, key: &str) -> SourceSpan {
     let table_header = format!("[{table_name}]");
     let mut offset = 0;
     let mut in_table = false;
@@ -237,6 +295,54 @@ fn toc_for<'a>(
     }
 }
 
+fn effective_footnotes<'a>(
+    ancestors: &'a [&'a DirectoryDescriptor],
+) -> Option<&'a DirectoryDescriptor> {
+    ancestors
+        .iter()
+        .rev()
+        .find(|descriptor| descriptor.footnotes.is_some())
+        .copied()
+}
+
+fn footnotes_for<'a>(
+    raw: Option<&'a FootnotesPolicy>,
+    ancestors: &'a [&'a DirectoryDescriptor],
+    path: &'a Path,
+    source: &'a str,
+) -> Result<Option<FootnotesSettingsRef<'a>>, Error> {
+    match raw {
+        Some(FootnotesPolicy::Disabled(span)) => match effective_footnotes(ancestors) {
+            Some(DirectoryDescriptor {
+                footnotes: Some(FootnotesPolicy::Enabled(_)),
+                ..
+            }) => Ok(None),
+            _ => Err(invalid(
+                path,
+                source,
+                *span,
+                "footnotes = false requires an otherwise effective inherited margin-footnote setting",
+            )),
+        },
+        Some(FootnotesPolicy::Enabled(settings)) => Ok(Some(FootnotesSettingsRef {
+            settings,
+            path,
+            source,
+        })),
+        None => match effective_footnotes(ancestors) {
+            Some(descriptor) => match descriptor.footnotes.as_ref() {
+                Some(FootnotesPolicy::Enabled(settings)) => Ok(Some(FootnotesSettingsRef {
+                    settings,
+                    path: &descriptor.path,
+                    source: &descriptor.text,
+                })),
+                Some(FootnotesPolicy::Disabled(_)) | None => Ok(None),
+            },
+            None => Ok(None),
+        },
+    }
+}
+
 pub(super) const DIRECTORY_FILE: &str = "_directory.toml";
 
 #[derive(Debug, serde::Deserialize)]
@@ -259,6 +365,7 @@ struct RawPagePolicy {
     authors: Option<toml::Spanned<Vec<toml::Spanned<String>>>>,
     sitemap: Option<toml::Spanned<bool>>,
     toc: Option<toml::Spanned<toml::Value>>,
+    footnotes: Option<toml::Spanned<toml::Value>>,
     metadata: Option<RawMetadataPolicy>,
 }
 
@@ -276,6 +383,7 @@ pub(super) struct DirectoryDescriptor {
     authors: Option<ResolvedAuthors>,
     sitemap_exclusion: Option<SourceSpan>,
     toc: Option<TocPolicy>,
+    footnotes: Option<FootnotesPolicy>,
     modified: SystemTime,
 }
 
@@ -300,6 +408,25 @@ struct TocSettingsRef<'a> {
     source: &'a str,
 }
 
+#[derive(Debug, Clone)]
+enum FootnotesPolicy {
+    Disabled(SourceSpan),
+    Enabled(FootnotesSettings),
+}
+
+#[derive(Debug, Clone)]
+struct FootnotesSettings {
+    content: String,
+    content_span: SourceSpan,
+    span: SourceSpan,
+}
+
+struct FootnotesSettingsRef<'a> {
+    settings: &'a FootnotesSettings,
+    path: &'a Path,
+    source: &'a str,
+}
+
 /// Shared locale-loading inputs for one page. Keeping this as one domain
 /// context makes page loading independent of the caller's traversal details.
 pub(super) struct PageLoadContext<'a> {
@@ -314,6 +441,68 @@ pub(super) struct PageLoadContext<'a> {
     pub(super) time_zone: Option<&'a EditorialTimeZone>,
     pub(super) sitemap_enabled: bool,
     pub(super) markdown: &'a crate::config::MarkdownConfig,
+}
+
+/// A global margin-footnote setting is meaningful only when an effective page
+/// setting consumes it. Keeping the diagnostic at the configuration value
+/// prevents dormant localization policy from silently surviving a refactor.
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("invalid margin-footnote marker-message configuration")]
+#[diagnostic(code(heine::markdown::margin_footnotes_configuration))]
+pub(crate) struct MarginFootnoteConfigurationDiagnostic {
+    #[source_code]
+    source_code: NamedSource<String>,
+    #[label("configured marker message")]
+    span: SourceSpan,
+    #[help]
+    help: String,
+    #[related]
+    related: Vec<MarginFootnoteMarkerSource>,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("configured marker message")]
+struct MarginFootnoteMarkerSource {
+    #[source_code]
+    source_code: NamedSource<String>,
+    #[label("message selected here")]
+    span: SourceSpan,
+}
+
+impl MarginFootnoteConfigurationDiagnostic {
+    pub(super) fn unused(source_code: NamedSource<String>, span: SourceSpan) -> Self {
+        Self {
+            source_code,
+            span,
+            help:
+                "remove [markdown.margin_footnotes], or select margin footnotes for a rendered page"
+                    .into(),
+            related: Vec::new(),
+        }
+    }
+
+    pub(super) fn localization(
+        source_code: NamedSource<String>,
+        span: SourceSpan,
+        locale: &Locale,
+        message: String,
+        marker_source: Option<(PathBuf, String, SourceSpan)>,
+    ) -> Self {
+        Self {
+            source_code,
+            span,
+            help: format!(
+                "define a non-empty message that accepts $number for locale {locale}: {message}"
+            ),
+            related: marker_source
+                .into_iter()
+                .map(|(path, source, span)| MarginFootnoteMarkerSource {
+                    source_code: crate::source_diagnostic::named_source(&path, source, "Fluent"),
+                    span,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Diagnostic, ThisError)]
@@ -514,6 +703,11 @@ pub(super) fn load_page(
         .map(|value| parse_toc(value, path, &text, "toc"))
         .transpose()?;
     let toc_config = toc_for(page_toc.as_ref(), &ancestors, path, &text)?;
+    let page_footnotes = raw
+        .footnotes
+        .map(|value| parse_footnotes(value, path, &text, "footnotes"))
+        .transpose()?;
+    let footnotes_config = footnotes_for(page_footnotes.as_ref(), &ancestors, path, &text)?;
     if let Some(toc) = &toc_config
         && template.is_none()
     {
@@ -525,6 +719,30 @@ pub(super) fn load_page(
                 "a table of contents for page {id:?} requires that page to have a template; configure one or suppress the inherited default with toc = false"
             ),
         ));
+    }
+    if let Some(footnotes) = &footnotes_config {
+        if template.is_none() {
+            return Err(invalid(
+                footnotes.path,
+                footnotes.source,
+                footnotes.settings.span,
+                format!(
+                    "margin footnotes for page {id:?} require that page to have a template; configure one or suppress the inherited setting with footnotes = false"
+                ),
+            ));
+        }
+        if !context
+            .markdown
+            .extensions()
+            .contains(&crate::config::MarkdownExtension::Footnotes)
+        {
+            return Err(invalid(
+                footnotes.path,
+                footnotes.source,
+                footnotes.settings.span,
+                "margin footnotes require markdown.extensions to include \"footnotes\"",
+            ));
+        }
     }
     let suffix_span = raw.suffix.span();
     let suffix: OutputSuffix = raw
@@ -560,6 +778,7 @@ pub(super) fn load_page(
     let mut content_inputs = BTreeSet::new();
     let mut markdown_sources = Vec::new();
     let mut markdown_names = BTreeSet::new();
+    let mut markdown_inputs = BTreeMap::new();
     for (name, file) in raw.content {
         let file_span: SourceSpan = file.span().into();
         if !source_path::is_simple_identifier(&name) {
@@ -593,6 +812,7 @@ pub(super) fn load_page(
         })?;
         if let Some(source) = loaded.markdown_source {
             markdown_names.insert(name.clone());
+            markdown_inputs.insert(name.clone(), source.clone());
             markdown_sources.push(source);
         }
         content.insert(name, loaded.value);
@@ -628,6 +848,45 @@ pub(super) fn load_page(
             settings.min_level,
             settings.max_level,
         ))
+    } else {
+        None
+    };
+    let footnotes = if let Some(config) = footnotes_config {
+        let settings = config.settings;
+        let Some(markdown) = markdown_inputs.get(&settings.content) else {
+            return Err(invalid(
+                config.path,
+                config.source,
+                settings.content_span,
+                format!(
+                    "footnotes.content {:?} must name a declared unsegmented Markdown file on page {id:?}",
+                    settings.content
+                ),
+            ));
+        };
+        let marker_message = context
+            .markdown
+            .margin_footnotes()
+            .map(crate::config::MarginFootnotesConfig::marker_message)
+            .ok_or_else(|| {
+                invalid(
+                    config.path,
+                    config.source,
+                    settings.span,
+                    "margin footnotes require markdown.margin_footnotes.marker_message in heine.toml",
+                )
+            })?
+            .to_owned();
+        Some(
+            crate::markdown::margin_footnotes::plan(
+                markdown.path.as_ref(),
+                settings.content.clone(),
+                &markdown.source,
+                context.markdown,
+                marker_message,
+            )
+            .map_err(Error::MarginFootnotes)?,
+        )
     } else {
         None
     };
@@ -740,6 +999,7 @@ pub(super) fn load_page(
         markdown_content: markdown_names,
         markdown_sources,
         toc,
+        footnotes,
         metadata,
         translationid,
         translationid_span,
@@ -985,6 +1245,10 @@ pub(super) fn load_descriptors(
             .toc
             .map(|value| parse_toc(value, path, &text, "pages.toc"))
             .transpose()?;
+        let footnotes = page_policy
+            .footnotes
+            .map(|value| parse_footnotes(value, path, &text, "pages.footnotes"))
+            .transpose()?;
         let page_requirements =
             requirements(page_policy.metadata, path, &text, RequirementTarget::Page)?;
         let template = match page_policy.template {
@@ -1021,6 +1285,7 @@ pub(super) fn load_descriptors(
                 authors,
                 sitemap_exclusion,
                 toc,
+                footnotes,
                 modified: metadata_modified(path)?,
             },
         );
@@ -1056,6 +1321,27 @@ pub(super) fn load_descriptors(
                     &descriptor.text,
                     span,
                     "pages.toc = false requires an otherwise effective inherited table of contents",
+                ));
+            }
+        }
+        if let Some(FootnotesPolicy::Disabled(span)) = descriptor.footnotes {
+            let ancestors = descriptor_ancestors(&descriptor.relative, &descriptors);
+            let inherited = ancestors
+                .iter()
+                .rev()
+                .find(|ancestor| {
+                    ancestor.relative != descriptor.relative && ancestor.footnotes.is_some()
+                })
+                .copied();
+            if !matches!(
+                inherited.and_then(|ancestor| ancestor.footnotes.as_ref()),
+                Some(FootnotesPolicy::Enabled(_))
+            ) {
+                return Err(invalid(
+                    &descriptor.path,
+                    &descriptor.text,
+                    span,
+                    "pages.footnotes = false requires an otherwise effective inherited margin-footnote setting",
                 ));
             }
         }
@@ -1551,7 +1837,7 @@ pub(crate) struct PageDiagnostic {
     message: String,
     #[source_code]
     source_code: NamedSource<String>,
-    #[label("{message}")]
+    #[label("this content setting is invalid")]
     span: SourceSpan,
 }
 

@@ -604,6 +604,10 @@ For a long Markdown guide, the [table-of-contents guide](table-of-contents.md)
 shows how to expose selected headings and render matching anchor IDs without
 adding a site-wide navigation rule.
 
+When ordinary Markdown footnotes should stay beside the prose they qualify,
+the [margin-footnotes guide](margin-footnotes.md) shows the page-owned,
+CSS-controlled presentation and its checked source relationship.
+
 To see highlighting, replace `content/en/blog/second.md` with:
 
 ````markdown

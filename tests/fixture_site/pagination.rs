@@ -197,7 +197,7 @@ fn validates_pagination_route_and_navigation_policy_at_their_values() {
         let error = build_at(fixture.path(), BuildMode::Full).expect_err("pagination is invalid");
         let diagnostic = format!("{error:?}");
         assert!(diagnostic.contains(location), "{diagnostic}");
-        assert!(diagnostic.contains(expected), "{diagnostic}");
+        assert!(error.to_string().contains(expected), "{diagnostic}");
     }
 }
 
@@ -217,7 +217,9 @@ fn pagination_requires_a_rendered_authored_listing_page() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("requires this page to have a template"),
+        error
+            .to_string()
+            .contains("requires this page to have a template"),
         "{diagnostic}"
     );
 }

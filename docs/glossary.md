@@ -176,6 +176,14 @@ file. Configure it with `[toc]` on a page or `[pages.toc]` in a directory
 descriptor. Templates read `page.toc` and render the selected source with
 `markdown(content="…")`, which gives its headings matching fragment IDs.
 
+### Margin footnote
+
+An optional, page-owned presentation of ordinary Markdown footnotes from one
+selected declared Markdown input. Heine checks every reference and definition,
+then renders each reference as a local note instance after its containing
+paragraph or heading. A template and its CSS decide the visual margin or
+below-prose layout. See [margin footnotes](margin-footnotes.md).
+
 ### Authors
 
 An optional non-empty list of human names written as `authors = ["Name"]` on
