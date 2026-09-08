@@ -1,7 +1,7 @@
 {% extends "base.tera" %}
 
-{% block header %}
-<nav class="page-navigation" aria-label="{{ t(id="page-navigation") }}">
+{% block page_navigation %}
+<nav class="page-local-navigation" aria-label="{{ t(id="page-navigation") }}">
   {% if page.extra.parent %}
     {% set index = page(id=page.extra.parent) %}
   {% else %}
@@ -45,5 +45,7 @@
   </figure>
 {% endif %}
 {% include "table-of-contents.tera" %}
-{{ markdown(content="main") }}
+<div class="prose">
+  {{ markdown(content="main") }}
+</div>
 {% endblock %}

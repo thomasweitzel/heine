@@ -28,7 +28,7 @@
     <p>{{ series.description }}</p>
   {% endif %}
   {% if series.series %}
-    <ul>
+    <ul class="compact-index">
       {% for item in series.series %}
         <li><a href="{{ item.relative_url }}">{{ item.title }}</a> <span class="item-count">{{ item.count }}</span></li>
       {% endfor %}

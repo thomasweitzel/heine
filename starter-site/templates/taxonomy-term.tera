@@ -20,9 +20,9 @@
 
 {% block content %}
 <h1>{{ t(id=taxonomy.name, count=1) }}: {{ taxonomy.term.name }}</h1>
-<ul>
+<ul class="page-list">
 {% for post in pagination.pages %}
-  <li><a href="{{ post.relative_url }}">{{ post.title }}</a></li>
+  {{ <ui.page_list_item entry={post} /> }}
 {% endfor %}
 </ul>
 {{ <ui.pagination pager={pagination} label={t(id="pagination-label")} /> }}

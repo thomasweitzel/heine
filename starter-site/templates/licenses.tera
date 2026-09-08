@@ -3,7 +3,7 @@
 {% block content %}
 <h1>{{ page.title }}</h1>
 <p>{{ t(id="attributions-introduction") }}</p>
-<ul>
+<ul class="compact-index attribution-list">
 {% for item in attributions() %}
   <li>
     <a href="{{ item.asset.relative_url }}">{{ item.asset.url }}</a>
