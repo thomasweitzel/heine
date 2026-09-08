@@ -17,6 +17,14 @@ and a cohesive starter-site example where one fits naturally.
 
 - **Absolute URLs:** expose `absolute_url` beside existing checked `url` and
   `relative_url` values when `site.origin` is configured.
+- **Multilingual sitemap alternates:** opt in to checked `hreflang` XHTML
+  annotations in sitemap entries for explicit authored `translationid` groups.
+  Emit every known group member, including self, in deterministic locale order;
+  partial groups remain partial. Do not infer counterparts from paths or cover
+  generated pagination, collection, taxonomy, or Series pages. Account for
+  alternate URLs and XML bytes when checking and splitting sitemap output.
+  HTML-head annotations belong to a later template-facing companion, built on
+  checked absolute page URLs; never inject them into arbitrary templates.
 - **Draft publication state:** include draft pages consistently in an explicit
   preview build, while ordinary builds exclude them and every relationship
   derived from them.
