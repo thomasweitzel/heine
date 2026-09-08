@@ -7,14 +7,30 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Next
 
-- **Kits:** one selected, checked presentation layer with root-owned site
-  structure and narrow, declared overrides. See the [design](design/kits.md).
-- **Renderer adapters:** explicit Markdown constructs that a trusted external
-  renderer turns into checked generated resources and replacements. This is
-  the only planned plugin boundary. See the [design](design/plugins.md).
-
-## Later
-
+- **Release hygiene:** establish a repeatable local release procedure before
+  publishing. It checks the required formatting, Clippy, and test commands,
+  the packaged crate contents, and the optimized release binary. CI may later
+  reproduce the same checks, but it is not a prerequisite for the first
+  release. Decide a dependency policy for advisories, source provenance,
+  duplicate versions, and acceptable licenses before automating those checks.
+- **Draft publication state:** include draft pages consistently in an explicit
+  preview build, while ordinary builds exclude them and every relationship
+  derived from them.
+- **Required copied-asset licensing coverage:** an opt-in mode that requires a
+  REUSE-style sidecar for every resolved copied asset Heine publishes,
+  regardless of file type or whether a page links to it. It must retain the
+  existing checked SPDX, copyright, and local license-text rules, report all
+  missing sidecars deterministically, and include selected kit assets when
+  kits exist. Design explicit shared licensing groups with this mode: a group
+  names an exact non-empty asset list and one shared sidecar-style declaration,
+  then resolves to individual asset facts. Do not add recursive directory
+  inheritance or globs, which could silently cover a later unrelated asset. It
+  is a provenance-coverage guarantee, not a claim of legal compliance:
+  external URLs, inline media, raw HTML, generated output, and deployment
+  configuration remain outside Heine's copied-asset inventory.
+- **Markdown facts:** begin with deterministic Unicode-aware word counts.
+  Reading time needs an explicit locale-aware policy, not an invented universal
+  rate.
 - **Absolute URLs:** expose `absolute_url` beside existing checked `url` and
   `relative_url` values when `site.origin` is configured.
 - **Multilingual sitemap alternates:** opt in to checked `hreflang` XHTML
@@ -25,39 +41,23 @@ and a cohesive starter-site example where one fits naturally.
   alternate URLs and XML bytes when checking and splitting sitemap output.
   HTML-head annotations belong to a later template-facing companion, built on
   checked absolute page URLs; never inject them into arbitrary templates.
-- **Draft publication state:** include draft pages consistently in an explicit
-  preview build, while ordinary builds exclude them and every relationship
-  derived from them.
+- **Kits:** one selected, checked presentation layer with root-owned site
+  structure and narrow, declared overrides. See the [design](design/kits.md).
+- **Renderer adapters:** explicit Markdown constructs that a trusted external
+  renderer turns into checked generated resources and replacements. This is
+  the only planned plugin boundary. See the [design](design/plugins.md).
+
+## Later
+
 - **Calendar archives:** add a narrow generated-resource consumer of one
   resolved collection when a concrete site establishes its bucket and route
   contract.
-- **Markdown facts:** begin with deterministic Unicode-aware word counts.
-  Reading time needs an explicit locale-aware policy, not an invented universal
-  rate.
 - **Collection-specific membership weights:** model a page's distinct curated
   position in more than one weight-ordered collection without overloading its
   directory sibling weight.
-- **Required copied-asset licensing coverage:** an opt-in mode that requires a
-  REUSE-style sidecar for every resolved copied asset Heine publishes,
-  regardless of file type or whether a page links to it. It must retain the
-  existing checked SPDX, copyright, and local license-text rules, report all
-  missing sidecars deterministically, and include selected kit assets when
-  kits exist. Design explicit shared licensing groups with this mode: a group
-  names an exact non-empty asset list and one shared sidecar-style declaration,
-  then resolves to individual asset facts. Do not add recursive directory
-  inheritance or globs, which could silently cover a later unrelated asset. It is a
-  provenance-coverage guarantee, not a claim of legal compliance: external
-  URLs, inline media, raw HTML, generated output, and deployment configuration
-  remain outside Heine's copied-asset inventory.
 - **Dependency-aware incremental builds** and, if large sites justify it,
   streaming rendering into the staging tree while preserving atomic
   publication.
-- **Release hygiene:** add Codeberg CI that runs the required formatting,
-  Clippy, and test checks for every pull request. Before a release, verify
-  `cargo package` and a release build. Decide a dependency policy for
-  advisories, source provenance, duplicate versions, and acceptable licenses
-  before automating those checks. Versioning, crate publication, and licensing
-  metadata remain part of this work.
 
 ## Under consideration
 
