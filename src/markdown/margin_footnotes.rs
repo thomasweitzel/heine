@@ -15,8 +15,9 @@ use pulldown_cmark::{Event, Parser, Tag, TagEnd, html};
 use thiserror::Error;
 
 use super::{
-    RenderError, Renderer, highlight_code_blocks, options, push_html_attribute, task_labels,
-    transform_event,
+    GENERATED_FOOTNOTE_ID_PREFIX, RenderError, Renderer, TransformLinks,
+    UnresolvedFootnoteReferenceScanner, highlight_code_blocks, is_escaped_markdown_character,
+    options, push_html_attribute, task_labels, transform_event,
 };
 use crate::{asset::AssetLinks, config::MarkdownConfig, site::PageLinks};
 
@@ -133,7 +134,7 @@ fn plan_inner(
     let mut active_block = None::<usize>;
     let mut prohibited_depth = 0usize;
     let mut definition_depth = 0usize;
-    let mut unresolved = UnresolvedReferenceScanner::default();
+    let mut unresolved = UnresolvedFootnoteReferenceScanner::default();
 
     for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
         match event {
@@ -186,11 +187,12 @@ fn plan_inner(
                 };
                 block.references.push(reference_index);
             }
-            // pulldown-cmark splits an unresolved `[^label]` into ordinary
-            // text events rather than producing `FootnoteReference`. Keep a
-            // tiny scanner across adjacent text events so it still receives a
-            // missing-definition diagnostic at its authored location.
+            // Keep the relationship check at the authored source even when
+            // pulldown-cmark has left an unresolved reference as text.
             Event::Text(_) => {
+                if is_escaped_markdown_character(input, span.start) {
+                    unresolved.escape_next();
+                }
                 for (label, range) in unresolved.push(&input[span.clone()], span.start) {
                     if definition_depth > 0 || prohibited_depth > 0 {
                         return Err(PlanError::UnsupportedPlacement { span: range });
@@ -266,66 +268,6 @@ fn plan_inner(
         references: resolved_references,
         blocks: resolved_blocks,
     })
-}
-
-#[derive(Default)]
-struct UnresolvedReferenceScanner {
-    state: UnresolvedReferenceState,
-}
-
-#[derive(Default)]
-enum UnresolvedReferenceState {
-    #[default]
-    Outside,
-    OpenBracket {
-        start: usize,
-    },
-    Label {
-        start: usize,
-        label: String,
-    },
-}
-
-impl UnresolvedReferenceScanner {
-    fn clear(&mut self) {
-        self.state = UnresolvedReferenceState::Outside;
-    }
-
-    fn push(&mut self, text: &str, offset: usize) -> Vec<(String, Range<usize>)> {
-        let mut references = Vec::new();
-        for (index, character) in text.char_indices() {
-            let position = offset + index;
-            match &mut self.state {
-                UnresolvedReferenceState::Outside if character == '[' => {
-                    self.state = UnresolvedReferenceState::OpenBracket { start: position };
-                }
-                UnresolvedReferenceState::Outside => {}
-                UnresolvedReferenceState::OpenBracket { start } if character == '^' => {
-                    self.state = UnresolvedReferenceState::Label {
-                        start: *start,
-                        label: String::new(),
-                    };
-                }
-                UnresolvedReferenceState::OpenBracket { .. } if character == '[' => {}
-                UnresolvedReferenceState::OpenBracket { .. } => {
-                    self.state = UnresolvedReferenceState::Outside;
-                }
-                UnresolvedReferenceState::Label { start, label } if character == ']' => {
-                    if !label.is_empty() {
-                        references.push((label.clone(), *start..position + character.len_utf8()));
-                    }
-                    self.state = UnresolvedReferenceState::Outside;
-                }
-                UnresolvedReferenceState::Label { .. }
-                    if character.is_whitespace() || character == '[' =>
-                {
-                    self.state = UnresolvedReferenceState::Outside;
-                }
-                UnresolvedReferenceState::Label { label, .. } => label.push(character),
-            }
-        }
-        references
-    }
 }
 
 #[derive(Default)]
@@ -435,18 +377,22 @@ pub(crate) fn render(
     let mut anchors = anchors.unwrap_or_default().iter();
     let task_labels = task_labels(input, renderer.config());
     let mut task_labels = task_labels.iter();
+    let links = TransformLinks {
+        math: renderer.config().math(),
+        assets,
+        pages,
+    };
     let mut in_definition = 0usize;
     let mut events = Vec::new();
     for (event, span) in Parser::new_ext(input, options(renderer.config())).into_offset_iter() {
         let anchors_enabled = in_definition == 0;
         let transformed = transform_event(
             (event.clone(), span.clone()),
-            renderer.config().math(),
-            assets,
-            pages,
+            links,
             &mut anchors,
             &mut task_labels,
             anchors_enabled,
+            None,
         )?;
         match event {
             Event::Start(Tag::FootnoteDefinition(_)) => in_definition += 1,
@@ -568,7 +514,7 @@ fn push_event(output: &mut String, event: Event<'static>) {
 }
 
 fn push_marker(output: &mut String, reference: &Reference) {
-    let toggle_id = format!("heine-footnote-toggle-{}", reference.instance);
+    let toggle_id = toggle_id(reference.instance);
     output.push_str("<sup class=\"heine-footnote-marker\"><label for=\"");
     output.push_str(&toggle_id);
     output.push_str("\">");
@@ -577,8 +523,8 @@ fn push_marker(output: &mut String, reference: &Reference) {
 }
 
 fn push_toggle(output: &mut String, reference: &Reference, label: &str) {
-    let toggle_id = format!("heine-footnote-toggle-{}", reference.instance);
-    let note_id = format!("heine-footnote-{}", reference.instance);
+    let toggle_id = toggle_id(reference.instance);
+    let note_id = note_id(reference.instance);
     output.push_str("<input class=\"heine-footnote-toggle\" id=\"");
     output.push_str(&toggle_id);
     output.push_str("\" type=\"checkbox\" aria-label=\"");
@@ -591,7 +537,7 @@ fn push_toggle(output: &mut String, reference: &Reference, label: &str) {
 }
 
 fn push_note(output: &mut String, reference: &Reference, body: &str) {
-    let note_id = format!("heine-footnote-{}", reference.instance);
+    let note_id = note_id(reference.instance);
     output.push_str("<aside class=\"heine-footnote\" id=\"");
     output.push_str(&note_id);
     output.push_str(
@@ -601,4 +547,12 @@ fn push_note(output: &mut String, reference: &Reference, body: &str) {
     output.push_str("</span>");
     output.push_str(body);
     output.push_str("</aside>");
+}
+
+fn toggle_id(instance: usize) -> String {
+    format!("{GENERATED_FOOTNOTE_ID_PREFIX}-toggle-{instance}")
+}
+
+fn note_id(instance: usize) -> String {
+    format!("{GENERATED_FOOTNOTE_ID_PREFIX}-note-{instance}")
 }

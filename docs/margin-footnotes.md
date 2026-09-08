@@ -6,8 +6,10 @@ semantic, local note markup. Your template and CSS decide whether a note opens
 below prose or in a wide-screen margin.
 
 This is an opt-in presentation for one declared Markdown input on a page. It
-does not add another Markdown syntax and it does not change ordinary footnotes
-elsewhere in a site.
+does not add another Markdown syntax or change the ordinary endnote
+presentation of unselected Markdown sources. Every ordinary `[^label]`
+reference still needs a matching definition, as described in the
+[reference](reference.md#markdown).
 
 ## Start with one page
 
@@ -77,18 +79,24 @@ when several are open:
 ```html
 <div class="heine-annotated-block">
   <p>Heine rejects ambiguous local times.<sup class="heine-footnote-marker">
-    <label for="heine-footnote-toggle-1">1</label>
+    <label for="__heine-footnote-toggle-1">1</label>
   </sup></p>
-  <input class="heine-footnote-toggle" id="heine-footnote-toggle-1"
-    type="checkbox" aria-label="Footnote 1" aria-controls="heine-footnote-1"
-    aria-describedby="heine-footnote-1">
-  <aside class="heine-footnote" id="heine-footnote-1" role="doc-footnote">
+  <input class="heine-footnote-toggle" id="__heine-footnote-toggle-1"
+    type="checkbox" aria-label="Footnote 1" aria-controls="__heine-footnote-note-1"
+    aria-describedby="__heine-footnote-note-1">
+  <aside class="heine-footnote" id="__heine-footnote-note-1" role="doc-footnote">
     <span class="heine-footnote-number" aria-hidden="true">1</span>
     <p>During an autumn daylight-saving transition, one wall-clock time can
       name two different instants.</p>
   </aside>
 </div>
 ```
+
+The identifiers are implementation details. Heine reserves the
+`__heine-footnote-…` family for generated ordinary and margin-footnote
+fragments, so its generated headings and footnotes cannot claim one another's
+IDs. Trusted raw HTML and templates remain author-owned: Heine does not parse
+them to check manually chosen `id` values against that reserved family.
 
 A selected source does not need a footnote. This makes a directory default
 useful for a documentation section whose individual pages need notes only

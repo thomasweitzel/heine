@@ -3,7 +3,13 @@
 //! Templates may invoke the `markdown` filter, while content loading uses the
 //! same renderer to validate MathML input with its original source available.
 
-use std::{cell::RefCell, collections::HashSet, ops::Range, path::Path, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashSet},
+    ops::Range,
+    path::Path,
+    sync::Arc,
+};
 
 use html5ever::{
     tendril::StrTendril,
@@ -32,6 +38,99 @@ mod highlighting;
 pub(crate) mod margin_footnotes;
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
+
+// This prefix cannot be produced by the heading-fragment algorithm, which
+// keeps generated heading and footnote identifiers in separate namespaces.
+pub(super) const GENERATED_FOOTNOTE_ID_PREFIX: &str = "__heine-footnote";
+
+/// Finds a footnote-like source sequence which pulldown-cmark leaves as text
+/// because no definition exists. The parser normally represents resolved
+/// references as `Event::FootnoteReference`, so this fills the one gap where
+/// an authored relationship would otherwise silently become visible prose.
+#[derive(Default)]
+pub(crate) struct UnresolvedFootnoteReferenceScanner {
+    state: UnresolvedFootnoteReferenceState,
+    escaped: bool,
+}
+
+#[derive(Default)]
+enum UnresolvedFootnoteReferenceState {
+    #[default]
+    Outside,
+    OpenBracket {
+        start: usize,
+    },
+    Label {
+        start: usize,
+        label: String,
+    },
+}
+
+impl UnresolvedFootnoteReferenceScanner {
+    pub(crate) fn clear(&mut self) {
+        self.state = UnresolvedFootnoteReferenceState::Outside;
+        self.escaped = false;
+    }
+
+    pub(crate) fn escape_next(&mut self) {
+        self.escaped = true;
+    }
+
+    pub(crate) fn push(&mut self, text: &str, offset: usize) -> Vec<(String, Range<usize>)> {
+        let mut references = Vec::new();
+        for (index, character) in text.char_indices() {
+            let position = offset + index;
+            if self.escaped {
+                self.escaped = false;
+                continue;
+            }
+            if character == '\\' {
+                self.state = UnresolvedFootnoteReferenceState::Outside;
+                self.escaped = true;
+                continue;
+            }
+            match &mut self.state {
+                UnresolvedFootnoteReferenceState::Outside if character == '[' => {
+                    self.state = UnresolvedFootnoteReferenceState::OpenBracket { start: position };
+                }
+                UnresolvedFootnoteReferenceState::Outside => {}
+                UnresolvedFootnoteReferenceState::OpenBracket { start } if character == '^' => {
+                    self.state = UnresolvedFootnoteReferenceState::Label {
+                        start: *start,
+                        label: String::new(),
+                    };
+                }
+                UnresolvedFootnoteReferenceState::OpenBracket { .. } if character == '[' => {}
+                UnresolvedFootnoteReferenceState::OpenBracket { .. } => {
+                    self.state = UnresolvedFootnoteReferenceState::Outside;
+                }
+                UnresolvedFootnoteReferenceState::Label { start, label } if character == ']' => {
+                    if !label.is_empty() {
+                        references.push((label.clone(), *start..position + character.len_utf8()));
+                    }
+                    self.state = UnresolvedFootnoteReferenceState::Outside;
+                }
+                UnresolvedFootnoteReferenceState::Label { .. }
+                    if character.is_whitespace() || character == '[' =>
+                {
+                    self.state = UnresolvedFootnoteReferenceState::Outside;
+                }
+                UnresolvedFootnoteReferenceState::Label { label, .. } => label.push(character),
+            }
+        }
+        references
+    }
+}
+
+pub(crate) fn is_escaped_markdown_character(input: &str, offset: usize) -> bool {
+    input[..offset]
+        .chars()
+        .rev()
+        .take_while(|character| *character == '\\')
+        .count()
+        % 2
+        == 1
+}
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum InitializationError {
@@ -479,6 +578,8 @@ pub(crate) enum RenderError {
         message: String,
         span: Range<usize>,
     },
+    #[error("footnote reference {label:?} has no definition")]
+    Footnote { label: String, span: Range<usize> },
     #[error("could not render margin footnotes: {message}")]
     MarginFootnote { message: String, span: Range<usize> },
 }
@@ -525,6 +626,9 @@ pub(crate) fn render_with_links_anchors(
     pages: Option<&PageLinks>,
     anchors: Option<&[String]>,
 ) -> Result<String, RenderError> {
+    if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config()) {
+        return Err(RenderError::Footnote { label, span });
+    }
     let mut anchors = anchors.unwrap_or_default().iter();
     let task_lists_enabled = renderer
         .config()
@@ -536,17 +640,22 @@ pub(crate) fn render_with_links_anchors(
         Vec::new()
     };
     let mut task_labels = task_labels.iter();
+    let mut ordinary_footnotes = OrdinaryFootnotes::default();
+    let links = TransformLinks {
+        math: renderer.config().math(),
+        assets,
+        pages,
+    };
     let mut footnote_definition_depth = 0usize;
     let mut events = Vec::new();
     for (event, span) in Parser::new_ext(input, options(renderer.config())).into_offset_iter() {
         let transformed = transform_event(
             (event.clone(), span.clone()),
-            renderer.config().math(),
-            assets,
-            pages,
+            links,
             &mut anchors,
             &mut task_labels,
             footnote_definition_depth == 0,
+            Some(&mut ordinary_footnotes),
         )?;
         match event {
             Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
@@ -575,6 +684,10 @@ pub(crate) fn validate_source_with_links(
         renderer.config().math(),
         assets.is_some() || pages.is_some(),
         renderer.highlighter.is_some(),
+        renderer
+            .config()
+            .extensions()
+            .contains(&MarkdownExtension::Footnotes),
     ) {
         return Ok(());
     }
@@ -608,6 +721,12 @@ pub(crate) fn validate_source_with_links(
                 "rebuild the site after correcting the selected Markdown source",
                 span.clone(),
             ),
+            RenderError::Footnote { span, .. } => (
+                "footnote",
+                "reference without a matching definition",
+                "add one [^label]: definition, or remove this reference",
+                span.clone(),
+            ),
         };
         Box::new(SourceError {
             path: path.into(),
@@ -623,9 +742,43 @@ pub(crate) fn validate_source_with_links(
 
 /// Markdown only needs an early pass when it can report a problem against the
 /// authored source. Ordinary and client-rendered TeX are rendered later by the
-/// template; MathML, asset URLs, and highlighting need source-aware errors.
-fn requires_source_validation(math: MathMode, has_assets: bool, has_highlighter: bool) -> bool {
-    math == MathMode::Mathml || has_assets || has_highlighter
+/// template; MathML, checked links, highlighting, and footnotes need
+/// source-aware errors.
+fn requires_source_validation(
+    math: MathMode,
+    has_assets: bool,
+    has_highlighter: bool,
+    has_footnotes: bool,
+) -> bool {
+    math == MathMode::Mathml || has_assets || has_highlighter || has_footnotes
+}
+
+fn unresolved_footnote_reference(
+    input: &str,
+    config: &MarkdownConfig,
+) -> Option<(String, Range<usize>)> {
+    if !config.extensions().contains(&MarkdownExtension::Footnotes) {
+        return None;
+    }
+    let mut scanner = UnresolvedFootnoteReferenceScanner::default();
+    for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
+        match event {
+            Event::Text(_) => {
+                if is_escaped_markdown_character(input, span.start) {
+                    scanner.escape_next();
+                }
+                if let Some(reference) = scanner
+                    .push(&input[span.clone()], span.start)
+                    .into_iter()
+                    .next()
+                {
+                    return Some(reference);
+                }
+            }
+            _ => scanner.clear(),
+        }
+    }
+    None
 }
 
 fn highlight_code_blocks(
@@ -693,14 +846,20 @@ fn options(config: &MarkdownConfig) -> Options {
     options
 }
 
-fn transform_event(
-    (event, span): (Event<'_>, Range<usize>),
+#[derive(Clone, Copy)]
+pub(super) struct TransformLinks<'a> {
     math: MathMode,
-    assets: Option<&AssetLinks>,
-    pages: Option<&PageLinks>,
+    assets: Option<&'a AssetLinks>,
+    pages: Option<&'a PageLinks>,
+}
+
+pub(super) fn transform_event(
+    (event, span): (Event<'_>, Range<usize>),
+    links: TransformLinks<'_>,
     anchors: &mut std::slice::Iter<'_, String>,
     task_labels: &mut std::slice::Iter<'_, Option<String>>,
     anchors_enabled: bool,
+    ordinary_footnotes: Option<&mut OrdinaryFootnotes>,
 ) -> Result<Event<'static>, RenderError> {
     match event {
         Event::Start(Tag::Heading {
@@ -722,13 +881,13 @@ fn transform_event(
                 .map(|(name, value)| (name.into_static(), value.map(|value| value.into_static())))
                 .collect(),
         })),
-        Event::InlineMath(tex) => match math {
+        Event::InlineMath(tex) => match links.math {
             MathMode::Mathml => render_math(&tex, DisplayMode::Inline, "inline", span)
                 .map(|mathml| Event::InlineHtml(mathml.into())),
             MathMode::Tex => Ok(Event::Text(format!("${tex}$").into())),
             MathMode::Off => Ok(Event::Text(format!("${tex}$").into())),
         },
-        Event::DisplayMath(tex) => match math {
+        Event::DisplayMath(tex) => match links.math {
             MathMode::Mathml => render_math(&tex, DisplayMode::Block, "display", span)
                 .map(|mathml| Event::Html(mathml.into())),
             MathMode::Tex => Ok(Event::Text(format!("$${tex}$$").into())),
@@ -739,7 +898,7 @@ fn transform_event(
             dest_url,
             title,
             id,
-        }) => resolve_link_destination(&dest_url, span, assets, pages).map(|url| {
+        }) => resolve_link_destination(&dest_url, span, links.assets, links.pages).map(|url| {
             Event::Start(Tag::Link {
                 link_type,
                 dest_url: url.into(),
@@ -752,7 +911,7 @@ fn transform_event(
             dest_url,
             title,
             id,
-        }) => resolve_image_destination(&dest_url, span, assets).map(|url| {
+        }) => resolve_image_destination(&dest_url, span, links.assets).map(|url| {
             Event::Start(Tag::Image {
                 link_type,
                 dest_url: url.into(),
@@ -767,8 +926,53 @@ fn transform_event(
             )
             .into(),
         )),
+        Event::FootnoteReference(label) => match ordinary_footnotes {
+            Some(footnotes) => Ok(Event::Html(
+                ordinary_footnote_reference(footnotes.number(&label)).into(),
+            )),
+            None => Ok(Event::FootnoteReference(label.into_static())),
+        },
+        Event::Start(Tag::FootnoteDefinition(label)) => match ordinary_footnotes {
+            Some(footnotes) => Ok(Event::Html(
+                ordinary_footnote_definition(footnotes.number(&label)).into(),
+            )),
+            None => Ok(Event::Start(Tag::FootnoteDefinition(label.into_static()))),
+        },
+        Event::End(TagEnd::FootnoteDefinition) if ordinary_footnotes.is_some() => {
+            Ok(Event::Html("</div>\n".into()))
+        }
         event => Ok(event.into_static()),
     }
+}
+
+/// Keeps pulldown-cmark's encounter-order footnote numbering while reserving
+/// generated definition fragments outside the heading-fragment namespace.
+#[derive(Default)]
+pub(super) struct OrdinaryFootnotes {
+    numbers: BTreeMap<String, usize>,
+}
+
+impl OrdinaryFootnotes {
+    fn number(&mut self, label: &str) -> usize {
+        let next = self.numbers.len() + 1;
+        *self.numbers.entry(label.into()).or_insert(next)
+    }
+}
+
+fn ordinary_footnote_reference(number: usize) -> String {
+    let target = ordinary_footnote_id(number);
+    format!("<sup class=\"footnote-reference\"><a href=\"#{target}\">{number}</a></sup>")
+}
+
+fn ordinary_footnote_definition(number: usize) -> String {
+    let id = ordinary_footnote_id(number);
+    format!(
+        "<div class=\"footnote-definition\" id=\"{id}\"><sup class=\"footnote-definition-label\">{number}</sup>"
+    )
+}
+
+fn ordinary_footnote_id(number: usize) -> String {
+    format!("{GENERATED_FOOTNOTE_ID_PREFIX}-definition-{number}")
 }
 
 #[derive(Default)]
@@ -1005,11 +1209,54 @@ mod tests {
 
     #[test]
     fn validates_sources_only_for_source_aware_transformations() {
-        assert!(!requires_source_validation(MathMode::Off, false, false));
-        assert!(!requires_source_validation(MathMode::Tex, false, false));
-        assert!(requires_source_validation(MathMode::Mathml, false, false));
-        assert!(requires_source_validation(MathMode::Off, true, false));
-        assert!(requires_source_validation(MathMode::Off, false, true));
+        assert!(!requires_source_validation(
+            MathMode::Off,
+            false,
+            false,
+            false
+        ));
+        assert!(!requires_source_validation(
+            MathMode::Tex,
+            false,
+            false,
+            false
+        ));
+        assert!(requires_source_validation(
+            MathMode::Mathml,
+            false,
+            false,
+            false
+        ));
+        assert!(requires_source_validation(
+            MathMode::Off,
+            true,
+            false,
+            false
+        ));
+        assert!(requires_source_validation(
+            MathMode::Off,
+            false,
+            true,
+            false
+        ));
+        assert!(requires_source_validation(
+            MathMode::Off,
+            false,
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn unresolved_ordinary_footnotes_are_checked_without_rejecting_escaped_text() {
+        let mut scanner = UnresolvedFootnoteReferenceScanner::default();
+
+        assert_eq!(
+            scanner.push("A missing note.[^missing]", 0),
+            vec![("missing".into(), 15..25)]
+        );
+        scanner.clear();
+        assert_eq!(scanner.push(r"A literal \[^missing].", 0), Vec::new());
     }
 
     #[test]
