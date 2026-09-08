@@ -1,6 +1,6 @@
 [package]
 name = "heine"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 license = "EUPL-1.2"
 
@@ -41,3 +41,10 @@ url = "2.5.8"
 
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }
+
+[profile.release]
+opt-level = "z"       # optimize for size ("s" is less aggressive, try both)
+lto = true            # link-time optimization, fat LTO
+codegen-units = 1     # slower compile, better optimization/size
+panic = "abort"       # removes unwinding tables/landing pads
+strip = true          # strips symbols and debug info automatically

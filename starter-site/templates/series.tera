@@ -34,7 +34,7 @@
     <p>{{ series.description }}</p>
   {% endif %}
   {% if pagination.pages %}
-    <ol class="link-list series-list" start="{{ pagination.first_item_number }}">
+    <ol class="series-list" start="{{ pagination.first_item_number }}">
       {% for item in pagination.pages %}
         <li>
           <a href="{{ item.relative_url }}">{{ item.title }}</a>

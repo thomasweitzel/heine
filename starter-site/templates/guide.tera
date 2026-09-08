@@ -11,6 +11,8 @@
       {{ <ui.color_scheme_image light={light} dark={dark} alt={page.extra.color_scheme_image.alt} /> }}
     </figure>
   {% endif %}
-  {{ markdown(content="main") }}
+  <div class="prose">
+    {{ markdown(content="main") }}
+  </div>
 </article>
 {% endblock %}

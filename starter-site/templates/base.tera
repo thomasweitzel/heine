@@ -61,9 +61,9 @@
           {% endblock %}
         </div>
       </div>
-      {% block header %}{% endblock %}
     </header>
     <main{% if page and page.footnotes %} class="has-margin-footnotes"{% endif %}>
+      {% block page_navigation %}{% endblock %}
       {% block content %}
       {{ page.content.main }}
       {% endblock %}

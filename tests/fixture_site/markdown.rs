@@ -256,39 +256,44 @@ fn margin_footnotes_render_local_checked_note_instances() {
     );
     fixture.write(
         "content/en/index.page",
-        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n\n[footnotes]\ncontent = 'main'\n",
     );
     fixture.write(
         "content/en/index.md",
-        "A locally explained claim.[^one] Another claim.[^two] The first claim again.[^one]\n\n[^one]: Its local explanation.\n\n[^two]: A second explanation.\n",
+        "## Heine footnote note 1\n\nA locally explained claim.[^one] Another claim.[^two] The first claim again.[^one]\n\n[^one]: Its local explanation.\n\n[^two]: A second explanation.\n",
     );
     fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
     let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
     assert!(
-        output.contains("<div class=\"heine-annotated-block\"><p>A locally explained claim."),
+        output.contains("<h2 id=\"heine-footnote-note-1\">Heine footnote note 1</h2>"),
+        "{output}"
+    );
+    assert_eq!(
+        output.matches("id=\"__heine-footnote-note-1\"").count(),
+        1,
         "{output}"
     );
     assert!(
-        output.contains("<label for=\"heine-footnote-toggle-1\">1</label>"),
+        output.contains("<label for=\"__heine-footnote-toggle-1\">1</label>"),
         "{output}"
     );
     assert!(output.contains("aria-label=\"Footnote"), "{output}");
     assert!(
-        output.contains("<aside class=\"heine-footnote\" id=\"heine-footnote-1\" role=\"doc-footnote\"><span class=\"heine-footnote-number\" aria-hidden=\"true\">1</span><p>Its local explanation.</p>"),
+        output.contains("<aside class=\"heine-footnote\" id=\"__heine-footnote-note-1\" role=\"doc-footnote\"><span class=\"heine-footnote-number\" aria-hidden=\"true\">1</span><p>Its local explanation.</p>"),
         "{output}"
     );
     assert!(
-        output.contains("<label for=\"heine-footnote-toggle-2\">2</label>"),
+        output.contains("<label for=\"__heine-footnote-toggle-2\">2</label>"),
         "{output}"
     );
     assert!(
-        output.contains("<label for=\"heine-footnote-toggle-3\">1</label>"),
+        output.contains("<label for=\"__heine-footnote-toggle-3\">1</label>"),
         "{output}"
     );
     assert!(
-        output.contains("id=\"heine-footnote-3\" role=\"doc-footnote\""),
+        output.contains("id=\"__heine-footnote-note-3\" role=\"doc-footnote\""),
         "{output}"
     );
     assert!(!output.contains("footnote-definition"), "{output}");
@@ -544,6 +549,72 @@ fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
     assert!(output.contains("footnote-reference"), "{output}");
     assert!(output.contains("<math"), "{output}");
     assert!(output.contains("display=\"block\""), "{output}");
+}
+
+#[test]
+fn ordinary_footnote_references_need_definitions() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "A missing note.[^first] Another missing note.[^second]\n",
+    );
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("reference needs a definition");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.md:1:16"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("reference without a matching definition"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("add one [^label]: definition, or remove this reference"),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "content/en/index.md",
+        "A literal \\[^missing].\n\n`[^also-literal]`\n",
+    );
+    build_at(fixture.path(), BuildMode::Full)
+        .expect("escaped and code-span footnote syntax are literal text");
+}
+
+#[test]
+fn ordinary_footnotes_use_generated_fragments_separate_from_headings() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "## Audio\n\nA note.[^audio]\n\n[^audio]: An ordinary footnote.\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<h2 id=\"audio\">Audio</h2>"), "{output}");
+    assert!(
+        output.contains("<a href=\"#__heine-footnote-definition-1\">1</a>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<div class=\"footnote-definition\" id=\"__heine-footnote-definition-1\">"),
+        "{output}"
+    );
+    assert_eq!(output.matches("id=\"audio\"").count(), 1, "{output}");
 }
 
 #[test]

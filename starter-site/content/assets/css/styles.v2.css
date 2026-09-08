@@ -16,6 +16,11 @@
     --spacing-s: 0.5rem;
     --spacing-m: 1rem;
     --spacing-l: 2rem;
+    --list-content-inset: 1.5rem;
+    --list-marker-offset: -1.35rem;
+    --sticky-header-block-size: calc(
+        var(--spacing-m) + var(--spacing-m) + 1.6rem + 1px
+    );
 }
 
 @media (prefers-color-scheme: dark) {
@@ -74,9 +79,7 @@ header {
     background-color: var(--bg);
     padding: var(--spacing-m);
     border-bottom: var(--border);
-    position: sticky;
-    top: 0;
-    z-index: 1;
+    position: static;
 }
 
 .site-header,
@@ -107,7 +110,19 @@ header {
     align-items: center;
 }
 
-@media (max-width: 34rem) {
+@media (min-width: 45rem) {
+    header {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    html {
+        scroll-padding-block-start: var(--sticky-header-block-size);
+    }
+}
+
+@media (width < 45rem) {
     .site-header {
         flex-direction: column;
         align-items: flex-start;
@@ -162,15 +177,24 @@ header {
     border-radius: 0.1rem;
 }
 
-.page-navigation {
-    margin-top: var(--spacing-s);
+.page-navigation,
+.page-local-navigation {
     display: flex;
     flex-wrap: wrap;
     justify-content: end;
     gap: var(--spacing-s) var(--spacing-m);
 }
 
-.page-navigation a {
+.page-navigation {
+    margin-top: var(--spacing-s);
+}
+
+main > .page-local-navigation {
+    margin-block: 0 var(--spacing-m);
+}
+
+.page-navigation a,
+.page-local-navigation a {
     display: inline-flex;
     gap: 0.3rem;
     align-items: center;
@@ -227,6 +251,10 @@ header {
     height: 1em;
 }
 
+html[dir="rtl"] .navigation-arrow {
+    transform: scaleX(-1);
+}
+
 .series-navigation-links a span:last-child {
     min-width: 0;
     overflow-wrap: anywhere;
@@ -254,31 +282,10 @@ header {
     margin: 0;
 }
 
-.link-list {
+.series-list {
     display: grid;
     gap: var(--spacing-s);
-    padding: 0;
-    list-style: none;
-}
-
-.link-list li {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem var(--spacing-s);
-    align-items: baseline;
-}
-
-.link-list span {
-    color: var(--muted-fg);
-}
-
-.series-list {
-    padding-inline-start: 1.5rem;
-    list-style: decimal;
-}
-
-.series-list li {
-    display: list-item;
+    list-style-type: decimal;
 }
 
 .series-list-summary {
@@ -286,6 +293,27 @@ header {
     margin-top: 0.15rem;
     color: var(--muted-fg);
     font-size: 0.9rem;
+}
+
+.compact-index,
+.series-list,
+.page-list {
+    margin: var(--spacing-m) 0;
+}
+
+.prose :is(ul, ol),
+.compact-index,
+.series-list {
+    padding-inline-start: var(--list-content-inset);
+    list-style-position: outside;
+}
+
+.attribution-list li + li {
+    margin-block-start: var(--spacing-s);
+}
+
+.compact-index li::marker {
+    color: var(--muted-fg);
 }
 
 .pagination {
@@ -323,26 +351,80 @@ footer {
     margin-bottom: var(--spacing-s);
 }
 
-code {
+.prose code {
     background-color: var(--code-bg);
+    border: var(--border);
+    border-radius: var(--radius);
+    padding: 0.15em 0.25em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
     font-size: 0.95rem;
+    line-height: 1.2;
 }
 
-table {
-    width: 100%;
+.prose input[type="checkbox"][disabled] {
+    appearance: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    margin: 0;
+    border: var(--border);
+    border-radius: var(--radius);
+    background-color: var(--color-1);
+    opacity: 1;
+}
+
+.prose input[type="checkbox"][disabled]:checked {
+    border-color: var(--badge-bg);
+    background-color: var(--badge-bg);
+}
+
+.prose input[type="checkbox"][disabled]:checked::after {
+    content: "";
+    display: block;
+    inline-size: 0.45rem;
+    block-size: 0.24rem;
+    margin: 0.18rem 0 0 0.2rem;
+    border-block-end: 0.13rem solid var(--fg);
+    border-inline-start: 0.13rem solid var(--fg);
+    transform: rotate(-45deg);
+}
+
+.prose img {
+    display: block;
+    max-inline-size: 100%;
+    block-size: auto;
+}
+
+@supports selector(li:has(> input[type="checkbox"][disabled])) {
+    .prose li:has(> input[type="checkbox"][disabled]) {
+        position: relative;
+        list-style: none;
+    }
+
+    .prose li:has(> input[type="checkbox"][disabled]) > input {
+        position: absolute;
+        inset-block-start: 0.3em;
+        inset-inline-start: var(--list-marker-offset);
+    }
+}
+
+.prose table {
+    display: block;
+    max-inline-size: 100%;
     margin-block: var(--spacing-m);
+    overflow-x: auto;
     border-collapse: collapse;
 }
 
-th,
-td {
+.prose th,
+.prose td {
     padding: 0.35rem var(--spacing-s);
     border-bottom: var(--border);
     text-align: start;
     vertical-align: top;
 }
 
-th {
+.prose th {
     background-color: var(--color-1);
 }
 
@@ -442,7 +524,7 @@ a:focus-visible {
     color: var(--fg);
 }
 
-blockquote {
+.prose blockquote {
     margin-block: var(--spacing-m);
     margin-inline: 0;
     padding: var(--spacing-s) var(--spacing-m);
@@ -453,27 +535,29 @@ blockquote {
     font-style: italic;
 }
 
-blockquote > :first-child {
+.prose blockquote > :first-child {
     margin-top: 0;
 }
 
-blockquote > :last-child {
+.prose blockquote > :last-child {
     margin-bottom: 0;
 }
 
-sup.footnote-reference {
+.prose sup.footnote-reference {
     margin-inline: 0.1em;
-    font-size: 0.72em;
+    font-size: 0.75rem;
     line-height: 0;
     vertical-align: super;
 }
 
-.footnote-reference a {
+.prose .footnote-reference a {
     display: inline-flex;
-    min-width: 1.45em;
-    min-height: 1.45em;
+    box-sizing: border-box;
+    min-inline-size: 1.45em;
+    min-block-size: 1.45em;
     align-items: center;
     justify-content: center;
+    padding-inline: 0.20em;
     border: 1px solid var(--border-color);
     border-radius: 999px;
     color: var(--muted-fg);
@@ -481,21 +565,21 @@ sup.footnote-reference {
     line-height: 1;
 }
 
-.footnote-reference a:hover,
-.footnote-reference a:focus-visible {
+.prose .footnote-reference a:hover,
+.prose .footnote-reference a:focus-visible {
     border-color: var(--color-2);
     background-color: var(--badge-bg);
     color: var(--color-2);
     box-shadow: none;
 }
 
-.footnote-definition:nth-child(1 of .footnote-definition) {
+.prose .footnote-definition:nth-child(1 of .footnote-definition) {
     position: relative;
     margin-top: var(--spacing-l);
     padding-top: var(--spacing-m);
 }
 
-.footnote-definition:nth-child(1 of .footnote-definition)::before {
+.prose .footnote-definition:nth-child(1 of .footnote-definition)::before {
     position: absolute;
     inset-block-start: 0;
     inset-inline-start: 0;
@@ -504,7 +588,7 @@ sup.footnote-reference {
     content: "";
 }
 
-.footnote-definition {
+.prose .footnote-definition {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
     column-gap: var(--spacing-s);
@@ -514,38 +598,40 @@ sup.footnote-reference {
     font-size: 0.9rem;
 }
 
-.footnote-definition-label {
+.prose .footnote-definition-label {
     color: var(--color-2);
     font-size: 0.8em;
     line-height: 1.6;
 }
 
-.footnote-definition p {
+.prose .footnote-definition p {
     grid-column: 2;
     margin: 0;
 }
 
-.footnote-definition p + p {
+.prose .footnote-definition p + p {
     margin-top: var(--spacing-s);
 }
 
-.heine-annotated-block {
+.prose .heine-annotated-block {
     position: relative;
 }
 
-.heine-footnote-marker {
+.prose .heine-footnote-marker {
     margin-inline: 0.1em;
-    font-size: 0.72em;
+    font-size: 0.75rem;
     line-height: 0;
     vertical-align: super;
 }
 
-.heine-footnote-marker label {
+.prose .heine-footnote-marker label {
     display: inline-flex;
-    min-width: 1.45em;
-    min-height: 1.45em;
+    box-sizing: border-box;
+    min-inline-size: 1.45em;
+    min-block-size: 1.45em;
     align-items: center;
     justify-content: center;
+    padding-inline: 0.18em;
     border: 1px solid var(--border-color);
     border-radius: 999px;
     color: var(--muted-fg);
@@ -554,11 +640,11 @@ sup.footnote-reference {
     line-height: 1;
 }
 
-.heine-footnote-toggle:checked + .heine-footnote {
+.prose .heine-footnote-toggle:checked + .heine-footnote {
     display: block;
 }
 
-.heine-footnote {
+.prose .heine-footnote {
     display: none;
     margin-top: var(--spacing-s);
     padding: var(--spacing-s) var(--spacing-m);
@@ -569,14 +655,16 @@ sup.footnote-reference {
     font-size: 0.9rem;
 }
 
-.heine-footnote-number {
+.prose .heine-footnote-number {
     display: inline-flex;
     float: inline-start;
-    width: 1.45em;
-    height: 1.45em;
+    box-sizing: border-box;
+    min-inline-size: 1.45em;
+    min-block-size: 1.45em;
     align-items: center;
     justify-content: center;
     margin: 0.1em var(--spacing-s) 0 0;
+    padding-inline: 0.18em;
     border: 1px solid var(--border-color);
     border-radius: 999px;
     color: var(--muted-fg);
@@ -585,16 +673,16 @@ sup.footnote-reference {
     line-height: 1;
 }
 
-.heine-footnote > :nth-child(2) {
+.prose .heine-footnote > :nth-child(2) {
     margin-top: 0;
 }
 
-.heine-footnote > :last-child {
+.prose .heine-footnote > :last-child {
     margin-bottom: 0;
 }
 
 @supports selector(.heine-annotated-block:has(.heine-footnote-toggle:focus-visible)) {
-    .heine-footnote-toggle {
+    .prose .heine-footnote-toggle {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -602,37 +690,37 @@ sup.footnote-reference {
         clip-path: inset(50%);
     }
 
-    .heine-annotated-block:has(.heine-footnote-toggle:focus-visible)
+    .prose .heine-annotated-block:has(.heine-footnote-toggle:focus-visible)
         .heine-footnote-marker label {
         outline: 2px solid var(--color-2);
         outline-offset: 2px;
     }
 
-    .heine-footnote-marker label:hover {
+    .prose .heine-footnote-marker label:hover {
         border-color: var(--color-2);
         background-color: var(--badge-bg);
         color: var(--color-2);
     }
 
     @media (min-width: 84rem) {
-        .has-margin-footnotes .heine-annotated-block {
+        .has-margin-footnotes .prose .heine-annotated-block {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(14rem, 20rem);
             column-gap: var(--spacing-l);
             width: calc(100% + 22rem);
         }
 
-        .has-margin-footnotes .heine-annotated-block > p,
-        .has-margin-footnotes .heine-annotated-block > h1,
-        .has-margin-footnotes .heine-annotated-block > h2,
-        .has-margin-footnotes .heine-annotated-block > h3,
-        .has-margin-footnotes .heine-annotated-block > h4,
-        .has-margin-footnotes .heine-annotated-block > h5,
-        .has-margin-footnotes .heine-annotated-block > h6 {
+        .has-margin-footnotes .prose .heine-annotated-block > p,
+        .has-margin-footnotes .prose .heine-annotated-block > h1,
+        .has-margin-footnotes .prose .heine-annotated-block > h2,
+        .has-margin-footnotes .prose .heine-annotated-block > h3,
+        .has-margin-footnotes .prose .heine-annotated-block > h4,
+        .has-margin-footnotes .prose .heine-annotated-block > h5,
+        .has-margin-footnotes .prose .heine-annotated-block > h6 {
             grid-column: 1;
         }
 
-        .has-margin-footnotes .heine-footnote-toggle:checked + .heine-footnote {
+        .has-margin-footnotes .prose .heine-footnote-toggle:checked + .heine-footnote {
             grid-column: 2;
             margin-top: 0;
         }
@@ -640,49 +728,51 @@ sup.footnote-reference {
 }
 
 @media print {
-    .heine-annotated-block {
+    .prose .heine-annotated-block {
         display: block !important;
     }
 
-    .heine-footnote-toggle {
+    .prose .heine-footnote-toggle {
         display: none;
     }
 
-    .heine-footnote {
+    .prose .heine-footnote {
         display: block !important;
     }
 }
 
-pre,
-code {
+.prose pre,
+.prose code {
     direction: ltr;
     text-align: left;
 }
 
-pre {
+.prose pre {
     padding: var(--spacing-s) var(--spacing-m);
     border-radius: var(--radius);
     overflow-x: auto;
 }
 
-pre:not(.giallo) {
+.prose pre:not(.giallo) {
     background-color: var(--code-bg);
 }
 
-pre > code {
+.prose pre > code {
     background-color: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
 }
 
-math {
+.prose math {
     font-family: "STIX Two Math";
 }
 
-math[display="block"] {
+.prose math[display="block"] {
     font-size: 1.25em;
 }
 
 .page-list {
-    margin: var(--spacing-m) 0;
     padding: 0;
     list-style: none;
 }

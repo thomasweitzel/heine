@@ -2,5 +2,7 @@
 
 {% block content %}
 {% include "table-of-contents.tera" %}
-{{ markdown(content="main") }}
+<div class="prose">
+  {{ markdown(content="main") }}
+</div>
 {% endblock %}

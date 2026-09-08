@@ -244,7 +244,7 @@ fn builds_the_documented_starter_site() {
         ),
         "{tags}"
     );
-    assert!(tags.contains("<ul>"), "{tags}");
+    assert!(tags.contains("<ul class=\"compact-index\">"), "{tags}");
     assert!(tags.contains("site-navigation"), "{tags}");
     assert!(!tags.contains("width=\"\""), "{tags}");
     assert!(!tags.contains("height=\"\""), "{tags}");
@@ -281,7 +281,10 @@ fn builds_the_documented_starter_site() {
         ),
         "{series_index}"
     );
-    assert!(series_index.contains("<ul>"), "{series_index}");
+    assert!(
+        series_index.contains("<ul class=\"compact-index\">"),
+        "{series_index}"
+    );
     assert!(
         series_index.contains(
             "<a href=\"../series/heinrich-heine/index.html\">Heinrich Heine</a> <span class=\"item-count\">3</span>"
@@ -294,6 +297,7 @@ fn builds_the_documented_starter_site() {
     );
     let rust_tag = fs::read_to_string(output.join("tags/Rust.html")).expect("Rust tag listing");
     assert!(rust_tag.contains("Math, Markdown, and Media"), "{rust_tag}");
+    assert!(rust_tag.contains("<ul class=\"page-list\">"), "{rust_tag}");
     assert!(
         rust_tag.contains("href=\"/my-project/de/tags/Rust.html\" hreflang=\"de\""),
         "{rust_tag}"
@@ -327,8 +331,15 @@ fn builds_the_documented_starter_site() {
         "{post}"
     );
     assert!(post.contains("class=\"navigation-arrow\""), "{post}");
+    let header_end = post.find("</header>").expect("global header ends");
+    let local_navigation = post
+        .find("class=\"page-local-navigation\" aria-label=\"Page navigation\"")
+        .expect("page-local navigation renders");
+    let post_metadata = post
+        .find("class=\"post-meta\"")
+        .expect("post metadata renders");
     assert!(
-        post.contains("class=\"page-navigation\" aria-label=\"Page navigation\""),
+        header_end < local_navigation && local_navigation < post_metadata,
         "{post}"
     );
     let guide = fs::read_to_string(output.join("heine/index.html")).expect("Heine guide");
@@ -375,6 +386,10 @@ fn builds_the_documented_starter_site() {
     assert!(guide_life.contains("role=\"doc-footnote\""), "{guide_life}");
     let attributions =
         fs::read_to_string(output.join("legal/licenses/index.html")).expect("attributions page");
+    assert!(
+        attributions.contains("<ul class=\"compact-index attribution-list\">"),
+        "{attributions}"
+    );
     assert!(
         attributions.contains("STIXTwoMath-Regular.woff2"),
         "{attributions}"

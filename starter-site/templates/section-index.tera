@@ -1,8 +1,8 @@
 {% extends "base.tera" %}
-{% block header %}
+{% block page_navigation %}
 {% if page.extra.parent %}
   {% set up = page(id=page.extra.parent) %}
-  <nav class="page-navigation" aria-label="{{ t(id="page-navigation") }}">
+  <nav class="page-local-navigation" aria-label="{{ t(id="page-navigation") }}">
     <a href="{{ up.url }}">{{ <ui.arrow direction="up" /> }}<span>{{ up.title }}</span></a>
   </nav>
 {% endif %}
@@ -11,7 +11,9 @@
 
 {% if page.content.main %}
   {% include "table-of-contents.tera" %}
-  {{ markdown(content="main") }}
+  <div class="prose">
+    {{ markdown(content="main") }}
+  </div>
 {% endif %}
 
 {% if pagination %}

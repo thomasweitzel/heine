@@ -232,19 +232,19 @@ independent native checkbox and note aside for each local instance:
   <p>
     Heine rejects ambiguous local times.
     <sup class="heine-footnote-marker">
-      <label for="heine-footnote-toggle-1">1</label>
+      <label for="__heine-footnote-toggle-1">1</label>
     </sup>
   </p>
 
   <input
     class="heine-footnote-toggle"
-    id="heine-footnote-toggle-1"
+    id="__heine-footnote-toggle-1"
     type="checkbox"
     aria-label="Footnote 1"
-    aria-controls="heine-footnote-1"
-    aria-describedby="heine-footnote-1"
+    aria-controls="__heine-footnote-note-1"
+    aria-describedby="__heine-footnote-note-1"
   >
-  <aside class="heine-footnote" id="heine-footnote-1" role="doc-footnote">
+  <aside class="heine-footnote" id="__heine-footnote-note-1" role="doc-footnote">
     <span class="heine-footnote-number" aria-hidden="true">1</span>
     <p>During an autumn daylight-saving transition, the same wall-clock time
     can name two distinct instants.</p>
@@ -273,11 +273,13 @@ the publishing-specific `doc-footnote` role for ancillary note content within
 a work. Heine HTML-escapes the formatted Fluent value before placing it in the
 attribute.
 
-The exact generated IDs are implementation details. They use a reserved Heine
-prefix and are unique among Heine-generated margin-footnote controls and notes.
-As with generated ToC anchors, Heine does not inspect trusted template or raw
-HTML markup for manually authored `id` collisions. The stable class names above
-are the styling contract for sites and kits.
+The exact generated IDs are implementation details. Ordinary and margin
+footnotes share the reserved `__heine-footnote-…` prefix, which stays separate
+from generated heading fragments and gives each generated control, note, and
+ordinary definition a distinct role-specific ID. As with generated ToC anchors,
+Heine does not inspect trusted template or raw HTML markup for manually
+authored `id` collisions. The stable class names above are the styling contract
+for sites and kits.
 
 An identifier represents the local reference instance, not the displayed
 footnote number. For example, two references to definition number `1` receive

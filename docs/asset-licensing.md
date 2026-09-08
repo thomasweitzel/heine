@@ -26,7 +26,7 @@ needs an attribution. A sidecar is never copied as an asset. It must contain at
 least one copyright notice and one SPDX expression:
 
 ```text
-SPDX-FileCopyrightText: 2001–2021 The STIX Fonts Project Authors
+SPDX-FileCopyrightText: 2001-2021 The STIX Fonts Project Authors
 SPDX-License-Identifier: OFL-1.1
 SPDX-FileComment: https://github.com/stipub/stixfonts
 ```
