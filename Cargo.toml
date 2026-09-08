@@ -2,7 +2,12 @@
 name = "heine"
 version = "0.3.0"
 edition = "2024"
+rust-version = "1.88"
+description = "A small, checked static-site generator"
+readme = "README.md"
 license = "EUPL-1.2"
+keywords = ["static-site-generator", "ssg", "markdown", "website"]
+categories = ["command-line-utilities", "web-programming"]
 
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
@@ -43,7 +48,7 @@ url = "2.5.8"
 tower = { version = "0.5.3", features = ["util"] }
 
 [profile.release]
-opt-level = "z"       # optimize for size ("s" is less aggressive, try both)
+opt-level = 3         # all optimizations
 lto = true            # link-time optimization, fat LTO
 codegen-units = 1     # slower compile, better optimization/size
 panic = "abort"       # removes unwinding tables/landing pads
