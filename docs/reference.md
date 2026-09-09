@@ -281,24 +281,30 @@ segments; dotted names create nested values and repeated names become ordered
 arrays. Markdown links and images may use `asset:<locale-root-relative-id>`
 for a checked copied asset; ordinary Markdown URLs are unchanged.
 
+Segment markers are recognized before Markdown is parsed. In a segmented
+Markdown file, a line that looks like `<!-- segment: name -->` is therefore a
+marker even when it appears inside a fenced code block. Keep literal marker
+examples in an unsegmented input, or phrase them so they are not marker-shaped.
+
 For example, this declared text file begins with a segment marker, so it
 becomes structured content rather than one text value:
 
 ```html
-<!-- segment: intro -->
+<!-- segment: introduction -->
 An introduction.
 <!-- segment: questions.title -->
-First question
+First question.
 <!-- segment: questions.item -->
-One
+One.
 <!-- segment: questions.item -->
-Two
+Two.
 ```
 
-For a page declaring it as `main = "quiz.txt"`, templates receive
-`page.content.main.intro`, `page.content.main.questions.title`, and the array
-`page.content.main.questions.item`. Segmentation applies only when the first
-line is a marker. Otherwise the complete file remains one text value.
+For a page declaring it as `main = "questions.md"`, templates receive
+`page.content.main.introduction`, `page.content.main.questions.title`, and the
+ordered array `page.content.main.questions.item`. Segmentation applies only
+when the first line is a marker. Otherwise the complete file remains one text
+value.
 
 ## Markdown
 
@@ -405,7 +411,7 @@ tables below are the complete Heine additions to a template environment.
 | `page`                 | `page(id="guide/install")`                                                                            | A rendered page in the current locale, including its render-facing metadata, content, and `url` / `relative_url`.                                                                                                                                                                                                                            |
 | `page`                 | `page(locale="de", id="hilfe/installieren")`                                                          | An exact rendered page in the named configured locale; this never guesses a translation counterpart.                                                                                                                                                                                                                                         |
 | `markdown`             | `markdown(content="main")`                                                                            | Trusted HTML from the named declared, unsegmented Markdown content of the current authored page. It applies matching heading IDs and checked local margin-footnote structure when that content is selected by either feature.                                                                                                                |
-| `page_exists`          | `page_exists(id="quiz/index")`                                                                        | Whether a rendered page exists in the current locale. It returns `false` for a missing page, but invalid IDs and locales still fail at the call site.                                                                                                                                                                                        |
+| `page_exists`          | `page_exists(id="guide/index")`                                                                       | Whether a rendered page exists in the current locale. It returns `false` for a missing page, but invalid IDs and locales still fail at the call site.                                                                                                                                                                                        |
 | `collection`           | `collection(name="posts")`                                                                            | A configured current-locale collection with `name`, `count`, and ordered `page_ids`.                                                                                                                                                                                                                                                         |
 | `collection_neighbors` | `collection_neighbors(name="posts")`                                                                  | Immediate rendered-page views around the current authored page in the named current-locale collection order. `before` is the preceding member and `after` the following member; either is `null` at an end. It fails if the collection is unknown or the current page is not a member.                                                       |
 | `search`               | `search(name="site")` or `search(name="site", locale="de")`                                           | A configured JSON search index for the current or exact configured locale: `name`, selected-document `count`, base-path-aware `url`, and current-output-relative `relative_url`. Invalid or unknown names and locales fail at the call site.                                                                                                 |
@@ -415,7 +421,7 @@ tables below are the complete Heine additions to a template environment.
 | `series_has_members`   | `series_has_members(id="getting-started")` or `series_has_members(id="getting-started", locale="de")` | Whether a configured Series has local members in the current or selected exact locale. It returns `false` only for an empty local Series; invalid IDs, locales, and disabled Series fail at the call site.                                                                                                                                   |
 | `siblings`             | `siblings()` or `siblings(id="blog/index")`                                                           | Ordered IDs for the other eligible pages in the selected page’s directory. See [sibling navigation](#sibling-navigation). `locale=` is allowed only with `id=`.                                                                                                                                                                              |
 | `sibling_neighbors`    | `sibling_neighbors()`                                                                                 | Immediate rendered-page views around the current authored page in directory sibling order. `before` is the preceding member and `after` the following member; either is `null` at an end. It fails if the current page has no numeric sibling weight. See [sibling navigation](#sibling-navigation).                                         |
-| `t`                    | `t(id="quiz-count", count=quizzes \| length)`                                                         | Escaped Fluent text for the current locale. It falls back to the default locale only when the message or requested attribute is absent. Use `attribute="label"` for a Fluent attribute; other named arguments must be strings, numbers, or booleans.                                                                                         |
+| `t`                    | `t(id="entry-count", count=entries \| length)`                                                        | Escaped Fluent text for the current locale. It falls back to the default locale only when the message or requested attribute is absent. Use `attribute="label"` for a Fluent attribute; other named arguments must be strings, numbers, or booleans.                                                                                         |
 | `format_date`          | `format_date(value=page.published, style="long")`                                                     | A locale-formatted calendar date. Values are RFC 3339 timestamps, such as `page.published`, or bare `YYYY-MM-DD` values supplied by template data; styles are `short`, `medium` (default), and `long`.                                                                                                                                       |
 | `highlight_css`        | `highlight_css()`                                                                                     | The base-path-aware URL for the configured generated highlighting stylesheet. It fails if highlighting is disabled.                                                                                                                                                                                                                          |
 | `pagination_links`     | `pagination_links()`                                                                                  | Every lightweight pager link for the current paginated listing. It fails at the call site outside such a render.                                                                                                                                                                                                                             |
