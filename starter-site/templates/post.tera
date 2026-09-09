@@ -21,7 +21,7 @@
 
 {% block content %}
 {% set published = format_date(value=page.published, style="long") %}
-<div class="post-meta">
+<div class="page-meta">
   <p>{{ t(id="post-published") }} <time datetime="{{ page.published }}">{{ published }}</time></p>
   {% if page.authors %}
     <p>{{ t(id="post-byline", authors=page.authors | join(sep=", ")) }}</p>

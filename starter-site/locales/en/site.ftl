@@ -3,7 +3,6 @@ nav-label = Primary
 nav-blog = Blog
 nav-tags = Tags
 nav-search = Search
-nav-quiz = Quiz
 nav-heine = Heinrich Heine
 nav-series = Series
 
@@ -28,24 +27,30 @@ toc-label = Table of contents
 footnote-marker = Footnote { $number }
 pagination-label = Pagination
 page-navigation = Page navigation
-quiz-menu = Quiz Menu
 
 # Accessible labels for switching to a page's available language versions.
 language = Language
 language-en = English
 language-de = German
 
-# Taxonomy labels, metadata descriptions, and plural-aware collection summaries.
+# Every configured taxonomy needs its plural-aware label plus index and term descriptions.
+# This group also contains collection summaries that use the same plural convention.
 tags = { $count ->
     [one] Tag
    *[other] Tags
+}
+authors = { $count ->
+    [one] Author
+   *[other] Authors
 }
 blog-post-summary = { $count ->
    [one] So far there is one post.
    *[other] So far there are { $count } posts.
 }
-taxonomy-index-description = Browse the tags used by posts in this Heine starter site.
-taxonomy-term-description = Posts filed under { $term } in this Heine starter site.
+tags-index-description = Browse the tags used by posts in this Heine starter site.
+tags-term-description = Posts filed under { $term } in this Heine starter site.
+authors-index-description = Browse the authors represented by readings in this Heine starter site.
+authors-term-description = Readings by { $term } in this Heine starter site.
 
 # Atom feed metadata for the locale-local post collection.
 feed-posts-title = Heine posts

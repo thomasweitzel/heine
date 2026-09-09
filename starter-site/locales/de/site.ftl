@@ -3,7 +3,7 @@ nav-label = Hauptnavigation
 nav-blog = Blog
 nav-tags = Schlagwörter
 nav-search = Suche
-nav-quiz = Quiz
+nav-reading = Lektüre
 nav-heine = Heinrich Heine
 nav-series = Reihen
 
@@ -26,24 +26,31 @@ toc-label = Inhaltsverzeichnis
 footnote-marker = Fußnote { $number }
 pagination-label = Seitennavigation
 page-navigation = Seitennavigation
-quiz-menu = Quiz-Menü
 
 # Accessible labels for switching to a page's available language versions.
 language = Sprache
 language-en = Englisch
 language-de = Deutsch
 
-# Taxonomy labels, metadata descriptions, and plural-aware collection summaries.
+# Jede konfigurierte Taxonomie braucht ihre pluralfähige Bezeichnung sowie
+# Beschreibungen für Index und Begriff. Diese Gruppe enthält außerdem
+# Sammlungshinweise mit derselben Pluralregel.
 tags = { $count ->
     [one] Schlagwort
    *[other] Schlagwörter
+}
+authors = { $count ->
+    [one] Autor
+   *[other] Autorinnen und Autoren
 }
 blog-post-summary = { $count ->
    [one] Bisher gibt es einen Beitrag auf Deutsch.
    *[other] Bisher gibt es { $count } Beiträge auf Deutsch.
 }
-taxonomy-index-description = Durchsuche die Schlagwörter der Beiträge in dieser Heine-Starter-Site.
-taxonomy-term-description = Beiträge mit dem Schlagwort { $term } in dieser Heine-Starter-Site.
+tags-index-description = Durchsuche die Schlagwörter der Beiträge in dieser Heine-Starter-Site.
+tags-term-description = Beiträge mit dem Schlagwort { $term } in dieser Heine-Starter-Site.
+authors-index-description = Durchsuche die Autorinnen und Autoren der Lektüren in dieser Heine-Starter-Site.
+authors-term-description = Lektüren von { $term } in dieser Heine-Starter-Site.
 
 # Atom feed metadata for the locale-local post collection.
 feed-posts-title = Heine-Beiträge

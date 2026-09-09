@@ -271,14 +271,14 @@ html[dir="rtl"] .navigation-arrow {
     text-align: end;
 }
 
-.post-meta {
+.page-meta {
     display: grid;
     gap: 0.2rem;
     color: var(--muted-fg);
     font-size: 0.95rem;
 }
 
-.post-meta p {
+.page-meta p {
     margin: 0;
 }
 

@@ -15,8 +15,8 @@ message = "nav-tags"
 taxonomy = "tags"
 
 [[navigation]]
-message = "nav-quiz"
-page = "quiz/index"
+message = "nav-reading"
+page = "lesen/index"
 
 [[navigation]]
 message = "nav-heine"

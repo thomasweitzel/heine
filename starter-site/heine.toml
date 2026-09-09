@@ -26,6 +26,9 @@ order = "published-desc"
 [collections.documentation]
 order = "title-asc"
 
+[collections.readings]
+order = "weight-asc"
+
 [series]
 path = "series"
 index_template = "series-index.tera"
@@ -54,6 +57,13 @@ empty_authors = ["Heinrich Heine"]
 [taxonomies.tags]
 collection = "posts"
 path = "tags"
+index_template = "taxonomy-index.tera"
+term_template = "taxonomy-term.tera"
+per_page = 10
+
+[taxonomies.authors]
+collection = "readings"
+path = "authors"
 index_template = "taxonomy-index.tera"
 term_template = "taxonomy-term.tera"
 per_page = 10

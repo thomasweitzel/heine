@@ -49,11 +49,11 @@ fn builds_the_documented_starter_site() {
     assert!(index.contains("Heine Starter Site"), "{index}");
     assert!(
         index.contains(
-            "<meta name=\"description\" content=\"A small multilingual example site built with Heine, featuring posts, a quiz, and a short guide to Heinrich Heine.\">"
+            "<meta name=\"description\" content=\"A small multilingual example site built with Heine, featuring posts and a short guide to Heinrich Heine.\">"
         ),
         "{index}"
     );
-    assert!(index.contains("Quiz"), "{index}");
+    assert!(!index.contains(">Quiz<"), "{index}");
     assert!(index.contains("<h2>Heinrich Heine</h2>"), "{index}");
     assert!(
         index.contains("A short, source-linked guide to the writer whose name this site borrows."),
@@ -61,6 +61,10 @@ fn builds_the_documented_starter_site() {
     );
     assert!(
         index.contains("href=\"/my-project/heine/index.html\">Heinrich Heine</a>"),
+        "{index}"
+    );
+    assert!(
+        !index.contains("href=\"/my-project/lesen/index.html\""),
         "{index}"
     );
     assert!(
@@ -153,7 +157,7 @@ fn builds_the_documented_starter_site() {
     );
     assert!(
         german_home.contains(
-            "<meta name=\"description\" content=\"Eine deutschsprachige Ansicht der kleinen Heine-Beispielseite mit Blog, Schlagwörtern und Suche.\">"
+            "<meta name=\"description\" content=\"Eine deutschsprachige Ansicht der kleinen Heine-Beispielseite mit Blog, Lektüre, Schlagwörtern und Suche.\">"
         ),
         "{german_home}"
     );
@@ -172,6 +176,11 @@ fn builds_the_documented_starter_site() {
     );
     assert!(
         german_home.contains("src=\"/my-project/assets/images/search.svg\" alt=\"Suche\""),
+        "{german_home}"
+    );
+    assert!(german_home.contains("<h2>Lektüre</h2>"), "{german_home}");
+    assert!(
+        german_home.contains("href=\"/my-project/de/lesen/index.html\""),
         "{german_home}"
     );
     assert!(
@@ -214,7 +223,6 @@ fn builds_the_documented_starter_site() {
         german_blog.contains("href=\"/my-project/de/atom.xml\">Atom abonnieren</a>"),
         "{german_blog}"
     );
-    assert!(!german_blog.contains("Quiz"), "{german_blog}");
     assert!(output.join("blog/page/2.html").is_file());
     assert!(!output.join("de/blog/page/2.html").exists());
     let english_blog = fs::read_to_string(output.join("blog/index.html")).expect("English blog");
@@ -336,7 +344,7 @@ fn builds_the_documented_starter_site() {
         .find("class=\"page-local-navigation\" aria-label=\"Page navigation\"")
         .expect("page-local navigation renders");
     let post_metadata = post
-        .find("class=\"post-meta\"")
+        .find("class=\"page-meta\"")
         .expect("post metadata renders");
     assert!(
         header_end < local_navigation && local_navigation < post_metadata,
@@ -481,14 +489,64 @@ fn builds_the_documented_starter_site() {
         "{german_about}"
     );
 
-    let quiz = fs::read_to_string(output.join("quiz/quiz-1.html")).expect("quiz page");
-    assert!(quiz.contains("quiz"), "{quiz}");
+    let reading =
+        fs::read_to_string(output.join("de/lesen/nachtgedanken/index.html")).expect("reading");
+    assert!(reading.contains("<h1>Nachtgedanken</h1>"), "{reading}");
+    let sleep = reading.find("<h2>Schlaflos</h2>");
+    let mother = reading.find("<h2>Die alte Frau</h2>");
+    let remains = reading.find("<h2>Was bleibt, was vergeht</h2>");
+    let paris = reading.find("<h2>Ein Morgen in Paris</h2>");
     assert!(
-        quiz.contains("<button class=\"quiz-answer q-correct\" type=\"button\">Berlin</button>"),
-        "{quiz}"
+        matches!((sleep, mother, remains, paris), (Some(sleep), Some(mother), Some(remains), Some(paris)) if sleep < mother && mother < remains && remains < paris),
+        "{reading}"
     );
-    assert!(!quiz.contains("language-navigation"), "{quiz}");
-    assert!(output.join("quiz/script.js").is_file());
+    assert!(
+        reading.contains("Denk ich an Deutschland in der Nacht"),
+        "{reading}"
+    );
+    assert!(
+        reading.contains("<h2>Quellen und Hinweise</h2>"),
+        "{reading}"
+    );
+    assert!(
+        reading.contains("href=\"https://de.wikisource.org/wiki/Nachtgedanken_(Heine)\""),
+        "{reading}"
+    );
+    assert!(
+        reading.contains("href=\"../../../de/lesen/index.html\""),
+        "{reading}"
+    );
+    assert!(
+        reading.contains("href=\"../../../de/authors/Heinrich%20Heine.html\""),
+        "{reading}"
+    );
+    assert!(
+        reading.contains("href=\"../../../de/authors/index.html\""),
+        "{reading}"
+    );
+    assert!(!reading.contains("language-navigation"), "{reading}");
+    let reading_index =
+        fs::read_to_string(output.join("de/lesen/index.html")).expect("reading index");
+    assert!(
+        reading_index.contains("href=\"../../de/lesen/nachtgedanken/index.html\""),
+        "{reading_index}"
+    );
+    assert!(
+        reading_index.contains("Heinrich Heines Nachtgedanken"),
+        "{reading_index}"
+    );
+    let authors = fs::read_to_string(output.join("de/authors/Heinrich Heine.html"))
+        .expect("German author listing");
+    assert!(
+        authors.contains("<h1>Autor: Heinrich Heine</h1>"),
+        "{authors}"
+    );
+    assert!(
+        authors.contains("href=\"../../de/lesen/nachtgedanken/index.html\""),
+        "{authors}"
+    );
+    assert!(output.join("authors/index.html").is_file());
+    assert!(!output.join("quiz").exists());
 }
 
 fn generated_file_with_extension(directory: &Path, extension: &str) -> std::path::PathBuf {
