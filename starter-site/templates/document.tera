@@ -1,6 +1,7 @@
 {% extends "base.tera" %}
 
 {% block content %}
+{% block document_header %}{% endblock %}
 {% include "table-of-contents.tera" %}
 <div class="prose">
   {{ markdown(content="main") }}

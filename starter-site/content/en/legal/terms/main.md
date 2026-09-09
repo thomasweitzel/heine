@@ -5,8 +5,9 @@
 ## A small, non-commercial example
 
 This starter site is a demonstration of Heine. It is not a shop, a social
-network, or an offer of professional advice. Its posts and quizzes are examples
-for readers and site authors, not a contract disguised as a footer link.
+network, or an offer of professional advice. Its posts and readings are
+examples for readers and site authors, not a contract disguised as a footer
+link.
 
 ## Content and links
 

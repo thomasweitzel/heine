@@ -1,0 +1,29 @@
+{% extends "document.tera" %}
+
+{% block document_header %}
+<h1>{{ page.title }}</h1>
+{% if page.taxonomies.authors %}
+  {% set authors = taxonomy(name="authors") %}
+  <div class="page-meta">
+    <p><a href="{{ authors.relative_url }}">{{ t(id="authors", count=page.taxonomies.authors | length) }}</a>:
+      {% for author in page.taxonomies.authors %}
+        <a href="{{ author.relative_url }}">{{ author.name }}</a>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </p>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block page_navigation %}
+  {% set up = page(id=page.extra.parent) %}
+  {% set neighbors = collection_neighbors(name="readings") %}
+  <nav class="page-local-navigation" aria-label="{{ t(id="page-navigation") }}">
+    <a href="{{ up.relative_url }}">{{ <ui.arrow direction="up" /> }}<span>{{ up.title }}</span></a>
+    {% if neighbors.before %}
+      <a href="{{ neighbors.before.relative_url }}">{{ <ui.arrow direction="previous" /> }}<span>{{ neighbors.before.title }}</span></a>
+    {% endif %}
+    {% if neighbors.after %}
+      <a href="{{ neighbors.after.relative_url }}"><span>{{ neighbors.after.title }}</span>{{ <ui.arrow direction="next" /> }}</a>
+    {% endif %}
+  </nav>
+{% endblock %}

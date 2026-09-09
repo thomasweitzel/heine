@@ -5,7 +5,7 @@
 ## Kleines, nicht-kommerzielles Beispiel
 
 Diese Starter-Site ist eine Demonstration für Heine. Sie ist weder Shop noch
-soziales Netzwerk noch professionelle Beratung. Beiträge und Quizze sind
+soziales Netzwerk noch professionelle Beratung. Beiträge und Lektüren sind
 Beispiele für Leserinnen, Leser und Site-Autoren, kein Vertrag im Kostüm eines
 Footer-Links.
 

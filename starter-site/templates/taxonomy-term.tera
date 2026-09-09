@@ -3,7 +3,8 @@
 {% block title %}{{ taxonomy.term.name }}{% endblock %}
 
 {% block head_description %}
-  {{ <ui.meta_description value={t(id="taxonomy-term-description", term=taxonomy.term.name)} /> }}
+  {% set description_key = taxonomy.name ~ "-term-description" %}
+  {{ <ui.meta_description value={t(id=description_key, term=taxonomy.term.name)} /> }}
 {% endblock %}
 
 {% block language_navigation %}

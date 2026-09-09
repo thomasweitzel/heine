@@ -3,7 +3,8 @@
 {% block title %}{{ t(id=taxonomy.name, count=taxonomy.terms | length) }}{% endblock %}
 
 {% block head_description %}
-  {{ <ui.meta_description value={t(id="taxonomy-index-description")} /> }}
+  {% set description_key = taxonomy.name ~ "-index-description" %}
+  {{ <ui.meta_description value={t(id=description_key)} /> }}
 {% endblock %}
 
 {% block language_navigation %}
@@ -22,8 +23,8 @@
 {% block content %}
 <h1>{{ t(id=taxonomy.name, count=taxonomy.terms | length) }}</h1>
 <ul class="compact-index">
-{% for tag in taxonomy.terms %}
-  <li><a href="{{ tag.relative_url }}">{{ tag.name }}</a> <span class="item-count">{{ tag.count }}</span></li>
+{% for term in taxonomy.terms %}
+  <li><a href="{{ term.relative_url }}">{{ term.name }}</a> <span class="item-count">{{ term.count }}</span></li>
 {% endfor %}
 </ul>
 {% endblock %}
