@@ -80,3 +80,11 @@ are corrected only to repair an error or explain a missed material migration.
   templates, CSS, or inbound links depended on an old generated footnote ID,
   update them to the new generated output; avoid the reserved namespace for
   future authored IDs.
+
+### Fixed
+
+- **Development directory redirects.** `heine serve` now redirects an existing
+  generated directory requested without its trailing slash to the slash form,
+  retaining query parameters. This gives browsers the correct base URL for
+  relative references while keeping directory-index serving a local preview
+  convenience.

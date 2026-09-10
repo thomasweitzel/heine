@@ -304,14 +304,14 @@ html[dir="rtl"] .navigation-arrow {
 .draft-marker {
     display: inline-block;
     margin-inline-end: 0.35em;
-    padding: 0 0.28em;
+    padding: 0 0.3em;
     border: 1px solid var(--draft-border);
     border-radius: var(--radius);
     background-color: var(--draft-bg);
     color: var(--draft-fg);
     font-size: 0.7em;
     font-weight: 650;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
     line-height: 1;
     text-decoration: none;
     vertical-align: middle;
@@ -423,10 +423,10 @@ footer {
     content: "";
     display: block;
     inline-size: 0.45rem;
-    block-size: 0.24rem;
-    margin: 0.18rem 0 0 0.2rem;
-    border-block-end: 0.13rem solid var(--fg);
-    border-inline-start: 0.13rem solid var(--fg);
+    block-size: 0.25rem;
+    margin: 0.2rem 0 0 0.2rem;
+    border-block-end: 0.15rem solid var(--fg);
+    border-inline-start: 0.15rem solid var(--fg);
     transform: rotate(-45deg);
 }
 
@@ -480,7 +480,7 @@ a:hover,
 a:focus-visible {
     color: var(--color-2-text);
     background-color: var(--color-2);
-    box-shadow: 0 0 0 0.12em var(--color-2);
+    box-shadow: 0 0 0 0.1em var(--color-2);
 }
 
 a:focus-visible {
@@ -614,7 +614,7 @@ a:focus-visible {
     min-block-size: 1.45em;
     align-items: center;
     justify-content: center;
-    padding-inline: 0.18em;
+    padding-inline: 0.2em;
     border: 1px solid var(--border-color);
     border-radius: 999px;
     color: var(--muted-fg);
@@ -713,7 +713,7 @@ a:focus-visible {
     justify-content: center;
     margin-block-start: 0.1em;
     margin-inline-end: var(--spacing-s);
-    padding-inline: 0.18em;
+    padding-inline: 0.2em;
     border: 1px solid var(--border-color);
     border-radius: 999px;
     color: var(--muted-fg);
@@ -859,13 +859,23 @@ a:focus-visible {
     flex: none;
 }
 
-.page-list-title {
-    font-weight: 600;
+.page-list-heading > a {
+    color: var(--fg);
 }
 
-.page-list-item:hover .page-list-title,
-.page-list-item:focus-within .page-list-title {
+.page-list-item:hover .page-list-heading > a,
+.page-list-item:focus-within .page-list-heading > a {
     color: var(--color-2);
+}
+
+.page-list-heading > a:hover,
+.page-list-heading > a:focus-visible {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.page-list-title {
+    font-weight: 600;
 }
 
 .page-list-summary {
