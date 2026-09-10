@@ -94,7 +94,7 @@ async fn serve(
 ) -> Response {
     let published = state.published.borrow().clone();
     let Some(path) = output_path(requested, &published) else {
-        return base_redirect_or_not_found(requested, &published);
+        return base_redirect_or_not_found(requested, query, &published);
     };
     if path == Path::new(INTERNAL_DIRECTORY).join(reload::SCRIPT_NAME) {
         return reload_script();
@@ -108,7 +108,7 @@ async fn serve(
     }
     match safe_file_after_publication(&published.output_root, &path).await {
         Ok(Some(file)) => file_response(file, &published, headers, head).await,
-        Ok(None) => not_found(),
+        Ok(None) => directory_redirect_or_not_found(requested, query, &path, &published).await,
         Err(source) => internal_error(published.output_root.join(&path), source),
     }
 }
@@ -134,13 +134,46 @@ async fn output_root_exists(root: &Path) -> io::Result<bool> {
     }
 }
 
-fn base_redirect_or_not_found(requested: &str, published: &PublishedSite) -> Response {
+fn base_redirect_or_not_found(
+    requested: &str,
+    query: Option<&str>,
+    published: &PublishedSite,
+) -> Response {
     if published.base_path.as_str() != "/"
         && requested == published.base_path.as_str().trim_end_matches('/')
     {
-        return development_redirect(published.base_path.as_str());
+        return development_redirect(&directory_redirect_location(requested, query));
     }
     not_found()
+}
+
+/// Browsers resolve relative URLs differently from a path with no final slash.
+/// Redirect a real generated directory to its slash form instead of serving its
+/// index at both paths, but never turn an absent path into a redirect.
+async fn directory_redirect_or_not_found(
+    requested: &str,
+    query: Option<&str>,
+    path: &Path,
+    published: &PublishedSite,
+) -> Response {
+    if requested.ends_with('/') {
+        return not_found();
+    }
+    let index = path.join("index.html");
+    match safe_file_after_publication(&published.output_root, &index).await {
+        Ok(Some(_)) => development_redirect(&directory_redirect_location(requested, query)),
+        Ok(None) => not_found(),
+        Err(source) => internal_error(published.output_root.join(index), source),
+    }
+}
+
+fn directory_redirect_location(requested: &str, query: Option<&str>) -> String {
+    let mut location = format!("{requested}/");
+    if let Some(query) = query {
+        location.push('?');
+        location.push_str(query);
+    }
+    location
 }
 
 fn output_path(requested: &str, published: &PublishedSite) -> Option<PathBuf> {
@@ -182,7 +215,14 @@ async fn safe_file(root: &Path, relative: &Path) -> io::Result<Option<PathBuf>> 
         current.push(component);
         let metadata = match tokio::fs::symlink_metadata(&current).await {
             Ok(metadata) => metadata,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return Ok(None);
+            }
             Err(error) => return Err(error),
         };
         if metadata.file_type().is_symlink() {
@@ -192,7 +232,14 @@ async fn safe_file(root: &Path, relative: &Path) -> io::Result<Option<PathBuf>> 
     match tokio::fs::metadata(&current).await {
         Ok(metadata) if metadata.is_file() => Ok(Some(current)),
         Ok(_) => Ok(None),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Ok(None)
+        }
         Err(error) => Err(error),
     }
 }
@@ -472,6 +519,18 @@ mod tests {
     }
 
     #[test]
+    fn keeps_query_parameters_when_redirecting_to_a_directory() {
+        assert_eq!(
+            directory_redirect_location("/guide/tags", Some("page=2&view=all")),
+            "/guide/tags/?page=2&view=all"
+        );
+        assert_eq!(
+            directory_redirect_location("/guide/tags", None),
+            "/guide/tags/"
+        );
+    }
+
+    #[test]
     fn matches_percent_encoded_base_paths_without_decoding_the_prefix() {
         let published = PublishedSite {
             base_path: "/guide%20notes/".try_into().expect("valid base path"),
@@ -525,8 +584,14 @@ mod tests {
             TEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(&root).expect("create output fixture");
+        fs::create_dir_all(root.join("tags")).expect("create directory-index fixture");
         fs::write(root.join("index.html"), "<head></head><body>home</body>")
             .expect("write html fixture");
+        fs::write(
+            root.join("tags/index.html"),
+            "<head></head><body>tags</body>",
+        )
+        .expect("write directory index fixture");
         fs::write(root.join("audio.ogg"), b"0123456789").expect("write range fixture");
         let (sender, receiver) = tokio::sync::watch::channel(PublishedSite {
             base_path: "/guide/".try_into().expect("valid base path"),
@@ -604,13 +669,55 @@ mod tests {
             assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
             let response = get_path(
-                State(state),
+                State(state.clone()),
                 OriginalUri(Uri::from_static("/guide")),
                 HeaderMap::new(),
             )
             .await;
             assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
             assert_eq!(response.headers()[header::LOCATION], "/guide/");
+
+            let response = get_path(
+                State(state.clone()),
+                OriginalUri(Uri::from_static("/guide?source=menu")),
+                HeaderMap::new(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+            assert_eq!(response.headers()[header::LOCATION], "/guide/?source=menu");
+
+            let response = get_path(
+                State(state.clone()),
+                OriginalUri(Uri::from_static("/guide/tags?view=all")),
+                HeaderMap::new(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+            assert_eq!(
+                response.headers()[header::LOCATION],
+                "/guide/tags/?view=all"
+            );
+
+            let response = get_path(
+                State(state.clone()),
+                OriginalUri(Uri::from_static("/guide/tags/")),
+                HeaderMap::new(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+
+            let response = get_path(
+                State(state.clone()),
+                OriginalUri(Uri::from_static("/guide/tags/index.html")),
+                HeaderMap::new(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+
+            let response =
+                head_path(State(state), OriginalUri(Uri::from_static("/guide/tags"))).await;
+            assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+            assert_eq!(response.headers()[header::LOCATION], "/guide/tags/");
         });
         fs::remove_dir_all(root).expect("remove output fixture");
     }
@@ -623,7 +730,11 @@ mod tests {
             TEST_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(&root).expect("create output fixture");
+        fs::create_dir_all(root.join("tags")).expect("create directory-index fixture");
+        fs::create_dir_all(root.join("empty")).expect("create empty-directory fixture");
         fs::write(root.join("index.html"), "<head></head>").expect("write html fixture");
+        fs::write(root.join("tags/index.html"), "<head></head>")
+            .expect("write directory index fixture");
         fs::write(root.join("audio.ogg"), b"0123456789").expect("write range fixture");
         fs::write(root.join(".heine-output"), "heine-output-v1\n").expect("write marker");
         let (_, receiver) = tokio::sync::watch::channel(PublishedSite {
@@ -678,6 +789,34 @@ mod tests {
                 .expect("router response");
             assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
             assert_eq!(response.headers()[header::LOCATION], "/guide%20notes/");
+            assert_development_headers(response.headers());
+
+            let response = router(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .uri("/guide%20notes/tags?source=menu")
+                        .body(Body::empty())
+                        .expect("request"),
+                )
+                .await
+                .expect("router response");
+            assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+            assert_eq!(
+                response.headers()[header::LOCATION],
+                "/guide%20notes/tags/?source=menu"
+            );
+            assert_development_headers(response.headers());
+
+            let response = router(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .uri("/guide%20notes/empty")
+                        .body(Body::empty())
+                        .expect("request"),
+                )
+                .await
+                .expect("router response");
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
             assert_development_headers(response.headers());
 
             let response = router(state.clone())
