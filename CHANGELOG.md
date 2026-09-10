@@ -33,6 +33,17 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Draft publication previews.** Pages may declare `draft = true`; ordinary
+  builds exclude them before resolving links and generated relationships, while
+  `heine serve --drafts` previews them in their real site context. This lets an
+  unfinished page remain private without making published navigation, feeds,
+  indexes, or sitemaps inconsistent.
+
+  Search documents now expose each entry's `draft` fact and therefore use
+  schema format `2`.
+  **Migration:** update a search client that checks `format` to accept `2` and
+  its boolean `draft` field.
+
 - **Checked Series.** Rendered pages can join one or more named, locale-local
   reading sequences with independently checked positions, generated listings,
   pagination, and deliberate template-controlled navigation. This gives a
@@ -50,6 +61,12 @@ are corrected only to repair an error or explain a missed material migration.
   its visual checkmark.
 
 ### Changed
+
+- **Explicit sibling-weight opt-out.** `weight = false` now excludes a page
+  from sibling ordering, replacing the former magic string
+  `weight = "None"`. This makes the authored opt-out match Heine's other
+  boolean exclusions and keeps the resolved ordering model finite.
+  **Migration:** replace every `weight = "None"` with `weight = false`.
 
 - **Checked ordinary footnote references.** A `[^label]` reference without a
   definition now fails at its Markdown source instead of appearing as literal

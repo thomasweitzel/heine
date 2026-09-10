@@ -31,7 +31,7 @@ use crate::{
         page::{
             CollectionMembership, DirectoryView, LoadedPage, Metadata, OutputSuffix, Page, PageId,
             Pagination, PaginationSegment, RawMetadata, RawPage, ResolvedAuthors, SeriesMembership,
-            Task, TaxonomyMembership, TaxonomyTermMembership, TranslationId,
+            SiblingWeight, Task, TaxonomyMembership, TaxonomyTermMembership, TranslationId,
         },
     },
     source_path,
@@ -348,6 +348,7 @@ pub(super) const DIRECTORY_FILE: &str = "_directory.toml";
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawDirectory {
+    draft: Option<toml::Spanned<toml::Value>>,
     title: Option<toml::Spanned<String>>,
     description: Option<toml::Spanned<String>>,
     summary: Option<toml::Spanned<String>>,
@@ -666,23 +667,140 @@ pub(super) fn relative_path(root: &Path, path: &Path) -> Result<PathBuf, Error> 
     })
 }
 
-pub(super) fn load_page(
-    path: &Path,
-    relative: &Path,
-    context: PageLoadContext<'_>,
-) -> Result<LoadedPage, Error> {
+/// The small source-level fact needed to decide whether a page belongs to the
+/// published catalog before its richer page relationships are resolved.
+pub(super) struct PageProbe {
+    text: String,
+    draft: bool,
+    content_inputs: BTreeSet<PathBuf>,
+    footnotes: DraftFootnotes,
+}
+
+#[derive(Clone, Copy)]
+enum DraftFootnotes {
+    Absent,
+    Disabled,
+    Present,
+}
+
+#[derive(serde::Deserialize)]
+struct RawPageProbe {
+    draft: Option<toml::Spanned<toml::Value>>,
+    content: Option<toml::Spanned<toml::Value>>,
+    footnotes: Option<toml::Spanned<toml::Value>>,
+}
+
+impl PageProbe {
+    pub(super) fn is_draft(&self) -> bool {
+        self.draft
+    }
+
+    pub(super) fn content_inputs(&self) -> &BTreeSet<PathBuf> {
+        &self.content_inputs
+    }
+
+    pub(super) fn into_text(self) -> String {
+        self.text
+    }
+}
+
+pub(super) fn probe_page(path: &Path, content_root: &Path) -> Result<PageProbe, Error> {
     let text = fs::read_to_string(path).map_err(|source| Error::Io {
         path: path.into(),
         source,
     })?;
-    let raw: RawPage = toml::from_str(&text).map_err(|error| {
-        Error::PageToml(Box::new(PageTomlDiagnostic {
-            path: path.into(),
-            message: error.message().to_owned(),
-            source_code: crate::source_diagnostic::named_source(path, text.clone(), "TOML"),
-            span: error.span().unwrap_or(0..0).into(),
-        }))
-    })?;
+    let raw: RawPageProbe =
+        toml::from_str(&text).map_err(|error| page_toml_error(path, &text, error))?;
+    let draft = match raw.draft {
+        None => false,
+        Some(value) => {
+            let span: SourceSpan = value.span().into();
+            match value.into_inner() {
+                toml::Value::Boolean(true) => true,
+                toml::Value::Boolean(false) => {
+                    return Err(invalid(
+                        path,
+                        &text,
+                        span,
+                        "field `draft` accepts only true; omit it for a published page",
+                    ));
+                }
+                _ => {
+                    return Err(invalid(
+                        path,
+                        &text,
+                        span,
+                        "field `draft` must be true; omit it for a published page",
+                    ));
+                }
+            }
+        }
+    };
+    let footnotes = match raw.footnotes.map(toml::Spanned::into_inner) {
+        None => DraftFootnotes::Absent,
+        Some(toml::Value::Boolean(false)) => DraftFootnotes::Disabled,
+        Some(_) => DraftFootnotes::Present,
+    };
+    let mut content_inputs = BTreeSet::new();
+    if draft && let Some(content) = raw.content {
+        let span: SourceSpan = content.span().into();
+        let toml::Value::Table(entries) = content.into_inner() else {
+            return Err(invalid(
+                path,
+                &text,
+                span,
+                "field `content` must be a table of declared content files",
+            ));
+        };
+        for (name, value) in entries {
+            let Some(file) = value.as_str() else {
+                return Err(invalid(
+                    path,
+                    &text,
+                    span,
+                    format!("declared content file {name:?} must be a string"),
+                ));
+            };
+            let content_path = resolve_content_path(content_root, path, file)
+                .map_err(|message| invalid(path, &text, span, message))?;
+            content_inputs.insert(relative_path(content_root, &content_path)?);
+        }
+    }
+    Ok(PageProbe {
+        text,
+        draft,
+        content_inputs,
+        footnotes,
+    })
+}
+
+pub(super) fn draft_uses_margin_footnotes(
+    probe: &PageProbe,
+    relative: &Path,
+    descriptors: &BTreeMap<PathBuf, DirectoryDescriptor>,
+) -> bool {
+    match probe.footnotes {
+        DraftFootnotes::Disabled => false,
+        DraftFootnotes::Present => true,
+        DraftFootnotes::Absent => {
+            let ancestors =
+                descriptor_ancestors(relative.parent().unwrap_or(Path::new("")), descriptors);
+            effective_footnotes(&ancestors)
+                .and_then(|descriptor| descriptor.footnotes.as_ref())
+                .is_some_and(|policy| matches!(policy, FootnotesPolicy::Enabled(_)))
+        }
+    }
+}
+
+pub(super) fn load_page(
+    path: &Path,
+    relative: &Path,
+    text: String,
+    draft: bool,
+    context: PageLoadContext<'_>,
+) -> Result<LoadedPage, Error> {
+    let raw: RawPage =
+        toml::from_str(&text).map_err(|error| page_toml_error(path, &text, error))?;
     if let Some(date) = &raw.legacy_date {
         return Err(invalid(
             path,
@@ -1000,6 +1118,7 @@ pub(super) fn load_page(
         markdown_sources,
         toc,
         footnotes,
+        draft,
         metadata,
         translationid,
         translationid_span,
@@ -1038,6 +1157,15 @@ pub(super) fn load_page(
         task,
         content_inputs,
     })
+}
+
+fn page_toml_error(path: &Path, text: &str, error: toml::de::Error) -> Error {
+    Error::PageToml(Box::new(PageTomlDiagnostic {
+        path: path.into(),
+        message: error.message().to_owned(),
+        source_code: crate::source_diagnostic::named_source(path, text.to_owned(), "TOML"),
+        span: error.span().unwrap_or(0..0).into(),
+    }))
 }
 
 fn pagination_for(
@@ -1192,6 +1320,14 @@ pub(super) fn load_descriptors(
                 span: error.span().unwrap_or(0..0).into(),
             }))
         })?;
+        if let Some(draft) = raw.draft {
+            return Err(invalid(
+                path,
+                &text,
+                draft.span().into(),
+                "field `draft` belongs only in a .page file; directory descriptors do not inherit publication state",
+            ));
+        }
         let relative_file = relative_path(content_root, path)?;
         let relative = relative_file
             .parent()
@@ -1799,20 +1935,19 @@ pub(super) fn invalid(
 fn parse_weight(
     value: Option<&toml::Spanned<toml::Value>>,
     id: &PageId,
-) -> Result<Option<i64>, String> {
+) -> Result<SiblingWeight, String> {
     match value {
-        None if !id.is_index() => Ok(Some(0)),
-        None => Ok(None),
-        Some(value) if matches!(value.get_ref(), toml::Value::Integer(_)) => {
-            let toml::Value::Integer(value) = value.get_ref() else {
-                unreachable!("the match establishes an integer value");
-            };
-            Ok(Some(*value))
-        }
-        Some(value) if matches!(value.get_ref(), toml::Value::String(value) if value == "None") => {
-            Ok(None)
-        }
-        _ => Err("field `weight` must be an integer or the string \"None\"".into()),
+        None if !id.is_index() => Ok(SiblingWeight::Ordered(0)),
+        None => Ok(SiblingWeight::Excluded),
+        Some(value) => match value.get_ref() {
+            toml::Value::Integer(value) => Ok(SiblingWeight::Ordered(*value)),
+            toml::Value::Boolean(false) if id.is_index() => Err(
+                "field `weight = false` is redundant for an index page; omit `weight`, or set a numeric weight to join sibling ordering"
+                    .into(),
+            ),
+            toml::Value::Boolean(false) => Ok(SiblingWeight::Excluded),
+            _ => Err("field `weight` must be an integer or false".into()),
+        },
     }
 }
 

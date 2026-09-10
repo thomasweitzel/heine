@@ -18,6 +18,13 @@ A normal Heine build. It creates and checks a complete replacement output
 tree before publishing it, so renamed and deleted source files disappear from
 generated output.
 
+### Draft
+
+A page declared with `draft = true`. Ordinary builds exclude it before
+resolving page relationships; `heine serve --drafts` includes it in a local
+preview. Draft state is page-local and has no inherited `false` form. See the
+[drafts guide](drafts.md).
+
 ### Generated output
 
 The files Heine writes below `build.output_dir`, `public/` by default. It is a
@@ -193,7 +200,7 @@ independently of directory requirements.
 
 ### Weight
 
-An authored integer used for sibling or collection ordering. `weight = "None"`
+An authored integer used for sibling or collection ordering. `weight = false`
 excludes a non-index page from sibling ordering; collection weight ordering
 requires every member to have a numeric weight.
 

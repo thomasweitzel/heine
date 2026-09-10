@@ -1,6 +1,5 @@
-# Math, Markdown, and Media
-
 ## Math
+# Math
 
 This is the first blog post. It keeps *small emphasis*, **important points**,
 ~~unnecessary ceremony~~, and `inline code` close to the prose.

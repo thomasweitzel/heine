@@ -59,7 +59,7 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     assert_eq!(english_name.len(), "site.".len() + 64 + ".json".len());
     let english = fs::read_to_string(&english_path).expect("English index");
     let json: serde_json::Value = serde_json::from_str(&english).expect("valid JSON");
-    assert_eq!(json["format"], 1);
+    assert_eq!(json["format"], 2);
     assert_eq!(json["locale"], "en");
     assert_eq!(json["documents"].as_array().expect("documents").len(), 2);
     assert!(english.contains("Post heading"), "{english}");
@@ -74,6 +74,7 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
         .expect("post document");
     assert_eq!(post["taxonomies"]["tags"], serde_json::json!(["Rust"]));
     assert_eq!(post["title"], "Post title");
+    assert_eq!(post["draft"], false);
     assert!(post["description"].is_null());
     assert_eq!(post["summary"], "Post summary");
     assert_eq!(post["published"], "2026-08-14T07:30:00Z");

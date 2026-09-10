@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::{
-    Error, index, loader,
+    Error, PublicationMode, index, loader,
     page::{Page, PageId, Task},
 };
 
@@ -26,6 +26,7 @@ use super::{
 /// semantic and render orchestration boundary.
 pub(super) struct LocalizedContent {
     pub(super) pages: BTreeMap<Locale, BTreeMap<PageId, Page>>,
+    pub(super) excluded_drafts: BTreeMap<Locale, BTreeMap<PageId, PathBuf>>,
     pub(super) siblings: BTreeMap<Locale, index::SiblingIndex>,
     pub(super) tasks: Vec<Task>,
     pub(super) entries: BTreeMap<Locale, Vec<DirEntry>>,
@@ -47,6 +48,7 @@ pub(super) struct Inputs<'a> {
     pub(super) sitemap_enabled: bool,
     pub(super) markdown: &'a MarkdownConfig,
     pub(super) localization: &'a Localization,
+    pub(super) publication: PublicationMode,
 }
 
 pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
@@ -60,6 +62,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         sitemap_enabled,
         markdown,
         localization,
+        publication,
     } = inputs;
     validate_root(content_root, i18n)?;
     let shared_root = content_root.join("assets");
@@ -69,10 +72,12 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         Vec::new()
     };
     let mut pages = BTreeMap::new();
+    let mut excluded_drafts = BTreeMap::new();
     let mut siblings = BTreeMap::new();
     let mut tasks = Vec::new();
     let mut entries_by_locale = BTreeMap::new();
     let mut content_inputs = BTreeMap::new();
+    let mut draft_uses_margin_footnotes = false;
 
     for locale in i18n.locales() {
         let root = content_root.join(locale.to_string());
@@ -91,6 +96,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
             PathBuf::from(locale.to_string())
         };
         let mut locale_pages = BTreeMap::new();
+        let mut locale_drafts = BTreeMap::new();
         let mut locale_inputs = BTreeSet::new();
         for entry in &entries {
             if !entry.file_type().is_file()
@@ -103,9 +109,24 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
             }
             let source = entry.path();
             let relative = loader::relative_path(&root, source)?;
+            let probe = loader::probe_page(source, &root)?;
+            let draft = probe.is_draft();
+            if draft && !publication.includes_drafts() {
+                let id = PageId::from_logical_path(
+                    crate::source_path::LogicalPath::from_path(&relative.with_extension(""))
+                        .expect("discovered page IDs remain logical"),
+                );
+                locale_drafts.insert(id, source.to_path_buf());
+                locale_inputs.extend(probe.content_inputs().iter().cloned());
+                draft_uses_margin_footnotes |=
+                    loader::draft_uses_margin_footnotes(&probe, &relative, &descriptors);
+                continue;
+            }
             let loaded = loader::load_page(
                 source,
                 &relative,
+                probe.into_text(),
+                draft,
                 loader::PageLoadContext {
                     content_root: &root,
                     locale,
@@ -128,10 +149,11 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         }
         siblings.insert(locale.clone(), index::resolve_siblings(&locale_pages));
         pages.insert(locale.clone(), locale_pages);
+        excluded_drafts.insert(locale.clone(), locale_drafts);
         entries_by_locale.insert(locale.clone(), entries);
         content_inputs.insert(locale.clone(), locale_inputs);
     }
-    validate_margin_footnote_messages(&pages, markdown, localization)?;
+    validate_margin_footnote_messages(&pages, markdown, localization, draft_uses_margin_footnotes)?;
     tasks.sort_by(|left, right| {
         left.locale
             .cmp(&right.locale)
@@ -139,6 +161,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
     });
     Ok(LocalizedContent {
         pages,
+        excluded_drafts,
         siblings,
         tasks,
         entries: entries_by_locale,
@@ -152,6 +175,7 @@ fn validate_margin_footnote_messages(
     pages: &BTreeMap<Locale, BTreeMap<PageId, Page>>,
     markdown: &MarkdownConfig,
     localization: &Localization,
+    draft_uses_margin_footnotes: bool,
 ) -> Result<(), Error> {
     let Some(config) = markdown.margin_footnotes() else {
         return Ok(());
@@ -170,7 +194,7 @@ fn validate_margin_footnote_messages(
             Some((locale, count.max(1)))
         })
         .collect::<BTreeMap<_, _>>();
-    if effective_locales.is_empty() {
+    if effective_locales.is_empty() && !draft_uses_margin_footnotes {
         return Err(Error::MarginFootnoteConfiguration(Box::new(
             loader::MarginFootnoteConfigurationDiagnostic::unused(source.clone(), span),
         )));

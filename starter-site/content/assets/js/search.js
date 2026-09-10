@@ -83,20 +83,30 @@
 
   function link(result) {
     const item = document.createElement("li");
+    item.className = "page-list-item";
+    const heading = document.createElement("div");
+    heading.className = "page-list-heading";
+    if (result.draft) {
+      const marker = document.createElement("span");
+      marker.className = "draft-marker";
+      marker.textContent = labels.draftMarker;
+      heading.append(marker);
+    }
     const anchor = document.createElement("a");
     anchor.href = result.url;
     const title = document.createElement("span");
     title.className = "page-list-title";
     title.textContent = result.title || result.url;
     anchor.append(title);
+    heading.append(anchor);
+    item.append(heading);
     const summary = result.summary ?? result.description;
     if (summary) {
       const copy = document.createElement("span");
       copy.className = "page-list-summary";
       copy.textContent = summary;
-      anchor.append(copy);
+      item.append(copy);
     }
-    item.append(anchor);
     return item;
   }
 

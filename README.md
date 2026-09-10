@@ -22,7 +22,7 @@ It currently provides Markdown rendering with page-owned tables of contents
 and margin footnotes, Tera2 templates, locale-aware content and Fluent
 localization, checked page and asset links, collections, pagination,
 taxonomies, Series, Atom feeds, sitemaps, search-document indexes, and a
-development server with live reload and media range requests.
+development server with live reload, media range requests, and draft previews.
 
 Heine does not bundle a frontend toolchain or deployment integration. Use
 ordinary tools for general CSS and JavaScript processing, general media
@@ -112,7 +112,7 @@ The [documentation map](docs/README.md) explains the available reading paths.
   [asset licensing](docs/asset-licensing.md), [sitemaps](docs/sitemap.md),
   [Atom feeds](docs/atom-feeds.md), [table of contents](docs/table-of-contents.md),
   [margin footnotes](docs/margin-footnotes.md), [search indexes](docs/search.md),
-  [Series](docs/series.md),
+  [Series](docs/series.md), [drafts](docs/drafts.md),
   or the [development server](docs/development-server.md).
 - Use the [reference](docs/reference.md) for exact fields, defaults, template
   functions, and constraints.

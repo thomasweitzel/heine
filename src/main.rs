@@ -37,6 +37,10 @@ struct ServeArgs {
     #[arg(long)]
     clean_output: bool,
 
+    /// Include draft pages in this local preview.
+    #[arg(long)]
+    drafts: bool,
+
     /// IP address to bind; defaults to the local machine only.
     #[arg(long, default_value = "127.0.0.1")]
     host: std::net::IpAddr,
@@ -79,6 +83,11 @@ fn main() -> miette::Result<()> {
             heine::ServeOptions::with_host(args.host, args.port).map_err(miette::Report::new)?;
         let options = if args.clean_output {
             options.clean_output()
+        } else {
+            options
+        };
+        let options = if args.drafts {
+            options.with_drafts()
         } else {
             options
         };

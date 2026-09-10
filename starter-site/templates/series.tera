@@ -36,8 +36,11 @@
   {% if pagination.pages %}
     <ol class="series-list" start="{{ pagination.first_item_number }}">
       {% for item in pagination.pages %}
-        <li>
-          <a href="{{ item.relative_url }}">{{ item.title }}</a>
+        <li class="series-list-item">
+          <div class="series-list-heading">
+            {{ <ui.draft_marker draft={item.draft} label={t(id="draft-marker")} /> }}
+            <a href="{{ item.relative_url }}">{{ item.title }}</a>
+          </div>
           {% if item.summary %}<span class="series-list-summary">{{ item.summary }}</span>{% endif %}
         </li>
       {% endfor %}

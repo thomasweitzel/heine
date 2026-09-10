@@ -24,6 +24,19 @@ Ports below `1024` are rejected. `--host 0.0.0.0` makes the server reachable
 from the local network, so use it only on a network you trust. The
 [reference](reference.md#site-root-and-commands) lists every command option.
 
+To preview unfinished [draft](drafts.md) pages declared with `draft = true`,
+add `--drafts`:
+
+```bash
+cargo run -- serve --root /path/to/site --drafts
+```
+
+This includes drafts in the same complete resolved site as published pages, so
+their links, collections, feeds, indexes, and navigation are truthful for the
+preview. It writes the ordinary configured output directory. Run a normal full
+`heine` build before deploying from that directory, which atomically replaces
+the preview output without drafts.
+
 ## What it serves
 
 The server reads the published `build.output_dir` from the filesystem. It does

@@ -4,19 +4,12 @@
 //! same renderer to validate MathML input with its original source available.
 
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, HashSet},
     ops::Range,
     path::Path,
     sync::Arc,
 };
 
-use html5ever::{
-    tendril::StrTendril,
-    tokenizer::{
-        BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
-    },
-};
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd, html};
 use pulldown_latex::{
@@ -36,8 +29,11 @@ use crate::{
 
 mod highlighting;
 pub(crate) mod margin_footnotes;
+mod search_text;
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
+use search_text::raw_html_text;
+pub(crate) use search_text::search_text;
 
 // This prefix cannot be produced by the heading-fragment algorithm, which
 // keeps generated heading and footnote identifiers in separate namespaces.
@@ -244,227 +240,6 @@ pub(crate) fn toc_plan(
     }
 }
 
-/// Extracts stable source-level search text without depending on rendered
-/// templates. This is deliberately separate from Markdown-to-HTML rendering:
-/// search owns a plain-text contract, not presentation output.
-pub(crate) fn search_text(input: &str, config: &MarkdownConfig) -> String {
-    let mut output = String::new();
-    for event in Parser::new_ext(input, options(config)) {
-        match event {
-            Event::Text(text)
-            | Event::Code(text)
-            | Event::InlineMath(text)
-            | Event::DisplayMath(text) => output.push_str(&text),
-            Event::SoftBreak | Event::HardBreak => output.push('\n'),
-            Event::Html(html) | Event::InlineHtml(html) => {
-                let text = raw_html_text(&html);
-                append_search_text(&mut output, &text);
-            }
-            Event::End(end) if markdown_block_end(end) => append_search_boundary(&mut output),
-            _ => {}
-        }
-    }
-    output.trim().into()
-}
-
-fn markdown_block_end(end: TagEnd) -> bool {
-    matches!(
-        end,
-        TagEnd::Paragraph
-            | TagEnd::Heading(_)
-            | TagEnd::BlockQuote(_)
-            | TagEnd::CodeBlock
-            | TagEnd::List(_)
-            | TagEnd::Item
-            | TagEnd::FootnoteDefinition
-            | TagEnd::DefinitionList
-            | TagEnd::DefinitionListTitle
-            | TagEnd::DefinitionListDefinition
-            | TagEnd::Table
-            | TagEnd::TableHead
-            | TagEnd::TableRow
-            | TagEnd::TableCell
-    )
-}
-
-fn append_search_text(output: &mut String, text: &str) {
-    if text.is_empty() {
-        return;
-    }
-    output.push_str(text);
-}
-
-fn append_search_boundary(output: &mut String) {
-    if !output.ends_with("\n\n") {
-        if output.ends_with('\n') {
-            output.push('\n');
-        } else if !output.is_empty() {
-            output.push_str("\n\n");
-        }
-    }
-}
-
-fn raw_html_text(input: &str) -> String {
-    let queue = BufferQueue::default();
-    queue.push_back(StrTendril::from_slice(input));
-    let tokenizer = Tokenizer::new(HtmlSearchTextSink::default(), TokenizerOpts::default());
-    let _ = tokenizer.feed(&queue);
-    tokenizer.end();
-    tokenizer.sink.into_text()
-}
-
-#[derive(Default)]
-struct HtmlSearchTextSink {
-    state: RefCell<HtmlSearchTextState>,
-}
-
-#[derive(Default)]
-struct HtmlSearchTextState {
-    text: String,
-    excluded: Vec<String>,
-}
-
-impl HtmlSearchTextSink {
-    fn into_text(self) -> String {
-        self.state.into_inner().text
-    }
-}
-
-impl TokenSink for HtmlSearchTextSink {
-    type Handle = ();
-
-    fn process_token(&self, token: Token, _: u64) -> TokenSinkResult<Self::Handle> {
-        let mut state = self.state.borrow_mut();
-        match token {
-            Token::TagToken(tag) => {
-                let name = tag.name.to_string();
-                match tag.kind {
-                    TagKind::StartTag => {
-                        let excluded = is_excluded_html_element(&name);
-                        if excluded {
-                            state.excluded.push(name.clone());
-                        }
-                        if state.excluded.is_empty()
-                            && name == "img"
-                            && let Some(alt) = tag
-                                .attrs
-                                .iter()
-                                .find(|attribute| attribute.name.local.as_ref() == "alt")
-                        {
-                            append_search_text(&mut state.text, &alt.value);
-                        }
-                        if state.excluded.is_empty() && is_html_block_element(&name) {
-                            append_search_boundary(&mut state.text);
-                        }
-                        if tag.self_closing
-                            && state.excluded.is_empty()
-                            && is_html_block_element(&name)
-                        {
-                            append_search_boundary(&mut state.text);
-                        }
-                        if tag.self_closing && excluded {
-                            state.excluded.pop();
-                        }
-                    }
-                    TagKind::EndTag => {
-                        if state
-                            .excluded
-                            .last()
-                            .is_some_and(|excluded| excluded == &name)
-                        {
-                            state.excluded.pop();
-                        } else if state.excluded.is_empty() && is_html_block_element(&name) {
-                            append_search_boundary(&mut state.text);
-                        }
-                    }
-                }
-            }
-            Token::CharacterTokens(text) if state.excluded.is_empty() => {
-                append_search_text(&mut state.text, &text);
-            }
-            _ => {}
-        }
-        TokenSinkResult::Continue
-    }
-}
-
-fn is_excluded_html_element(name: &str) -> bool {
-    matches!(name, "script" | "style" | "template")
-}
-
-fn is_html_block_element(name: &str) -> bool {
-    matches!(
-        name,
-        "address"
-            | "article"
-            | "aside"
-            | "blockquote"
-            | "div"
-            | "dl"
-            | "dt"
-            | "dd"
-            | "fieldset"
-            | "figcaption"
-            | "figure"
-            | "footer"
-            | "form"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-            | "header"
-            | "hgroup"
-            | "hr"
-            | "li"
-            | "main"
-            | "nav"
-            | "ol"
-            | "p"
-            | "pre"
-            | "section"
-            | "table"
-            | "thead"
-            | "tbody"
-            | "tfoot"
-            | "tr"
-            | "th"
-            | "td"
-            | "ul"
-    )
-}
-
-#[cfg(test)]
-mod search_text_tests {
-    use super::*;
-
-    #[test]
-    fn search_text_keeps_semantic_markdown_and_raw_html_text() {
-        let source = "# Heading\n\nA [label](https://example.org), `code`, and ![image text](image.svg).\n\n<blockquote lang=\"ar\" dir=\"rtl\"><p>نص عربي</p></blockquote>\n\n<script>not searchable</script>\n";
-        let text = search_text(source, &MarkdownConfig::default());
-
-        assert!(text.contains("Heading"), "{text}");
-        assert!(text.contains("label"), "{text}");
-        assert!(text.contains("code"), "{text}");
-        assert!(text.contains("image text"), "{text}");
-        assert!(text.contains("نص عربي"), "{text}");
-        assert!(!text.contains("not searchable"), "{text}");
-        assert!(!text.contains("https://example.org"), "{text}");
-    }
-
-    #[test]
-    fn raw_html_events_are_independent_and_preserve_table_text() {
-        let table = raw_html_text("<td>table text</td>");
-        let unclosed = raw_html_text("<script>not searchable");
-        let later = raw_html_text("<p>later text</p>");
-
-        assert!(table.contains("table text"), "{table}");
-        assert!(!unclosed.contains("not searchable"), "{unclosed}");
-        assert!(later.contains("later text"), "{later}");
-    }
-}
-
 fn unique_fragment(text: &str, used: &mut HashSet<String>) -> String {
     let base = fragment_base(text);
     let mut candidate = base.clone();
@@ -552,7 +327,7 @@ impl Renderer {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum RenderError {
+pub(super) enum RenderError {
     #[error("could not render {kind} TeX {tex:?}: {message}")]
     Math {
         kind: &'static str,
@@ -570,6 +345,7 @@ pub(crate) enum RenderError {
     Page {
         id: String,
         message: String,
+        reason: PageReferenceFailure,
         span: Range<usize>,
     },
     #[error("could not highlight fenced code as {language:?}: {message}")]
@@ -582,6 +358,12 @@ pub(crate) enum RenderError {
     Footnote { label: String, span: Range<usize> },
     #[error("could not render margin footnotes: {message}")]
     MarginFootnote { message: String, span: Range<usize> },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PageReferenceFailure {
+    Ordinary,
+    ExcludedDraft,
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -696,35 +478,48 @@ pub(crate) fn validate_source_with_links(
             RenderError::Math { span, .. } => (
                 "math",
                 "invalid TeX here",
-                "correct the TeX expression or set markdown.math = \"off\"",
+                "correct the TeX expression or set markdown.math = \"off\"".into(),
                 span.clone(),
             ),
             RenderError::Asset { span, .. } => (
                 "asset reference",
                 "invalid asset reference here",
-                "use an existing asset ID relative to content/, without a leading '/', or '.' or '..' path segments",
+                "use an existing asset ID relative to content/, without a leading '/', or '.' or '..' path segments".into(),
+                span.clone(),
+            ),
+            RenderError::Page {
+                span,
+                message,
+                reason: PageReferenceFailure::ExcludedDraft,
+                ..
+            } => (
+                "page reference",
+                "draft page referenced here",
+                format!(
+                    "{message}; remove this reference until the page is published, or use heine serve --drafts when the draft is intended to render in a local preview"
+                ),
                 span.clone(),
             ),
             RenderError::Page { span, .. } => (
                 "page reference", "invalid page reference here",
-                "use page:<id> for the current locale or page:<locale>:<id> for an explicitly configured locale", span.clone(),
+                "use page:<id> for the current locale or page:<locale>:<id> for an explicitly configured locale".into(), span.clone(),
             ),
             RenderError::Highlight { span, .. } => (
                 "code fence",
                 "invalid language here",
-                "use a bundled Giallo language name, omit the fence language, or set markdown.highlighting.missing_language = \"plain\"",
+                "use a bundled Giallo language name, omit the fence language, or set markdown.highlighting.missing_language = \"plain\"".into(),
                 span.clone(),
             ),
             RenderError::MarginFootnote { span, .. } => (
                 "margin footnotes",
                 "margin-footnote rendering is inconsistent here",
-                "rebuild the site after correcting the selected Markdown source",
+                "rebuild the site after correcting the selected Markdown source".into(),
                 span.clone(),
             ),
             RenderError::Footnote { span, .. } => (
                 "footnote",
                 "reference without a matching definition",
-                "add one [^label]: definition, or remove this reference",
+                "add one [^label]: definition, or remove this reference".into(),
                 span.clone(),
             ),
         };
@@ -735,7 +530,7 @@ pub(crate) fn validate_source_with_links(
             source_code: crate::source_diagnostic::named_source(path, input, "Markdown"),
             span: span.into(),
             label,
-            help: help.into(),
+            help,
         })
     })
 }
@@ -830,7 +625,7 @@ fn highlight_code_blocks(
     Ok(output)
 }
 
-fn options(config: &MarkdownConfig) -> Options {
+pub(super) fn options(config: &MarkdownConfig) -> Options {
     let mut options = Options::empty();
     for extension in config.extensions() {
         options.insert(match extension {
@@ -1098,6 +893,11 @@ fn resolve_link_destination(
             .map(|target| format!("{}{suffix}", target.url))
             .map_err(|error| RenderError::Page {
                 id: destination.into(),
+                reason: if matches!(error, crate::site::PageResolveError::DraftExcluded { .. }) {
+                    PageReferenceFailure::ExcludedDraft
+                } else {
+                    PageReferenceFailure::Ordinary
+                },
                 message: error.to_string(),
                 span,
             });
@@ -1114,6 +914,7 @@ fn resolve_image_destination(
         return Err(RenderError::Page {
             id: id.into(),
             message: "a page reference cannot be used as an image source".into(),
+            reason: PageReferenceFailure::Ordinary,
             span,
         });
     }

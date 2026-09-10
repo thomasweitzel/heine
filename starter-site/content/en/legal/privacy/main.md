@@ -1,5 +1,3 @@
-# Privacy notice
-
 *Example text for a static site, last updated 30 August 2026.*
 
 ## This is an example, not a deployment policy

@@ -32,6 +32,7 @@ pub struct ServeOptions {
     host: IpAddr,
     port: u16,
     clean_output: bool,
+    drafts: bool,
 }
 
 impl Default for ServeOptions {
@@ -40,6 +41,7 @@ impl Default for ServeOptions {
             host: IpAddr::from([127, 0, 0, 1]),
             port: 1111,
             clean_output: false,
+            drafts: false,
         }
     }
 }
@@ -62,6 +64,7 @@ impl ServeOptions {
             host,
             port,
             clean_output: false,
+            drafts: false,
         })
     }
 
@@ -78,6 +81,16 @@ impl ServeOptions {
     pub fn clean_output(mut self) -> Self {
         self.clean_output = true;
         self
+    }
+
+    /// Includes draft pages in this local development-server preview.
+    pub fn with_drafts(mut self) -> Self {
+        self.drafts = true;
+        self
+    }
+
+    pub(crate) fn includes_drafts(&self) -> bool {
+        self.drafts
     }
 }
 
@@ -167,10 +180,15 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
     // Register before the first build so a source write in that build's
     // startup window is queued and rebuilt afterwards.
     let watcher = watch::prepare(root.clone()).map_err(miette::Report::new)?;
-    let build = if options.clean_output {
-        BuildOptions::new(BuildMode::Full).clean_output()
+    let rebuild = if options.includes_drafts() {
+        BuildOptions::new(BuildMode::Full).preview_drafts()
     } else {
         BuildOptions::new(BuildMode::Full)
+    };
+    let build = if options.clean_output {
+        rebuild.clean_output()
+    } else {
+        rebuild
     };
     let initial = PublishedSite::from_build(
         build_at_with_publication(&root, build)?,
@@ -189,13 +207,14 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
         .enable_all()
         .build()
         .map_err(|source| miette::Report::new(Error::Runtime { source }))?;
-    runtime.block_on(run(listener, initial, watcher))
+    runtime.block_on(run(listener, initial, watcher, rebuild))
 }
 
 async fn run(
     listener: TcpListener,
     initial: PublishedSite,
     watcher: watch::PendingWatcher,
+    rebuild: BuildOptions,
 ) -> miette::Result<()> {
     let address = listener
         .local_addr()
@@ -206,7 +225,9 @@ async fn run(
     let listener = tokio::net::TcpListener::from_std(listener)
         .map_err(|source| miette::Report::new(Error::RuntimeListener { address, source }))?;
     let (published, receiver) = state_watch::channel(initial);
-    let _watcher = watcher.start(published).map_err(miette::Report::new)?;
+    let _watcher = watcher
+        .start(published, rebuild)
+        .map_err(miette::Report::new)?;
     let state = ServerState {
         published: receiver,
     };
@@ -301,6 +322,12 @@ mod tests {
     fn clean_output_is_opt_in() {
         assert!(!ServeOptions::default().clean_output);
         assert!(ServeOptions::default().clean_output().clean_output);
+    }
+
+    #[test]
+    fn draft_preview_is_opt_in() {
+        assert!(!ServeOptions::default().includes_drafts());
+        assert!(ServeOptions::default().with_drafts().includes_drafts());
     }
 
     #[test]

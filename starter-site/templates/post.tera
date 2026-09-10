@@ -8,18 +8,19 @@
     {% set index_id = page.dir ~ "/index" %}
     {% set index = page(id=index_id) %}
   {% endif %}
-  <a href="{{ index.relative_url }}">{{ <ui.arrow direction="up" /> }}<span>{{ index.title }}</span></a>
+  <a href="{{ index.relative_url }}">{{ <ui.arrow direction="up" /> }}<span>{{ <ui.page_label draft={index.draft} label={t(id="draft-marker")} title={index.title} /> }}</span></a>
   {% set neighbors = collection_neighbors(name="posts") %}
   {% if neighbors.before %}
-    <a href="{{ neighbors.before.relative_url }}">{{ <ui.arrow direction="previous" /> }}<span>{{ neighbors.before.title }}</span></a>
+    <a href="{{ neighbors.before.relative_url }}">{{ <ui.arrow direction="previous" /> }}<span>{{ <ui.page_label draft={neighbors.before.draft} label={t(id="draft-marker")} title={neighbors.before.title} /> }}</span></a>
   {% endif %}
   {% if neighbors.after %}
-    <a href="{{ neighbors.after.relative_url }}"><span>{{ neighbors.after.title }}</span>{{ <ui.arrow direction="next" /> }}</a>
+    <a href="{{ neighbors.after.relative_url }}"><span>{{ <ui.page_label draft={neighbors.after.draft} label={t(id="draft-marker")} title={neighbors.after.title} /> }}</span>{{ <ui.arrow direction="next" /> }}</a>
   {% endif %}
 </nav>
 {% endblock %}
 
 {% block content %}
+<h1>{{ <ui.page_title draft={page.draft} label={t(id="draft-marker")} title={page.title} /> }}</h1>
 {% set published = format_date(value=page.published, style="long") %}
 <div class="page-meta">
   <p>{{ t(id="post-published") }} <time datetime="{{ page.published }}">{{ published }}</time></p>

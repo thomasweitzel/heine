@@ -478,8 +478,8 @@ fn reports_a_non_numeric_weight_at_the_weight_and_collection_order() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[collections.posts]\norder = 'weight-asc'\n");
     fixture.write(
-        "content/en/index.page",
-        "template = 'page.tera'\nweight = 'None'\ncollections = ['posts']\n",
+        "content/en/post.page",
+        "template = 'page.tera'\nweight = false\ncollections = ['posts']\n",
     );
     fixture.write("templates/page.tera", "page");
 
@@ -487,11 +487,11 @@ fn reports_a_non_numeric_weight_at_the_weight_and_collection_order() {
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("content/en/index.page:2"),
+        diagnostic.contains("content/en/post.page:2"),
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("content/en/index.page:3"),
+        diagnostic.contains("content/en/post.page:3"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");

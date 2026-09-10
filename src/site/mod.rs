@@ -8,6 +8,7 @@ mod collation;
 pub(crate) mod collection;
 mod feed;
 mod index;
+mod links;
 mod loader;
 mod locales;
 mod metadata;
@@ -51,6 +52,7 @@ use crate::{
 pub(crate) use feed::Catalog as FeedCatalog;
 pub(crate) use feed::View as FeedView;
 pub(crate) use index::{Neighbors, SiblingIndex};
+pub(crate) use links::{PageCatalog, PageLinkTarget, PageLinks, PageResolveError};
 use page::Task;
 pub(crate) use page::{FootnotesView, PageId, PageView, Pager};
 pub(crate) use pagination::{Catalog as PaginationCatalog, View as PaginationView};
@@ -64,187 +66,26 @@ pub(crate) use taxonomy::{
     Catalog as TaxonomyCatalog, IndexView as TaxonomyIndexView, PageTermView,
 };
 
-/// The complete, locale-aware catalog of rendered pages.
-///
-/// Keeping template views and their output targets together makes it
-/// impossible for the template boundary to observe two independently-built
-/// page indexes. The catalog is constructed only after page relationships
-/// have been resolved and is immutable for the lifetime of a build.
-#[derive(Debug, Clone)]
-pub(crate) struct PageCatalog {
-    views: std::sync::Arc<BTreeMap<Locale, BTreeMap<PageId, PageView>>>,
-    targets: std::sync::Arc<BTreeMap<Locale, BTreeMap<PageId, OutputPath>>>,
-}
-
-impl PageCatalog {
-    fn from_pages(pages: BTreeMap<Locale, BTreeMap<PageId, page::Page>>) -> Self {
-        let mut views = BTreeMap::new();
-        let mut targets = BTreeMap::new();
-        for (locale, pages) in pages {
-            let mut locale_views = BTreeMap::new();
-            let mut locale_targets = BTreeMap::new();
-            for (id, page) in pages {
-                if let Some(output) = page.output_path.clone() {
-                    locale_targets.insert(id.clone(), output);
-                }
-                locale_views.insert(id, page.into_view());
-            }
-            views.insert(locale.clone(), locale_views);
-            targets.insert(locale, locale_targets);
-        }
-        Self {
-            views: std::sync::Arc::new(views),
-            targets: std::sync::Arc::new(targets),
-        }
-    }
-
-    pub(crate) fn links(&self, current_locale: Locale, base_path: BasePath) -> PageLinks {
-        PageLinks::from_targets(current_locale, base_path, self.targets.clone())
-    }
-
-    fn links_from_pages(
-        pages: &BTreeMap<Locale, BTreeMap<PageId, page::Page>>,
-        current_locale: Locale,
-        base_path: BasePath,
-    ) -> PageLinks {
-        let targets = pages
-            .iter()
-            .map(|(locale, pages)| {
-                (
-                    locale.clone(),
-                    pages
-                        .iter()
-                        .filter_map(|(id, page)| {
-                            page.output_path
-                                .as_ref()
-                                .map(|output| (id.clone(), output.clone()))
-                        })
-                        .collect(),
-                )
-            })
-            .collect();
-        PageLinks::from_targets(current_locale, base_path, std::sync::Arc::new(targets))
-    }
-
-    pub(crate) fn view(&self, locale: &Locale, id: &PageId) -> Option<&PageView> {
-        self.views.get(locale)?.get(id)
-    }
-
-    pub(crate) fn output_path(&self, locale: &Locale, id: &PageId) -> Option<&OutputPath> {
-        self.targets.get(locale)?.get(id)
-    }
-}
-
-/// Locale-aware rendered-page lookup shared by Tera and Markdown. Page IDs
-/// remain locale-local; callers opt into another locale explicitly.
-#[derive(Clone)]
-pub(crate) struct PageLinks {
-    current_locale: Locale,
-    base_path: BasePath,
-    targets: std::sync::Arc<BTreeMap<Locale, BTreeMap<PageId, OutputPath>>>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct PageLinkTarget {
-    pub(crate) id: PageId,
-    pub(crate) locale: Locale,
-    pub(crate) output_path: OutputPath,
-    pub(crate) url: String,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum PageResolveError {
-    #[error("page id must be a non-empty relative path without '.', '..', or backslashes")]
-    InvalidId,
-    #[error("locale {locale:?} is not configured")]
-    InvalidLocale { locale: String },
-    #[error("rendered page {id:?} was not found for locale {locale:?}")]
-    NotFound { locale: String, id: String },
-}
-
-impl PageLinks {
-    pub(crate) fn from_targets(
-        current_locale: Locale,
-        base_path: BasePath,
-        targets: std::sync::Arc<BTreeMap<Locale, BTreeMap<PageId, OutputPath>>>,
-    ) -> Self {
-        Self {
-            current_locale,
-            base_path,
-            targets,
-        }
-    }
-    pub(crate) fn with_locale(&self, current_locale: Locale) -> Self {
-        Self {
-            current_locale,
-            base_path: self.base_path.clone(),
-            targets: self.targets.clone(),
-        }
-    }
-    pub(crate) fn base_path(&self) -> &BasePath {
-        &self.base_path
-    }
-    pub(crate) fn resolve(
-        &self,
-        id: &str,
-        locale: Option<&str>,
-    ) -> Result<PageLinkTarget, PageResolveError> {
-        let requested = PageId::parse(id).ok_or(PageResolveError::InvalidId)?;
-        let locale = self.resolve_locale(locale)?;
-        let path = self
-            .targets
-            .get(&locale)
-            .and_then(|pages| pages.get(&requested))
-            .ok_or_else(|| PageResolveError::NotFound {
-                locale: locale.to_string(),
-                id: requested.to_string(),
-            })?;
-        Ok(PageLinkTarget {
-            id: requested,
-            locale,
-            output_path: path.clone(),
-            url: self.base_path.join(&path.url_path()),
-        })
-    }
-
-    /// Looks up a relationship that has already been resolved inside the site
-    /// model, without treating its page ID as new authored input.
-    pub(crate) fn target(&self, locale: &Locale, id: &PageId) -> Option<PageLinkTarget> {
-        let output_path = self.targets.get(locale)?.get(id)?.clone();
-        Some(PageLinkTarget {
-            id: id.clone(),
-            locale: locale.clone(),
-            url: self.base_path.join(&output_path.url_path()),
-            output_path,
-        })
-    }
-
-    /// Resolves an optional template locale against the finite configured
-    /// locale set. Resource helpers use this shared validation before looking
-    /// up their own locale-local values.
-    pub(crate) fn resolve_locale(&self, locale: Option<&str>) -> Result<Locale, PageResolveError> {
-        let locale = match locale {
-            Some(locale) => locale
-                .parse()
-                .map_err(|_| PageResolveError::InvalidLocale {
-                    locale: locale.into(),
-                })?,
-            None => self.current_locale.clone(),
-        };
-        if self.targets.contains_key(&locale) {
-            Ok(locale)
-        } else {
-            Err(PageResolveError::InvalidLocale {
-                locale: locale.to_string(),
-            })
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildMode {
     Full,
     Quick,
+}
+
+/// Selects the authored pages that participate in one resolved site.
+///
+/// This is distinct from build mode: a quick build may still describe the
+/// published site, while the development server can explicitly preview drafts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PublicationMode {
+    Published,
+    PreviewDrafts,
+}
+
+impl PublicationMode {
+    pub(crate) fn includes_drafts(self) -> bool {
+        matches!(self, Self::PreviewDrafts)
+    }
 }
 
 /// Validated options that travel with one build invocation.
@@ -272,6 +113,7 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) deployment: &'a DeploymentCatalog,
     pub(crate) licenses: &'a LicenseCatalog,
     pub(crate) markdown_renderer: &'a MarkdownRenderer,
+    pub(crate) publication: PublicationMode,
 }
 
 impl BuildOptions {
@@ -447,6 +289,7 @@ impl Site {
             deployment,
             licenses,
             markdown_renderer,
+            publication,
         } = inputs;
         match fs::symlink_metadata(content_root) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
@@ -483,8 +326,10 @@ impl Site {
             sitemap_enabled: sitemap_config.is_some(),
             markdown: markdown_renderer.config(),
             localization: &localization,
+            publication,
         })?;
         let mut pages = locales.pages;
+        let excluded_drafts = std::sync::Arc::new(locales.excluded_drafts);
         let siblings = locales.siblings;
         let mut tasks = locales.tasks;
         if let Some(latest_data_input) = data.latest_input() {
@@ -676,8 +521,12 @@ impl Site {
             BasePath::root(),
             BTreeMap::new(),
         );
-        let page_links =
-            PageCatalog::links_from_pages(&pages, i18n.default_locale().clone(), BasePath::root());
+        let page_links = PageCatalog::links_from_pages(
+            &pages,
+            i18n.default_locale().clone(),
+            BasePath::root(),
+            excluded_drafts.clone(),
+        );
         for (locale, locale_pages) in &pages {
             let asset_links = asset_links.with_locale(locale.clone());
             let page_links = page_links.with_locale(locale.clone());
@@ -693,7 +542,7 @@ impl Site {
                 }
             }
         }
-        let pages = PageCatalog::from_pages(pages);
+        let pages = PageCatalog::from_pages(pages, excluded_drafts);
         let collections = std::sync::Arc::new(
             collections
                 .into_iter()

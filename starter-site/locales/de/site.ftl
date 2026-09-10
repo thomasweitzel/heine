@@ -17,6 +17,7 @@ series-position = Teil { $number } von { $total }
 series-listing-description = Lies die Reihe { $series } in ihrer vorgesehenen Reihenfolge.
 
 # Labels for post publication facts.
+draft-marker = ENTWURF
 post-published = Veröffentlicht am
 post-byline = Von { $authors }
 post-updated = Aktualisiert am

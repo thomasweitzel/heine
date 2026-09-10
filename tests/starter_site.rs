@@ -3,7 +3,7 @@
 
 use std::{fs, path::Path};
 
-use heine::{BuildMode, build_at};
+use heine::{BuildMode, BuildOptions, build_at, build_at_with_options};
 
 #[path = "support/temp_dir.rs"]
 mod temp_dir;
@@ -104,6 +104,11 @@ fn builds_the_documented_starter_site() {
         index.contains("So far there are \u{2068}3\u{2069} posts."),
         "{index}"
     );
+    assert!(
+        !output.join("blog/draft-publication/index.html").exists(),
+        "ordinary starter-site output must not contain its draft post"
+    );
+
     assert!(output.join("assets/css/styles.v2.css").is_file());
     assert!(!output.join("assets/css/styles.v1.css").exists());
     assert!(output.join("assets/js/search.js").is_file());
@@ -547,6 +552,28 @@ fn builds_the_documented_starter_site() {
     );
     assert!(output.join("authors/index.html").is_file());
     assert!(!output.join("quiz").exists());
+
+    build_at_with_options(root, BuildOptions::new(BuildMode::Full).preview_drafts())
+        .expect("starter-site draft preview builds");
+    let draft = fs::read_to_string(output.join("blog/draft-publication/index.html"))
+        .expect("draft post preview");
+    assert!(
+        draft.contains(
+            "<h1><span class=\"page-title\"><span class=\"draft-marker\">DRAFT</span><span class=\"page-title-text\">A Page Before Publication</span></span></h1>"
+        ),
+        "{draft}"
+    );
+    let blog = fs::read_to_string(output.join("blog/index.html")).expect("preview blog index");
+    assert!(
+        blog.contains("<span class=\"draft-marker\">DRAFT</span>"),
+        "{blog}"
+    );
+    let search = fs::read_to_string(generated_file_with_extension(
+        &output.join("search"),
+        "json",
+    ))
+    .expect("preview search index");
+    assert!(search.contains("\"draft\":true"), "{search}");
 }
 
 fn generated_file_with_extension(directory: &Path, extension: &str) -> std::path::PathBuf {
