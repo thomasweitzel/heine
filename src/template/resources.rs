@@ -87,7 +87,10 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                 .resolve(id, kwargs.get::<&str>("locale")?);
             match result {
                 Ok(_) => Ok(true.into()),
-                Err(crate::site::PageResolveError::NotFound { .. }) => Ok(false.into()),
+                Err(
+                    crate::site::PageResolveError::NotFound { .. }
+                    | crate::site::PageResolveError::DraftExcluded { .. },
+                ) => Ok(false.into()),
                 Err(error) => Err(tera::Error::message(error.to_string())),
             }
         },

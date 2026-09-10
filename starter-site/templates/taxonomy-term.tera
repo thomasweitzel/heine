@@ -23,7 +23,7 @@
 <h1>{{ t(id=taxonomy.name, count=1) }}: {{ taxonomy.term.name }}</h1>
 <ul class="page-list">
 {% for post in pagination.pages %}
-  {{ <ui.page_list_item entry={post} /> }}
+  {{ <ui.page_list_item entry={post} draft_label={t(id="draft-marker")} /> }}
 {% endfor %}
 </ul>
 {{ <ui.pagination pager={pagination} label={t(id="pagination-label")} /> }}

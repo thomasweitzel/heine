@@ -1,0 +1,10 @@
+draft = true
+title = "A Page Before Publication"
+description = "Why an unfinished post belongs in a local preview but not in a published site."
+published = 2026-08-17T09:30:00
+summary = "A short note on keeping unfinished writing out of ordinary publication."
+content.main = "main.md"
+extra.parent = "blog/index"
+
+[taxonomies]
+tags = ["Static sites"]

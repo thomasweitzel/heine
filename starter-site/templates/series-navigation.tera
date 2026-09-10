@@ -3,16 +3,16 @@
     <nav class="series-navigation" aria-label="{{ t(id="series-navigation") }}: {{ membership.title }}">
       <div class="series-navigation-details">
         <p><span>{{ t(id="series-label") }}</span> <a href="{{ membership.relative_url }}"><strong>{{ membership.title }}</strong></a></p>
-        <p>{{ page.title }}</p>
+        <p>{{ <ui.page_label draft={page.draft} label={t(id="draft-marker")} title={page.title} /> }}</p>
         <p>{{ t(id="series-position", number=membership.number, total=membership.total) }}</p>
       </div>
       {% if membership.previous or membership.next %}
         <div class="series-navigation-links">
           {% if membership.previous %}
-            <a class="series-navigation-previous" href="{{ membership.previous.relative_url }}">{{ <ui.arrow direction="previous" /> }}<span>{{ membership.previous.title }}</span></a>
+            <a class="series-navigation-previous" href="{{ membership.previous.relative_url }}">{{ <ui.arrow direction="previous" /> }}<span>{{ <ui.page_label draft={membership.previous.draft} label={t(id="draft-marker")} title={membership.previous.title} /> }}</span></a>
           {% endif %}
           {% if membership.next %}
-            <a class="series-navigation-next" href="{{ membership.next.relative_url }}"><span>{{ membership.next.title }}</span>{{ <ui.arrow direction="next" /> }}</a>
+            <a class="series-navigation-next" href="{{ membership.next.relative_url }}"><span>{{ <ui.page_label draft={membership.next.draft} label={t(id="draft-marker")} title={membership.next.title} /> }}</span>{{ <ui.arrow direction="next" /> }}</a>
           {% endif %}
         </div>
       {% endif %}

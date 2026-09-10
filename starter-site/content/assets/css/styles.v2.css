@@ -9,6 +9,9 @@
     --border-color: #c8d0da;
     --badge-bg: #d8e2f0;
     --badge-fg: #20262e;
+    --draft-bg: #fff4dc;
+    --draft-fg: #76520a;
+    --draft-border: #b48731;
 
     --border: 1px solid var(--border-color);
     --radius: 0.25rem;
@@ -35,6 +38,9 @@
         --border-color: #465363;
         --badge-bg: #3a4b60;
         --badge-fg: #f4f7fb;
+        --draft-bg: #453919;
+        --draft-fg: #f1d28a;
+        --draft-border: #c9a24f;
     }
 }
 
@@ -295,6 +301,41 @@ html[dir="rtl"] .navigation-arrow {
     font-size: 0.9rem;
 }
 
+.draft-marker {
+    display: inline-block;
+    margin-inline-end: 0.35em;
+    padding: 0 0.28em;
+    border: 1px solid var(--draft-border);
+    border-radius: var(--radius);
+    background-color: var(--draft-bg);
+    color: var(--draft-fg);
+    font-size: 0.7em;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    text-decoration: none;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.page-title,
+.page-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    max-inline-size: 100%;
+}
+
+.page-title .draft-marker,
+.page-label .draft-marker {
+    margin-inline-end: 0;
+}
+
+.page-title-text,
+.page-label-text {
+    min-inline-size: 0;
+}
+
 .compact-index,
 .series-list,
 .page-list {
@@ -430,7 +471,7 @@ footer {
 
 a {
     color: var(--color-2);
-    border-radius: 0.2rem;
+    border-radius: var(--radius);
     text-decoration: none;
     transition: background-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
 }
@@ -445,6 +486,12 @@ a:focus-visible {
 a:focus-visible {
     outline: 2px solid var(--color-2);
     outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    a {
+        transition: none;
+    }
 }
 
 .sections {
@@ -511,6 +558,12 @@ a:focus-visible {
     color: var(--fg);
 }
 
+.section-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .section h2 {
     color: var(--color-2);
     text-align: center;
@@ -529,7 +582,10 @@ a:focus-visible {
     margin-inline: 0;
     padding: var(--spacing-s) var(--spacing-m);
     border-inline-start: 0.25rem solid var(--border-color);
-    border-radius: 0 var(--radius) var(--radius) 0;
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+    border-start-end-radius: var(--radius);
+    border-end-end-radius: var(--radius);
     background-color: var(--color-1);
     color: var(--muted-fg);
     font-style: italic;
@@ -550,14 +606,15 @@ a:focus-visible {
     vertical-align: super;
 }
 
-.prose .footnote-reference a {
+.prose .footnote-reference a,
+.prose .heine-footnote-marker label {
     display: inline-flex;
     box-sizing: border-box;
     min-inline-size: 1.45em;
     min-block-size: 1.45em;
     align-items: center;
     justify-content: center;
-    padding-inline: 0.20em;
+    padding-inline: 0.18em;
     border: 1px solid var(--border-color);
     border-radius: 999px;
     color: var(--muted-fg);
@@ -625,19 +682,7 @@ a:focus-visible {
 }
 
 .prose .heine-footnote-marker label {
-    display: inline-flex;
-    box-sizing: border-box;
-    min-inline-size: 1.45em;
-    min-block-size: 1.45em;
-    align-items: center;
-    justify-content: center;
-    padding-inline: 0.18em;
-    border: 1px solid var(--border-color);
-    border-radius: 999px;
-    color: var(--muted-fg);
     cursor: pointer;
-    font-weight: 600;
-    line-height: 1;
 }
 
 .prose .heine-footnote-toggle:checked + .heine-footnote {
@@ -649,7 +694,10 @@ a:focus-visible {
     margin-top: var(--spacing-s);
     padding: var(--spacing-s) var(--spacing-m);
     border-inline-start: 0.2rem solid var(--border-color);
-    border-radius: 0 var(--radius) var(--radius) 0;
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+    border-start-end-radius: var(--radius);
+    border-end-end-radius: var(--radius);
     background-color: var(--color-1);
     color: var(--muted-fg);
     font-size: 0.9rem;
@@ -663,7 +711,8 @@ a:focus-visible {
     min-block-size: 1.45em;
     align-items: center;
     justify-content: center;
-    margin: 0.1em var(--spacing-s) 0 0;
+    margin-block-start: 0.1em;
+    margin-inline-end: var(--spacing-s);
     padding-inline: 0.18em;
     border: 1px solid var(--border-color);
     border-radius: 999px;
@@ -777,32 +826,46 @@ a:focus-visible {
     list-style: none;
 }
 
-.page-list a {
-    display: block;
+.page-list-item {
     margin-block: var(--spacing-s);
     padding: 0.7rem var(--spacing-m);
     border: var(--border);
     border-radius: var(--radius);
-    color: var(--fg);
     line-height: 1.35;
 }
 
-.page-list a:hover,
-.page-list a:focus-visible {
+.page-list-item:hover,
+.page-list-item:focus-within {
     background-color: transparent;
     border-color: var(--color-2);
     box-shadow: none;
-    color: var(--color-2);
 }
 
-.page-list-copy,
+.page-list-heading,
 .page-list-title,
 .page-list-summary {
     display: block;
 }
 
+.page-list-heading,
+.series-list-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.page-list-heading .draft-marker,
+.series-list-heading .draft-marker {
+    flex: none;
+}
+
 .page-list-title {
     font-weight: 600;
+}
+
+.page-list-item:hover .page-list-title,
+.page-list-item:focus-within .page-list-title {
+    color: var(--color-2);
 }
 
 .page-list-summary {
@@ -815,7 +878,7 @@ a:focus-visible {
     display: inline-block;
     min-width: 1.5em;
     padding-inline: 0.35em;
-    border-radius: 0.2rem;
+    border-radius: var(--radius);
     background-color: var(--badge-bg);
     color: var(--badge-fg);
     font-size: 0.85em;
@@ -853,6 +916,12 @@ a:focus-visible {
 .search-form button:focus-visible {
     color: var(--color-2-text);
     background: var(--color-2);
+}
+
+.search-form input:focus-visible,
+.search-form button:focus-visible {
+    outline: 2px solid var(--color-2);
+    outline-offset: 2px;
 }
 
 .search-status:empty {

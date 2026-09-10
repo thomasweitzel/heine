@@ -123,6 +123,10 @@ pub(super) struct LoadedPage {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RawPage {
+    // `PageProbe` validates draft syntax before full page loading. Keeping the
+    // field here preserves this strict schema without repeating that work.
+    #[serde(rename = "draft")]
+    pub(super) _draft: Option<toml::Spanned<bool>>,
     pub(super) template: Option<toml::Spanned<toml::Value>>,
     pub(super) title: Option<toml::Spanned<String>>,
     pub(super) description: Option<toml::Spanned<String>>,
@@ -348,6 +352,7 @@ pub(super) struct Page {
     pub(super) markdown_sources: Vec<MarkdownSource>,
     pub(super) toc: Option<TocPlan>,
     pub(super) footnotes: Option<MarginFootnotePlan>,
+    pub(super) draft: bool,
     pub(super) metadata: Metadata,
     pub(super) translationid: Option<TranslationId>,
     pub(super) translationid_span: Option<SourceSpan>,
@@ -357,9 +362,28 @@ pub(super) struct Page {
     pub(super) collections: Vec<CollectionMembership>,
     pub(super) series: Vec<SeriesMembership>,
     pub(super) pagination: Option<Pagination>,
-    pub(super) weight: Option<i64>,
+    pub(super) weight: SiblingWeight,
     pub(super) weight_span: Option<SourceSpan>,
     pub(super) translations: BTreeMap<String, PageLink>,
+}
+
+/// The resolved relationship between a page and directory sibling ordering.
+///
+/// TOML has no null value, so loading maps the public integer-or-`false`
+/// syntax into this finite domain before relationship resolution begins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SiblingWeight {
+    Ordered(i64),
+    Excluded,
+}
+
+impl SiblingWeight {
+    pub(super) fn ordered(self) -> Option<i64> {
+        match self {
+            Self::Ordered(value) => Some(value),
+            Self::Excluded => None,
+        }
+    }
 }
 
 /// Validated pagination declared by one authored listing page. Generated
@@ -467,6 +491,7 @@ impl Page {
             markdown_content: self.markdown_content,
             toc: self.toc,
             footnotes: self.footnotes.map(FootnotesView::from),
+            draft: self.draft,
             title,
             description,
             summary,
@@ -476,7 +501,7 @@ impl Page {
             extra,
             translations: self.translations,
             directory: self.directory,
-            weight: self.weight,
+            weight: self.weight.ordered(),
         }
     }
 }
@@ -494,6 +519,7 @@ pub(crate) struct PageView {
     markdown_content: BTreeSet<String>,
     toc: Option<TocPlan>,
     footnotes: Option<FootnotesView>,
+    draft: bool,
     title: Option<String>,
     description: Option<String>,
     summary: Option<String>,
@@ -507,6 +533,10 @@ pub(crate) struct PageView {
 }
 
 impl PageView {
+    pub(crate) fn is_draft(&self) -> bool {
+        self.draft
+    }
+
     pub(crate) fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }

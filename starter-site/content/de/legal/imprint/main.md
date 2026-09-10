@@ -1,5 +1,3 @@
-# Impressum
-
 *Beispielhafte Anbieterkennzeichnung für die Starter-Site; kein reales
 Unternehmensverzeichnis.*
 

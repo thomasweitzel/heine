@@ -1,7 +1,7 @@
 {% extends "base.tera" %}
 
 {% block content %}
-{% block document_header %}{% endblock %}
+{% block document_header %}<h1>{{ <ui.page_title draft={page.draft} label={t(id="draft-marker")} title={page.title} /> }}</h1>{% endblock %}
 {% include "table-of-contents.tera" %}
 <div class="prose">
   {{ markdown(content="main") }}

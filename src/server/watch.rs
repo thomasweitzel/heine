@@ -15,7 +15,7 @@ use thiserror::Error;
 use tokio::sync::watch;
 
 use super::{PublishedSite, next_generation};
-use crate::{BuildMode, BuildOptions, build_at_with_publication, project::ProjectPaths};
+use crate::{BuildOptions, build_at_with_publication, project::ProjectPaths};
 
 const DEBOUNCE: Duration = Duration::from_millis(150);
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S.%3fZ";
@@ -88,10 +88,11 @@ impl PendingWatcher {
     pub(crate) fn start(
         self,
         published: watch::Sender<PublishedSite>,
+        build: BuildOptions,
     ) -> Result<SourceWatcher, Error> {
         let thread = thread::Builder::new()
             .name("heine-source-watcher".into())
-            .spawn(move || watch_loop(self.root, self.watcher, self.receiver, published))
+            .spawn(move || watch_loop(self.root, self.watcher, self.receiver, published, build))
             .map_err(|source| Error::Thread { source })?;
         Ok(SourceWatcher { _thread: thread })
     }
@@ -102,6 +103,7 @@ fn watch_loop(
     _watcher: impl Watcher,
     receiver: Receiver<notify::Result<Event>>,
     published: watch::Sender<PublishedSite>,
+    build: BuildOptions,
 ) {
     let mut generation = published.borrow().generation;
     while let Ok(event) = receiver.recv() {
@@ -125,7 +127,7 @@ fn watch_loop(
         if changed_paths.is_empty() {
             continue;
         }
-        match build_at_with_publication(&root, BuildOptions::new(BuildMode::Full)) {
+        match build_at_with_publication(&root, build) {
             Ok(build) => {
                 generation = next_generation(generation);
                 let _ = published.send(PublishedSite::from_build(build, generation));

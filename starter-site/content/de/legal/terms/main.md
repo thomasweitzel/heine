@@ -1,5 +1,3 @@
-# Nutzungsbedingungen
-
 *Beispieltext, Stand: 30. August 2026.*
 
 ## Kleines, nicht-kommerzielles Beispiel

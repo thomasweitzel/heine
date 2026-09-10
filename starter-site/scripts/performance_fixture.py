@@ -112,7 +112,7 @@ def write_post(generator: random.Random, words: int, number: int, published: dat
                 f"published = {published.isoformat()}T09:30:00\n",
                 updated,
                 f'summary = "Synthetic performance fixture post {number}."\n',
-                'weight = "None"\n',
+                "weight = false\n",
                 "\n[taxonomies]\n",
                 "tags = [",
                 ", ".join(f'"{tag}"' for tag in tags),

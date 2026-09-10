@@ -1,5 +1,3 @@
-# Imprint
-
 *Example legal notice for the starter site; it is not a real business listing.*
 
 > Heinrich Heine  

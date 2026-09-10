@@ -386,7 +386,7 @@ order = "weight-asc"
 weight = 10
 ```
 
-`weight = "None"` lets a non-index page opt out of sibling navigation. It is
+`weight = false` lets a non-index page opt out of sibling navigation. It is
 not a numeric weight, so that page cannot participate in a weight-ordered
 collection. An `index.page` likewise needs an explicit numeric weight to join
 sibling navigation. A directory descriptor can also set metadata and

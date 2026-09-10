@@ -23,6 +23,11 @@ use crate::{
 
 use super::{PageId, collection::ResolvedCollection, page::Page};
 
+/// Version of Heine's public search-document JSON contract.
+///
+/// Consumers use this to reject a document shape they do not understand.
+const SEARCH_DOCUMENT_FORMAT: u8 = 2;
+
 #[derive(Debug, Default)]
 pub(crate) struct Catalog {
     locales: BTreeMap<Locale, BTreeMap<String, Index>>,
@@ -56,6 +61,7 @@ struct DocumentEnvelope<'a> {
 struct Document {
     id: String,
     url: String,
+    draft: bool,
     title: Option<String>,
     description: Option<String>,
     summary: Option<String>,
@@ -127,7 +133,7 @@ impl Catalog {
                 let documents = selected.iter().map(|id| &catalog[id]).collect::<Vec<_>>();
                 let locale_text = locale.to_string();
                 let json = serde_json::to_string(&DocumentEnvelope {
-                    format: 1,
+                    format: SEARCH_DOCUMENT_FORMAT,
                     locale: &locale_text,
                     documents,
                 })
@@ -233,6 +239,7 @@ fn document(
             .as_ref()
             .map(|path| base_path.join(&path.url_path()))
             .expect("collections contain only rendered pages"),
+        draft: page.draft,
         title: page.metadata.title.clone(),
         description: page.metadata.description.clone(),
         summary: page.metadata.summary.clone(),

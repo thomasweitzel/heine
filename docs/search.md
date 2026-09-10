@@ -52,9 +52,13 @@ fail at the template call site.
 
 ## Document contents
 
-Each JSON document has stable metadata plus `text`, plain text obtained from
-every declared Markdown input of its page. Heine does not inspect rendered
-HTML, templates, copied assets, or an inferred `content.main` body.
+The current JSON envelope schema is format `2`. Each document has stable
+metadata, including `draft`. It is `false` in an
+ordinary index and `true` only for a [draft](drafts.md) included through
+`heine serve --drafts`, so a site-owned preview interface can label it. It also
+contains `text`, plain text obtained from every declared Markdown input of its
+page. Heine does not inspect rendered HTML, templates, copied assets, or an
+inferred `content.main` body.
 
 Markdown text, headings, link labels, image alternatives, code, and recognized
 math source contribute. Authored raw HTML contributes semantic text nodes and

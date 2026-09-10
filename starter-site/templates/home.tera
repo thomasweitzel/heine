@@ -8,7 +8,10 @@
       {% set section = page(id=index) %}
       {% if section.extra.home %}
         <a class="section" href="{{ section.url }}">
-          <h2>{{ section.title }}</h2>
+          <div class="section-title">
+            {{ <ui.draft_marker draft={section.draft} label={t(id="draft-marker")} /> }}
+            <h2>{{ section.title }}</h2>
+          </div>
           {% if section.summary %}
             <p>{{ section.summary }}</p>
           {% endif %}

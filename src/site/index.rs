@@ -178,13 +178,13 @@ impl SiblingIndex {
 pub(super) fn resolve_siblings(pages: &BTreeMap<PageId, Page>) -> SiblingIndex {
     let mut eligible: BTreeMap<String, Vec<PageId>> = pages
         .iter()
-        .filter(|(_, page)| page.path.is_some() && page.weight.is_some())
+        .filter(|(_, page)| page.path.is_some() && page.weight.ordered().is_some())
         .fold(BTreeMap::new(), |mut dirs, (id, page)| {
             dirs.entry(page.dir.clone()).or_default().push(id.clone());
             dirs
         });
     for ids in eligible.values_mut() {
-        ids.sort_by_key(|id| (pages[id].weight, id.clone()));
+        ids.sort_by_key(|id| (pages[id].weight.ordered(), id.clone()));
     }
     SiblingIndex {
         eligible: eligible

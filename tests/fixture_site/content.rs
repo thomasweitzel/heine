@@ -158,15 +158,39 @@ fn rejects_content_references_that_escape_the_content_directory() {
 }
 
 #[test]
-fn reports_the_page_value_for_an_invalid_weight() {
+fn rejects_non_numeric_or_non_false_weight_values_at_the_page_field() {
+    let fixture = Fixture::new();
+    fixture.write("templates/page.tera", "page");
+
+    for value in ["true", "\"None\""] {
+        let page = format!("template = 'page.tera'\nweight = {value}\n");
+        fixture.write("content/en/index.page", &page);
+
+        let error =
+            build_at(fixture.path(), BuildMode::Full).expect_err("weight should be invalid");
+        let diagnostic = format!("{error:?}");
+
+        assert!(
+            diagnostic.contains("content/en/index.page:2"),
+            "{diagnostic}"
+        );
+        assert!(
+            error.to_string().contains("must be an integer or false"),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn rejects_a_redundant_false_weight_on_an_index_page() {
     let fixture = Fixture::new();
     fixture.write(
         "content/en/index.page",
-        "template = 'page.tera'\nweight = true\n",
+        "template = 'page.tera'\nweight = false\n",
     );
     fixture.write("templates/page.tera", "page");
 
-    let error = build_at(fixture.path(), BuildMode::Full).expect_err("weight should be invalid");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("weight should be redundant");
     let diagnostic = format!("{error:?}");
 
     assert!(
@@ -174,7 +198,7 @@ fn reports_the_page_value_for_an_invalid_weight() {
         "{diagnostic}"
     );
     assert!(
-        error.to_string().contains("must be an integer"),
+        diagnostic.contains("redundant for an index page"),
         "{diagnostic}"
     );
 }

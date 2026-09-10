@@ -1,5 +1,3 @@
-# Terms
-
 *Example text, last updated 30 August 2026.*
 
 ## A small, non-commercial example

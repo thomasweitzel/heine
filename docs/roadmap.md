@@ -13,9 +13,6 @@ and a cohesive starter-site example where one fits naturally.
   reproduce the same checks, but it is not a prerequisite for the first
   release. Decide a dependency policy for advisories, source provenance,
   duplicate versions, and acceptable licenses before automating those checks.
-- **Draft publication state:** include draft pages consistently in an explicit
-  preview build, while ordinary builds exclude them and every relationship
-  derived from them. See the [proposed design](design/drafts.md).
 - **Required copied-asset licensing coverage:** an opt-in mode that requires a
   REUSE-style sidecar for every resolved copied asset Heine publishes,
   regardless of file type or whether a page links to it. It must retain the

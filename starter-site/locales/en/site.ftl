@@ -18,6 +18,7 @@ series-position = Part { $number } of { $total }
 series-listing-description = Read the { $series } Series in order.
 
 # Labels for post publication facts.
+draft-marker = DRAFT
 post-published = Published
 post-byline = By { $authors }
 post-updated = Updated

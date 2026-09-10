@@ -13,12 +13,13 @@ term            = one ordered subset of the collection
 pagination      = slices a term listing into generated output pages
 ```
 
-A taxonomy is one generic model for tags, categories, and topics. A checked
-ordered reading sequence is a separate [Series](series.md) relationship,
-because each page may need a different position in more than one sequence.
-similar classifications. Heine checks its authored membership and output
-relationships during the build. Start with the [tutorial's tag step](tutorial.md#8-add-tags)
-when adding a taxonomy for the first time.
+A taxonomy is one generic model for tags, categories, topics, and similar
+classifications. A checked ordered reading sequence is a separate
+[Series](series.md) relationship because each page may need a different
+position in more than one sequence. Heine checks its authored membership and
+output relationships during the build. Start with the
+[tutorial's tag step](tutorial.md#8-add-tags) when adding a taxonomy for the
+first time.
 
 ## Authored configuration
 

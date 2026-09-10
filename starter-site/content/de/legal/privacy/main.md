@@ -1,5 +1,3 @@
-# Datenschutzerklärung
-
 *Beispieltext für eine statische Website, Stand: 30. August 2026.*
 
 ## Beispiel statt Einsatzbeschreibung

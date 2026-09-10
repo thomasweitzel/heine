@@ -100,7 +100,7 @@ Logical page ID is the final deterministic tie-breaker. A collection ordered
 by publication time or title requires every member to have that value. Title ordering uses
 the resolved collection locale's ICU collation, with literal title spelling as
 an additional deterministic tie-breaker. A weight ordering uses the page's
-already-resolved numeric weight; a member with `weight = "None"` is an error.
+already-resolved numeric weight; a member with `weight = false` is an error.
 Unknown collection fields, duplicate names, and unknown ordering values are
 errors at their authored locations.
 

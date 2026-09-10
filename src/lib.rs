@@ -27,7 +27,7 @@ use crate::{
     config::{BasePath, SiteConfig},
     output::{OutputTarget, OutputWriter},
     project::ProjectPaths,
-    site::{BuildOptions as SiteBuildOptions, Site},
+    site::{BuildOptions as SiteBuildOptions, PublicationMode, Site},
 };
 
 pub use server::ServeOptions;
@@ -51,6 +51,7 @@ pub(crate) struct BuildPublication {
 pub struct BuildOptions {
     mode: BuildMode,
     clean_output: bool,
+    publication: PublicationMode,
 }
 
 impl BuildOptions {
@@ -58,11 +59,20 @@ impl BuildOptions {
         Self {
             mode,
             clean_output: false,
+            publication: PublicationMode::Published,
         }
     }
 
     pub fn clean_output(mut self) -> Self {
         self.clean_output = true;
+        self
+    }
+
+    /// Includes draft pages in an explicit preview build.
+    ///
+    /// The command-line interface exposes this only as `heine serve --drafts`.
+    pub fn preview_drafts(mut self) -> Self {
+        self.publication = PublicationMode::PreviewDrafts;
         self
     }
 }
@@ -118,6 +128,7 @@ pub(crate) fn build_at_with_publication(
         deployment: &deployment,
         licenses: &licenses,
         markdown_renderer: &markdown,
+        publication: build.publication,
     })
     .map_err(miette::Report::new)?;
     let output_dir = config.build().output_dir().to_path_buf();

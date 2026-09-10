@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted. This document defines the draft publication contract for
-implementation. It does not yet describe current Heine behavior.
+Implemented. The focused [drafts guide](../drafts.md) and
+[reference](../reference.md#page) define the current user-facing contract.
+This record retains the design rationale and accepted boundaries.
 
 ## Decision
 
@@ -85,12 +86,12 @@ inheritable.
 
 ## Build modes
 
-| Invocation | Active pages | Intended use |
-| --- | --- | --- |
-| `heine` | Published pages only | Ordinary complete build |
-| `heine --quick` | Published pages only | Existing incomplete local update path |
-| `heine serve` | Published pages only | Ordinary local development |
-| `heine serve --drafts` | Published and draft pages | Local preview of unfinished work |
+| Invocation             | Active pages              | Intended use                          |
+|------------------------|---------------------------|---------------------------------------|
+| `heine`                | Published pages only      | Ordinary complete build               |
+| `heine --quick`        | Published pages only      | Existing incomplete local update path |
+| `heine serve`          | Published pages only      | Ordinary local development            |
+| `heine serve --drafts` | Published and draft pages | Local preview of unfinished work      |
 
 `heine serve --drafts` uses the configured output directory, just as ordinary
 serving does. Its output is local development output, not a second publication
@@ -219,7 +220,9 @@ Draft diagnostics follow the ordinary authored-source rules:
 - a descriptor-level use identifies its `_directory.toml` field and explains
   the page-local rule;
 - a published page that targets an excluded draft reports the link or template
-  call site, with the normal missing-page wording; and
+  call site and names the target's draft source path. Its diagnostic explains
+  that a local preview can include the target only when it has an effective
+  template; and
 - preview-only failures name the draft's actual authored template, content,
   metadata, Markdown, or relationship source rather than a generic preview
   wrapper.

@@ -129,6 +129,7 @@ pub(crate) struct MembershipView {
 struct PageLinkView {
     id: PageId,
     title: String,
+    draft: bool,
     url: String,
     relative_url: String,
 }
@@ -713,6 +714,7 @@ fn page_link(
     Some(PageLinkView {
         id: id.clone(),
         title: page.title()?.to_owned(),
+        draft: page.is_draft(),
         url: base_path.join(&path.url_path()),
         relative_url: format!("{root}{}", path.url_path().as_str()),
     })

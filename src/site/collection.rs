@@ -313,7 +313,7 @@ fn validate_ordering_data(
         CollectionOrder::WeightAsc | CollectionOrder::WeightDesc => {
             for id in ids {
                 let page = &pages[id];
-                if page.weight.is_none() {
+                if page.weight.ordered().is_none() {
                     let membership = membership(page, name);
                     let (source_code, span, label, related) = match page.weight_span {
                         Some(span) => (
@@ -408,8 +408,14 @@ fn compare_pages(
         ),
         CollectionOrder::WeightAsc | CollectionOrder::WeightDesc => pages[left]
             .weight
+            .ordered()
             .expect("weight ordering was validated")
-            .cmp(&pages[right].weight.expect("weight ordering was validated")),
+            .cmp(
+                &pages[right]
+                    .weight
+                    .ordered()
+                    .expect("weight ordering was validated"),
+            ),
         CollectionOrder::IdAsc | CollectionOrder::IdDesc => left.cmp(right),
     };
     let primary = match order {
