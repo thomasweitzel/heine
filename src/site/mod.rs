@@ -32,8 +32,8 @@ use thiserror::Error;
 use crate::{
     asset::{AssetCatalog, AssetSources, SharedAssets},
     config::{
-        BasePath, CollectionsConfig, FeedsConfig, I18nConfig, SearchConfig, SeriesConfig,
-        SiteConfig, SiteSettings, SitemapConfig, TaxonomiesConfig,
+        BasePath, CollectionsConfig, FeedsConfig, I18nConfig, LicensingConfig, SearchConfig,
+        SeriesConfig, SiteConfig, SiteSettings, SitemapConfig, TaxonomiesConfig,
     },
     content,
     data::SiteData,
@@ -100,6 +100,7 @@ pub(crate) struct BuildOptions {
 pub(crate) struct LoadInputs<'a> {
     pub(crate) content_root: &'a Path,
     pub(crate) locales_root: &'a Path,
+    pub(crate) diagnostics: &'a crate::source_diagnostic::DiagnosticPaths,
     pub(crate) data: SiteData,
     pub(crate) locale_data: BTreeMap<Locale, SiteData>,
     pub(crate) i18n: I18nConfig,
@@ -112,6 +113,7 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) sitemap: Option<&'a SitemapConfig>,
     pub(crate) deployment: &'a DeploymentCatalog,
     pub(crate) licenses: &'a LicenseCatalog,
+    pub(crate) licensing: &'a LicensingConfig,
     pub(crate) markdown_renderer: &'a MarkdownRenderer,
     pub(crate) publication: PublicationMode,
 }
@@ -276,6 +278,7 @@ impl Site {
         let LoadInputs {
             content_root,
             locales_root,
+            diagnostics,
             data,
             locale_data,
             i18n,
@@ -288,6 +291,7 @@ impl Site {
             sitemap: sitemap_config,
             deployment,
             licenses,
+            licensing,
             markdown_renderer,
             publication,
         } = inputs;
@@ -315,9 +319,11 @@ impl Site {
             locales_root,
             i18n.locales(),
             i18n.default_locale().clone(),
+            diagnostics,
         )?);
         let locales = locales::load(locales::Inputs {
             content_root,
+            diagnostics,
             i18n: &i18n,
             collections: &collection_config,
             series: series_config,
@@ -391,7 +397,7 @@ impl Site {
             .collect::<BTreeMap<_, _>>();
         let mut assets = AssetCatalog::discover_locales(&asset_sources)?;
         licenses
-            .attach_to_assets(&mut assets, content_root)
+            .attach_to_assets(&mut assets, content_root, licensing, diagnostics)
             .map_err(Box::new)?;
         let assets = std::sync::Arc::new(assets);
         if let Some(latest_asset_input) = assets.latest_input() {
@@ -533,7 +539,7 @@ impl Site {
             for page in locale_pages.values() {
                 for source in &page.markdown_sources {
                     markdown::validate_source_with_links(
-                        &source.path,
+                        &source.display_path,
                         &source.source,
                         markdown_renderer,
                         Some(&asset_links),
@@ -585,6 +591,7 @@ impl Site {
         existing_output: &Path,
         options: &BuildOptions,
         markdown_renderer: &MarkdownRenderer,
+        diagnostics: &crate::source_diagnostic::DiagnosticPaths,
     ) -> Result<Vec<GeneratedFile>, Error> {
         let base_path = options.config().site().base_path().to_owned();
         let integrities = self
@@ -616,7 +623,8 @@ impl Site {
                 .stylesheet_path()
                 .map(|path| base_path.join(&path.url_path())),
         );
-        let engine = TemplateEngine::load(templates, resources, markdown_renderer.clone())?;
+        let engine =
+            TemplateEngine::load(templates, resources, markdown_renderer.clone(), diagnostics)?;
         self.validate_templates(&engine)?;
         let mut rendered = Vec::new();
         for task in &self.tasks {

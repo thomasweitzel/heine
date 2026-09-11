@@ -131,6 +131,7 @@ impl Localization {
         root: &Path,
         locales: impl IntoIterator<Item = &'a Locale>,
         default_locale: Locale,
+        diagnostics: &crate::source_diagnostic::DiagnosticPaths,
     ) -> Result<Self, Error> {
         match fs::symlink_metadata(root) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
@@ -233,21 +234,21 @@ impl Localization {
                     latest_input = Some(
                         latest_input.map_or(modified, |latest: SystemTime| latest.max(modified)),
                     );
-                    let entries = message_entries(path, &source)?;
+                    let entries = message_entries(path, &source, diagnostics)?;
                     let source = Arc::new(source);
                     for entry in &entries {
                         if let Some(first) = messages.get(&entry.bundle_id) {
                             return Err(Error::Duplicate(Box::new(DuplicateDiagnostic {
                                 id: entry.id.clone(),
                                 locale: locale.clone(),
-                                source_code: crate::source_diagnostic::named_source(
+                                source_code: diagnostics.named_source(
                                     path,
                                     source.as_ref().clone(),
                                     "Fluent",
                                 ),
                                 span: entry.span,
                                 first: vec![FirstMessage {
-                                    source_code: crate::source_diagnostic::named_source(
+                                    source_code: diagnostics.named_source(
                                         &first.path,
                                         first.source.as_ref().clone(),
                                         "Fluent",
@@ -259,7 +260,7 @@ impl Localization {
                         messages.insert(
                             entry.bundle_id.clone(),
                             MessageSource {
-                                path: path.into(),
+                                path: diagnostics.display_path(path),
                                 source: source.clone(),
                                 span: entry.span,
                             },
@@ -275,9 +276,9 @@ impl Localization {
                                 .first()
                                 .map_or((0, 0).into(), |error| error.pos.clone().into());
                             Error::Parse(Box::new(FluentDiagnostic {
-                                path: path.into(),
+                                path: diagnostics.display_path(path),
                                 message: error,
-                                source_code: crate::source_diagnostic::named_source(
+                                source_code: diagnostics.named_source(
                                     path,
                                     source.as_ref().clone(),
                                     "Fluent",
@@ -288,7 +289,7 @@ impl Localization {
                     )?;
                     bundle.add_resource(resource).map_err(|errors| {
                         Error::Parse(Box::new(FluentDiagnostic {
-                            path: path.into(),
+                            path: diagnostics.display_path(path),
                             message: format!(
                                 "could not add a validated Fluent resource: {}",
                                 errors
@@ -297,7 +298,7 @@ impl Localization {
                                     .collect::<Vec<_>>()
                                     .join("; ")
                             ),
-                            source_code: crate::source_diagnostic::named_source(
+                            source_code: diagnostics.named_source(
                                 path,
                                 source.as_ref().clone(),
                                 "Fluent",
@@ -417,16 +418,20 @@ impl Localization {
     }
 }
 
-fn message_entries(path: &Path, source: &str) -> Result<Vec<FluentEntry>, Error> {
+fn message_entries(
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<Vec<FluentEntry>, Error> {
     let resource = parser::parse(source).map_err(|(_, errors)| {
         let error = errors.first();
         Error::Parse(Box::new(FluentDiagnostic {
-            path: path.into(),
+            path: diagnostics.display_path(path),
             message: error.map_or_else(
                 || "Fluent parser rejected this resource".to_owned(),
                 ToString::to_string,
             ),
-            source_code: crate::source_diagnostic::named_source(path, source, "Fluent"),
+            source_code: diagnostics.named_source(path, source, "Fluent"),
             span: error.map_or((0, 0).into(), |error| error.pos.clone().into()),
         }))
     })?;
@@ -447,9 +452,9 @@ fn message_entries(path: &Path, source: &str) -> Result<Vec<FluentEntry>, Error>
         .map(|(id, bundle_id)| {
             let (span, next_offset) = message_span(source, offset, &id).ok_or_else(|| {
                 Error::Parse(Box::new(FluentDiagnostic {
-                    path: path.into(),
+                    path: diagnostics.display_path(path),
                     message: format!("could not locate parsed Fluent message {id:?}"),
-                    source_code: crate::source_diagnostic::named_source(path, source, "Fluent"),
+                    source_code: diagnostics.named_source(path, source, "Fluent"),
                     span: (0, 0).into(),
                 }))
             })?;

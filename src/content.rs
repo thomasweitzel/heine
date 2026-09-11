@@ -4,7 +4,7 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use serde_json::{Map, Value};
 use thiserror::Error;
 
-use crate::{source_diagnostic, structured};
+use crate::structured;
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
@@ -28,7 +28,7 @@ pub(crate) struct LoadedContent {
 
 #[derive(Debug, Clone)]
 pub(crate) struct MarkdownSource {
-    pub(crate) path: Box<Path>,
+    pub(crate) display_path: Box<Path>,
     pub(crate) source: String,
 }
 
@@ -45,16 +45,26 @@ pub(crate) struct ContentDiagnostic {
     span: SourceSpan,
 }
 
-pub(crate) fn load(path: &Path) -> Result<LoadedContent, Error> {
+pub(crate) fn load(
+    path: &Path,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<LoadedContent, Error> {
     let text = fs::read_to_string(path).map_err(|source| Error::Read {
         path: path.into(),
         source,
     })?;
     let value = match structured::Format::from_path(path) {
         Some(format) => structured::parse(format, &text).map_err(|error| {
-            invalid_diagnostic(path, format.name(), &text, error.message, error.span)
+            invalid_diagnostic(
+                path,
+                format.name(),
+                &text,
+                error.message,
+                error.span,
+                diagnostics,
+            )
         }),
-        None => process_text(&text, path),
+        None => process_text(&text, path, diagnostics),
     }?;
     Ok(LoadedContent {
         value,
@@ -62,7 +72,7 @@ pub(crate) fn load(path: &Path) -> Result<LoadedContent, Error> {
             .extension()
             .is_some_and(|extension| extension == "md")
             .then(|| MarkdownSource {
-                path: path.into(),
+                display_path: diagnostics.display_path(path).into_boxed_path(),
                 source: text,
             }),
     })
@@ -74,17 +84,22 @@ fn invalid_diagnostic(
     source: &str,
     message: String,
     span: SourceSpan,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
 ) -> Error {
     Error::Invalid(Box::new(ContentDiagnostic {
-        path: path.into(),
+        path: diagnostics.display_path(path).into_boxed_path(),
         format,
         message,
-        source_code: source_diagnostic::named_source(path, source, format),
+        source_code: diagnostics.named_source(path, source, format),
         span,
     }))
 }
 
-fn process_text(text: &str, path: &Path) -> Result<Value, Error> {
+fn process_text(
+    text: &str,
+    path: &Path,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<Value, Error> {
     let mut lines = text.split_inclusive('\n');
     let Some(first_raw) = lines.next() else {
         return Ok(Value::String(text.into()));
@@ -136,6 +151,7 @@ fn process_text(text: &str, path: &Path) -> Result<Value, Error> {
                 text,
                 format!("segment identifier {key:?} is not a valid dotted TOML key"),
                 marker_span,
+                diagnostics,
             )
         })?;
     }
@@ -187,6 +203,7 @@ mod tests {
         let value = process_text(
             "<!-- segment: a.b -->\none\n<!-- segment: a.b -->\ntwo",
             Path::new("test.md"),
+            &crate::source_diagnostic::DiagnosticPaths::new(Path::new("")),
         )
         .unwrap();
         assert_eq!(value["a"]["b"], serde_json::json!(["one", "two"]));

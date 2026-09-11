@@ -33,6 +33,13 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Copied-asset licensing coverage.** Sites can opt into
+  `licensing.required = true` to require one checked REUSE-compatible
+  declaration for every copied asset Heine publishes. Exact
+  `[[licensing.groups]]` declarations let a coherent upstream or first-party
+  asset set share facts without duplicated sidecars, while conflicts and
+  incomplete coverage name their authored or copied paths deterministically.
+
 - **Draft publication previews.** Pages may declare `draft = true`; ordinary
   builds exclude them before resolving links and generated relationships, while
   `heine serve --drafts` previews them in their real site context. This lets an

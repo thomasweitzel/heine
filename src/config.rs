@@ -13,6 +13,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 mod base_path;
+mod licensing;
 mod origin;
 mod time_zone;
 
@@ -24,6 +25,10 @@ use crate::{
     template::TemplateName,
 };
 pub(crate) use base_path::{BasePath, valid_url_segment};
+use licensing::RawLicensingConfig;
+pub(crate) use licensing::{
+    LicensingConfig, LicensingCoverage, LicensingDeclaration, LicensingValue,
+};
 pub(crate) use origin::SiteOrigin;
 pub(crate) use time_zone::EditorialTimeZone;
 
@@ -32,6 +37,7 @@ pub(crate) struct SiteConfig {
     site: SiteSettings,
     build: BuildConfig,
     assets: AssetConfig,
+    licensing: LicensingConfig,
     markdown: MarkdownConfig,
     i18n: I18nConfig,
     collections: CollectionsConfig,
@@ -43,7 +49,10 @@ pub(crate) struct SiteConfig {
 }
 
 impl SiteConfig {
-    pub(crate) fn load(path: &Path) -> Result<Self, Error> {
+    pub(crate) fn load(
+        path: &Path,
+        diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    ) -> Result<Self, Error> {
         let source = match fs::read_to_string(path) {
             Ok(source) => source,
             Err(source) if source.kind() == io::ErrorKind::NotFound => {
@@ -60,7 +69,7 @@ impl SiteConfig {
             let span = error.span().unwrap_or(0..0);
             Error::Invalid(Box::new(ConfigDiagnostic {
                 message: error.message().to_owned(),
-                source_code: crate::source_diagnostic::named_source(path, source.clone(), "TOML"),
+                source_code: diagnostics.named_source(path, source.clone(), "TOML"),
                 span: span.clone().into(),
             }))
         })?;
@@ -68,16 +77,20 @@ impl SiteConfig {
             let ConfigValueError { span, message } = error;
             Error::Invalid(Box::new(ConfigDiagnostic {
                 message,
-                source_code: crate::source_diagnostic::named_source(path, source.clone(), "TOML"),
+                source_code: diagnostics.named_source(path, source.clone(), "TOML"),
                 span,
             }))
         })?;
-        config.attach_source(path, &source);
+        config.attach_source(path, &source, diagnostics);
         Ok(config)
     }
 
     pub(crate) fn assets(&self) -> &AssetConfig {
         &self.assets
+    }
+
+    pub(crate) fn licensing(&self) -> &LicensingConfig {
+        &self.licensing
     }
 
     pub(crate) fn site(&self) -> &SiteSettings {
@@ -891,6 +904,8 @@ struct RawSiteConfig {
     #[serde(default)]
     assets: RawAssetConfig,
     #[serde(default)]
+    licensing: RawLicensingConfig,
+    #[serde(default)]
     markdown: RawMarkdownConfig,
     i18n: RawI18nConfig,
     #[serde(default)]
@@ -1229,6 +1244,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 message: "build.output_dir must not be content/, data/, deploy/, templates/, locales/, or LICENSES/, or a directory beneath an input directory".into(),
             });
         }
+        let licensing = licensing::parse(raw.licensing)?;
         let extensions_span = raw.markdown.extensions.span();
         let mut extensions = raw.markdown.extensions.into_inner();
         extensions.sort_by_key(|extension| match extension {
@@ -1652,6 +1668,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             assets: AssetConfig {
                 integrity: raw.assets.integrity,
             },
+            licensing,
             markdown: MarkdownConfig {
                 extensions,
                 math: raw.markdown.math,
@@ -1679,17 +1696,22 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
 }
 
 impl SiteConfig {
-    fn attach_source(&mut self, path: &Path, source: &str) {
+    fn attach_source(
+        &mut self,
+        path: &Path,
+        source: &str,
+        diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    ) {
         if let Some(margin_footnotes) = &mut self.markdown.margin_footnotes {
             margin_footnotes.marker_message_source =
-                Some(crate::source_diagnostic::named_source(path, source, "TOML"));
+                Some(diagnostics.named_source(path, source, "TOML"));
         }
         if let Some(highlighting) = &mut self.markdown.highlighting {
-            highlighting.stylesheet_source =
-                Some(crate::source_diagnostic::named_source(path, source, "TOML"));
+            highlighting.stylesheet_source = Some(diagnostics.named_source(path, source, "TOML"));
         }
-        let collection_source =
-            Arc::new(crate::source_diagnostic::named_source(path, source, "TOML"));
+        let licensing_source = Arc::new(diagnostics.named_source(path, source, "TOML"));
+        self.licensing.attach_source(licensing_source);
+        let collection_source = Arc::new(diagnostics.named_source(path, source, "TOML"));
         for definition in self.collections.definitions.values_mut() {
             definition.source = Some(collection_source.clone());
         }

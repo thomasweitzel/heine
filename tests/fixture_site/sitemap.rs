@@ -43,7 +43,7 @@ fn sitemap_requires_an_origin_and_page_opt_out_requires_sitemap() {
     );
     fixture.write("templates/page.tera", "page");
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("sitemap is required");
-    assert!(format!("{error:?}").contains("requires [sitemap]"));
+    assert!(error.to_string().contains("requires [sitemap]"));
 }
 
 #[test]

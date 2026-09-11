@@ -456,7 +456,7 @@ pub(crate) fn render_with_links_anchors(
 /// available. Rendering remains template-driven, preserving the established
 /// `markdown` filter contract.
 pub(crate) fn validate_source_with_links(
-    path: &Path,
+    display_path: &Path,
     input: &str,
     renderer: &Renderer,
     assets: Option<&AssetLinks>,
@@ -524,10 +524,10 @@ pub(crate) fn validate_source_with_links(
             ),
         };
         Box::new(SourceError {
-            path: path.into(),
+            path: display_path.into(),
             kind,
             message: error.to_string(),
-            source_code: crate::source_diagnostic::named_source(path, input, "Markdown"),
+            source_code: crate::source_diagnostic::named_source_at_display_path(display_path, input, "Markdown"),
             span: span.into(),
             label,
             help,

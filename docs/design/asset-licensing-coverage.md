@@ -2,10 +2,11 @@
 
 ## Status
 
-This is the accepted implementation design for future copied-asset licensing
-coverage and shared declarations. It extends Heine's existing optional
-REUSE-compatible asset-sidecar support. It is not implemented and is not part
-of the current user-facing contract.
+This is the accepted and implemented design for copied-asset licensing coverage
+and shared declarations. It extends Heine's existing optional
+REUSE-compatible asset-sidecar support. The [asset-licensing guide](../asset-licensing.md)
+and [reference](../reference.md#licenses-and-asset-sidecars) define the current
+user-facing contract.
 
 ## Decision
 
@@ -212,9 +213,9 @@ output asset; it does not claim an arbitrary declaration order.
 
 This rule is intentional even when a sidecar and group happen to contain the
 same facts. Two declarations for one output asset create two sources that can
-later drift apart. When one member of an otherwise uniform upstream package
-has different facts, its author removes that asset from the group's exact list
-and gives that asset an adjacent sidecar. The group then remains an accurate
+later drift apart. When one member of an otherwise uniform asset set has
+different facts, its author removes that asset from the group's exact list and
+gives that asset an adjacent sidecar. The group then remains an accurate
 statement about its members, while the exceptional asset visibly owns its
 different declaration.
 
@@ -239,9 +240,10 @@ every copied asset before templates render.
 ## Authoring and maintenance
 
 An adjacent sidecar is the ordinary choice for one asset. A group is for a
-real package of several copied assets that has one shared declaration, such as
-the files of one upstream font family. It is not a shortcut for licensing a
-directory or every asset of one kind.
+coherent set of copied assets that has one shared declaration, such as the
+files of one upstream font family or a deliberately maintained first-party
+asset set. It is not a shortcut for licensing a directory or every asset of
+one kind.
 
 Groups deliberately trade a small amount of maintenance for reviewable
 coverage. Adding a same-licensed package member means adding its literal
@@ -358,11 +360,12 @@ must show literal `output_path` group members and call out common mistakes:
 leading slashes, `site.base_path`, URLs, and locale-relative `asset()` IDs do
 not name group members.
 
-The starter site should use a natural shared package of copied assets, such as
-the ET Book font family, to demonstrate one explicit group. It should enable
-required coverage only after every starter-site copied asset has a meaningful
-declaration. It must keep its existing attribution page accurate without
-adding a group-specific presentation branch.
+The starter site should use one coherent shared asset set, such as a font
+family or deliberately maintained first-party assets, to demonstrate one
+explicit group. It should enable required coverage only after every
+starter-site copied asset has a meaningful declaration. It must keep its
+existing attribution page accurate without adding a group-specific presentation
+branch.
 
 The implementation is complete only when focused and fixture-site tests cover:
 

@@ -20,6 +20,23 @@ output_dir = "public/my-project"
 [assets]
 integrity = "sha384"
 
+[licensing]
+required = true
+
+[[licensing.groups]]
+assets = [
+  "assets/css/styles.v2.css",
+  "assets/favicon.svg",
+  "assets/images/flags/english.svg",
+  "assets/images/flags/german.svg",
+  "assets/images/search.svg",
+  "assets/js/search.js",
+  "blog/mathml-audio/audio/heine-introduction.mp3",
+]
+SPDX-FileCopyrightText = "2026 Thomas Weitzel"
+SPDX-License-Identifier = "LicenseRef-Public-Domain"
+SPDX-FileComment = "Created for the Heine starter site and dedicated to the public domain by its author."
+
 [collections.posts]
 order = "published-desc"
 

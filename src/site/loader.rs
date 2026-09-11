@@ -432,6 +432,7 @@ struct FootnotesSettingsRef<'a> {
 /// context makes page loading independent of the caller's traversal details.
 pub(super) struct PageLoadContext<'a> {
     pub(super) content_root: &'a Path,
+    pub(super) diagnostics: &'a crate::source_diagnostic::DiagnosticPaths,
     pub(super) locale: &'a Locale,
     pub(super) output_prefix: &'a Path,
     pub(super) subdirectories: &'a BTreeMap<PathBuf, Vec<String>>,
@@ -498,7 +499,9 @@ impl MarginFootnoteConfigurationDiagnostic {
             related: marker_source
                 .into_iter()
                 .map(|(path, source, span)| MarginFootnoteMarkerSource {
-                    source_code: crate::source_diagnostic::named_source(&path, source, "Fluent"),
+                    source_code: crate::source_diagnostic::named_source_at_display_path(
+                        &path, source, "Fluent",
+                    ),
                     span,
                 })
                 .collect(),
@@ -704,13 +707,17 @@ impl PageProbe {
     }
 }
 
-pub(super) fn probe_page(path: &Path, content_root: &Path) -> Result<PageProbe, Error> {
+pub(super) fn probe_page(
+    path: &Path,
+    content_root: &Path,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<PageProbe, Error> {
     let text = fs::read_to_string(path).map_err(|source| Error::Io {
         path: path.into(),
         source,
     })?;
     let raw: RawPageProbe =
-        toml::from_str(&text).map_err(|error| page_toml_error(path, &text, error))?;
+        toml::from_str(&text).map_err(|error| page_toml_error(path, &text, error, diagnostics))?;
     let draft = match raw.draft {
         None => false,
         Some(value) => {
@@ -718,7 +725,8 @@ pub(super) fn probe_page(path: &Path, content_root: &Path) -> Result<PageProbe, 
             match value.into_inner() {
                 toml::Value::Boolean(true) => true,
                 toml::Value::Boolean(false) => {
-                    return Err(invalid(
+                    return Err(invalid_with(
+                        diagnostics,
                         path,
                         &text,
                         span,
@@ -726,7 +734,8 @@ pub(super) fn probe_page(path: &Path, content_root: &Path) -> Result<PageProbe, 
                     ));
                 }
                 _ => {
-                    return Err(invalid(
+                    return Err(invalid_with(
+                        diagnostics,
                         path,
                         &text,
                         span,
@@ -745,7 +754,8 @@ pub(super) fn probe_page(path: &Path, content_root: &Path) -> Result<PageProbe, 
     if draft && let Some(content) = raw.content {
         let span: SourceSpan = content.span().into();
         let toml::Value::Table(entries) = content.into_inner() else {
-            return Err(invalid(
+            return Err(invalid_with(
+                diagnostics,
                 path,
                 &text,
                 span,
@@ -762,7 +772,7 @@ pub(super) fn probe_page(path: &Path, content_root: &Path) -> Result<PageProbe, 
                 ));
             };
             let content_path = resolve_content_path(content_root, path, file)
-                .map_err(|message| invalid(path, &text, span, message))?;
+                .map_err(|message| invalid_with(diagnostics, path, &text, span, message))?;
             content_inputs.insert(relative_path(content_root, &content_path)?);
         }
     }
@@ -793,14 +803,15 @@ pub(super) fn draft_uses_margin_footnotes(
 }
 
 pub(super) fn load_page(
-    path: &Path,
+    source_path: &Path,
     relative: &Path,
     text: String,
     draft: bool,
     context: PageLoadContext<'_>,
 ) -> Result<LoadedPage, Error> {
-    let raw: RawPage =
-        toml::from_str(&text).map_err(|error| page_toml_error(path, &text, error))?;
+    let path = &context.diagnostics.display_path(source_path);
+    let raw: RawPage = toml::from_str(&text)
+        .map_err(|error| page_toml_error(path, &text, error, context.diagnostics))?;
     if let Some(date) = &raw.legacy_date {
         return Err(invalid(
             path,
@@ -888,7 +899,7 @@ pub(super) fn load_page(
     let weight_span = raw.weight.as_ref().map(|value| value.span().into());
     let weight = parse_weight(raw.weight.as_ref(), &id)
         .map_err(|message| invalid(path, &text, weight_span.unwrap_or((0, 0).into()), message))?;
-    let mut latest = metadata_modified(path)?;
+    let mut latest = metadata_modified(source_path)?;
     for descriptor in &ancestors {
         latest = latest.max(descriptor.modified);
     }
@@ -908,7 +919,7 @@ pub(super) fn load_page(
             ));
         }
         let file = file.into_inner();
-        let content_path = resolve_content_path(context.content_root, path, &file)
+        let content_path = resolve_content_path(context.content_root, source_path, &file)
             .map_err(|message| invalid(path, &text, file_span, message))?;
         latest = latest.max(content_modified(&content_path).map_err(|error| {
             invalid(
@@ -919,15 +930,16 @@ pub(super) fn load_page(
             )
         })?);
         content_inputs.insert(relative_path(context.content_root, &content_path)?);
-        let loaded = content::load(&content_path).map_err(|error| match error {
-            content::Error::Read { source, .. } => invalid(
-                path,
-                &text,
-                file_span,
-                format!("could not read declared content file {file:?}: {source}"),
-            ),
-            error => Error::Content(error),
-        })?;
+        let loaded =
+            content::load(&content_path, context.diagnostics).map_err(|error| match error {
+                content::Error::Read { source, .. } => invalid(
+                    path,
+                    &text,
+                    file_span,
+                    format!("could not read declared content file {file:?}: {source}"),
+                ),
+                error => Error::Content(error),
+            })?;
         if let Some(source) = loaded.markdown_source {
             markdown_names.insert(name.clone());
             markdown_inputs.insert(name.clone(), source.clone());
@@ -997,7 +1009,7 @@ pub(super) fn load_page(
             .to_owned();
         Some(
             crate::markdown::margin_footnotes::plan(
-                markdown.path.as_ref(),
+                markdown.display_path.as_ref(),
                 settings.content.clone(),
                 &markdown.source,
                 context.markdown,
@@ -1098,14 +1110,15 @@ pub(super) fn load_page(
                 .to_owned()
         })
         .unwrap_or_default();
-    let source_dir = path.parent().expect("page file has parent");
+    let source_dir = source_path.parent().expect("page file has parent");
     let subdirs = context
         .subdirectories
         .get(source_dir)
         .cloned()
         .unwrap_or_default();
     let sitemap_lastmod = metadata.updated.or(metadata.published);
-    let page_source = crate::source_diagnostic::named_source(path, text.clone(), "TOML");
+    let page_source =
+        crate::source_diagnostic::named_source_at_display_path(path, text.clone(), "TOML");
     let page = Page {
         id: id.clone(),
         output_path: output_path.clone(),
@@ -1159,11 +1172,16 @@ pub(super) fn load_page(
     })
 }
 
-fn page_toml_error(path: &Path, text: &str, error: toml::de::Error) -> Error {
+fn page_toml_error(
+    path: &Path,
+    text: &str,
+    error: toml::de::Error,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Error {
     Error::PageToml(Box::new(PageTomlDiagnostic {
-        path: path.into(),
+        path: diagnostics.display_path(path),
         message: error.message().to_owned(),
-        source_code: crate::source_diagnostic::named_source(path, text.to_owned(), "TOML"),
+        source_code: diagnostics.named_source(path, text.to_owned(), "TOML"),
         span: error.span().unwrap_or(0..0).into(),
     }))
 }
@@ -1273,7 +1291,7 @@ fn sitemap_for(
         if let Some((descriptor, boundary_span)) = directory_exclusion {
             return Err(Error::SitemapDirectoryOverride(Box::new(
                 SitemapDirectoryOverride {
-                    source_code: Arc::new(crate::source_diagnostic::named_source(
+                    source_code: Arc::new(crate::source_diagnostic::named_source_at_display_path(
                         path,
                         source.to_owned(),
                         "TOML",
@@ -1301,22 +1319,24 @@ pub(super) fn load_descriptors(
     entries: &[DirEntry],
     collection_config: &CollectionsConfig,
     sitemap_enabled: bool,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
 ) -> Result<BTreeMap<PathBuf, DirectoryDescriptor>, Error> {
     let mut descriptors = BTreeMap::new();
     for entry in entries {
         if !entry.file_type().is_file() || entry.file_name() != DIRECTORY_FILE {
             continue;
         }
-        let path = entry.path();
-        let text = fs::read_to_string(path).map_err(|source| Error::Io {
-            path: path.into(),
+        let source_path = entry.path();
+        let path = &diagnostics.display_path(source_path);
+        let text = fs::read_to_string(source_path).map_err(|source| Error::Io {
+            path: source_path.into(),
             source,
         })?;
         let raw: RawDirectory = toml::from_str(&text).map_err(|error| {
             Error::PageToml(Box::new(PageTomlDiagnostic {
-                path: path.into(),
+                path: diagnostics.display_path(path),
                 message: error.message().to_owned(),
-                source_code: crate::source_diagnostic::named_source(path, text.clone(), "TOML"),
+                source_code: diagnostics.named_source(path, text.clone(), "TOML"),
                 span: error.span().unwrap_or(0..0).into(),
             }))
         })?;
@@ -1328,7 +1348,7 @@ pub(super) fn load_descriptors(
                 "field `draft` belongs only in a .page file; directory descriptors do not inherit publication state",
             ));
         }
-        let relative_file = relative_path(content_root, path)?;
+        let relative_file = relative_path(content_root, source_path)?;
         let relative = relative_file
             .parent()
             .unwrap_or(Path::new(""))
@@ -1398,11 +1418,7 @@ pub(super) fn load_descriptors(
         let authors = page_policy
             .authors
             .map(|authors| {
-                let author_source = Arc::new(crate::source_diagnostic::named_source(
-                    path,
-                    text.clone(),
-                    "TOML",
-                ));
+                let author_source = Arc::new(diagnostics.named_source(path, text.clone(), "TOML"));
                 parse_authors(authors, path, &text).map(|authors| authors.directory(author_source))
             })
             .transpose()?;
@@ -1410,9 +1426,9 @@ pub(super) fn load_descriptors(
             relative.clone(),
             DirectoryDescriptor {
                 relative,
-                path: path.into(),
+                path: source_path.into(),
                 text: text.clone(),
-                source: crate::source_diagnostic::named_source(path, text, "TOML"),
+                source: diagnostics.named_source(path, text, "TOML"),
                 metadata,
                 metadata_requirements,
                 page_requirements,
@@ -1422,7 +1438,7 @@ pub(super) fn load_descriptors(
                 sitemap_exclusion,
                 toc,
                 footnotes,
-                modified: metadata_modified(path)?,
+                modified: metadata_modified(source_path)?,
             },
         );
     }
@@ -1510,7 +1526,7 @@ fn template_for(
     let choice = match page {
         Some(value) => Some((
             parse_template(value, path, source)?,
-            crate::source_diagnostic::named_source(path, source.to_owned(), "TOML"),
+            crate::source_diagnostic::named_source_at_display_path(path, source.to_owned(), "TOML"),
         )),
         None => ancestors.iter().rev().find_map(|descriptor| {
             descriptor
@@ -1595,7 +1611,7 @@ fn parse_collections(
     path: &Path,
     source: &str,
 ) -> Result<Vec<CollectionMembership>, Error> {
-    let named_source = Arc::new(crate::source_diagnostic::named_source(
+    let named_source = Arc::new(crate::source_diagnostic::named_source_at_display_path(
         path,
         source.to_owned(),
         "TOML",
@@ -1668,7 +1684,7 @@ fn series_for(
             "field `series` requires a [series] table in heine.toml",
         )
     })?;
-    let named_source = Arc::new(crate::source_diagnostic::named_source(
+    let named_source = Arc::new(crate::source_diagnostic::named_source_at_display_path(
         path,
         source.to_owned(),
         "TOML",
@@ -1743,7 +1759,7 @@ fn taxonomies_for(
     path: &Path,
     source: &str,
 ) -> Result<Vec<TaxonomyMembership>, Error> {
-    let named_source = Arc::new(crate::source_diagnostic::named_source(
+    let named_source = Arc::new(crate::source_diagnostic::named_source_at_display_path(
         path,
         source.to_owned(),
         "TOML",
@@ -1851,7 +1867,7 @@ fn validate_requirements<'a>(
                 subject: subject.into(),
                 field: requirement.name.clone(),
                 path: path.into(),
-                source_code: crate::source_diagnostic::named_source(
+                source_code: crate::source_diagnostic::named_source_at_display_path(
                     path,
                     source.to_owned(),
                     "TOML",
@@ -1927,7 +1943,22 @@ pub(super) fn invalid(
     Error::InvalidPage(Box::new(PageDiagnostic {
         path: path.into(),
         message: message.into(),
-        source_code: crate::source_diagnostic::named_source(path, source, "TOML"),
+        source_code: crate::source_diagnostic::named_source_at_display_path(path, source, "TOML"),
+        span,
+    }))
+}
+
+fn invalid_with(
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    path: &Path,
+    source: &str,
+    span: SourceSpan,
+    message: impl Into<String>,
+) -> Error {
+    Error::InvalidPage(Box::new(PageDiagnostic {
+        path: diagnostics.display_path(path),
+        message: message.into(),
+        source_code: diagnostics.named_source(path, source, "TOML"),
         span,
     }))
 }

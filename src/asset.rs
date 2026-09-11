@@ -54,6 +54,10 @@ pub(crate) enum Error {
     },
     #[error("asset catalog has no entry for source {path}")]
     UnknownSource { path: PathBuf },
+    #[error("asset catalog has no entry for output {path}")]
+    UnknownOutput { path: PathBuf },
+    #[error("asset catalog already has licensing for output {path}")]
+    ExistingLicensing { path: PathBuf },
 }
 
 #[derive(Debug, Error)]
@@ -370,28 +374,64 @@ impl AssetCatalog {
         self.source_outputs.contains_key(source)
     }
 
+    pub(crate) fn contains_output(&self, output: &OutputPath) -> bool {
+        self.entries.contains_key(output)
+    }
+
     pub(crate) fn attach_licensing(
         &mut self,
         source: &Path,
         licensing: AssetLicensing,
         modified: SystemTime,
-    ) -> Result<(), Error> {
-        let Some(output) = self.source_outputs.get(source) else {
+    ) -> Result<OutputPath, Error> {
+        let Some(output) = self.source_outputs.get(source).cloned() else {
             return Err(Error::UnknownSource {
                 path: source.into(),
             });
         };
-        let Some(entry) = self.entries.get_mut(output) else {
+        let Some(entry) = self.entries.get_mut(&output) else {
             return Err(Error::UnknownSource {
                 path: source.into(),
             });
         };
+        if entry.licensing.is_some() {
+            return Err(Error::ExistingLicensing {
+                path: output.as_path().into(),
+            });
+        }
         entry.licensing = Some(Arc::new(licensing));
         self.latest_input = Some(
             self.latest_input
                 .map_or(modified, |latest| latest.max(modified)),
         );
+        Ok(output)
+    }
+
+    pub(crate) fn attach_output_licensing(
+        &mut self,
+        output: &OutputPath,
+        licensing: AssetLicensing,
+    ) -> Result<(), Error> {
+        let Some(entry) = self.entries.get_mut(output) else {
+            return Err(Error::UnknownOutput {
+                path: output.as_path().into(),
+            });
+        };
+        if entry.licensing.is_some() {
+            return Err(Error::ExistingLicensing {
+                path: output.as_path().into(),
+            });
+        }
+        entry.licensing = Some(Arc::new(licensing));
         Ok(())
+    }
+
+    pub(crate) fn unlicensed_assets(&self) -> Vec<(OutputPath, PathBuf)> {
+        self.entries
+            .iter()
+            .filter(|(_, entry)| entry.licensing.is_none())
+            .map(|(output, entry)| (output.clone(), entry.source.clone()))
+            .collect()
     }
 
     pub(crate) fn links(

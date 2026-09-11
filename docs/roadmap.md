@@ -13,19 +13,6 @@ and a cohesive starter-site example where one fits naturally.
   reproduce the same checks, but it is not a prerequisite for the first
   release. Decide a dependency policy for advisories, source provenance,
   duplicate versions, and acceptable licenses before automating those checks.
-- **Required copied-asset licensing coverage:** an opt-in mode that requires a
-  checked licensing declaration for every resolved copied asset Heine publishes,
-  regardless of file type or whether a page links to it. It must retain the
-  existing checked SPDX, copyright, and local license-text rules, report all
-  missing declarations deterministically, and include selected kit assets when
-  kits exist. Design explicit shared licensing groups with this mode: a group
-  names an exact non-empty asset list and one shared SPDX declaration,
-  then resolves to individual asset facts. Do not add recursive directory
-  inheritance or globs, which could silently cover a later unrelated asset. It
-  is a provenance-coverage guarantee, not a claim of legal compliance:
-  external URLs, inline media, raw HTML, generated output, and deployment
-  configuration remain outside Heine's copied-asset inventory. See the
-  accepted [design](design/asset-licensing-coverage.md).
 - **Markdown facts:** begin with deterministic Unicode-aware word counts.
   Reading time needs an explicit locale-aware policy, not an invented universal
   rate.

@@ -310,7 +310,8 @@ fn is_prohibited_end(end: TagEnd) -> bool {
 
 impl MarginFootnoteDiagnostic {
     fn from_plan_error(path: &Path, input: &str, error: PlanError) -> Self {
-        let source_code = crate::source_diagnostic::named_source(path, input, "Markdown");
+        let source_code =
+            crate::source_diagnostic::named_source_at_display_path(path, input, "Markdown");
         match error {
             PlanError::MissingDefinition { label, span } => Self {
                 message: format!("margin footnote reference {label:?} has no definition"),

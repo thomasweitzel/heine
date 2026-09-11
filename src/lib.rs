@@ -105,16 +105,19 @@ pub(crate) fn build_at_with_publication(
     build: BuildOptions,
 ) -> miette::Result<BuildPublication> {
     let paths = ProjectPaths::new(root);
-    let config = SiteConfig::load(paths.config()).map_err(miette::Report::new)?;
+    let diagnostics = source_diagnostic::DiagnosticPaths::new(paths.root());
+    let config = SiteConfig::load(paths.config(), &diagnostics).map_err(miette::Report::new)?;
     let markdown = markdown::Renderer::new(config.markdown().clone())
         .map_err(|error| miette::Report::new(*error))?;
-    let (data, locale_data) = data::SiteData::load_localized(paths.data(), config.i18n().locales())
-        .map_err(miette::Report::new)?;
+    let (data, locale_data) =
+        data::SiteData::load_localized(paths.data(), config.i18n().locales(), &diagnostics)
+            .map_err(miette::Report::new)?;
     let deployment = deploy::Catalog::load(paths.deploy()).map_err(miette::Report::new)?;
     let licenses = licensing::Catalog::load(paths.licenses()).map_err(miette::Report::new)?;
     let site = Site::load(site::LoadInputs {
         content_root: paths.content(),
         locales_root: paths.locales(),
+        diagnostics: &diagnostics,
         data,
         locale_data,
         i18n: config.i18n().clone(),
@@ -127,6 +130,7 @@ pub(crate) fn build_at_with_publication(
         sitemap: config.sitemap(),
         deployment: &deployment,
         licenses: &licenses,
+        licensing: config.licensing(),
         markdown_renderer: &markdown,
         publication: build.publication,
     })
@@ -139,7 +143,13 @@ pub(crate) fn build_at_with_publication(
     };
     let options = SiteBuildOptions::new(build.mode, config);
     let rendered = site
-        .render(paths.templates(), &output, &options, &markdown)
+        .render(
+            paths.templates(),
+            &output,
+            &options,
+            &markdown,
+            &diagnostics,
+        )
         .map_err(miette::Report::new)?;
     let copied_files: [&dyn output::CopiedFiles; 3] = [site.assets(), &deployment, &licenses];
     OutputWriter::new(OutputTarget::new(paths.root(), &output_dir))

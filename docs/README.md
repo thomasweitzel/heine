@@ -31,8 +31,9 @@ required prerequisite for the guides.
 - [Taxonomies](taxonomies.md): tags and other literal term classifications.
 - [Deployment files](deployment-files.md): output-root files for hosting and
   verification services.
-- [Asset licensing](asset-licensing.md): REUSE-style declarations, published
-  license texts, and template attribution data.
+- [Asset licensing](asset-licensing.md): REUSE-compatible declarations,
+  published license texts, optional complete copied-asset coverage, and
+  template attribution data.
 - [Development server](development-server.md): local serving, live reload,
   and byte-range responses for media.
 - [Drafts](drafts.md): unpublished pages and complete local previews.

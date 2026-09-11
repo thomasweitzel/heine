@@ -27,7 +27,6 @@ use crate::{
         FeedCatalog, PageCatalog, PageId, PageLinks, PageView, SearchCatalog, SeriesCatalog,
         TaxonomyCatalog,
     },
-    source_diagnostic,
     source_path::LogicalPath,
 };
 
@@ -254,6 +253,7 @@ impl TemplateEngine {
         templates: &Path,
         resources: TemplateResources,
         markdown_renderer: crate::markdown::Renderer,
+        diagnostics: &crate::source_diagnostic::DiagnosticPaths,
     ) -> Result<Self, Error> {
         let mut tera = tera::Tera::default();
         let runtime = runtime::TemplateRuntime::from(resources);
@@ -309,7 +309,7 @@ impl TemplateEngine {
             .into_iter()
             .map(|(path, name)| {
                 fs::read_to_string(&path)
-                    .map(|source| (name, source_diagnostic::named_source(&path, source, "Tera")))
+                    .map(|source| (name, diagnostics.named_source(&path, source, "Tera")))
                     .map_err(|source| Error::Read { path, source })
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;

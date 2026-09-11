@@ -117,7 +117,9 @@ fn toc_opt_out_requires_an_inherited_default() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("otherwise effective inherited table of contents"),
+        error
+            .to_string()
+            .contains("otherwise effective inherited table of contents"),
         "{diagnostic}"
     );
 }
@@ -203,7 +205,9 @@ fn toc_requires_one_unsegmented_markdown_content_file() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("one unsegmented Markdown document"),
+        error
+            .to_string()
+            .contains("one unsegmented Markdown document"),
         "{diagnostic}"
     );
 }
