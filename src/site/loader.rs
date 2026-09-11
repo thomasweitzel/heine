@@ -905,9 +905,8 @@ pub(super) fn load_page(
     }
     let mut content = BTreeMap::new();
     let mut content_inputs = BTreeSet::new();
-    let mut markdown_sources = Vec::new();
+    let mut markdown_sources = BTreeMap::new();
     let mut markdown_names = BTreeSet::new();
-    let mut markdown_inputs = BTreeMap::new();
     for (name, file) in raw.content {
         let file_span: SourceSpan = file.span().into();
         if !source_path::is_simple_identifier(&name) {
@@ -942,8 +941,7 @@ pub(super) fn load_page(
             })?;
         if let Some(source) = loaded.markdown_source {
             markdown_names.insert(name.clone());
-            markdown_inputs.insert(name.clone(), source.clone());
-            markdown_sources.push(source);
+            markdown_sources.insert(name.clone(), source);
         }
         content.insert(name, loaded.value);
     }
@@ -983,7 +981,7 @@ pub(super) fn load_page(
     };
     let footnotes = if let Some(config) = footnotes_config {
         let settings = config.settings;
-        let Some(markdown) = markdown_inputs.get(&settings.content) else {
+        let Some(markdown) = markdown_sources.get(&settings.content) else {
             return Err(invalid(
                 config.path,
                 config.source,

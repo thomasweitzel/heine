@@ -61,8 +61,10 @@ pub(super) fn register(
             let page_links = markdown_content_runtime.pages().with_locale(locale);
             let (content, toc, footnotes) =
                 markdown_content_runtime.markdown_content(state, name)?;
+            if toc.is_some() || footnotes.is_some() {
+                markdown_content_runtime.record_source_aware_render(name)?;
+            }
             let rendered = if let Some(footnotes) = footnotes {
-                markdown_content_runtime.record_margin_footnote_render(name)?;
                 let labels =
                     markdown_content_runtime.margin_footnote_labels(state, footnotes.plan())?;
                 crate::markdown::margin_footnotes::render(

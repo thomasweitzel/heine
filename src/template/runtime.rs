@@ -36,13 +36,49 @@ pub(super) struct TemplateRuntime {
     series: Arc<SeriesCatalog>,
     localization: Arc<Localization>,
     highlight_css: Option<String>,
-    margin_footnote_renders: Arc<Mutex<Option<MarginFootnoteRender>>>,
+    source_aware_renders: Arc<Mutex<Vec<SourceAwareRender>>>,
 }
 
 #[derive(Debug)]
-struct MarginFootnoteRender {
+pub(super) struct SourceAwareRender {
+    pub(super) kind: SourceAwareRenderKind,
+    pub(super) calls: usize,
     content: String,
-    calls: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum SourceAwareRenderKind {
+    TableOfContents,
+    MarginFootnotes,
+}
+
+impl SourceAwareRenderKind {
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Self::TableOfContents => "table-of-contents",
+            Self::MarginFootnotes => "margin-footnote",
+        }
+    }
+}
+
+impl SourceAwareRender {
+    pub(super) fn exact_render_message(&self) -> String {
+        if self.calls == 0 {
+            format!(
+                "{} source {:?} was not rendered with markdown(content={:?})",
+                self.kind.name(),
+                self.content,
+                self.content,
+            )
+        } else {
+            format!(
+                "{} source {:?} was rendered more than once with markdown(content={:?})",
+                self.kind.name(),
+                self.content,
+                self.content,
+            )
+        }
+    }
 }
 
 impl From<TemplateResources> for TemplateRuntime {
@@ -73,7 +109,7 @@ impl From<TemplateResources> for TemplateRuntime {
             series,
             localization: resources.localization,
             highlight_css: resources.highlight_css,
-            margin_footnote_renders: Arc::new(Mutex::new(None)),
+            source_aware_renders: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -315,40 +351,51 @@ impl TemplateRuntime {
             .collect()
     }
 
-    pub(super) fn begin_margin_footnote_render(
+    pub(super) fn begin_source_aware_renders(
         &self,
+        toc: Option<&crate::markdown::TocPlan>,
         footnotes: Option<&crate::site::FootnotesView>,
     ) -> Result<(), String> {
         let mut current = self
-            .margin_footnote_renders
+            .source_aware_renders
             .lock()
-            .map_err(|_| "Heine margin-footnote render tracking is unavailable".to_owned())?;
-        *current = footnotes.map(|footnotes| MarginFootnoteRender {
-            content: footnotes.content().to_owned(),
-            calls: 0,
-        });
+            .map_err(|_| "Heine source-aware Markdown render tracking is unavailable".to_owned())?;
+        current.clear();
+        if let Some(toc) = toc {
+            current.push(SourceAwareRender {
+                kind: SourceAwareRenderKind::TableOfContents,
+                content: toc.content().to_owned(),
+                calls: 0,
+            });
+        }
+        if let Some(footnotes) = footnotes {
+            current.push(SourceAwareRender {
+                kind: SourceAwareRenderKind::MarginFootnotes,
+                content: footnotes.content().to_owned(),
+                calls: 0,
+            });
+        }
         Ok(())
     }
 
-    pub(super) fn record_margin_footnote_render(&self, content: &str) -> tera::TeraResult<()> {
-        let mut current = self.margin_footnote_renders.lock().map_err(|_| {
-            tera::Error::message("Heine margin-footnote render tracking is unavailable")
+    pub(super) fn record_source_aware_render(&self, content: &str) -> tera::TeraResult<()> {
+        let mut current = self.source_aware_renders.lock().map_err(|_| {
+            tera::Error::message("Heine source-aware Markdown render tracking is unavailable")
         })?;
-        if let Some(selected) = current.as_mut()
-            && selected.content == content
+        for selected in current
+            .iter_mut()
+            .filter(|selected| selected.content == content)
         {
             selected.calls += 1;
         }
         Ok(())
     }
 
-    pub(super) fn finish_margin_footnote_render(&self) -> Result<Option<usize>, String> {
-        self.margin_footnote_renders
+    pub(super) fn finish_source_aware_renders(&self) -> Result<Vec<SourceAwareRender>, String> {
+        self.source_aware_renders
             .lock()
-            .map_err(|_| "Heine margin-footnote render tracking is unavailable".to_owned())?
-            .take()
-            .map(|selected| selected.calls)
-            .map_or(Ok(None), |calls| Ok(Some(calls)))
+            .map_err(|_| "Heine source-aware Markdown render tracking is unavailable".to_owned())
+            .map(|mut current| std::mem::take(&mut *current))
     }
 
     fn runtime_string(&self, state: &tera::State, field: &str) -> tera::TeraResult<String> {

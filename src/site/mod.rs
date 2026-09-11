@@ -537,7 +537,7 @@ impl Site {
             let asset_links = asset_links.with_locale(locale.clone());
             let page_links = page_links.with_locale(locale.clone());
             for page in locale_pages.values() {
-                for source in &page.markdown_sources {
+                for source in page.markdown_sources.values() {
                     markdown::validate_source_with_links(
                         &source.display_path,
                         &source.source,

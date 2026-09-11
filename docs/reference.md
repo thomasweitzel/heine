@@ -114,7 +114,7 @@ Each configured index writes one UTF-8 JSON document per configured locale:
 
 ```json
 {
-  "format": 2,
+  "format": 3,
   "locale": "en",
   "documents": [
     {
@@ -127,13 +127,16 @@ Each configured index writes one UTF-8 JSON document per configured locale:
       "published": "2026-08-14T07:30:00Z",
       "updated": null,
       "taxonomies": { "tags": ["Rust"] },
-      "text": "Source-derived searchable text."
+      "sections": [
+        { "fragment": null, "text": "Source-derived opening text." },
+        { "fragment": "installation", "text": "Installation\n\nSource-derived section text." }
+      ]
     }
   ]
 }
 ```
 
-`format` is the positive schema version, currently `2`. `id` is the
+`format` is the positive schema version, currently `3`. `id` is the
 locale-relative page ID and `url` names the literal generated page file with
 `site.base_path` applied. `draft` is `true` only in a `heine serve --drafts`
 index. `title`, `description`, `summary`, `published`, and
@@ -141,14 +144,18 @@ index. `title`, `description`, `summary`, `published`, and
 taxonomy names in deterministic lexical order, with literal locale-local terms
 in authored order. Documents are ordered by page ID.
 
-`text` combines every declared `.md` input in content-name order, separated by
-two line feeds. It includes parsed text, headings, link labels, image
-alternatives, code, and recognized math source. Source-authored raw HTML adds
-text nodes and `img` `alt` values, while markup, comments, URLs, attributes,
-and `script`, `style`, or `template` contents do not contribute. Soft and hard
-Markdown breaks remain line feeds; block boundaries become two line feeds.
-Heine does not lower-case, tokenize, stem, truncate, or derive text from
-rendered HTML.
+`sections` preserves every declared `.md` input in content-name order as
+non-empty source-derived text sections. Each section has `text` and a
+`fragment`. `fragment` is `null` unless the section begins at a Markdown
+heading with a generated identifier from the page's effective table of
+contents. A browser can search section text and append a non-null fragment to
+the document URL, or search all sections as one document by joining their
+texts. The source text includes headings, link labels, image alternatives,
+code, and recognized math source. Source-authored raw HTML adds text nodes and
+`img` `alt` values, while markup, comments, URLs, attributes, and `script`,
+`style`, or `template` contents do not contribute. Soft and hard Markdown
+breaks remain line feeds; block boundaries become two line feeds. Heine does
+not lower-case, tokenize, stem, truncate, or derive text from rendered HTML.
 
 ## `_directory.toml`
 
@@ -178,7 +185,7 @@ required = ["title", "published", "extra.author"]
 | `pages.collections`       | array of strings  | inherited   | Unique configured collection names; an empty array opts out                                        | Recursive default membership for descendant pages                                                  |
 | `pages.authors`           | array of strings  | inherited   | Non-empty author names                                                                             | Recursive author default; a page list replaces the nearest one                                     |
 | `pages.sitemap`           | boolean           | absent      | Only `false`, and only when global `[sitemap]` is enabled                                          | Recursively excludes descendant rendered pages and their pagers; no descendant may re-include them |
-| `pages.toc.content`       | string            | absent      | Simple declared-content name for one unsegmented `.md` file; each effective descendant must render | Recursive default table-of-contents source                                                         |
+| `pages.toc.content`       | string            | absent      | Simple declared-content name for one unsegmented `.md` file; each effective descendant renders it exactly once with `markdown(content="…")` | Recursive default table-of-contents source                                                         |
 | `pages.toc.min_level`     | integer           | `1`         | Integer from `1` through `6`                                                                       | Lowest heading level exposed through the table of contents                                         |
 | `pages.toc.max_level`     | integer           | `6`         | Integer from `1` through `6`; not lower than `min_level`                                           | Highest heading level exposed through the table of contents                                        |
 | `pages.toc`               | boolean           | absent      | Only `false`; requires an otherwise effective inherited table of contents                          | Suppresses that inherited default for this descriptor subtree                                      |
@@ -203,7 +210,7 @@ Each `.page` defines a page. Its ID is its path below its `content/<locale>/` tr
 | `published`                    | TOML local date-time       | absent                   | `2026-08-14T09:30:00`; requires `site.time_zone`                                                                                         | `page.published` as UTC RFC 3339 text                                        |
 | `updated`                      | TOML local date-time       | absent                   | Same form as `published`; must not be earlier than it                                                                                    | `page.updated` as UTC RFC 3339 text                                          |
 | `sitemap`                      | boolean                    | absent                   | Only `false`, and only when `[sitemap]` is enabled                                                                                       | Excludes this rendered page and its derived pagers from the sitemap          |
-| `toc.content`                  | string                     | absent                   | Rendered page; simple declared-content name for one unsegmented `.md` file                                                               | Selects the page's table-of-contents source                                  |
+| `toc.content`                  | string                     | absent                   | Rendered page; simple declared-content name for one unsegmented `.md` file, rendered exactly once with `markdown(content="…")`         | Selects the page's table-of-contents source                                  |
 | `toc.min_level`                | integer                    | `1`                      | Integer from `1` through `6`                                                                                                             | Lowest heading level exposed through `page.toc`                              |
 | `toc.max_level`                | integer                    | `6`                      | Integer from `1` through `6`; not lower than `min_level`                                                                                 | Highest heading level exposed through `page.toc`                             |
 | `toc`                          | boolean                    | absent                   | Only `false`; requires an otherwise effective inherited table of contents                                                                | Suppresses that inherited directory default for this page                    |

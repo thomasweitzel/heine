@@ -349,7 +349,7 @@ pub(super) struct Page {
     pub(super) markdown_content: BTreeSet<String>,
     /// Original declared Markdown inputs are retained for source-derived
     /// generated-resource consumers such as search, not for template rendering.
-    pub(super) markdown_sources: Vec<MarkdownSource>,
+    pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
     pub(super) toc: Option<TocPlan>,
     pub(super) footnotes: Option<MarginFootnotePlan>,
     pub(super) draft: bool,

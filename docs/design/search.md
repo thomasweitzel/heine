@@ -50,6 +50,9 @@ is the narrow source Heine can identify without guessing a page's visual body.
   source-derived Markdown text.
 - **Search text**: plain text extracted from every declared Markdown input of
   one page. It is data for a browser engine, not rendered HTML or an excerpt.
+- **Search section**: one non-empty, source-ordered region of search text. It
+  has a generated heading fragment only when that region begins at a heading
+  the page already renders with an identifier.
 - **Search UI**: site-owned HTML, CSS, JavaScript, and Fluent interface text
   that fetches an index and presents results.
 
@@ -121,7 +124,7 @@ Heine serializes UTF-8 JSON with this versioned envelope:
 
 ```json
 {
-  "format": 2,
+  "format": 3,
   "locale": "en",
   "documents": [
     {
@@ -136,7 +139,16 @@ Heine serializes UTF-8 JSON with this versioned envelope:
       "taxonomies": {
         "tags": ["MathML", "Rust"]
       },
-      "text": "Source-derived searchable text goes here."
+      "sections": [
+        {
+          "fragment": null,
+          "text": "Source-derived opening text goes here."
+        },
+        {
+          "fragment": "mathml",
+          "text": "MathML\n\nSource-derived section text goes here."
+        }
+      ]
     }
   ]
 }
@@ -146,7 +158,7 @@ The fields have these meanings:
 
 | Field                             | Contract                                                                                                                                                                          |
 |-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `format`                          | Positive integer schema version. The current version is `2`; version `1` did not include each document's `draft` flag. A later incompatible document shape receives a new number. |
+| `format`                          | Positive integer schema version. The current version is `3`; version `1` did not include each document's `draft` flag, while version `2` represented all page text as one `text` string. |
 | `locale`                          | The configured canonical BCP-47 locale of this index.                                                                                                                             |
 | `documents`                       | Deterministically ordered search documents, possibly empty.                                                                                                                       |
 | `id`                              | The locale-relative Heine page ID. It is a stable programmatic identity, not a display label.                                                                                     |
@@ -155,7 +167,7 @@ The fields have these meanings:
 | `title`, `description`, `summary` | Authored page metadata, each a string or `null`. They remain separate so a client can rank and display them differently.                                                          |
 | `published`, `updated`            | Resolved RFC 3339 UTC publication facts, each a string or `null`.                                                                                                                 |
 | `taxonomies`                      | Object keyed by configured taxonomy name. Keys serialize in deterministic lexical order; each value is that page's literal locale-local term array, in authored order.            |
-| `text`                            | Source-derived plain Markdown text. It preserves authored case and Unicode; it is never a pre-tokenized or lowercased word array.                                                 |
+| `sections`                        | Ordered non-empty source-derived text regions. Each object has a `text` string and a `fragment` string or `null`; fragments name existing generated Markdown heading identifiers only.   |
 
 Search documents are ordered by page ID, independently of the presentation
 order of every selected collection. If a page belongs to more than one selected
@@ -169,7 +181,9 @@ Heine preserves text rather than converting it into a lowercased word array.
 There is no universal definition of a word, especially across writing systems,
 and clients need original text for excerpts and highlighting. Case folding,
 Unicode normalization, token boundaries, phrase matching, stemming, and fuzzy
-matching belong to the selected browser engine or site script.
+matching belong to the selected browser engine or site script. A client that
+does not need fragment-aware results can join `sections[].text` in order and
+index the resulting text as one document.
 
 ## Markdown extraction
 
@@ -177,7 +191,7 @@ For every selected page, Heine examines every `.md` file declared in that
 page's `[content]` table. It parses each original source with the site's
 configured `pulldown-cmark` options and processes inputs in stable
 content-name order. A selected page with no declared Markdown files remains a
-search document with `text: ""`, allowing metadata and taxonomy searches.
+search document with `sections: []`, allowing metadata and taxonomy searches.
 
 Extraction contributes, in source order:
 
@@ -224,14 +238,22 @@ serialization that a browser would have produced.
 
 Extraction preserves characters inside a contributing parsed text event. It
 preserves a soft or hard Markdown break as one line-feed character. It adds a
-two-line-feed boundary after a block-level Markdown container and between
-distinct declared Markdown inputs, unless the accumulated text already ends in
-at least that boundary. It trims the final result. Thus formatting cannot fuse
-words accidentally, while Heine does not impose an ASCII word boundary on
+two-line-feed boundary after a block-level Markdown container and trims each
+section. A Markdown heading begins the next section. Thus formatting cannot
+fuse words accidentally, while Heine does not impose an ASCII word boundary on
 scripts that do not conventionally separate words with spaces. This is a
 stable plain-text extraction rule, not a general-purpose Markdown-to-text
 renderer. A browser engine may apply its own locale-aware whitespace and word
 segmentation policy to the preserved text.
+
+Heine assigns a section's `fragment` only when the source is the page's
+effective table-of-contents input and the section begins at one of its parsed
+Markdown headings. The fragment is the same checked identifier used in the
+rendered heading, including headings outside the ToC's displayed level range.
+Text before the first heading, another declared Markdown input, raw HTML
+headings, and headings in footnote definitions have no generated fragment and
+therefore serialize `fragment: null`. A client may link such a result to the
+page URL, never inventing an anchor.
 
 Segmented Markdown files are included by parsing their original source. Their
 segment-marker HTML comments contribute nothing, while all segment bodies do.
@@ -318,11 +340,14 @@ without changing the page locale or search-document selection. The script:
 4. splits a query into non-empty whitespace fragments and requires every
    fragment to occur as a substring somewhere in a document;
 5. adds the highest matching field weight for every fragment: title `3`,
-   summary or description `2`, and search text `1`; and
+   summary or description `2`, and search-section text `1`; and
 6. preserves JSON document order for score ties;
 7. presents ten results per client-side result page; and
 8. renders a one-link page-number window around the current page, retaining
    first and last page links and collapsing gaps with ellipses.
+9. links a result to the section matching the most query fragments, retaining
+   source order for a tie; it appends that section's non-null fragment to the
+   page URL and otherwise links to the page itself.
 
 Typing uses a short debounce and resets the result page to one. The form's
 ordinary submit behavior performs the same search immediately, so keyboard
@@ -424,8 +449,8 @@ collection membership is resolved. The search domain then:
    deterministic locale-local ID-ordered set;
 3. derives one reusable page search-document catalog from retained page
    metadata, taxonomy facts, output targets, and declared Markdown sources,
-   extracting each selected page's text once even when several indexes select
-   it;
+   extracting each selected page's sections once even when several indexes
+   select it;
 4. selects documents from that catalog for each named index;
 5. serializes each selected set, derives its final versioned or stable output
    path, and allocates locale-qualified output claims; and
@@ -478,10 +503,10 @@ The first version does not provide:
 - a production search server or hosted-search integration; or
 - a Pagefind-like post-processing step over generated output.
 
-The initial document format is intended for small and medium selected
-collections. Its `text` payload grows linearly with declared Markdown source,
-and a browser must fetch and parse that selected JSON document before a local
-engine can search it. Collection selection is the first deliberate size
+The current document format is intended for small and medium selected
+collections. Its section-text payload grows linearly with declared Markdown
+source, and a browser must fetch and parse that selected JSON document before a
+local engine can search it. Collection selection is the first deliberate size
 control. Heine does not add per-field omission or silent text truncation until
 a concrete use case defines their semantics. A chunked full-text consumer is a
 separate future design, not a reason to weaken this source-derived contract.
@@ -506,7 +531,8 @@ An implementation must include focused and fixture-site coverage for:
   than one selected collection, repeated index selection of the same page,
   and deterministic taxonomy-object key serialization;
 - complete JSON escaping, schema version, base-path-aware literal-file URLs,
-  nullable metadata, chronology, and taxonomy facts;
+  nullable metadata, chronology, taxonomy facts, section ordering, and
+  fragments that match existing ToC heading identifiers;
 - extraction from multiple declared Markdown files, empty Markdown sets,
   segmented Markdown, formatting, preserved line boundaries, links, images,
   code, math, Unicode, raw HTML text and `img` alternatives, excluded raw HTML

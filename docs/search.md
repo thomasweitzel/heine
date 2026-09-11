@@ -52,21 +52,25 @@ fail at the template call site.
 
 ## Document contents
 
-The current JSON envelope schema is format `2`. Each document has stable
-metadata, including `draft`. It is `false` in an
-ordinary index and `true` only for a [draft](drafts.md) included through
-`heine serve --drafts`, so a site-owned preview interface can label it. It also
-contains `text`, plain text obtained from every declared Markdown input of its
-page. Heine does not inspect rendered HTML, templates, copied assets, or an
-inferred `content.main` body.
+The current JSON envelope schema is format `3`. Each document has stable
+metadata, including `draft`. It is `false` in an ordinary index and `true`
+only for a [draft](drafts.md) included through `heine serve --drafts`, so a
+site-owned preview interface can label it. Its `sections` array contains
+source-derived text from every declared Markdown input of its page. A section
+has `text` and a `fragment`: the fragment is `null` unless that text begins at
+a heading with an existing generated table-of-contents identifier. A browser
+can therefore link a matching section directly, while a page without such a
+heading remains linkable at its ordinary page URL.
 
 Markdown text, headings, link labels, image alternatives, code, and recognized
 math source contribute. Authored raw HTML contributes semantic text nodes and
 `img` alternatives, but not markup, URLs, comments, attributes, or the
 contents of `script`, `style`, and `template`. This means an Arabic quotation
 inside trusted raw HTML remains searchable as authored Unicode text, even on
-an English page. See the [reference](reference.md#search-indexes) for the full
-JSON shape and extraction rules.
+an English page. Heine does not inspect rendered HTML, templates, copied
+assets, or an inferred `content.main` body. See the
+[reference](reference.md#search-indexes) for the full JSON shape and extraction
+rules.
 
 ## Browser behavior belongs to the site
 
