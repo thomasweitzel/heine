@@ -40,6 +40,7 @@ pub(super) struct LocalizedContent {
 /// positional argument list as checked relationships grow.
 pub(super) struct Inputs<'a> {
     pub(super) content_root: &'a Path,
+    pub(super) diagnostics: &'a crate::source_diagnostic::DiagnosticPaths,
     pub(super) i18n: &'a I18nConfig,
     pub(super) collections: &'a CollectionsConfig,
     pub(super) series: Option<&'a SeriesConfig>,
@@ -54,6 +55,7 @@ pub(super) struct Inputs<'a> {
 pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
     let Inputs {
         content_root,
+        diagnostics,
         i18n,
         collections,
         series,
@@ -88,7 +90,8 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
             });
         }
         let entries = loader::content_entries(&root)?;
-        let descriptors = loader::load_descriptors(&root, &entries, collections, sitemap_enabled)?;
+        let descriptors =
+            loader::load_descriptors(&root, &entries, collections, sitemap_enabled, diagnostics)?;
         let subdirectories = loader::subdirectories(&entries);
         let output_prefix = if locale == i18n.default_locale() {
             PathBuf::new()
@@ -109,7 +112,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
             }
             let source = entry.path();
             let relative = loader::relative_path(&root, source)?;
-            let probe = loader::probe_page(source, &root)?;
+            let probe = loader::probe_page(source, &root, diagnostics)?;
             let draft = probe.is_draft();
             if draft && !publication.includes_drafts() {
                 let id = PageId::from_logical_path(
@@ -129,6 +132,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
                 draft,
                 loader::PageLoadContext {
                     content_root: &root,
+                    diagnostics,
                     locale,
                     output_prefix: &output_prefix,
                     subdirectories: &subdirectories,

@@ -660,7 +660,10 @@ When copied assets require rights information, add adjacent `.license`
 `LICENSES/`; Heine publishes author-supplied texts unchanged and never fetches
 them. An authored attribution page can render `attributions()`. Read the
 [asset-licensing guide](asset-licensing.md) before publishing assets that carry
-those requirements.
+those requirements. When every copied asset needs a declaration, enable
+`required = true` in `[licensing]`; a coherent upstream or first-party asset
+set with identical facts can use one exact
+[licensing group](glossary.md#licensing-group) instead of duplicated sidecars.
 
 ## 12. Development server details
 

@@ -198,7 +198,7 @@ fn rejects_a_redundant_false_weight_on_an_index_page() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("redundant for an index page"),
+        error.to_string().contains("redundant for an index page"),
         "{diagnostic}"
     );
 }

@@ -132,7 +132,7 @@ fn checks_series_membership_at_its_authored_values() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("zero position fails");
     let report = format!("{error:?}");
     assert!(report.contains("content/en/post.page:5"), "{report}");
-    assert!(report.contains("positive integer"), "{report}");
+    assert!(error.to_string().contains("positive integer"), "{report}");
 
     fixture.write(
         "content/en/post.page",
@@ -141,7 +141,7 @@ fn checks_series_membership_at_its_authored_values() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("negative position fails");
     let report = format!("{error:?}");
     assert!(report.contains("content/en/post.page:5"), "{report}");
-    assert!(report.contains("positive integer"), "{report}");
+    assert!(error.to_string().contains("positive integer"), "{report}");
 }
 
 #[test]

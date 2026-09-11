@@ -4,10 +4,13 @@
 //! the same path. Adjacent `asset.ext.license` sidecars declare the copyright
 //! notices and SPDX expression for the asset they accompany.
 
+mod declaration;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs, io,
+    fmt, fs, io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
@@ -15,18 +18,15 @@ use thiserror::Error;
 use walkdir::WalkDir;
 
 use crate::{
-    asset::{AssetCatalog, AssetLicensing, LicenseText},
+    asset::{AssetCatalog, AssetLicensing},
+    config::{LicensingConfig, LicensingCoverage},
     output::{CopiedFiles, OutputPath},
     source_diagnostic, source_path,
 };
 
 const LICENSE_DIRECTORY: &str = "LICENSES";
 
-#[derive(Debug)]
-struct TaggedValue {
-    value: String,
-    span: SourceSpan,
-}
+use declaration::{DeclarationFields, DeclarationProblem, TaggedValue};
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
@@ -61,6 +61,12 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Detailed(#[from] Box<SidecarDiagnostic>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Group(#[from] Box<GroupDiagnostic>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Coverage(#[from] Box<CoverageDiagnostic>),
     #[error("could not inspect asset {path} declared by a licensing sidecar")]
     AssetMetadata {
         path: PathBuf,
@@ -70,6 +76,8 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Asset(#[from] Box<crate::asset::Error>),
+    #[error("licensing configuration source was unavailable during resolution")]
+    ConfigurationSourceUnavailable,
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -101,6 +109,63 @@ pub(crate) enum SidecarDiagnostic {
         span: SourceSpan,
         label: String,
     },
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(code(heine::licensing::group))]
+#[error("{message}")]
+pub(crate) struct GroupDiagnostic {
+    message: String,
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("{label}")]
+    span: SourceSpan,
+    label: String,
+    #[help]
+    help: String,
+    #[related]
+    related: Vec<DeclarationOrigin>,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(code(heine::licensing::coverage))]
+#[error("copied assets are missing required licensing declarations:{missing}")]
+pub(crate) struct CoverageDiagnostic {
+    #[help]
+    help: &'static str,
+    missing: UncoveredAssets,
+}
+
+#[derive(Debug)]
+struct UncoveredAssets(Vec<UncoveredAsset>);
+
+impl fmt::Display for UncoveredAssets {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for asset in &self.0 {
+            writeln!(
+                formatter,
+                "\n  {}\n    publishes as {}",
+                asset.source_path.display(),
+                asset.output_path.display()
+            )?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct UncoveredAsset {
+    source_path: PathBuf,
+    output_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Diagnostic, Error)]
+#[error("first licensing declaration for this asset")]
+struct DeclarationOrigin {
+    #[source_code]
+    source_code: Arc<NamedSource<String>>,
+    #[label("first declaration here")]
+    span: SourceSpan,
 }
 
 #[derive(Debug, Default)]
@@ -193,7 +258,10 @@ impl Catalog {
         &self,
         assets: &mut AssetCatalog,
         content_root: &Path,
+        config: &LicensingConfig,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
     ) -> Result<(), Error> {
+        let mut declarations = BTreeMap::new();
         for entry in WalkDir::new(content_root).sort_by_file_name() {
             let entry = entry.map_err(|source| Error::Walk {
                 path: content_root.into(),
@@ -216,31 +284,44 @@ impl Catalog {
             let sibling = entry.path().with_extension("");
             if !assets.contains_source(&sibling) {
                 return Err(Box::new(SidecarDiagnostic::OrphanSidecar {
-                    path: entry.path().into(),
-                    source_code: source_diagnostic::named_source(
-                        entry.path(),
-                        source.clone(),
-                        "text",
-                    ),
+                    path: diagnostics.display_path(entry.path()),
+                    source_code: diagnostics.named_source(entry.path(), source.clone(), "text"),
                     span: first_line_span(&source),
                 })
                 .into());
             }
-            let record = self.parse_sidecar(entry.path(), &source)?;
+            let record = self.parse_sidecar(entry.path(), &source, diagnostics)?;
+            let declaration_span = first_line_span(&source);
             let modified = fs::metadata(entry.path())
                 .and_then(|metadata| metadata.modified())
                 .map_err(|source_error| Error::AssetMetadata {
                     path: entry.path().into(),
                     source: source_error,
                 })?;
-            assets
+            let output = assets
                 .attach_licensing(&sibling, record, modified)
                 .map_err(Box::new)?;
+            declarations.insert(
+                output,
+                DeclarationOrigin {
+                    source_code: Arc::new(diagnostics.named_source(entry.path(), source, "text")),
+                    span: declaration_span,
+                },
+            );
+        }
+        self.attach_groups(assets, config, &mut declarations, diagnostics)?;
+        if config.coverage() == LicensingCoverage::Required {
+            self.require_coverage(assets, diagnostics)?;
         }
         Ok(())
     }
 
-    fn parse_sidecar(&self, path: &Path, source: &str) -> Result<AssetLicensing, Error> {
+    fn parse_sidecar(
+        &self,
+        path: &Path,
+        source: &str,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Result<AssetLicensing, Error> {
         let mut copyrights = Vec::new();
         let mut expressions = Vec::new();
         let mut comments = Vec::new();
@@ -257,23 +338,26 @@ impl Catalog {
                 "SPDX-FileCopyrightText" => copyrights.push(TaggedValue {
                     value: value.to_owned(),
                     span,
+                    span_is_exact: true,
                 }),
                 "SPDX-License-Identifier" => expressions.push(TaggedValue {
                     value: value.to_owned(),
                     span,
+                    span_is_exact: true,
                 }),
                 "SPDX-FileComment" => comments.push(TaggedValue {
                     value: value.to_owned(),
                     span,
+                    span_is_exact: true,
                 }),
                 _ => {}
             }
             line_offset += line.len();
         }
-        let source_code = || source_diagnostic::named_source(path, source, "text");
+        let source_code = || diagnostics.named_source(path, source, "text");
         if copyrights.iter().any(|value| value.value.is_empty()) || copyrights.is_empty() {
             return Err(Box::new(SidecarDiagnostic::InvalidSidecar {
-                path: path.into(),
+                path: diagnostics.display_path(path),
                 message: "at least one non-empty SPDX-FileCopyrightText is required".into(),
                 source_code: source_code(),
                 span: (0, source.len().min(1)).into(),
@@ -283,7 +367,7 @@ impl Catalog {
         }
         if expressions.iter().any(|value| value.value.is_empty()) || expressions.is_empty() {
             return Err(Box::new(SidecarDiagnostic::InvalidSidecar {
-                path: path.into(),
+                path: diagnostics.display_path(path),
                 message: "at least one non-empty SPDX-License-Identifier is required".into(),
                 source_code: source_code(),
                 span: (0, source.len().min(1)).into(),
@@ -291,79 +375,193 @@ impl Catalog {
             })
             .into());
         }
-        let mut license_ids = BTreeMap::new();
-        for expression in &expressions {
-            let parsed = spdx::Expression::parse(&expression.value).map_err(|error| {
+        self.resolve_declaration(DeclarationFields {
+            copyrights,
+            expressions,
+            comments,
+        })
+        .map_err(|problem| self.sidecar_problem(path, source, problem, diagnostics))
+    }
+
+    fn resolve_declaration(
+        &self,
+        fields: DeclarationFields,
+    ) -> Result<AssetLicensing, DeclarationProblem> {
+        declaration::resolve(&self.texts, fields)
+    }
+
+    fn sidecar_problem(
+        &self,
+        path: &Path,
+        source: &str,
+        problem: DeclarationProblem,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Error {
+        let source_code = || diagnostics.named_source(path, source, "text");
+        match problem {
+            DeclarationProblem::InvalidExpression { span, message } => {
                 Box::new(SidecarDiagnostic::InvalidSidecar {
-                    path: path.into(),
-                    message: format!("{error}"),
+                    path: diagnostics.display_path(path),
+                    message,
                     source_code: source_code(),
-                    span: expression_span(expression, error.span),
+                    span,
                     label: "invalid SPDX expression".into(),
                 })
-            })?;
-            for requirement in parsed.requirements() {
-                let span = expression_requirement_span(expression, requirement.span.clone());
-                let license = match &requirement.req.license {
-                    spdx::LicenseItem::Spdx { .. } => requirement.req.license.to_string(),
-                    spdx::LicenseItem::Other(reference) if reference.doc_ref.is_none() => {
-                        requirement.req.license.to_string()
-                    }
-                    spdx::LicenseItem::Other(_) => {
-                        return Err(unsupported_spdx_reference(
-                            path,
-                            source,
-                            span,
-                            "external DocumentRef license references are not supported by Heine's local LICENSES/ model",
-                            "use a local LicenseRef, or provide a recognized SPDX license identifier",
-                        ));
-                    }
-                };
-                license_ids.insert(license, span);
-                if let Some(addition) = &requirement.req.addition {
-                    let addition = match addition {
-                        spdx::AdditionItem::Spdx(_) => addition.to_string(),
-                        spdx::AdditionItem::Other(_) => {
-                            return Err(unsupported_spdx_reference(
-                                path,
-                                source,
-                                span,
-                                "AdditionRef exceptions are not supported by Heine's local LICENSES/ model",
-                                "use a recognized SPDX exception identifier",
-                            ));
-                        }
-                    };
-                    license_ids.insert(addition, span);
-                }
+                .into()
             }
-        }
-        for (id, span) in &license_ids {
-            if !self.texts.contains(id) {
-                let filename = format!("{id}.txt");
-                return Err(Box::new(SidecarDiagnostic::MissingLicenseText {
-                    path: path.into(),
-                    license_path: self.root.join(&filename),
+            DeclarationProblem::UnsupportedReference {
+                span,
+                message,
+                help,
+            } => Box::new(SidecarDiagnostic::InvalidSidecar {
+                path: diagnostics.display_path(path),
+                message: message.into(),
+                source_code: source_code(),
+                span,
+                label: help.into(),
+            })
+            .into(),
+            DeclarationProblem::MissingLicenseText { span, id } => {
+                Box::new(SidecarDiagnostic::MissingLicenseText {
+                    path: diagnostics.display_path(path),
+                    license_path: diagnostics.display_path(&self.root.join(format!("{id}.txt"))),
                     source_code: source_code(),
-                    span: *span,
+                    span,
                 })
-                .into());
+                .into()
             }
         }
-        Ok(AssetLicensing {
-            copyrights: copyrights.into_iter().map(|value| value.value).collect(),
-            expressions: expressions.into_iter().map(|value| value.value).collect(),
-            comments: comments.into_iter().map(|value| value.value).collect(),
-            license_texts: license_ids
-                .into_keys()
-                .map(|id| LicenseText {
-                    output: OutputPath::try_new(
-                        Path::new(LICENSE_DIRECTORY).join(format!("{id}.txt")),
-                    )
-                    .expect("validated license output path"),
-                    id,
-                })
-                .collect(),
+    }
+
+    fn attach_groups(
+        &self,
+        assets: &mut AssetCatalog,
+        config: &LicensingConfig,
+        declarations: &mut BTreeMap<OutputPath, DeclarationOrigin>,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Result<(), Error> {
+        for group in config.groups() {
+            let source_code = group
+                .source()
+                .cloned()
+                .ok_or(Error::ConfigurationSourceUnavailable)?;
+            let record = self
+                .resolve_declaration(declaration::from_config(group.declaration()))
+                .map_err(|problem| self.group_problem(source_code.clone(), problem, diagnostics))?;
+            for member in group.assets() {
+                let output = member.output();
+                if !assets.contains_output(output) {
+                    return Err(Box::new(GroupDiagnostic {
+                        message: format!(
+                            "licensing group names {path}, which is not a copied asset",
+                            path = output.as_path().display()
+                        ),
+                        source_code: source_code.clone(),
+                        span: member.span(),
+                        label: "this group member does not resolve to a copied asset".into(),
+                        help: "use the literal published output_path of a current copied asset"
+                            .into(),
+                        related: Vec::new(),
+                    })
+                    .into());
+                }
+                if let Some(first) = declarations.get(output) {
+                    return Err(Box::new(GroupDiagnostic {
+                        message: format!(
+                            "copied asset {path} has more than one licensing declaration",
+                            path = output.as_path().display()
+                        ),
+                        source_code: source_code.clone(),
+                        span: member.span(),
+                        label: "another declaration already applies to this copied asset".into(),
+                        help: "remove this member from the group, or remove the other declaration"
+                            .into(),
+                        related: vec![first.clone()],
+                    })
+                    .into());
+                }
+                assets
+                    .attach_output_licensing(output, record.clone())
+                    .map_err(Box::new)?;
+                declarations.insert(
+                    output.clone(),
+                    DeclarationOrigin {
+                        source_code: source_code.clone(),
+                        span: member.span(),
+                    },
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn require_coverage(
+        &self,
+        assets: &AssetCatalog,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Result<(), Error> {
+        let missing = assets
+            .unlicensed_assets()
+            .into_iter()
+            .map(|(output, source)| UncoveredAsset {
+                source_path: diagnostics.display_path(&source),
+                output_path: output.as_path().into(),
+            })
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        Err(Box::new(CoverageDiagnostic {
+            help: "add an adjacent .license sidecar or include each asset in one licensing group",
+            missing: UncoveredAssets(missing),
         })
+        .into())
+    }
+
+    fn group_problem(
+        &self,
+        source_code: Arc<NamedSource<String>>,
+        problem: DeclarationProblem,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Error {
+        let (span, message, label, help) = match problem {
+            DeclarationProblem::InvalidExpression { span, message } => (
+                span,
+                format!("invalid licensing group declaration: {message}"),
+                "invalid SPDX expression".into(),
+                "use a valid SPDX license expression".into(),
+            ),
+            DeclarationProblem::UnsupportedReference {
+                span,
+                message,
+                help,
+            } => (
+                span,
+                format!("invalid licensing group declaration: {message}"),
+                "this reference cannot be resolved from local LICENSES/".into(),
+                help.into(),
+            ),
+            DeclarationProblem::MissingLicenseText { span, id } => (
+                span,
+                format!(
+                    "licensing group refers to missing license text {}",
+                    diagnostics
+                        .display_path(&self.root.join(format!("{id}.txt")))
+                        .display()
+                ),
+                "this SPDX identifier needs a matching license text".into(),
+                "add the matching text below LICENSES/".into(),
+            ),
+        };
+        Box::new(GroupDiagnostic {
+            message,
+            source_code,
+            span,
+            label,
+            help,
+            related: Vec::new(),
+        })
+        .into()
     }
 
     pub(crate) fn paths(&self) -> &[OutputPath] {
@@ -402,23 +600,6 @@ fn first_line_span(source: &str) -> SourceSpan {
     (0, source.find('\n').unwrap_or(source.len()).max(1)).into()
 }
 
-fn unsupported_spdx_reference(
-    path: &Path,
-    source: &str,
-    span: SourceSpan,
-    message: &str,
-    label: &str,
-) -> Error {
-    Box::new(SidecarDiagnostic::InvalidSidecar {
-        path: path.into(),
-        message: message.into(),
-        source_code: source_diagnostic::named_source(path, source, "text"),
-        span,
-        label: label.into(),
-    })
-    .into()
-}
-
 fn valid_license_filename(path: &Path) -> bool {
     let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
         return false;
@@ -430,23 +611,6 @@ fn valid_license_filename(path: &Path) -> bool {
                 .strip_prefix("LicenseRef-")
                 .is_some_and(|name| !name.is_empty()))
 }
-fn expression_span(expression: &TaggedValue, span: std::ops::Range<usize>) -> SourceSpan {
-    let offset = expression.span.offset();
-    (
-        offset + span.start,
-        span.end.saturating_sub(span.start).max(1),
-    )
-        .into()
-}
-
-fn expression_requirement_span(expression: &TaggedValue, span: std::ops::Range<u32>) -> SourceSpan {
-    (
-        expression.span.offset() + usize::try_from(span.start).expect("SPDX spans fit usize"),
-        usize::try_from(span.end - span.start).expect("SPDX spans fit usize"),
-    )
-        .into()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

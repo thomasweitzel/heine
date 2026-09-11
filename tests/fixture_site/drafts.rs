@@ -198,7 +198,10 @@ fn draft_declarations_are_checked_while_incomplete_draft_details_wait_for_previe
     let error = build_at(fixture.path(), BuildMode::Full)
         .expect_err("unsafe draft content claims are still checked");
     let report = format!("{error:?}");
-    assert!(report.contains("escapes the content directory"), "{report}");
+    assert!(
+        error.to_string().contains("escapes the content directory"),
+        "{report}"
+    );
 
     fixture.write(
         "content/en/draft.page",

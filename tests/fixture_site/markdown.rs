@@ -117,7 +117,9 @@ fn toc_opt_out_requires_an_inherited_default() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("otherwise effective inherited table of contents"),
+        error
+            .to_string()
+            .contains("otherwise effective inherited table of contents"),
         "{diagnostic}"
     );
 }
@@ -203,7 +205,9 @@ fn toc_requires_one_unsegmented_markdown_content_file() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("one unsegmented Markdown document"),
+        error
+            .to_string()
+            .contains("one unsegmented Markdown document"),
         "{diagnostic}"
     );
 }
@@ -583,10 +587,10 @@ fn ordinary_footnote_references_need_definitions() {
 
     fixture.write(
         "content/en/index.md",
-        "A literal \\[^missing].\n\n`[^also-literal]`\n",
+        "A literal \\[^missing].\n\n`[^also-literal]`\n\n```markdown\nA documented [^example].\n```\n",
     );
     build_at(fixture.path(), BuildMode::Full)
-        .expect("escaped and code-span footnote syntax are literal text");
+        .expect("escaped, code-span, and fenced footnote syntax are literal text");
 }
 
 #[test]

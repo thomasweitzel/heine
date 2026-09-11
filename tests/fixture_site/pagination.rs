@@ -163,7 +163,10 @@ fn validates_pagination_values_and_reports_their_authored_location() {
         diagnostic.contains("content/en/index.page:4"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("positive integer"), "{diagnostic}");
+    assert!(
+        error.to_string().contains("positive integer"),
+        "{diagnostic}"
+    );
 }
 
 #[test]

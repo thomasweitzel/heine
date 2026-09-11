@@ -117,6 +117,13 @@ A file named `<asset filename>.license` beside a copied asset. It declares
 REUSE-style SPDX copyright and licensing facts for that asset; it is not itself
 published as an asset.
 
+### Licensing group
+
+One explicit `[[licensing.groups]]` declaration in `heine.toml`. It assigns
+the same SPDX facts to an exact non-empty list of copied-asset output paths.
+It is an alternative to individual sidecars for a coherent upstream or
+first-party asset set, not a directory rule, glob, or template-facing object.
+
 ### Copied asset
 
 A regular file below `content/` that is neither a `.page` file nor a file
@@ -143,8 +150,8 @@ pages.
 ### License text
 
 A text file in optional `LICENSES/`, named for an SPDX identifier or local
-`LicenseRef-…`. Heine publishes it below `public/LICENSES/` and checks it
-against referenced asset sidecars.
+`LicenseRef-…`. Heine publishes it below `<build.output_dir>/LICENSES/` and
+checks it against every resolved asset licensing declaration that names it.
 
 ### Locale tree
 

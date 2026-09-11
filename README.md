@@ -23,6 +23,9 @@ and margin footnotes, Tera2 templates, locale-aware content and Fluent
 localization, checked page and asset links, collections, pagination,
 taxonomies, Series, Atom feeds, sitemaps, search-document indexes, and a
 development server with live reload, media range requests, and draft previews.
+Copied assets may carry checked REUSE-compatible declarations, including
+optional complete coverage and exact shared declarations for coherent asset
+sets.
 
 Heine does not bundle a frontend toolchain or deployment integration. Use
 ordinary tools for general CSS and JavaScript processing, general media

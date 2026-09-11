@@ -29,8 +29,11 @@ pub(crate) struct SiteData {
 }
 
 impl SiteData {
-    pub(crate) fn load(root: &Path) -> Result<Self, Error> {
-        Self::load_excluding(root, &BTreeSet::new())
+    pub(crate) fn load(
+        root: &Path,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Result<Self, Error> {
+        Self::load_excluding(root, &BTreeSet::new(), diagnostics)
     }
 
     /// Loads shared data while reserving configured locale directories for
@@ -39,6 +42,7 @@ impl SiteData {
     pub(crate) fn load_excluding(
         root: &Path,
         excluded_top_level: &BTreeSet<String>,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
     ) -> Result<Self, Error> {
         match fs::symlink_metadata(root) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
@@ -92,7 +96,7 @@ impl SiteData {
                 root: root.into(),
             })?;
             let keys = data_keys(relative, path)?;
-            let (value, modified) = load_file(path)?;
+            let (value, modified) = load_file(path, diagnostics)?;
             latest_input = Some(match latest_input {
                 Some(latest) => latest.max(modified),
                 None => modified,
@@ -109,15 +113,16 @@ impl SiteData {
     pub(crate) fn load_localized<'a>(
         root: &Path,
         locales: impl IntoIterator<Item = &'a Locale>,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
     ) -> Result<(Self, BTreeMap<Locale, Self>), Error> {
         let locales = locales.into_iter().cloned().collect::<Vec<_>>();
         let excluded = locales.iter().map(ToString::to_string).collect();
-        let shared = Self::load_excluding(root, &excluded)?;
+        let shared = Self::load_excluding(root, &excluded, diagnostics)?;
         let localized = locales
             .iter()
             .map(|locale| {
                 let locale_root = root.join(locale.to_string());
-                Self::load(&locale_root).map(|data| (locale.clone(), data))
+                Self::load(&locale_root, diagnostics).map(|data| (locale.clone(), data))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         Ok((shared, localized))
@@ -243,7 +248,10 @@ fn is_template_identifier(key: &str) -> bool {
         && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
 }
 
-fn load_file(path: &Path) -> Result<(Value, SystemTime), Error> {
+fn load_file(
+    path: &Path,
+    diagnostics: &source_diagnostic::DiagnosticPaths,
+) -> Result<(Value, SystemTime), Error> {
     let source = fs::read_to_string(path).map_err(|source| Error::Read {
         path: path.into(),
         source,
@@ -251,7 +259,14 @@ fn load_file(path: &Path) -> Result<(Value, SystemTime), Error> {
     let format = structured::Format::from_path(path)
         .expect("data_keys validates the extension before loading the file");
     let value = structured::parse(format, &source).map_err(|error| {
-        invalid_diagnostic(path, format.name(), &source, error.message, error.span)
+        invalid_diagnostic(
+            path,
+            format.name(),
+            &source,
+            error.message,
+            error.span,
+            diagnostics,
+        )
     })?;
     let modified = fs::metadata(path)
         .and_then(|metadata| metadata.modified())
@@ -268,12 +283,13 @@ fn invalid_diagnostic(
     source: &str,
     message: String,
     span: SourceSpan,
+    diagnostics: &source_diagnostic::DiagnosticPaths,
 ) -> Error {
     Error::Invalid(Box::new(DataDiagnostic {
-        path: path.into(),
+        path: diagnostics.display_path(path),
         format,
         message,
-        source_code: source_diagnostic::named_source(path, source, format),
+        source_code: diagnostics.named_source(path, source, format),
         span,
     }))
 }
