@@ -556,9 +556,18 @@ fn unresolved_footnote_reference(
         return None;
     }
     let mut scanner = UnresolvedFootnoteReferenceScanner::default();
+    let mut in_code_block = false;
     for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
         match event {
-            Event::Text(_) => {
+            Event::Start(Tag::CodeBlock(_)) => {
+                scanner.clear();
+                in_code_block = true;
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                scanner.clear();
+                in_code_block = false;
+            }
+            Event::Text(_) if !in_code_block => {
                 if is_escaped_markdown_character(input, span.start) {
                     scanner.escape_next();
                 }

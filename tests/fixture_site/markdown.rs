@@ -587,10 +587,10 @@ fn ordinary_footnote_references_need_definitions() {
 
     fixture.write(
         "content/en/index.md",
-        "A literal \\[^missing].\n\n`[^also-literal]`\n",
+        "A literal \\[^missing].\n\n`[^also-literal]`\n\n```markdown\nA documented [^example].\n```\n",
     );
     build_at(fixture.path(), BuildMode::Full)
-        .expect("escaped and code-span footnote syntax are literal text");
+        .expect("escaped, code-span, and fenced footnote syntax are literal text");
 }
 
 #[test]

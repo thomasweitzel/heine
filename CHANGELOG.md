@@ -90,6 +90,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Literal fenced footnotes.** Fenced code examples containing `[^label]` no
+  longer trigger an ordinary-footnote missing-definition diagnostic. This keeps
+  documented Markdown source literal while retaining checked references in
+  prose.
+
 - **Development directory redirects.** `heine serve` now redirects an existing
   generated directory requested without its trailing slash to the slash form,
   retaining query parameters. This gives browsers the correct base URL for
