@@ -144,18 +144,18 @@ Heine serializes UTF-8 JSON with this versioned envelope:
 
 The fields have these meanings:
 
-| Field                             | Contract                                                                                                                                                               |
-|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Field                             | Contract                                                                                                                                                                          |
+|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `format`                          | Positive integer schema version. The current version is `2`; version `1` did not include each document's `draft` flag. A later incompatible document shape receives a new number. |
-| `locale`                          | The configured canonical BCP-47 locale of this index.                                                                                                                  |
-| `documents`                       | Deterministically ordered search documents, possibly empty.                                                                                                            |
-| `id`                              | The locale-relative Heine page ID. It is a stable programmatic identity, not a display label.                                                                          |
-| `url`                             | The page's base-path-aware URL naming its literal generated output file.                                                                                               |
-| `draft`                           | `true` only for a draft included in a `heine serve --drafts` index; otherwise `false`.                                                                                |
-| `title`, `description`, `summary` | Authored page metadata, each a string or `null`. They remain separate so a client can rank and display them differently.                                               |
-| `published`, `updated`            | Resolved RFC 3339 UTC publication facts, each a string or `null`.                                                                                                      |
-| `taxonomies`                      | Object keyed by configured taxonomy name. Keys serialize in deterministic lexical order; each value is that page's literal locale-local term array, in authored order. |
-| `text`                            | Source-derived plain Markdown text. It preserves authored case and Unicode; it is never a pre-tokenized or lowercased word array.                                      |
+| `locale`                          | The configured canonical BCP-47 locale of this index.                                                                                                                             |
+| `documents`                       | Deterministically ordered search documents, possibly empty.                                                                                                                       |
+| `id`                              | The locale-relative Heine page ID. It is a stable programmatic identity, not a display label.                                                                                     |
+| `url`                             | The page's base-path-aware URL naming its literal generated output file.                                                                                                          |
+| `draft`                           | `true` only for a draft included in a `heine serve --drafts` index; otherwise `false`.                                                                                            |
+| `title`, `description`, `summary` | Authored page metadata, each a string or `null`. They remain separate so a client can rank and display them differently.                                                          |
+| `published`, `updated`            | Resolved RFC 3339 UTC publication facts, each a string or `null`.                                                                                                                 |
+| `taxonomies`                      | Object keyed by configured taxonomy name. Keys serialize in deterministic lexical order; each value is that page's literal locale-local term array, in authored order.            |
+| `text`                            | Source-derived plain Markdown text. It preserves authored case and Unicode; it is never a pre-tokenized or lowercased word array.                                                 |
 
 Search documents are ordered by page ID, independently of the presentation
 order of every selected collection. If a page belongs to more than one selected
