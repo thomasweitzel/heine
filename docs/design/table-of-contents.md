@@ -65,9 +65,10 @@ disclosure behavior with the template instead of making heading skips an
 engine concern.
 
 The `markdown(content="…")` function reads named declared Markdown from the
-current authored page. When it renders the selected source, it applies the
-precomputed IDs. The existing `markdown` filter remains for arbitrary trusted
-template text. The exact render-facing fields and function behavior are in the
+current authored page. An effective ToC renders its selected source exactly
+once, applying the precomputed IDs to one real heading sequence. The existing
+`markdown` filter remains for arbitrary trusted template text. The exact
+render-facing fields and function behavior are in the
 [reference](../reference.md#template-contract); the
 [guide](../table-of-contents.md) shows the complete template pattern.
 

@@ -69,6 +69,22 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Changed
 
+- **Search result fragments.** Search-document format `3` replaces each
+  document's single `text` string with ordered `sections`, each carrying text
+  and an existing table-of-contents fragment when one applies. This lets a
+  browser link a matching result to its nearest rendered heading without
+  guessing from HTML.
+  **Migration:** update a search client to index `sections[].text`; join those
+  strings when it needs one page-wide field, and append a non-null section
+  fragment to the document URL when it presents a section-level result.
+
+- **Exactly rendered table-of-contents sources.** A page with an effective
+  table of contents must render its selected Markdown source exactly once with
+  `markdown(content="…")`. This keeps generated heading fragments unique and
+  makes fragment-aware search results point at a real rendered location.
+  **Migration:** replace an omitted or repeated selected-source render with
+  one `markdown(content="…")` call in the page's template.
+
 - **Explicit sibling-weight opt-out.** `weight = false` now excludes a page
   from sibling ordering, replacing the former magic string
   `weight = "None"`. This makes the authored opt-out match Heine's other

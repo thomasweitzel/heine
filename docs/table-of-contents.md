@@ -24,7 +24,8 @@ max_level = 3
 ```
 
 An effective ToC requires a rendered authored page. Its selected declaration
-must be one unsegmented `.md` file.
+must be one unsegmented `.md` file, rendered exactly once with
+`markdown(content="…")`.
 
 Navigation labels are interface text, so keep them in Fluent even for a page
 that currently exists in one language:
@@ -116,18 +117,18 @@ Raw HTML headings are not Markdown headings, so they neither appear in the
 ToC nor receive generated IDs. Heine also does not inspect manually authored
 HTML IDs for collisions.
 
-Use `markdown(content="…")` for the selected source. The familiar filter is
-still useful for arbitrary text:
+Use `markdown(content="…")` exactly once for the selected source. The familiar
+filter is still useful for arbitrary text:
 
 ```tera
 {{ data.notice | markdown }}
 ```
 
-If a ToC-enabled page passes the exact selected source through
-`| markdown`, Heine reports a template error at that call. This catches the
-common accidental form that would otherwise render links with no matching
-heading IDs. A transformed copy cannot be recognized reliably, so do not use
-it as the source of an enabled ToC.
+If a ToC-enabled page omits its selected source, renders it more than once, or
+passes the exact source through `| markdown`, Heine reports a template error.
+This keeps every generated fragment attached to one rendered heading. A
+transformed copy cannot be recognized reliably, so do not use it as the source
+of an enabled ToC.
 
 The full field and template contract is in the
 [reference](reference.md#page), including errors for missing, non-Markdown,

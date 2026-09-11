@@ -19,12 +19,13 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     );
     fixture.write(
         "content/en/post.page",
-        "template = 'page.tera'\ntitle = 'Post title'\nsummary = 'Post summary'\npublished = 2026-08-14T09:30:00\ncollections = ['posts', 'docs']\n[taxonomies]\ntags = ['Rust']\n[content]\nmain = 'post.md'\n",
+        "template = 'page.tera'\ntitle = 'Post title'\nsummary = 'Post summary'\npublished = 2026-08-14T09:30:00\ncollections = ['posts', 'docs']\n[taxonomies]\ntags = ['Rust']\n[content]\nmain = 'post.md'\nnotes = 'notes.md'\n\n[toc]\ncontent = 'main'\nmin_level = 2\n",
     );
     fixture.write(
         "content/en/post.md",
         "# Post heading\n\nA [link label](https://example.org) and `code`.\n\n<blockquote lang=\"ar\" dir=\"rtl\"><p>نص عربي</p></blockquote>\n",
     );
+    fixture.write("content/en/notes.md", "# Unanchored note\n\nExtra text.\n");
     fixture.write(
         "content/en/docs.page",
         "template = 'page.tera'\ntitle = 'Documentation'\ncollections = ['docs']\n[content]\nmain = 'docs.md'\n",
@@ -41,7 +42,7 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     );
     fixture.write(
         "templates/page.tera",
-        "{% set current = search(name='site') %}{% set german = search(name='site', locale='de') %}{{ current.url }}|{{ current.relative_url }}|{{ current.count }}|{{ german.url }}",
+        "{% if page.id == 'post' %}{{ markdown(content='main') }}{% endif %}{% set current = search(name='site') %}{% set german = search(name='site', locale='de') %}{{ current.url }}|{{ current.relative_url }}|{{ current.count }}|{{ german.url }}",
     );
     fixture.write("templates/taxonomy-index.tera", "index");
     fixture.write("templates/taxonomy-term.tera", "term");
@@ -59,7 +60,7 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     assert_eq!(english_name.len(), "site.".len() + 64 + ".json".len());
     let english = fs::read_to_string(&english_path).expect("English index");
     let json: serde_json::Value = serde_json::from_str(&english).expect("valid JSON");
-    assert_eq!(json["format"], 2);
+    assert_eq!(json["format"], 3);
     assert_eq!(json["locale"], "en");
     assert_eq!(json["documents"].as_array().expect("documents").len(), 2);
     assert!(english.contains("Post heading"), "{english}");
@@ -72,6 +73,7 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
         .iter()
         .find(|document| document["id"] == "post")
         .expect("post document");
+    assert!(post.get("text").is_none(), "{post}");
     assert_eq!(post["taxonomies"]["tags"], serde_json::json!(["Rust"]));
     assert_eq!(post["title"], "Post title");
     assert_eq!(post["draft"], false);
@@ -79,6 +81,28 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     assert_eq!(post["summary"], "Post summary");
     assert_eq!(post["published"], "2026-08-14T07:30:00Z");
     assert!(post["updated"].is_null());
+    let sections = post["sections"].as_array().expect("sections");
+    assert_eq!(sections.len(), 2);
+    assert_eq!(sections[0]["fragment"], "post-heading");
+    assert!(
+        sections[0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("link label")
+    );
+    assert_eq!(sections[1]["fragment"], serde_json::Value::Null);
+    assert!(
+        sections[1]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Extra text")
+    );
+    let post_html =
+        fs::read_to_string(fixture.path().join("public/post.html")).expect("post output");
+    assert!(
+        post_html.contains("<h1 id=\"post-heading\">Post heading</h1>"),
+        "{post_html}"
+    );
 
     let german_directory = fixture.path().join("public/de/search");
     let german_path = search_index_path(&german_directory);
@@ -258,18 +282,28 @@ fn search_text_has_stable_markdown_boundaries_and_empty_locale_indexes() {
         .iter()
         .find(|document| document["id"] == "guide/index")
         .expect("guide document");
-    assert_eq!(guide["text"], "First segment.\n\nSecond source.");
+    assert_eq!(
+        guide["sections"],
+        serde_json::json!([
+            {"fragment": null, "text": "First segment."},
+            {"fragment": null, "text": "Second source."}
+        ])
+    );
     assert!(
-        !guide["text"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("not searchable")
+        !guide["sections"]
+            .as_array()
+            .expect("sections")
+            .iter()
+            .any(|section| section["text"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("not searchable"))
     );
     let empty = documents
         .iter()
         .find(|document| document["id"] == "empty")
         .expect("empty document");
-    assert_eq!(empty["text"], "");
+    assert_eq!(empty["sections"], serde_json::json!([]));
 
     let nested = fs::read_to_string(fixture.path().join("public/guide/index.html"))
         .expect("nested page output");

@@ -33,7 +33,7 @@ mod search_text;
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 use search_text::raw_html_text;
-pub(crate) use search_text::search_text;
+pub(crate) use search_text::{SearchTextSection, search_sections};
 
 // This prefix cannot be produced by the heading-fragment algorithm, which
 // keeps generated heading and footnote identifiers in separate namespaces.

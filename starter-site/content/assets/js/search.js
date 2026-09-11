@@ -34,11 +34,20 @@
       documentsPromise = fetch(form.dataset.searchUrl).then((response) => {
         if (!response.ok) throw new Error("search index request failed");
         return response.json();
-      }).then((index) => index.documents.map((doc) => ({
-        ...doc,
-        searchFields: [doc.title, doc.summary ?? doc.description, doc.text]
-          .map((value) => normalize(value || "")),
-      }))).catch((error) => {
+      }).then((index) => {
+        if (index.format !== 3 || !Array.isArray(index.documents)) {
+          throw new Error("unsupported search index format");
+        }
+        return index.documents.map((doc) => ({
+          ...doc,
+          searchFields: [doc.title, doc.summary ?? doc.description]
+            .map((value) => normalize(value || "")),
+          searchSections: doc.sections.map((section) => ({
+            ...section,
+            searchText: normalize(section.text),
+          })),
+        }));
+      }).catch((error) => {
         documentsPromise = undefined;
         throw error;
       }).finally(() => {
@@ -48,14 +57,28 @@
     return documentsPromise;
   }
 
+  function bestMatchingSection(sections, fragments) {
+    let best;
+    for (const section of sections) {
+      let matches = 0;
+      for (const fragment of fragments) {
+        if (section.searchText.includes(fragment)) matches += 1;
+      }
+      if (matches && (!best || matches > best.matches)) best = { section, matches };
+    }
+    return best?.section;
+  }
+
   function scoreDocument(doc, fragments) {
+    const section = bestMatchingSection(doc.searchSections, fragments);
     let score = 0;
     for (const fragment of fragments) {
       const weight = doc.searchFields.findIndex((field) => field.includes(fragment));
-      if (weight < 0) return null;
-      score += [3, 2, 1][weight];
+      if (weight >= 0) score += [3, 2][weight];
+      else if (doc.searchSections.some((candidate) => candidate.searchText.includes(fragment))) score += 1;
+      else return null;
     }
-    return score;
+    return { score, section };
   }
 
   function navigationPages(current, total) {
@@ -82,25 +105,28 @@
   }
 
   function link(result) {
+    const { doc, section } = result;
     const item = document.createElement("li");
     item.className = "page-list-item";
     const heading = document.createElement("div");
     heading.className = "page-list-heading";
-    if (result.draft) {
+    if (doc.draft) {
       const marker = document.createElement("span");
       marker.className = "draft-marker";
       marker.textContent = labels.draftMarker;
       heading.append(marker);
     }
     const anchor = document.createElement("a");
-    anchor.href = result.url;
+    const target = new URL(doc.url, window.location.origin);
+    if (section?.fragment) target.hash = section.fragment;
+    anchor.href = `${target.pathname}${target.search}${target.hash}`;
     const title = document.createElement("span");
     title.className = "page-list-title";
-    title.textContent = result.title || result.url;
+    title.textContent = doc.title || doc.url;
     anchor.append(title);
     heading.append(anchor);
     item.append(heading);
-    const summary = result.summary ?? result.description;
+    const summary = doc.summary ?? doc.description;
     if (summary) {
       const copy = document.createElement("span");
       copy.className = "page-list-summary";
@@ -156,13 +182,15 @@
       const fragments = normalized.split(" ").filter(Boolean);
       const source = documents();
       if (documentsLoading) status.textContent = labels.loading;
-      const matching = (await source).map((doc) => ({ doc, score: scoreDocument(doc, fragments) }))
-        .filter((result) => result.score !== null)
+      const matching = (await source).map((doc) => {
+        const match = scoreDocument(doc, fragments);
+        return match && { doc, ...match };
+      }).filter(Boolean)
         .sort((left, right) => right.score - left.score);
       const total = Math.max(1, Math.ceil(matching.length / pageSize));
       const page = pageNumber(requestedPage, total);
       if (page !== requestedPage) setUrl(query, page, true);
-      results.replaceChildren(...matching.slice((page - 1) * pageSize, page * pageSize).map((result) => link(result.doc)));
+      results.replaceChildren(...matching.slice((page - 1) * pageSize, page * pageSize).map(link));
       status.textContent = matching.length ? resultCount(matching.length) : labels.noResults;
       renderNavigation(query, page, total);
     } catch (_) {

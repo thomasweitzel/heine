@@ -26,7 +26,7 @@ use super::{PageId, collection::ResolvedCollection, page::Page};
 /// Version of Heine's public search-document JSON contract.
 ///
 /// Consumers use this to reject a document shape they do not understand.
-const SEARCH_DOCUMENT_FORMAT: u8 = 2;
+const SEARCH_DOCUMENT_FORMAT: u8 = 3;
 
 #[derive(Debug, Default)]
 pub(crate) struct Catalog {
@@ -68,7 +68,7 @@ struct Document {
     published: Option<String>,
     updated: Option<String>,
     taxonomies: BTreeMap<String, Vec<String>>,
-    text: String,
+    sections: Vec<markdown::SearchTextSection>,
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -264,19 +264,25 @@ fn document(
                 (name.to_string(), terms)
             })
             .collect(),
-        text: source_text(page, markdown_config),
+        sections: source_sections(page, markdown_config),
     }
 }
 
-fn source_text(page: &Page, markdown_config: &crate::config::MarkdownConfig) -> String {
-    let mut text = String::new();
-    for source in &page.markdown_sources {
-        if !text.is_empty() {
-            text.push_str("\n\n");
-        }
-        text.push_str(&markdown::search_text(&source.source, markdown_config));
-    }
-    text
+fn source_sections(
+    page: &Page,
+    markdown_config: &crate::config::MarkdownConfig,
+) -> Vec<markdown::SearchTextSection> {
+    page.markdown_sources
+        .iter()
+        .flat_map(|(name, source)| {
+            let fragments = page
+                .toc
+                .as_ref()
+                .filter(|toc| toc.content() == name)
+                .map(crate::markdown::TocPlan::anchors);
+            markdown::search_sections(&source.source, markdown_config, fragments)
+        })
+        .collect()
 }
 
 fn localized_path(

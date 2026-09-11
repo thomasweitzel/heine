@@ -332,11 +332,12 @@ impl TemplateEngine {
         rendering: &str,
     ) -> Result<String, Error> {
         self.runtime
-            .begin_margin_footnote_render(
+            .begin_source_aware_renders(
+                context.page.as_ref().and_then(|page| page.page.toc()),
                 context.page.as_ref().and_then(|page| page.page.footnotes()),
             )
             .map_err(|message| {
-                Error::margin_footnote_render_error(template, rendering, &self.sources, message)
+                Error::source_aware_render_error(template, rendering, &self.sources, None, message)
             })?;
         let context =
             tera::Context::from_serialize(&context).expect("render context is serializable");
@@ -352,25 +353,43 @@ impl TemplateEngine {
                     Some(rendering),
                 )
             });
-        let calls = self
-            .runtime
-            .finish_margin_footnote_render()
-            .map_err(|message| {
-                Error::margin_footnote_render_error(template, rendering, &self.sources, message)
-            })?;
+        let source_aware_renders =
+            self.runtime
+                .finish_source_aware_renders()
+                .map_err(|message| {
+                    Error::source_aware_render_error(
+                        template,
+                        rendering,
+                        &self.sources,
+                        None,
+                        message,
+                    )
+                })?;
         let rendered = rendered?;
-        if let Some(calls) = calls
-            && calls != 1
-        {
-            let message = if calls == 0 {
-                "this page's selected margin-footnote source was not rendered with markdown(content=\"…\")".into()
+        let unmatched = source_aware_renders
+            .into_iter()
+            .filter(|source| source.calls != 1)
+            .collect::<Vec<_>>();
+        if !unmatched.is_empty() {
+            let kind = (unmatched.len() == 1).then_some(unmatched[0].kind);
+            let message = if unmatched.len() == 1 {
+                let source = &unmatched[0];
+                format!("this page's selected {}", source.exact_render_message())
             } else {
-                "this page's selected margin-footnote source was rendered more than once with markdown(content=\"…\")".into()
+                let details = unmatched
+                    .iter()
+                    .map(|source| format!("  - {}", source.exact_render_message()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!(
+                    "this page's selected Markdown inputs were not rendered exactly once:\n{details}"
+                )
             };
-            return Err(Error::margin_footnote_render_error(
+            return Err(Error::source_aware_render_error(
                 template,
                 rendering,
                 &self.sources,
+                kind,
                 message,
             ));
         }
@@ -383,10 +402,11 @@ impl TemplateEngine {
 }
 
 impl Error {
-    fn margin_footnote_render_error(
+    fn source_aware_render_error(
         template: &TemplateName,
         rendering: &str,
         sources: &BTreeMap<TemplateName, miette::NamedSource<String>>,
+        kind: Option<runtime::SourceAwareRenderKind>,
         message: String,
     ) -> Self {
         let source_code = sources
@@ -399,7 +419,15 @@ impl Error {
             template: template.to_string(),
             message,
             source_code,
-            label: "selected margin-footnote source applies to this template render".into(),
+            label: kind.map_or_else(
+                || "selected Markdown source requirements apply to this template render".into(),
+                |kind| {
+                    format!(
+                        "selected {} source applies to this template render",
+                        kind.name()
+                    )
+                },
+            ),
             span: (0, 0).into(),
         }))
     }

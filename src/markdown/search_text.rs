@@ -11,32 +11,76 @@ use html5ever::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
     },
 };
-use pulldown_cmark::{Event, Parser, TagEnd};
+use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+use serde::Serialize;
 
 use crate::config::MarkdownConfig;
 
 use super::options;
 
-/// Extracts stable source-level search text without depending on rendered
-/// templates. Search owns a plain-text contract, not presentation output.
-pub(crate) fn search_text(input: &str, config: &MarkdownConfig) -> String {
-    let mut output = String::new();
+/// One source-ordered searchable region, optionally beginning at a generated
+/// heading fragment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct SearchTextSection {
+    pub(crate) fragment: Option<String>,
+    pub(crate) text: String,
+}
+
+/// Extracts source-level search sections without depending on rendered
+/// templates. Each Markdown heading begins a new section; a supplied fragment
+/// names that section's rendered heading when the page configured a ToC for
+/// this input.
+pub(crate) fn search_sections(
+    input: &str,
+    config: &MarkdownConfig,
+    fragments: Option<&[String]>,
+) -> Vec<SearchTextSection> {
+    let mut sections = Vec::new();
+    let mut section = SectionBuilder::default();
+    let mut fragments = fragments.unwrap_or_default().iter();
+    let mut footnote_definition_depth = 0usize;
     for event in Parser::new_ext(input, options(config)) {
         match event {
+            Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
+            Event::End(TagEnd::FootnoteDefinition) => {
+                footnote_definition_depth -= 1;
+                append_boundary(&mut section.text);
+            }
+            Event::Start(Tag::Heading { .. }) if footnote_definition_depth == 0 => {
+                section.finish_into(&mut sections);
+                section.fragment = fragments.next().cloned();
+            }
             Event::Text(text)
             | Event::Code(text)
             | Event::InlineMath(text)
-            | Event::DisplayMath(text) => output.push_str(&text),
-            Event::SoftBreak | Event::HardBreak => output.push('\n'),
+            | Event::DisplayMath(text) => section.text.push_str(&text),
+            Event::SoftBreak | Event::HardBreak => section.text.push('\n'),
             Event::Html(html) | Event::InlineHtml(html) => {
                 let text = raw_html_text(&html);
-                append_text(&mut output, &text);
+                append_text(&mut section.text, &text);
             }
-            Event::End(end) if markdown_block_end(end) => append_boundary(&mut output),
+            Event::End(end) if markdown_block_end(end) => append_boundary(&mut section.text),
             _ => {}
         }
     }
-    output.trim().into()
+    section.finish_into(&mut sections);
+    sections
+}
+
+#[derive(Default)]
+struct SectionBuilder {
+    fragment: Option<String>,
+    text: String,
+}
+
+impl SectionBuilder {
+    fn finish_into(&mut self, sections: &mut Vec<SearchTextSection>) {
+        let text = std::mem::take(&mut self.text).trim().to_owned();
+        let fragment = self.fragment.take();
+        if !text.is_empty() {
+            sections.push(SearchTextSection { fragment, text });
+        }
+    }
 }
 
 fn markdown_block_end(end: TagEnd) -> bool {
@@ -213,7 +257,12 @@ mod tests {
     #[test]
     fn keeps_semantic_markdown_and_raw_html_text() {
         let source = "# Heading\n\nA [label](https://example.org), `code`, and ![image text](image.svg).\n\n<blockquote lang=\"ar\" dir=\"rtl\"><p>نص عربي</p></blockquote>\n\n<script>not searchable</script>\n";
-        let text = search_text(source, &MarkdownConfig::default());
+        let sections = search_sections(source, &MarkdownConfig::default(), None);
+        let text = sections
+            .iter()
+            .map(|section| section.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
 
         assert!(text.contains("Heading"), "{text}");
         assert!(text.contains("label"), "{text}");
@@ -222,6 +271,34 @@ mod tests {
         assert!(text.contains("نص عربي"), "{text}");
         assert!(!text.contains("not searchable"), "{text}");
         assert!(!text.contains("https://example.org"), "{text}");
+    }
+
+    #[test]
+    fn headings_start_sections_with_their_generated_fragments() {
+        let fragments = vec!["first".into(), "second".into()];
+        let sections = search_sections(
+            "Before the first heading.\n\n# First\n\nFirst section.\n\n## Second\n\nSecond section.\n",
+            &MarkdownConfig::default(),
+            Some(&fragments),
+        );
+
+        assert_eq!(
+            sections,
+            vec![
+                SearchTextSection {
+                    fragment: None,
+                    text: "Before the first heading.".into(),
+                },
+                SearchTextSection {
+                    fragment: Some("first".into()),
+                    text: "First\n\nFirst section.".into(),
+                },
+                SearchTextSection {
+                    fragment: Some("second".into()),
+                    text: "Second\n\nSecond section.".into(),
+                },
+            ]
+        );
     }
 
     #[test]

@@ -46,6 +46,41 @@ fn rejects_the_plain_filter_for_selected_toc_content_at_its_call_site() {
 }
 
 #[test]
+fn selected_toc_content_is_rendered_exactly_once() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n",
+    );
+    fixture.write("content/en/index.md", "## Heading\n");
+    fixture.write("templates/page.tera", "<p>No content.</p>");
+
+    let missing = build_at(fixture.path(), BuildMode::Full).expect_err("source must render");
+    assert!(
+        missing
+            .to_string()
+            .contains("selected table-of-contents source \"main\" was not rendered"),
+        "{missing:?}"
+    );
+    assert!(
+        missing.to_string().contains("markdown(content=\"main\")"),
+        "{missing:?}"
+    );
+
+    fixture.write(
+        "templates/page.tera",
+        "{{ markdown(content='main') }}{{ markdown(content='main') }}",
+    );
+    let repeated = build_at(fixture.path(), BuildMode::Full).expect_err("source renders twice");
+    assert!(
+        repeated
+            .to_string()
+            .contains("selected table-of-contents source \"main\" was rendered more than once"),
+        "{repeated:?}"
+    );
+}
+
+#[test]
 fn page_toc_replaces_a_directory_default_and_ignores_raw_html_headings() {
     let fixture = Fixture::new();
     fixture.write(
@@ -92,13 +127,13 @@ fn nearest_directory_toc_default_wins() {
     fixture.write("content/en/guide/main.md", "## Outer\n\n### Inner\n");
     fixture.write(
         "templates/page.tera",
-        "{% for heading in page.toc.headings %}[{{ heading.level }}:{{ heading.fragment }}]{% endfor %}",
+        "{% for heading in page.toc.headings %}[{{ heading.level }}:{{ heading.fragment }}]{% endfor %}{{ markdown(content='main') }}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
     let output =
         fs::read_to_string(fixture.path().join("public/guide/index.html")).expect("output");
-    assert_eq!(output, "[3:inner]");
+    assert!(output.contains("[3:inner]"), "{output}");
 }
 
 #[test]
@@ -512,6 +547,51 @@ fn margin_footnotes_share_source_aware_toc_rendering_and_reject_the_raw_filter()
     assert!(
         error.to_string().contains("must use markdown(content"),
         "{error:?}"
+    );
+}
+
+#[test]
+fn source_aware_markdown_reports_every_unrendered_selected_source() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\n[content]\nmain = 'main.md'\nnotes = 'notes.md'\n\n[toc]\ncontent = 'main'\n\n[footnotes]\ncontent = 'notes'\n",
+    );
+    fixture.write("content/en/main.md", "## Heading\n");
+    fixture.write(
+        "content/en/notes.md",
+        "A note.[^one]\n\n[^one]: Explanation.\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "<p>Nothing renders either source.</p>",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("both sources must render");
+    let diagnostic = error.to_string();
+    assert!(
+        diagnostic.contains("table-of-contents source \"main\" was not rendered"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("markdown(content=\"main\")"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("margin-footnote source \"notes\" was not rendered"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("markdown(content=\"notes\")"),
+        "{diagnostic}"
     );
 }
 
