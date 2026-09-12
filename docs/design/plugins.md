@@ -46,8 +46,8 @@ and one checked result.
 - **Plugin**: a possible later in-process extension. It has no accepted public
   API today. If justified, it must receive project-owned serializable views and
   return typed, checked results without direct Tera, output, filesystem, or
-  process authority. Its implementation language or runtime is intentionally
-  undecided; Rhai is one possible future choice, not a current dependency or
+  process authority. Its implementation language or runtime remains undecided;
+  Rhai is one possible future choice, not a current dependency or
   contract.
 - **Renderer adapter**: a content-transformation capability that accepts one
   explicit renderer request and returns a typed replacement and optional
@@ -141,7 +141,7 @@ normally support blocks only. A Typst math adapter may support both.
 
 ### Header grammar and options
 
-The header has this deliberately small shape:
+The header has this shape:
 
 ```text
 adapter-name (space option-name "=" TOML-scalar)*
@@ -239,7 +239,7 @@ names both the generated request and the conflicting authored claim.
 ## External renderer bridges
 
 Some adapters can run wholly in process. PlantUML, Typst, Graphviz, and many
-other useful renderers normally require external programs. That is a distinct
+other renderers normally require external programs. That is a distinct
 trust boundary: a child process runs with the operating-system authority of
 the user who starts Heine. A temporary workspace limits the inputs Heine
 provides, but is not a sandbox against a malicious executable.
@@ -289,7 +289,7 @@ spaces or non-ASCII text on Windows, Linux, and macOS.
 An external bridge may invoke a user-authored executable shell script or
 batch-file wrapper when the user has granted external-renderer permission.
 Platform-specific wrappers are expected where a renderer itself is
-platform-specific. For example, a Windows bridge may deliberately invoke
+platform-specific. For example, a Windows bridge may invoke
 `cmd.exe` with a batch file as distinct arguments, while an Unix-like bridge
 may invoke an executable script directly. Heine itself does not add an
 implicit shell layer.
@@ -316,7 +316,7 @@ and any retained workspace path without claiming to have contained those
 children.
 
 The host creates a session-owned renderer-workspace parent below the operating
-system temporary directory. Each serialized adapter uses a small fixed number
+system temporary directory. Each serialized adapter uses a fixed number
 of reusable workspace slots below that parent. A successfully cleaned slot is
 reused. A slot that remains locked is unavailable until cleanup succeeds. If
 all slots for an adapter are unavailable, Heine fails the next request with the
@@ -340,7 +340,7 @@ persistent caching. Heine can make publication deterministic for returned
 bytes, but cannot promise reproducibility for an arbitrary external program
 whose environment may influence output.
 
-Hashing every bundle file is a deliberate correctness-over-speed choice: file
+Hashing every bundle file favors correctness over speed: file
 metadata alone is not a reliable cache identity across filesystems, copies, or
 coarse timestamp resolutions. The implementation streams file bytes into the
 cache hash and does not retain bundle contents merely to compute that key.
@@ -349,7 +349,7 @@ Renderer inputs participate in full builds, development-server watching, and
 future dependency-aware incremental builds. Renderer execution is serialized
 with the synchronous build pipeline. A renderer failure is a build failure at
 the relevant directive, source declaration, or input source span; it includes
-the adapter identity, exit status where relevant, and useful bounded standard
+the adapter identity, exit status where relevant, and bounded standard
 error. A failed build leaves the previous complete output available.
 
 Quick builds must not claim completeness for renderer-source or renderer-
@@ -418,5 +418,5 @@ An implementation must include focused and fixture-site coverage for:
 - cache-key behavior, streamed bundle hashing, source-bundle watcher behavior,
   locked workspace-slot exhaustion, stale-workspace cleanup, failed renderers,
   and previous-output preservation;
-- public documentation, reference, tutorial, glossary, and a natural
+- public documentation, reference, tutorial, glossary, and a
   starter-site example.

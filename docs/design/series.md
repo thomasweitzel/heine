@@ -16,7 +16,7 @@ different place in every Series it joins.
 Heine resolves every membership into template-facing facts, including the
 Series title, its authored position, resolved one-based number and size, and
 the immediately preceding and following members of that particular Series. A
-template renders zero, one, or several clearly labelled navigation blocks.
+template renders zero, one, or several labelled navigation blocks.
 Heine does not invent a primary
 Series, infer visitor state from a referrer, or make one page URL vary by the
 path used to reach it.
@@ -86,7 +86,7 @@ checked even when a locale currently has no Series members. `per_page` is a
 required positive integer. Like generated taxonomy listings, Series pagers use
 the fixed `page` route segment and a fixed compact navigation window of `1`;
 authored-page `[pagination]` settings do not apply. A template may use
-`pagination_links()` when it intentionally needs every pager link.
+`pagination_links()` when it needs every pager link.
 
 `index_title_key` is a required Fluent message identifier. Its optional
 description counterpart supplies descriptive text for the generated index.
@@ -129,7 +129,7 @@ insertion.
 Membership is page-local and is not inherited from `_directory.toml`. A
 directory cannot know which distinct positions its descendant pages should
 occupy. Only rendered pages may be members, and every member must have a
-title so that navigation remains meaningful.
+title so that navigation can display a label.
 
 For each locale and Series ID, Heine checks that:
 
@@ -147,7 +147,7 @@ warning: partial locale structures are valid by design.
 
 ## Position maintenance
 
-Positions are deliberately authored integers, not an inferred order. Use gaps
+Positions are authored integers, not an inferred order. Use gaps
 appropriate to the expected editing frequency. For example, `100`, `200`, and
 `300` leave substantially more room for insertion than `1`, `2`, and `3`.
 Eventually a densely edited Series may need renumbering; Heine does not
@@ -228,7 +228,7 @@ are either `null` or lightweight checked page-link views with `id`, `title`,
 membership's Series. They do not represent directory siblings, collection
 neighbors, or a global predecessor and successor.
 
-There are three deliberately different Series views. `page.series` describes
+There are three Series views. `page.series` describes
 the current authored page's memberships and their neighbors. `series()`
 describes the generated locale-local index of all non-empty Series.
 `series(id="…")` describes one complete locale-local Series. While rendering a
@@ -295,7 +295,8 @@ requested locale is a checked template error at the call site. Calling
 the call site. The index is available even when empty because it always has a
 generated output claim.
 
-Generated templates receive deliberate views rather than an authored `page`:
+Generated templates receive views for generated output rather than an authored
+`page`:
 
 - `series-index.tera` receives the index view and no page identity;
 - `series.tera` receives the current Series listing view plus the usual
@@ -372,10 +373,10 @@ each initial example page has one membership. This demonstrates the general
 multi-Series template contract without adding artificial content.
 
 The example supplies all labels through English Fluent resources and presents
-one responsive, clearly labelled navigation block per membership. It does not
+one responsive, labelled navigation block per membership. It does not
 add a German placeholder sequence solely to demonstrate the feature.
 
-## Intentional boundaries
+## Boundaries
 
 The first version does not provide:
 
@@ -406,7 +407,7 @@ Implementation must cover at least:
   behavior after an author renumbers a Series;
 - unknown IDs, duplicate page memberships, duplicate positions, zero and
   negative positions, non-rendered members, and members without titles, with
-  useful source spans and related locations;
+  source spans and related locations;
 - checked definition paths, template names, index keys and definition keys for
   emitted listings, `per_page`, and all generated output collisions;
 - generated locale-local index, listing, and pager paths, including their

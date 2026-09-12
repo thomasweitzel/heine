@@ -15,15 +15,15 @@ source-derived documents, not a JavaScript search engine and not a generated
 search page.
 
 The browser fetches an index and chooses how to search it. A site may use a
-small local script, MiniSearch, Fuse, FlexSearch, a hosted service, or another
+local script, MiniSearch, Fuse, FlexSearch, a hosted service, or another
 compatible client. Heine neither bundles JavaScript nor imposes tokenization,
 stemming, ranking, fuzzy matching, query syntax, or a search-result user
 interface.
 
 Heine extracts searchable text from authored Markdown inputs, never from
 rendered HTML. Templates therefore do not accidentally determine search
-membership, and source meaningful to an author but omitted by presentation can
-remain searchable under the extraction rules below.
+membership, and source text omitted by presentation can remain searchable under
+the extraction rules below.
 
 ## Motivation
 
@@ -34,8 +34,8 @@ the latter's ranking and interface decisions.
 
 An engine-specific serialized index would bind Heine's output contract to one
 JavaScript library's tokenizer, language support, serialization format, and
-release cycle. Emitting simple documents instead gives a site a stable input
-for a small exact matcher today and a more capable engine later.
+release cycle. Emitting documents instead gives a site a stable input for an
+exact matcher today and a more capable engine later.
 
 Parsing rendered HTML would be less trustworthy. It would index navigation,
 footers, repeated interface text, and arbitrary template markup while missing
@@ -113,8 +113,8 @@ Every configured index exists in every configured locale. A locale with no
 selected members receives a valid index with an empty `documents` array. A
 site does not get an implicit mixed-language index.
 
-There is deliberately no page-level `search = false` setting in the first
-version. Collections already express deliberate membership. A site that needs
+There is no page-level `search = false` setting in the first version.
+Collections already express membership. A site that needs
 a narrower searchable set creates a collection for that relationship instead
 of accumulating hidden, global exceptions on unrelated pages.
 
@@ -131,7 +131,7 @@ Heine serializes UTF-8 JSON with this versioned envelope:
       "id": "blog/mathml-audio/index",
       "url": "/blog/mathml-audio/index.html",
       "draft": false,
-      "title": "MathML, audio, and a small site generator",
+      "title": "MathML, audio, and a site generator",
       "description": null,
       "summary": "A practical look at MathML in Heine.",
       "published": "2026-08-14T07:30:00Z",
@@ -156,17 +156,17 @@ Heine serializes UTF-8 JSON with this versioned envelope:
 
 The fields have these meanings:
 
-| Field                             | Contract                                                                                                                                                                          |
-|-----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Field                             | Contract                                                                                                                                                                                 |
+|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `format`                          | Positive integer schema version. The current version is `3`; version `1` did not include each document's `draft` flag, while version `2` represented all page text as one `text` string. |
-| `locale`                          | The configured canonical BCP-47 locale of this index.                                                                                                                             |
-| `documents`                       | Deterministically ordered search documents, possibly empty.                                                                                                                       |
-| `id`                              | The locale-relative Heine page ID. It is a stable programmatic identity, not a display label.                                                                                     |
-| `url`                             | The page's base-path-aware URL naming its literal generated output file.                                                                                                          |
-| `draft`                           | `true` only for a draft included in a `heine serve --drafts` index; otherwise `false`.                                                                                            |
-| `title`, `description`, `summary` | Authored page metadata, each a string or `null`. They remain separate so a client can rank and display them differently.                                                          |
-| `published`, `updated`            | Resolved RFC 3339 UTC publication facts, each a string or `null`.                                                                                                                 |
-| `taxonomies`                      | Object keyed by configured taxonomy name. Keys serialize in deterministic lexical order; each value is that page's literal locale-local term array, in authored order.            |
+| `locale`                          | The configured canonical BCP-47 locale of this index.                                                                                                                                    |
+| `documents`                       | Deterministically ordered search documents, possibly empty.                                                                                                                              |
+| `id`                              | The locale-relative Heine page ID. It is a stable programmatic identity, not a display label.                                                                                            |
+| `url`                             | The page's base-path-aware URL naming its literal generated output file.                                                                                                                 |
+| `draft`                           | `true` only for a draft included in a `heine serve --drafts` index; otherwise `false`.                                                                                                   |
+| `title`, `description`, `summary` | Authored page metadata, each a string or `null`. They remain separate so a client can rank and display them differently.                                                                 |
+| `published`, `updated`            | Resolved RFC 3339 UTC publication facts, each a string or `null`.                                                                                                                        |
+| `taxonomies`                      | Object keyed by configured taxonomy name. Keys serialize in deterministic lexical order; each value is that page's literal locale-local term array, in authored order.                   |
 | `sections`                        | Ordered non-empty source-derived text regions. Each object has a `text` string and a `fragment` string or `null`; fragments name existing generated Markdown heading identifiers only.   |
 
 Search documents are ordered by page ID, independently of the presentation
@@ -265,7 +265,7 @@ template data, rendered HTML, copied files, or template source. It also does
 not extract text from future external renderer requests by treating their raw
 syntax as prose. A renderer adapter may later return a declared source-text
 contribution through its own checked contract; that extension must identify
-which words are meaningful to search.
+which text belongs in search.
 
 ## Template contract
 
@@ -300,22 +300,19 @@ generate documents, and a search index needs no special search-page template.
 
 ## Starter-site reference search UI
 
-The starter site should be a working, mostly feature-complete reference
-implementation of this boundary. It demonstrates one search index spanning
-its natural article and documentation collections. It supplies a search page
-in each of its existing locales, each resolving the current locale's
+The starter site should demonstrate this boundary with one search index spanning
+its article and documentation collections. It supplies a search page in each
+of its existing locales, each resolving the current locale's
 `search(name="site")` view.
 
-The example uses a small copied `search.js`, not a bundled third-party search
-engine. This keeps the example focused on the boundary that Heine supplies and
-shows that a site owns its browser policy. It is deliberately complete enough
-to be adapted for a small real site, while a site needing fuzzy matching,
-stemming, or a very large index can replace only this file with a suitable
-client engine.
+The example uses a copied `search.js`, not a bundled third-party search engine.
+It demonstrates the boundary that Heine supplies and leaves browser policy to
+the site. A site needing fuzzy matching, stemming, or a large index can replace
+only this file with another client engine.
 
 The generated JSON schema and `search()` view are Heine's public search
 contract. The starter script is not a second public Heine API or a compatibility
-promise: it is maintained as a coherent example of one browser policy. A site
+promise: it demonstrates one browser policy. A site
 that copies and changes it owns that copy. Tests for the starter site protect
 its documented behavior and accessibility, not a claim that its scoring policy
 is universally correct or permanently frozen.
@@ -336,7 +333,7 @@ without changing the page locale or search-document selection. The script:
    punctuation. This is a narrow matching convenience, not universal Unicode
    word segmentation;
 3. uses `toLocaleLowerCase(document.documentElement.lang)` for its local,
-   simple case-insensitive matching policy;
+   case-insensitive matching policy;
 4. splits a query into non-empty whitespace fragments and requires every
    fragment to occur as a substring somewhere in a document;
 5. adds the highest matching field weight for every fragment: title `3`,
@@ -371,7 +368,7 @@ It puts retained numbers in a numeric set, then emits them in ascending order.
 Whenever consecutive retained numbers have one or more omitted page numbers
 between them, it emits exactly one non-link ellipsis. The set prevents repeated
 numbers when the retained ranges overlap; the gap rule prevents ellipses for
-small result sets or adjacent ranges.
+result sets with no omitted ranges or adjacent ranges.
 
 For example:
 
@@ -382,8 +379,8 @@ For example:
 |          101 |       1,202 | `1 2 … 100 101 102 … 1201 1202` |
 
 These vectors are the shared behavioral examples for the Rust collection pager
-and the starter script. They intentionally keep the browser control familiar
-without pretending that the two implementations share code or public APIs.
+and the starter script. They keep the browser control consistent without
+pretending that the two implementations share code or public APIs.
 When either rule changes, its focused tests and these vectors must be reviewed
 together. The result-navigation behavior remains starter-site policy, not part
 of the JSON schema or Heine's generated-page pagination contract.
@@ -418,7 +415,7 @@ values resolve to the first or final available result page as appropriate. A
 search query affects neither Heine routes nor static-host file resolution:
 servers resolve the search page from the URL path and ignore its query string.
 
-This is intentionally not a universal Heine search algorithm. It has no
+This is not a universal Heine search algorithm. It has no
 stemming, typo tolerance, CJK segmentation, query language, server endpoint,
 or Heine-generated result pages. A production site may replace only this
 script with a local browser library or a service integration while preserving
@@ -483,7 +480,7 @@ arguments. Markdown extraction itself is a deterministic parser pass over
 already loaded, checked source. Any source-file access or existing Markdown
 configuration failure retains the originating content-file diagnostic.
 
-## Intentional boundaries
+## Boundaries
 
 The first version does not provide:
 
@@ -494,7 +491,7 @@ The first version does not provide:
   filters, facets, or query syntax;
 - mixed-locale indexes;
 - cross-locale result counterparts or translation relationships in a search
-  document. `id` is intentionally locale-local; a later cross-locale search
+  document. `id` is locale-local; a later cross-locale search
   use case must design its relationship view from explicit `translationid`
   groups rather than infer it from page IDs or paths;
 - rendered-HTML scraping or an inferred page-body convention;
@@ -503,11 +500,11 @@ The first version does not provide:
 - a production search server or hosted-search integration; or
 - a Pagefind-like post-processing step over generated output.
 
-The current document format is intended for small and medium selected
-collections. Its section-text payload grows linearly with declared Markdown
-source, and a browser must fetch and parse that selected JSON document before a
-local engine can search it. Collection selection is the first deliberate size
-control. Heine does not add per-field omission or silent text truncation until
+The current document format keeps every selected document in one JSON file. Its
+section-text payload grows linearly with declared Markdown source, and a
+browser must fetch and parse that JSON document before a local engine can
+search it. Collection selection is the first size control. Heine does not add
+per-field omission or silent text truncation until
 a concrete use case defines their semantics. A chunked full-text consumer is a
 separate future design, not a reason to weaken this source-derived contract.
 
@@ -522,7 +519,7 @@ one browser engine.
 An implementation must include focused and fixture-site coverage for:
 
 - empty, duplicate, unknown, and valid collection configuration with source
-  spans and useful remedies;
+  spans and remedies;
 - safe locale-relative versioned and stable output paths, `__heine/`
   rejection, digest-derived filename limits, and collisions with pages, copied
   assets, deployment files, feeds, taxonomies, and other indexes;
@@ -543,6 +540,6 @@ An implementation must include focused and fixture-site coverage for:
 - full-build publication, quick-build non-updating behavior, and development
   server rebuilds; and
 - complete updates to the README, tutorial, glossary, reference, focused
-  search guide, and a natural accessible starter-site example, including its
+  search guide, and an accessible starter-site example, including its
   Unicode URL state, matching, score ties, result-navigation algorithm, and
   history behavior.

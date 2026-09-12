@@ -71,7 +71,7 @@ with the selected `content` name and a flat source-order `headings` array. Each
 heading has `level`, `depth`, `text`, and `fragment` fields.
 
 If the same content is also selected for [margin footnotes](margin-footnotes.md),
-this one `markdown(content="…")` call deliberately supplies both the heading
+this one `markdown(content="…")` call supplies both the heading
 anchors and the local notes.
 
 ## Apply one default to a directory
@@ -118,7 +118,7 @@ ToC nor receive generated IDs. Heine also does not inspect manually authored
 HTML IDs for collisions.
 
 Use `markdown(content="…")` exactly once for the selected source. The familiar
-filter is still useful for arbitrary text:
+filter still renders arbitrary text:
 
 ```tera
 {{ data.notice | markdown }}

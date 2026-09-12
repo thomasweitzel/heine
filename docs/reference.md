@@ -40,7 +40,7 @@ fields use the following defaults.
 | `build.output_dir`                                | string               | `"public"`                            | Non-empty relative path with portable filename components; cannot be `content/`, `data/`, `deploy/`, `LICENSES/`, `templates/`, `locales/`, or a descendant           | Generated output directory relative to site root                                            |
 | `assets.integrity`                                | string               | absent                                | `"sha256"`, `"sha384"`, `"sha512"`                                                                                                                                    | Enables Subresource Integrity values from `asset()`                                         |
 | `licensing.required`                              | boolean              | absent                                | `true` only; `false` is a checked error                                                                                                                               | Requires one licensing declaration for every copied asset                                   |
-| `licensing.groups`                                | array of tables      | `[]`                                  | Exact non-empty copied-asset `output_path` list and sidecar-style SPDX fields; no overlap, sidecar conflict, glob, or unknown fields                                  | Applies one shared declaration to a coherent asset set                                      |
+| `licensing.groups`                                | array of tables      | `[]`                                  | Exact non-empty copied-asset `output_path` list and sidecar-style SPDX fields; no overlap, sidecar conflict, glob, or unknown fields                                  | Applies one shared declaration to an asset set                                              |
 | `i18n.default_locale`                             | string               | required                              | Canonical BCP-47 locale declared by an `i18n.locales.<code>` table                                                                                                    | Locale with unprefixed generated URLs                                                       |
 | `i18n.locales`                                    | table                | required                              | Non-empty table keyed by canonical BCP-47 locale codes                                                                                                                | Finite locale source trees to render                                                        |
 | `i18n.locales.<code>.direction`                   | string               | required                              | `"ltr"` or `"rtl"`                                                                                                                                                    | Base HTML writing direction for that locale                                                 |
@@ -69,7 +69,7 @@ fields use the following defaults.
 | `taxonomies.<name>.index_template`                | string               | required                              | Logical template name below `templates/`                                                                                                                              | Renders the taxonomy's term index                                                           |
 | `taxonomies.<name>.term_template`                 | string               | required                              | Logical template name below `templates/`                                                                                                                              | Renders each term listing and its pagers                                                    |
 | `taxonomies.<name>.per_page`                      | integer              | required                              | Positive integer                                                                                                                                                      | Members on each generated term-listing page                                                 |
-| `taxonomies.<name>.counterparts.<group>.<locale>` | string               | absent                                | An existing literal term for a configured locale; each non-empty opaque `<group>` has at least two locale members, and a locale-term pair occurs in at most one group | Declares a deliberate cross-locale term counterpart                                         |
+| `taxonomies.<name>.counterparts.<group>.<locale>` | string               | absent                                | An existing literal term for a configured locale; each non-empty opaque `<group>` has at least two locale members, and a locale-term pair occurs in at most one group | Declares a cross-locale term counterpart                                                    |
 | `sitemap`                                         | table                | absent                                | Empty table; requires `site.origin`                                                                                                                                   | Generates canonical sitemap output                                                          |
 | `markdown.extensions`                             | array of strings     | `[]`                                  | Unique subset of `"tables"`, `"strikethrough"`, `"task_lists"`, `"footnotes"`                                                                                         | Enables Markdown extensions                                                                 |
 | `markdown.tables.scroll_message`                  | string               | absent                                | Non-empty Fluent message identifier; enables responsive Markdown-table regions and requires `markdown.extensions` to include `"tables"`                               | Localized accessible name for scrollable Markdown-table regions                             |
@@ -281,7 +281,7 @@ current page does not participate in sibling ordering.
 ```
 
 Use a collection when a listing needs its own configured ordering; sibling
-navigation deliberately has one fixed directory-and-weight model.
+navigation has one fixed directory-and-weight model.
 
 ## Output filenames
 
@@ -436,7 +436,7 @@ link, or pass an exact locale and ID to `page()` for its base-path-aware URL.
 All Heine functions check their authored inputs and fixed keyword names at
 the template call site. The additional keyword names accepted by `t()` are
 Fluent message arguments. Heine checks their value types while Fluent
-formats the selected message; a message may deliberately ignore an argument
+formats the selected message; a message may ignore an argument
 it does not use.
 
 Template inheritance and components use Tera2's own syntax; the

@@ -98,17 +98,16 @@ fragments, so its generated headings and footnotes cannot claim one another's
 IDs. Trusted raw HTML and templates remain author-owned: Heine does not parse
 them to check manually chosen `id` values against that reserved family.
 
-A selected source does not need a footnote. This makes a directory default
-useful for a documentation section whose individual pages need notes only
+A selected source does not need a footnote. This lets a directory default apply
+to a documentation section whose individual pages need notes only
 occasionally.
 
 ## Add presentation CSS
 
-Heine deliberately does not generate site styling. Without CSS, the native
-checkbox controls and their note asides remain visible in source order. This
-is a usable baseline.
+Heine does not generate site styling. Without CSS, the native checkbox controls
+and their note asides remain visible in source order.
 
-The following small example hides notes until their own marker is selected,
+The following example hides notes until their own marker is selected,
 then places an open note below its paragraph. It preserves a focus indication
 when the browser supports `:has()`:
 
@@ -157,7 +156,7 @@ At a sufficiently wide breakpoint, a site can make `.heine-annotated-block` a
 two-column grid and put `.heine-footnote-toggle:checked + .heine-footnote` in
 the second column. The note stays in ordinary flow, so several open notes do
 not overlap later prose. A tall note can leave space before the next block;
-that is the deliberate CSS-only trade-off for dependable local placement.
+that is the CSS-only trade-off for local placement.
 For printing, keep every note visible after its annotated prose instead of
 trying to force a page-margin layout.
 
@@ -185,7 +184,7 @@ generated heading anchor.
 The selected input must be rendered once with `markdown(content="…")`. A
 missing call leaves no promised local-note structure; two calls duplicate
 generated IDs. Heine reports either as a template error. The `markdown` filter
-is still useful for arbitrary text, but it rejects the exact selected source.
+still renders arbitrary text, but it rejects the exact selected source.
 
 ## Directory defaults
 
@@ -201,7 +200,7 @@ content = "main"
 The nearest complete table wins. Tables do not merge. A page or nested
 descriptor may write `footnotes = false` only to suppress an inherited setting.
 Writing that value when nothing is inherited is a checked error, because it is
-inactive structural policy rather than a useful fallback.
+inactive structural policy rather than a fallback.
 
 Likewise, `[markdown.margin_footnotes]` is a checked error unless at least one
 rendered page has an effective setting. The named Fluent message is checked in

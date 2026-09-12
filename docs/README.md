@@ -51,11 +51,11 @@ required prerequisite for the guides.
 
 The [reference](reference.md) is the complete current contract. It lists every
 authored configuration field and page field, along with template values,
-functions, filters, defaults, and constraints. It intentionally does not
+functions, filters, defaults, and constraints. It does not
 repeat the tutorials and examples from the guides.
 
 The [glossary](glossary.md) defines Heine's public vocabulary. Guides explain
 terms in context on first use; use the glossary when returning to a term later.
 
-The [roadmap](roadmap.md) records the next deliberately scoped capabilities
-and the few open questions that need a concrete design before implementation.
+The [roadmap](roadmap.md) records planned capabilities and the open questions
+that need a concrete design before implementation.

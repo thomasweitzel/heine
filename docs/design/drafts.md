@@ -36,14 +36,13 @@ and live-reload loop. Heine does not add a `--drafts` option to ordinary
 also be a convenient way to generate a preview tree containing unpublished
 pages.
 
-Draft exclusion happens before page relationships are resolved. An ordinary
-build therefore has one coherent published site, rather than a published site
-whose collections, links, indexes, or generated resources remember hidden
-pages.
+Draft exclusion happens before page relationships are resolved. Collections,
+links, indexes, and generated resources in an ordinary build therefore do not
+remember hidden pages.
 
 ## Motivation
 
-An unfinished page needs two useful states. During writing, an author needs to
+An unfinished page needs two states. During writing, an author needs to
 see it in its real collection, navigation, taxonomy, Series, feed, and search
 context. During an ordinary build, that page must not reach generated output
 or leak into any relationship derived from it.
@@ -67,7 +66,7 @@ the ordinary published site now.
 draft = true
 ```
 
-It is deliberately not part of `[extra]`, metadata requirements, a collection
+It is not part of `[extra]`, metadata requirements, a collection
 membership, or directory policy. A directory cannot safely decide that every
 descendant is unpublished because individual pages need to move independently
 between writing and publication.
@@ -129,18 +128,18 @@ ordinary copied assets. Content-name template-identifier checks remain
 page-specific and therefore run only in a preview that retains the draft.
 
 An excluded draft that would have an effective margin-footnote setting counts
-as intentional use of `markdown.margin_footnotes`. This prevents the global
+as use of `markdown.margin_footnotes`. This prevents the global
 marker-message setting from becoming spuriously unused merely because its only
 current users are drafts. An ordinary build does not load that draft's
 Markdown, assign note numbers, or format its marker message. A preview checks
 all of those relationships normally. Sites without such a draft retain the
 existing checked unused-configuration error.
 
-Consequently, an ordinary build may contain an intentionally unfinished draft
+Consequently, an ordinary build may contain an unfinished draft
 whose declared content file does not yet exist, whose final template is not
 written, whose Markdown is incomplete, or whose metadata would not yet meet a
 directory requirement. The preview build checks those facts normally. This is
-the useful boundary: a production build remains reliable while a draft is
+the boundary: a production build excludes a draft while it is
 still in progress, but malformed TOML and a malformed publication declaration
 cannot silently escape checking.
 
@@ -228,10 +227,10 @@ Draft diagnostics follow the ordinary authored-source rules:
   wrapper.
 
 Heine does not issue a warning merely because a draft exists. Drafts are an
-intentional authored state. A preview that exposes an incomplete draft fails
+authored state. A preview that exposes an incomplete draft fails
 normally and keeps the previous successful development-server output in place.
 
-## Intentional boundaries
+## Boundaries
 
 - No directory-level, collection-level, taxonomy-level, or time-based draft
   policy exists.
@@ -248,9 +247,9 @@ normally and keeps the previous successful development-server output in place.
 
 ## Starter site and documentation
 
-The starter site should not add a deliberately unfinished article merely to
+The starter site should not add an unfinished article merely to
 show an invisible ordinary-build feature. Its published content remains a
-coherent small site rather than a catalogue of flags. Fixture-site tests will
+site rather than a catalogue of flags. Fixture-site tests will
 exercise both ordinary and preview catalogs.
 
 The public documentation needs:
@@ -265,7 +264,7 @@ The public documentation needs:
 ## Acceptance criteria
 
 - A page accepts only `draft = true`; `false`, non-booleans, and descriptor
-  declarations report useful authored spans.
+  declarations report authored spans.
 - An ordinary complete build excludes a syntactically valid incomplete draft
   without checking page-specific template, content, metadata, Markdown, or
   relationship facts.
@@ -274,7 +273,7 @@ The public documentation needs:
   draft content declarations report their authored fields rather than risking
   accidental asset publication.
 - A draft-only effective margin-footnote setting keeps its global marker
-  configuration intentional in an ordinary build without loading the draft
+  configuration active in an ordinary build without loading the draft
   source. A preview validates its complete marker and footnote relationships.
 - Ordinary builds retain all independent source-tree, asset, licensing,
   deployment, configuration, descriptor, and TOML-syntax checks.

@@ -77,7 +77,7 @@ previous successful output available, and does not reload the browser. A
 watcher error identifies the watched project root and suggests saving again or
 running a full build.
 
-Full publication replaces the output tree with two renames. During the small
+Full publication replaces the output tree with two renames. During the
 interval in which the directory changes names, the server retries a missing
 file lookup once. This keeps serving tied to the published filesystem, but it
 does not promise uninterrupted responses during that replacement interval.

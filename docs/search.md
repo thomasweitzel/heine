@@ -5,7 +5,7 @@ Heine can generate a locale-local JSON document index from one or more
 facts, source-derived text, URLs, and output ownership. Your site supplies the
 browser search engine and user interface.
 
-This keeps search independent of one JavaScript library. A small site can use
+This keeps search independent of one JavaScript library. A site can use
 a local script, while a larger one can replace that script with a suitable
 browser library without changing the generated document contract.
 

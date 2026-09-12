@@ -51,8 +51,8 @@ preventing a site from colliding with the server’s own routes.
 
 ### Quick build
 
-An intentionally incomplete in-place update selected with `--quick`. It is
-useful for changed present inputs, but does not detect every relationship,
+An incomplete in-place update selected with `--quick`. It
+updates changed present inputs, but does not detect every relationship,
 configuration, template, rename, or deletion change. Use a full build after
 those changes.
 
@@ -100,8 +100,8 @@ the site supplies the browser search library, ranking, and interface. See the
 Optional page `published` and `updated` local date-times. They must include a
 calendar date and time without an offset; Heine resolves them through the
 site-wide [editorial time zone](#editorial-time-zone). `published` records when
-a page became public, while `updated` records a later reader-meaningful change
-and cannot precede `published`.
+a page became public, while `updated` records a later change the author regards
+as substantive and cannot precede `published`.
 
 ### Editorial time zone
 
@@ -121,7 +121,7 @@ published as an asset.
 
 One explicit `[[licensing.groups]]` declaration in `heine.toml`. It assigns
 the same SPDX facts to an exact non-empty list of copied-asset output paths.
-It is an alternative to individual sidecars for a coherent upstream or
+It is an alternative to individual sidecars for an upstream or
 first-party asset set, not a directory rule, glob, or template-facing object.
 
 ### Copied asset

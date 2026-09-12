@@ -27,12 +27,12 @@ my-site/
         └── headers.conf
 ```
 
-This is useful for an Apache `.htaccess` file that supplies a Content Security
+Use this for an Apache `.htaccess` file that supplies a Content Security
 Policy, or for the HTML file used by Google Search Console site verification.
 Heine copies the bytes unchanged; it neither parses the file nor knows which
 web server or external service will consume it.
 
-## Deliberate boundary
+## Boundary
 
 Deployment files are not copied assets. They have no asset ID, template URL,
 integrity value, image dimensions, locale override, or versioned filename.
