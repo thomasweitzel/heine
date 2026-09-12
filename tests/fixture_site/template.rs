@@ -228,6 +228,81 @@ fn rejects_duplicate_markdown_extensions_at_the_configuration_value() {
 }
 
 #[test]
+fn responsive_table_configuration_requires_the_tables_extension() {
+    let disabled = Fixture::new();
+    disabled.write(
+        "heine.toml",
+        "[markdown.tables]\nscroll_message = 'table-scroll'\n",
+    );
+
+    let error = build_at(disabled.path(), BuildMode::Full)
+        .expect_err("table configuration needs the tables extension");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("markdown.extensions to include \"tables\""),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn tables_without_responsive_configuration_keep_plain_markup() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['tables']\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", "| Name |\n| --- |\n| Heine |\n");
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("ordinary tables build without configuration");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<table>"), "{output}");
+    assert!(!output.contains("heine-table-scroll"), "{output}");
+}
+
+#[test]
+fn table_scroll_messages_are_checked_and_escaped() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[markdown]\nextensions = ['tables']\n\n[markdown.tables]\nscroll_message = 'table-scroll'\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", "| Name |\n| --- |\n| Heine |\n");
+    fixture.write(
+        "content/de/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/de/index.md", "| Name |\n| --- |\n| Heine |\n");
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("the configured Fluent message must exist");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("heine.toml:14"), "{diagnostic}");
+    assert!(diagnostic.contains("table-scroll message"), "{diagnostic}");
+
+    fixture.write("locales/en/site.ftl", "table-scroll = Scroll & <table>\n");
+    build_at(fixture.path(), BuildMode::Full).expect("localized table builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("role=\"region\" aria-label=\"Scroll &amp; &lt;table&gt;\""),
+        "{output}"
+    );
+    let german =
+        fs::read_to_string(fixture.path().join("public/de/index.html")).expect("German output");
+    assert!(
+        german.contains("role=\"region\" aria-label=\"Scroll &amp; &lt;table&gt;\""),
+        "{german}"
+    );
+}
+
+#[test]
 fn rejects_an_unknown_markdown_math_mode_at_the_configuration_value() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[markdown]\nmath = 'katex'\n");

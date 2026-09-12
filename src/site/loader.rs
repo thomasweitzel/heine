@@ -445,40 +445,44 @@ pub(super) struct PageLoadContext<'a> {
     pub(super) markdown: &'a crate::config::MarkdownConfig,
 }
 
-/// A global margin-footnote setting is meaningful only when an effective page
-/// setting consumes it. Keeping the diagnostic at the configuration value
-/// prevents dormant localization policy from silently surviving a refactor.
+/// Keeps Markdown-owned interface messages source-aware through locale
+/// validation, rather than turning a missing translation into a render error.
 #[derive(Debug, Diagnostic, ThisError)]
-#[error("invalid margin-footnote marker-message configuration")]
-#[diagnostic(code(heine::markdown::margin_footnotes_configuration))]
-pub(crate) struct MarginFootnoteConfigurationDiagnostic {
+#[error("invalid {setting} configuration")]
+#[diagnostic(code(heine::markdown::message_configuration))]
+pub(crate) struct MarkdownMessageConfigurationDiagnostic {
+    setting: &'static str,
     #[source_code]
     source_code: NamedSource<String>,
-    #[label("configured marker message")]
+    #[label("configured message")]
     span: SourceSpan,
     #[help]
     help: String,
     #[related]
-    related: Vec<MarginFootnoteMarkerSource>,
+    related: Vec<MarkdownMessageSource>,
 }
 
 #[derive(Debug, Diagnostic, ThisError)]
-#[error("configured marker message")]
-struct MarginFootnoteMarkerSource {
+#[error("configured message")]
+struct MarkdownMessageSource {
     #[source_code]
     source_code: NamedSource<String>,
     #[label("message selected here")]
     span: SourceSpan,
 }
 
-impl MarginFootnoteConfigurationDiagnostic {
-    pub(super) fn unused(source_code: NamedSource<String>, span: SourceSpan) -> Self {
+impl MarkdownMessageConfigurationDiagnostic {
+    pub(super) fn unused(
+        source_code: NamedSource<String>,
+        span: SourceSpan,
+        setting: &'static str,
+        help: String,
+    ) -> Self {
         Self {
+            setting,
             source_code,
             span,
-            help:
-                "remove [markdown.margin_footnotes], or select margin footnotes for a rendered page"
-                    .into(),
+            help,
             related: Vec::new(),
         }
     }
@@ -486,19 +490,20 @@ impl MarginFootnoteConfigurationDiagnostic {
     pub(super) fn localization(
         source_code: NamedSource<String>,
         span: SourceSpan,
+        setting: &'static str,
         locale: &Locale,
         message: String,
-        marker_source: Option<(PathBuf, String, SourceSpan)>,
+        help: String,
+        message_source: Option<(PathBuf, String, SourceSpan)>,
     ) -> Self {
         Self {
+            setting,
             source_code,
             span,
-            help: format!(
-                "define a non-empty message that accepts $number for locale {locale}: {message}"
-            ),
-            related: marker_source
+            help: format!("{help} for locale {locale}: {message}"),
+            related: message_source
                 .into_iter()
-                .map(|(path, source, span)| MarginFootnoteMarkerSource {
+                .map(|(path, source, span)| MarkdownMessageSource {
                     source_code: crate::source_diagnostic::named_source_at_display_path(
                         &path, source, "Fluent",
                     ),

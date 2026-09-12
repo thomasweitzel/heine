@@ -114,6 +114,7 @@ pub(crate) struct TemplateResources {
     relationships: TemplateRelationships,
     localization: std::sync::Arc<Localization>,
     highlight_css: Option<String>,
+    table_scroll_message: Option<String>,
 }
 
 /// Immutable site relationships needed by template built-ins. This has no
@@ -194,12 +195,14 @@ impl TemplateResources {
         relationships: TemplateRelationships,
         localization: std::sync::Arc<Localization>,
         highlight_css: Option<String>,
+        table_scroll_message: Option<String>,
     ) -> Self {
         Self {
             asset_links,
             relationships,
             localization,
             highlight_css,
+            table_scroll_message,
         }
     }
 }

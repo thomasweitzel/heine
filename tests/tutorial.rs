@@ -141,12 +141,12 @@ fn every_authored_tutorial_step_builds_the_evolving_site() {
     write(
         root,
         "locales/en/site.ftl",
-        "nav-home = Home\nnav-main = Main navigation\n",
+        "nav-home = Home\nnav-main = Main navigation\ntable-scroll = Scrollable table\n",
     );
     write(
         root,
         "locales/de/site.ftl",
-        "nav-home = Startseite\nnav-main = Hauptnavigation\n",
+        "nav-home = Startseite\nnav-main = Hauptnavigation\ntable-scroll = Scrollbare Tabelle\n",
     );
     write(
         root,
@@ -239,7 +239,7 @@ fn every_authored_tutorial_step_builds_the_evolving_site() {
     write(
         root,
         "heine.toml",
-        "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'published-desc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[markdown]\nextensions = ['tables', 'strikethrough', 'footnotes']\nmath = 'mathml'\n\n[markdown.highlighting]\nstylesheet = 'css/highlighting.css'\n\n[markdown.highlighting.theme]\nlight = 'github-light'\ndark = 'github-dark'\n",
+        "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'published-desc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n\n[markdown]\nextensions = ['tables', 'strikethrough', 'footnotes']\nmath = 'mathml'\n\n[markdown.tables]\nscroll_message = 'table-scroll'\n\n[markdown.highlighting]\nstylesheet = 'css/highlighting.css'\n\n[markdown.highlighting.theme]\nlight = 'github-light'\ndark = 'github-dark'\n",
     );
     write(
         root,

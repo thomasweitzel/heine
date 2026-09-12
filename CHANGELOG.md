@@ -33,6 +33,15 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Semantic responsive Markdown tables.** Sites can opt into localized,
+  labelled `heine-table-scroll` regions for parsed Markdown tables, allowing
+  site CSS to provide keyboard-accessible narrow-screen horizontal scrolling
+  without changing native table semantics. Trusted raw HTML tables remain
+  author-owned. **Migration:** no existing table configuration changes. To add
+  responsive regions, configure `[markdown.tables].scroll_message` and define
+  that Fluent message in the default locale, with ordinary locale fallback or
+  translations as appropriate.
+
 - **Copied-asset licensing coverage.** Sites can opt into
   `licensing.required = true` to require one checked REUSE-compatible
   declaration for every copied asset Heine publishes. Exact

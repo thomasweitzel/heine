@@ -17,7 +17,7 @@ use thiserror::Error;
 use super::{
     GENERATED_FOOTNOTE_ID_PREFIX, RenderError, Renderer, TransformLinks,
     UnresolvedFootnoteReferenceScanner, highlight_code_blocks, is_escaped_markdown_character,
-    options, push_html_attribute, task_labels, transform_event,
+    options, push_html_attribute, task_labels, transform_event, wrap_tables,
 };
 use crate::{asset::AssetLinks, config::MarkdownConfig, site::PageLinks};
 
@@ -29,6 +29,15 @@ pub(crate) struct MarginFootnotePlan {
     marker_message: String,
     references: BTreeMap<usize, Reference>,
     blocks: BTreeMap<usize, Block>,
+}
+
+/// Rendering dependencies shared by one selected Markdown source.
+pub(crate) struct RenderContext<'a> {
+    pub(crate) renderer: &'a Renderer,
+    pub(crate) assets: Option<&'a AssetLinks>,
+    pub(crate) pages: Option<&'a PageLinks>,
+    pub(crate) anchors: Option<&'a [String]>,
+    pub(crate) table_scroll_label: Option<&'a str>,
 }
 
 #[derive(Debug, Clone)]
@@ -368,24 +377,23 @@ impl MarginFootnoteDiagnostic {
 /// flow and their transformed event bodies are repeated beside each reference.
 pub(crate) fn render(
     input: &str,
-    renderer: &Renderer,
-    assets: Option<&AssetLinks>,
-    pages: Option<&PageLinks>,
-    anchors: Option<&[String]>,
+    context: RenderContext<'_>,
     plan: &MarginFootnotePlan,
     labels: &[String],
 ) -> Result<String, RenderError> {
-    let mut anchors = anchors.unwrap_or_default().iter();
-    let task_labels = task_labels(input, renderer.config());
+    let mut anchors = context.anchors.unwrap_or_default().iter();
+    let task_labels = task_labels(input, context.renderer.config());
     let mut task_labels = task_labels.iter();
     let links = TransformLinks {
-        math: renderer.config().math(),
-        assets,
-        pages,
+        math: context.renderer.config().math(),
+        assets: context.assets,
+        pages: context.pages,
     };
     let mut in_definition = 0usize;
     let mut events = Vec::new();
-    for (event, span) in Parser::new_ext(input, options(renderer.config())).into_offset_iter() {
+    for (event, span) in
+        Parser::new_ext(input, options(context.renderer.config())).into_offset_iter()
+    {
         let anchors_enabled = in_definition == 0;
         let transformed = transform_event(
             (event.clone(), span.clone()),
@@ -402,7 +410,11 @@ pub(crate) fn render(
         }
         events.push((transformed, span));
     }
-    let events = highlight_code_blocks(events, renderer.highlighter.as_deref())?;
+    let events = highlight_code_blocks(events, context.renderer.highlighter.as_deref())?;
+    let events = match context.table_scroll_label {
+        Some(label) => wrap_tables(events, label),
+        None => events,
+    };
     render_events(events, plan, labels)
 }
 

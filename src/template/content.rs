@@ -37,11 +37,13 @@ pub(super) fn register(
             let locale = markdown_runtime.locale(state)?;
             let asset_links = markdown_runtime.assets().with_locale(locale.clone());
             let page_links = markdown_runtime.pages().with_locale(locale);
+            let table_scroll_label = markdown_runtime.table_scroll_label(state)?;
             crate::markdown::render_with_links(
                 input,
                 &markdown_filter_renderer,
                 Some(&asset_links),
                 Some(&page_links),
+                table_scroll_label.as_deref(),
             )
             .map(|output| tera::Value::safe_string(&output))
             .map_err(|error| tera::Error::message(error.to_string()))
@@ -61,6 +63,7 @@ pub(super) fn register(
             let page_links = markdown_content_runtime.pages().with_locale(locale);
             let (content, toc, footnotes) =
                 markdown_content_runtime.markdown_content(state, name)?;
+            let table_scroll_label = markdown_content_runtime.table_scroll_label(state)?;
             if toc.is_some() || footnotes.is_some() {
                 markdown_content_runtime.record_source_aware_render(name)?;
             }
@@ -69,10 +72,13 @@ pub(super) fn register(
                     markdown_content_runtime.margin_footnote_labels(state, footnotes.plan())?;
                 crate::markdown::margin_footnotes::render(
                     content,
-                    &markdown_renderer,
-                    Some(&asset_links),
-                    Some(&page_links),
-                    toc.map(|toc| toc.anchors()),
+                    crate::markdown::margin_footnotes::RenderContext {
+                        renderer: &markdown_renderer,
+                        assets: Some(&asset_links),
+                        pages: Some(&page_links),
+                        anchors: toc.map(|toc| toc.anchors()),
+                        table_scroll_label: table_scroll_label.as_deref(),
+                    },
                     footnotes.plan(),
                     &labels,
                 )
@@ -83,6 +89,7 @@ pub(super) fn register(
                     Some(&asset_links),
                     Some(&page_links),
                     toc.map(|toc| toc.anchors()),
+                    table_scroll_label.as_deref(),
                 )
             };
             rendered

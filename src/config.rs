@@ -759,6 +759,7 @@ pub(crate) struct MarkdownConfig {
     extensions: Vec<MarkdownExtension>,
     math: MathMode,
     highlighting: Option<HighlightingConfig>,
+    tables: Option<TablesConfig>,
     margin_footnotes: Option<MarginFootnotesConfig>,
 }
 
@@ -775,8 +776,36 @@ impl MarkdownConfig {
         self.highlighting.as_ref()
     }
 
+    pub(crate) fn tables(&self) -> Option<&TablesConfig> {
+        self.tables.as_ref()
+    }
+
     pub(crate) fn margin_footnotes(&self) -> Option<&MarginFootnotesConfig> {
         self.margin_footnotes.as_ref()
+    }
+}
+
+/// Global localization for the optional responsive Markdown-table renderer.
+#[derive(Debug, Clone)]
+pub(crate) struct TablesConfig {
+    scroll_message: MarkdownMessageConfig,
+}
+
+impl TablesConfig {
+    pub(crate) fn scroll_message(&self) -> &str {
+        self.scroll_message.value()
+    }
+
+    pub(crate) fn scroll_message_origin(&self) -> Option<(&NamedSource<String>, SourceSpan)> {
+        self.scroll_message.origin()
+    }
+
+    fn scroll_message_span(&self) -> SourceSpan {
+        self.scroll_message.span
+    }
+
+    fn attach_source(&mut self, source: NamedSource<String>) {
+        self.scroll_message.attach_source(source);
     }
 }
 
@@ -784,20 +813,59 @@ impl MarkdownConfig {
 /// Page and directory policy decide whether the feature is used at all.
 #[derive(Debug, Clone)]
 pub(crate) struct MarginFootnotesConfig {
-    marker_message: String,
-    marker_message_span: SourceSpan,
-    marker_message_source: Option<NamedSource<String>>,
+    marker_message: MarkdownMessageConfig,
 }
 
 impl MarginFootnotesConfig {
     pub(crate) fn marker_message(&self) -> &str {
-        &self.marker_message
+        self.marker_message.value()
     }
 
     pub(crate) fn marker_message_origin(&self) -> Option<(&NamedSource<String>, SourceSpan)> {
-        self.marker_message_source
-            .as_ref()
-            .map(|source| (source, self.marker_message_span))
+        self.marker_message.origin()
+    }
+
+    fn attach_source(&mut self, source: NamedSource<String>) {
+        self.marker_message.attach_source(source);
+    }
+}
+
+/// A message identifier keeps its authored span until locale validation can
+/// report both configuration and Fluent locations together.
+#[derive(Debug, Clone)]
+struct MarkdownMessageConfig {
+    value: String,
+    span: SourceSpan,
+    source: Option<NamedSource<String>>,
+}
+
+impl MarkdownMessageConfig {
+    fn parse(value: toml::Spanned<String>, field: &'static str) -> Result<Self, ConfigValueError> {
+        let span = value.span();
+        let value = value.into_inner();
+        if value.trim().is_empty() {
+            return Err(ConfigValueError {
+                span: span.into(),
+                message: format!("{field} must not be empty"),
+            });
+        }
+        Ok(Self {
+            value,
+            span: span.into(),
+            source: None,
+        })
+    }
+
+    fn value(&self) -> &str {
+        &self.value
+    }
+
+    fn origin(&self) -> Option<(&NamedSource<String>, SourceSpan)> {
+        self.source.as_ref().map(|source| (source, self.span))
+    }
+
+    fn attach_source(&mut self, source: NamedSource<String>) {
+        self.source = Some(source);
     }
 }
 
@@ -1060,6 +1128,7 @@ struct RawMarkdownConfig {
     #[serde(default)]
     math: MathMode,
     highlighting: Option<RawHighlightingConfig>,
+    tables: Option<RawTablesConfig>,
     margin_footnotes: Option<RawMarginFootnotesConfig>,
 }
 
@@ -1069,6 +1138,7 @@ impl Default for RawMarkdownConfig {
             extensions: default_extensions(),
             math: MathMode::default(),
             highlighting: None,
+            tables: None,
             margin_footnotes: None,
         }
     }
@@ -1078,6 +1148,12 @@ impl Default for RawMarkdownConfig {
 #[serde(deny_unknown_fields)]
 struct RawMarginFootnotesConfig {
     marker_message: toml::Spanned<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawTablesConfig {
+    scroll_message: toml::Spanned<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1259,6 +1335,22 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 message: "markdown.extensions must not contain duplicate values".into(),
             });
         }
+        let tables_enabled = extensions.contains(&MarkdownExtension::Tables);
+        let tables = raw
+            .markdown
+            .tables
+            .map(|raw| {
+                MarkdownMessageConfig::parse(raw.scroll_message, "markdown.tables.scroll_message")
+                    .map(|scroll_message| TablesConfig { scroll_message })
+            })
+            .transpose()?;
+        if !tables_enabled && let Some(config) = &tables {
+            return Err(ConfigValueError {
+                span: config.scroll_message_span(),
+                message: "markdown.tables requires markdown.extensions to include \"tables\""
+                    .into(),
+            });
+        }
         let highlighting = raw.markdown.highlighting.map(|raw| {
             let span = raw.stylesheet.span();
             let path = PathBuf::from(raw.stylesheet.into_inner());
@@ -1299,20 +1391,11 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             .markdown
             .margin_footnotes
             .map(|raw| {
-                let span = raw.marker_message.span();
-                let marker_message = raw.marker_message.into_inner();
-                if marker_message.trim().is_empty() {
-                    return Err(ConfigValueError {
-                        span: span.into(),
-                        message: "markdown.margin_footnotes.marker_message must not be empty"
-                            .into(),
-                    });
-                }
-                Ok(MarginFootnotesConfig {
-                    marker_message,
-                    marker_message_span: span.into(),
-                    marker_message_source: None,
-                })
+                MarkdownMessageConfig::parse(
+                    raw.marker_message,
+                    "markdown.margin_footnotes.marker_message",
+                )
+                .map(|marker_message| MarginFootnotesConfig { marker_message })
             })
             .transpose()?;
         let mut collections = BTreeMap::new();
@@ -1673,6 +1756,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 extensions,
                 math: raw.markdown.math,
                 highlighting,
+                tables,
                 margin_footnotes,
             },
             i18n: I18nConfig {
@@ -1703,8 +1787,10 @@ impl SiteConfig {
         diagnostics: &crate::source_diagnostic::DiagnosticPaths,
     ) {
         if let Some(margin_footnotes) = &mut self.markdown.margin_footnotes {
-            margin_footnotes.marker_message_source =
-                Some(diagnostics.named_source(path, source, "TOML"));
+            margin_footnotes.attach_source(diagnostics.named_source(path, source, "TOML"));
+        }
+        if let Some(tables) = &mut self.markdown.tables {
+            tables.attach_source(diagnostics.named_source(path, source, "TOML"));
         }
         if let Some(highlighting) = &mut self.markdown.highlighting {
             highlighting.stylesheet_source = Some(diagnostics.named_source(path, source, "TOML"));

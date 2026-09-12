@@ -25,6 +25,7 @@ post-updated = Aktualisiert am
 # Beschriftungen für lokale Navigation und Fußnotensteuerungen.
 toc-label = Inhaltsverzeichnis
 footnote-marker = Fußnote { $number }
+table-scroll = Scrollbare Tabelle
 pagination-label = Seitennavigation
 page-navigation = Seitennavigation
 

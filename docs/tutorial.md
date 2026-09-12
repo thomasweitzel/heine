@@ -600,6 +600,33 @@ add the generated highlighting stylesheet:
 KaTeX or MathJax that you add yourself. The [reference](reference.md#heinetoml)
 lists all allowed modes and highlighting settings.
 
+Ordinary Markdown tables work with the `tables` extension alone. To opt into
+responsive, keyboard-scrollable table regions, add this setting and its label
+to the default-locale Fluent resource. Use ordinary locale fallback or
+translations where appropriate:
+
+```toml
+[markdown.tables]
+scroll_message = "table-scroll"
+```
+
+```ftl
+table-scroll = Scrollable table
+```
+
+With this optional table setting, Heine keeps each parsed Markdown table as a
+native `<table>` and wraps it in a labelled, focusable `.heine-table-scroll`
+region. Let the container, rather than the table, own narrow-screen scrolling:
+
+```css
+.prose .heine-table-scroll[role="region"][aria-label][tabindex="0"] {
+  overflow-x: auto;
+}
+```
+
+Trusted raw HTML tables stay exactly as authored, so give those a labelled,
+focusable wrapper yourself when they also need this behavior.
+
 For a long Markdown guide, the [table-of-contents guide](table-of-contents.md)
 shows how to expose selected headings and render matching anchor IDs without
 adding a site-wide navigation rule.
