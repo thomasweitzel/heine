@@ -129,8 +129,8 @@ collections = ["posts"]
 ```
 
 Page-level `collections` replaces the inherited default. An explicit empty
-array opts out, which is useful for a directory index that should share its
-directory's template policy but not appear in its article listing.
+array opts out. It lets a directory index share its directory's template policy
+without appearing in its article listing.
 
 Each listed name must refer to a configured collection, and a page may name a
 collection only once. Only rendered pages may be members: a page with no
@@ -209,8 +209,8 @@ differ between English and German, and an empty collection is valid. Translation
 only connect known counterpart pages; they do not put pages into collections
 or require matching membership across locales.
 
-This lets a locale publish a deliberately smaller or differently organized
-body of content without hidden fallback or invented translations.
+This lets a locale publish a smaller or differently organized body of content
+without hidden fallback or invented translations.
 
 ## Pagination
 

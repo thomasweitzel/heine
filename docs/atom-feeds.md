@@ -197,7 +197,7 @@ a representation type it cannot establish.
 Feed output escapes XML markup and rejects XML-forbidden control characters
 before publication. It is included in the same full-build staging and
 atomic publication step as other managed output. Quick builds do not regenerate
-feeds, because they intentionally do not reconstruct complete collection and
+feeds, because they do not reconstruct complete collection and
 output relationships.
 
 Atom feeds are not rendered pages and are not added to the sitemap. The
@@ -208,7 +208,7 @@ Heine writes the document but does not control production HTTP headers. Configur
 the production host to serve the chosen feed path as `application/atom+xml`
 when that host does not already associate the extension with Atom.
 
-## Deliberate limits
+## Limits
 
 This feature generates Atom 1.0 only. It does not generate RSS or JSON Feed,
 create feeds directly from taxonomies or directories, render entry bodies,

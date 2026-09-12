@@ -25,7 +25,7 @@ the margin geometry, typography, colors, and responsive breakpoints.
 
 ## Motivation
 
-Footnotes are useful for citations, qualifications, translations, and dry
+Footnotes support citations, qualifications, translations, and dry
 editorial comments. An end-of-document note section interrupts that local
 reading relationship: a reader follows a marker away from the relevant prose,
 then must find their way back.
@@ -109,7 +109,7 @@ effective setting is a checked error at that field, rather than an advisory
 warning: ineffective structural policy is an authored mistake that should be
 removed, not a dormant fallback to preserve.
 
-No footnote reference is required in a selected source. This permits a useful
+No footnote reference is required in a selected source. This permits a
 directory default for pages that happen not to need notes.
 
 ## Template contract
@@ -191,8 +191,8 @@ an earlier paragraph or to an end-of-document section.
 
 The selected source does not receive pulldown-cmark's ordinary endnote section.
 Its definition body is rendered once for each local instance. This duplication
-is intentional: a short note beside the exact prose it qualifies is more
-useful than a single shared destination elsewhere in the document. Definition
+keeps each note beside the prose it qualifies rather than at one shared
+destination elsewhere in the document. Definition
 bodies retain the ordinary checked Markdown transformations, including internal
 links, asset references, math, and syntax highlighting.
 
@@ -216,9 +216,9 @@ rules to remain valid HTML and to keep a local note's placement understandable.
 Ordinary Markdown footnotes outside a selected source retain their existing
 rendering.
 
-This boundary is intentionally narrow. It covers article and documentation
-prose, which is the motivating use case, without pretending that every
-Markdown location has a meaningful page margin. A later extension requires a
+This boundary covers article and documentation prose, which is the motivating
+use case, without pretending that every
+Markdown location has a page margin. A later extension requires a
 concrete use case and a complete structural rendering rule.
 
 ## Rendered structure and progressive presentation
@@ -258,14 +258,14 @@ assistive technology. Heine obtains the checkbox's `aria-label` from the
 site-wide `marker_message`, passing the displayed number as `$number`;
 `aria-describedby` supplies the associated note text. Assistive technology
 therefore receives the note body when it encounters the control, even when CSS
-has visually collapsed that note. This is intentional: note content is never
-gated behind a discoverability step for non-visual readers. The checkbox's
+has visually collapsed that note. Note content is never gated behind a
+discoverability step for non-visual readers. The checkbox's
 checked state truthfully describes whether its local note is shown.
 `aria-controls` additionally declares the control-to-note relationship for
 assistive technology that recognizes it; it does not imply a JavaScript
 runtime. The marker is a disclosure control, not a link: activating it changes
 nearby content and does not navigate the document. A site or kit may visually
-hide the checkbox only with a clear focus treatment for the real native
+hide the checkbox only with a visible focus treatment for the real native
 control. Styling its corresponding marker is an optional progressive
 enhancement, not a guarantee of the generated structure. The control must
 remain available to keyboard and assistive-technology users. The `aside` uses
@@ -284,8 +284,8 @@ for sites and kits.
 An identifier represents the local reference instance, not the displayed
 footnote number. For example, two references to definition number `1` receive
 different control and note IDs, while both visible markers remain `1` and both
-localized control labels receive `$number = 1`. This intentionally gives the
-two controls the same accessible name: they identify the same logical note,
+localized control labels receive `$number = 1`. The two controls have the same
+accessible name because they identify the same logical note,
 just as repeated printed footnote markers do. Their distinct positions and
 separate `aria-describedby` targets retain the local context without adding an
 otherwise artificial occurrence number.
@@ -363,8 +363,8 @@ breakpoint it appears in the second grid column; otherwise it expands below
 the relevant prose. Several notes in one block may remain expanded together.
 Grid layout prevents expanded notes from overlapping later prose, but a tall
 note can make its row taller than the associated paragraph and leave visible
-space before the next block. That is the deliberate CSS-only trade-off for
-reliable local placement. A site or kit may choose a denser responsive layout,
+space before the next block. That is the CSS-only trade-off for local
+placement. A site or kit may choose a denser responsive layout,
 including below-prose notes, but Heine does not attempt note-collision
 avoidance.
 For printing, the grid is removed and every note follows its annotated prose
@@ -379,7 +379,7 @@ focus remains apparent and note disclosure still works.
 No JavaScript, URL-fragment mutation, browser history entry, or distant scroll
 is involved. Without the CSS, controls and their note content remain in logical
 source order. Starter-site CSS must use a standard visually-hidden technique
-for the controls, preserve clear focus indicators on markers, respect reduced
+for the controls, preserve visible focus indicators on markers, respect reduced
 motion, and leave notes visible for printing.
 
 ## Resolution, performance, and builds
@@ -426,7 +426,7 @@ Template errors identify an invalid `markdown(content="…")` call, an omitted o
 repeated selected-content rendering, or the accidental raw-filter rendering of
 the selected source. No diagnostic depends on a rendered HTML position.
 
-## Intentional boundaries
+## Boundaries
 
 The first version does not provide:
 
@@ -456,7 +456,7 @@ Ordinary footnote syntax already models the necessary source relationship.
 ### Raw HTML, content segments, or Tera2 components
 
 These can produce a visual note but leave its relationship to prose implicit or
-force natural writing into template-shaped fragments. They are presentation
+force prose into template-shaped fragments. They are presentation
 workarounds, not an authored Markdown contract.
 
 ### URL fragments and `:target` CSS

@@ -48,7 +48,7 @@ from before that publication change.
 
 ## While writing
 
-Drafts may deliberately be incomplete. In an ordinary build, Heine still
+Drafts may be incomplete. In an ordinary build, Heine still
 checks source-root safety, TOML syntax, the `draft` declaration, directory
 policy, copied assets, deployment files, and licensing. It also reserves paths
 named by a draft's `[content]` table, so an unfinished source file is not
@@ -56,10 +56,10 @@ mistakenly copied as a public asset.
 
 The page's template, declared content files, Markdown, metadata requirements,
 and relationships are checked when the draft is included in a `--drafts`
-preview. This lets normal publication remain coherent without treating an
-unfinished article as a completed page.
+preview. It prevents an unfinished article from becoming a completed page in
+normal publication.
 
-`draft` has only one useful authored value: `true`. Omit it to publish the
+`draft` accepts only one authored value: `true`. Omit it to publish the
 page. `draft = false` and a `draft` key in `_directory.toml` are checked errors
 because draft state is page-local, not inherited.
 

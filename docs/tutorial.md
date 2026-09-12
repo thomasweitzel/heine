@@ -1,6 +1,6 @@
-# Tutorial: build a small multilingual blog
+# Tutorial: build a multilingual blog
 
-This tutorial grows one working site in small steps. Each step builds on the
+This tutorial grows one working site in steps. Each step builds on the
 previous one and leaves the site usable. It introduces Heine's main public
 concepts; focused guides and the [reference](reference.md) provide the complete
 rules when you need them.
@@ -158,8 +158,8 @@ template expression:
     ·                            ╰── error here
 ```
 
-`summary` is optional authored [summary](glossary.md#summary) metadata. It is
-useful in listings and is never extracted from Markdown.
+`summary` is optional authored [summary](glossary.md#summary) metadata. It
+appears in listings and is never extracted from Markdown.
 
 **See it now:** visit `/` and `/blog/first.html`. The home page contains the
 Markdown link and the post renders its Markdown body.
@@ -309,7 +309,7 @@ added in step 4 in `templates/base.tera` with:
 
 The default English page remains `/index.html`; the German page is generated
 under `/de/`. A German page can use a different page ID and route. If two pages
-are intentional counterparts, give them the same `translationid`; Heine then
+are counterparts, give them the same `translationid`; Heine then
 exposes only those known links through `page.translations`.
 
 Read [internationalization and localization](internationalization.md) before
@@ -660,7 +660,7 @@ deploy/google1234567890.html     -> public/google1234567890.html
 ```
 
 Use a copied asset when a page needs to link or embed the file. Deployment
-files deliberately have no `asset()` identity, locale behavior, or template
+files have no `asset()` identity, locale behavior, or template
 rendering.
 
 Read the [deployment-files guide](deployment-files.md) before publishing.
@@ -688,7 +688,7 @@ When copied assets require rights information, add adjacent `.license`
 them. An authored attribution page can render `attributions()`. Read the
 [asset-licensing guide](asset-licensing.md) before publishing assets that carry
 those requirements. When every copied asset needs a declaration, enable
-`required = true` in `[licensing]`; a coherent upstream or first-party asset
+`required = true` in `[licensing]`; an upstream or first-party asset
 set with identical facts can use one exact
 [licensing group](glossary.md#licensing-group) instead of duplicated sidecars.
 
@@ -712,7 +712,7 @@ quick-build behavior.
 
 - A collection is empty when no rendered page in the current locale belongs to
   it. Check its `collections` membership and the locale tree you are viewing.
-- `--quick` intentionally leaves some changes stale. Use a full build after
+- `--quick` leaves some changes stale. Use a full build after
   changing templates, configuration, page relationships, or after renaming or
   deleting inputs.
 - A failed `page()`, `asset()`, or `t()` call names the template expression

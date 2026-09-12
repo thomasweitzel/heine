@@ -137,10 +137,10 @@ window = 1:  1 2 … 100 101 102 … 1201 1202
 window = 2:  1 2 3 … 99 100 101 102 103 … 1200 1201 1202
 ```
 
-Small listings therefore show every pager once: two pagers always yield
+Listings with no omitted ranges show every pager once: two pagers always yield
 `1 2`, never repeated links or ellipses.
 
-For a deliberately complete sequence, call `pagination_links()` inside a
+For a complete sequence, call `pagination_links()` inside a
 paginated listing template. It returns every pager link, without gap items:
 
 ```tera
@@ -165,6 +165,6 @@ translations.
 
 Full builds check every generated route and render every pager before
 publishing. Quick builds re-render all pagers of a listing when a present
-member page changes. As elsewhere, quick builds intentionally do not detect
+member page changes. As elsewhere, quick builds do not detect
 renames, deletions, template changes, configuration changes, or changed
 relationships; use a full build for those changes.

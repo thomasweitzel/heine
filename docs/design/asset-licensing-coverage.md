@@ -44,7 +44,7 @@ They attach the same licensing facts to their named assets, while an asset with
 no declaration continues to expose `licensing = null`. With the setting, an
 uncovered asset is a checked build error.
 
-`required` has one useful authored value. Omitting it selects optional
+`required` has one accepted authored value. Omitting it selects optional
 declarations; `required = false` is a checked error explaining that omission
 already selects that policy. The resolved configuration uses an explicit
 optional-or-required coverage enum rather than retaining a raw boolean.
@@ -60,8 +60,8 @@ This design uses three related terms consistently:
 
 ## Motivation
 
-The existing model is intentionally lightweight: a site adds a sidecar when an
-asset needs attribution or licensing facts. That is appropriate for an
+The existing model adds a sidecar when an asset needs attribution or licensing
+facts. That is appropriate for an
 ordinary personal site, but it cannot demonstrate that all copied output has a
 declaration. A missed font, image, video, PDF, or binary file remains
 publishable without any signal.
@@ -82,7 +82,7 @@ file, deployment configuration, or raw HTML asset has been declared.
 
 Several files from one upstream font or image package commonly share exactly
 the same facts. Requiring mechanically duplicated sidecars makes that
-relationship hard to maintain. A shared declaration is useful, but broad
+relationship hard to maintain. A shared declaration addresses that case, but broad
 patterns would weaken coverage: a newly added unrelated file could inherit a
 license without an author consciously reviewing it. Heine therefore models a
 group as an exact visible list.
@@ -122,8 +122,8 @@ SPDX-FileCopyrightText = "Example Foundation"
 SPDX-License-Identifier = "OFL-1.1"
 ```
 
-The paths name the actual output filenames, including a deliberate source
-version suffix such as `styles.v2.css`. They never name a versionless
+The paths name the actual output filenames, including a source version suffix
+such as `styles.v2.css`. They never name a versionless
 `latest()` lookup, an `asset:` URL, a filesystem path, or an eventual URL with
 percent encoding.
 
@@ -176,7 +176,7 @@ Its declarations receive the same parsing as an adjacent sidecar:
 - document-qualified `LicenseRef` values and all `AdditionRef` values remain
   unsupported by Heine's local license-text model.
 
-The group setting is deliberately global. It is not directory policy,
+The group setting is global. It is not directory policy,
 page metadata, template data, or an input a template can create. A page cannot
 make an asset licensed merely by linking to it.
 
@@ -211,7 +211,7 @@ Such rules would make it difficult to tell which declaration a published asset
 actually has. A conflict names both declaration locations and the affected
 output asset; it does not claim an arbitrary declaration order.
 
-This rule is intentional even when a sidecar and group happen to contain the
+This rule applies even when a sidecar and group happen to contain the
 same facts. Two declarations for one output asset create two sources that can
 later drift apart. When one member of an otherwise uniform asset set has
 different facts, its author removes that asset from the group's exact list and
@@ -239,14 +239,14 @@ every copied asset before templates render.
 
 ## Authoring and maintenance
 
-An adjacent sidecar is the ordinary choice for one asset. A group is for a
-coherent set of copied assets that has one shared declaration, such as the
-files of one upstream font family or a deliberately maintained first-party
-asset set. It is not a shortcut for licensing a directory or every asset of
+Use an adjacent sidecar for one asset. A group is for copied assets that have
+one shared declaration, such as the files of one upstream font family or a
+maintained first-party asset set. It is not a shortcut for licensing a
+directory or every asset of
 one kind.
 
-Groups deliberately trade a small amount of maintenance for reviewable
-coverage. Adding a same-licensed package member means adding its literal
+Groups trade some maintenance for reviewable coverage. Adding a
+same-licensed package member means adding its literal
 published path to that package's group. Adding an asset with different facts
 means giving it a sidecar instead. Renaming or deleting an asset leaves a
 checked unavailable group member; adding an uncovered asset while coverage is
@@ -322,19 +322,19 @@ text output, and no separate group file is published. Full builds atomically
 replace the managed output tree. This feature does not create a server route,
 new generated resource, or template-owned output.
 
-## REUSE relationship and intentional boundaries
+## REUSE relationship and boundaries
 
 REUSE supports `REUSE.toml` annotations that may use globs, multiple nested
 files, and precedence rules. That is valuable for repository-wide compliance,
 especially where a project cannot place sidecars beside every upstream file.
 Heine uses REUSE-compatible SPDX fields, local license texts, and adjacent
 sidecars, but its groups are not `REUSE.toml` annotations and do not establish
-REUSE compliance. Heine intentionally does not implement that general
+REUSE compliance. Heine does not implement that general
 repository model.
 
 Heine reuses familiar SPDX fields, adjacent sidecars for individual binary
 assets, local `LICENSES/` texts, and strict expression parsing. Its group
-model deliberately rejects:
+model rejects:
 
 - glob patterns, directory-wide declarations, and recursive inheritance;
 - nested licensing configuration;
@@ -355,15 +355,15 @@ generator's narrow asset relationship model.
 Implementation must update the asset-licensing guide, reference, glossary, and
 tutorial so that ordinary optional sidecars remain easy to introduce before
 the strict policy is explained. The guide must link to the SPDX License List
-and clearly distinguish a checked declaration inventory from legal advice. It
+and distinguish a checked declaration inventory from legal advice. It
 must show literal `output_path` group members and call out common mistakes:
 leading slashes, `site.base_path`, URLs, and locale-relative `asset()` IDs do
 not name group members.
 
-The starter site should use one coherent shared asset set, such as a font
-family or deliberately maintained first-party assets, to demonstrate one
-explicit group. It should enable required coverage only after every
-starter-site copied asset has a meaningful declaration. It must keep its
+The starter site should use one shared asset set, such as a font family or
+maintained first-party assets, to demonstrate one explicit group. It should
+enable required coverage only after every starter-site copied asset has a
+declaration. It must keep its
 existing attribution page accurate without adding a group-specific presentation
 branch.
 

@@ -57,7 +57,7 @@ the literal terms that correspond across those locales.
 
 The taxonomy name (`tags` above) is a simple identifier. It is available as a
 template-map key and identifies the taxonomy in page metadata. `path` is
-separate so a site can deliberately choose a different public route.
+separate so a site can choose a different public route.
 
 Taxonomy definitions are shared by all locales. Resolution and generated
 output remain locale-local, just as they do for collections.
@@ -87,14 +87,14 @@ or ambiguous term at its authored membership value instead of inventing a
 slug.
 
 A page may assign terms only for a taxonomy whose source collection contains
-that page. This makes scope deliberate: a `posts` taxonomy cannot silently
+that page. A `posts` taxonomy cannot silently
 collect an unrelated documentation page. A page may name a term only once for
 one taxonomy; duplicate terms are an authored error that identifies both
 values.
 
 Membership is locale-local. Terms with the same spelling in two locale trees
 remain independent, and no counterpart term is inferred for a language
-switcher. Declare only the deliberate counterparts in the taxonomy's optional
+switcher. Declare counterparts in the taxonomy's optional
 `counterparts` groups, described in the [template contract](#template-contract).
 
 ## Generated output
@@ -133,7 +133,7 @@ rendered. Collation affects presentation order only: it never changes a term's
 literal identity, display spelling, or route. Terms that compare equally under
 the locale collator use their literal spelling as a deterministic tie-breaker.
 
-This lets German, Polish, Arabic, and other locale trees receive natural
+This gives German, Polish, Arabic, and other locale trees locale-aware
 term-index ordering without silently merging terms that differ by case,
 accents, or normalization.
 
@@ -148,8 +148,8 @@ An ordinary page exposes its assigned term links directly:
 ```
 
 Any template can resolve its current locale's taxonomy index through the
-checked `taxonomy()` function. This is useful for a shared navigation
-template without duplicating a generated route:
+checked `taxonomy()` function. A shared navigation template can use it without
+duplicating a generated route:
 
 ```tera
 {% set tags = taxonomy(name="tags") %}
@@ -187,7 +187,7 @@ exist literally in that locale's taxonomy, and a locale-term pair may belong
 to only one group. Groups may be partial: a term such as `MathML` that exists
 only in English simply has no group and therefore no language counterpart.
 
-The generated term views then expose only the deliberate relationships:
+The generated term views expose the declared relationships:
 
 ```tera
 {% for target_locale, target in taxonomy.term.counterparts %}
@@ -228,7 +228,7 @@ relative links remain correct.
 
 Term pagination uses the same compact navigation view as authored listings;
 its fixed navigation window is `1`. Use `pagination_links()` when a template
-intentionally needs every page link.
+needs every page link.
 
 The [reference](reference.md) contains the complete field tables. Heine does
 not add a general template query language: ordinary pages have their own terms

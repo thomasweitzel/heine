@@ -1,9 +1,9 @@
 # Asset licensing
 
-Heine supports a small, REUSE-compatible convention for declaring the rights
+Heine supports a REUSE-compatible convention for declaring the rights
 information of [copied assets](glossary.md#copied-asset). It keeps licensing
 beside the asset it describes, or records one explicit shared declaration for
-a coherent asset set, publishes the matching license texts, and exposes the
+a shared asset set, publishes the matching license texts, and exposes the
 declared information to ordinary Tera templates. It does not determine whether
 a declaration satisfies the law applicable to a particular work or use.
 
@@ -47,15 +47,15 @@ example, `OFL-1.1 AND MIT` requires both `LICENSES/OFL-1.1.txt` and
 `LICENSES/MIT.txt`; `OFL-1.1 OR MIT` requires those same two texts. Heine does
 not choose one branch of an `OR` expression on the site's behalf.
 
-The license-text directory is deliberately local to the site. Heine accepts
+The license-text directory is local to the site. Heine accepts
 local `LicenseRef-…` values, but rejects `DocumentRef-…` and `AdditionRef-…`
 forms: those refer to an external SPDX document or a non-standard exception
-that this small local-file model cannot identify or publish unambiguously.
+that this local-file model cannot identify or publish unambiguously.
 
 ## Shared declarations and required coverage
 
-An adjacent sidecar is the ordinary choice for one copied asset. When several
-files form one coherent set with exactly the same licensing facts, such as a
+Use an adjacent sidecar for one copied asset. When several files have exactly
+the same licensing facts, such as a
 family of font files or a first-party site asset set, a site may record one
 [licensing group](glossary.md#licensing-group) in `heine.toml` instead:
 
@@ -146,9 +146,9 @@ so a site decides its route, language, and presentation:
 </ul>
 ```
 
-A central inventory is useful for a site-wide attribution page. Some licenses
+A central inventory serves a site-wide attribution page. Some licenses
 or a work’s provenance may require attribution near a particular use; render
-that asset’s `licensing` view there as well. Heine deliberately records the
+that asset’s `licensing` view there as well. Heine records the
 declared facts and links, rather than guessing legal presentation requirements.
 The stable published `output_path` also lets a localized template select its
 own locale-specific presentation text while retaining the canonical declaration.

@@ -86,7 +86,7 @@ That build writes `public/guide/sitemap.xml`, which the host serves as
 `/guide/sitemap.xml`. As with every generated file, `build.output_dir` is the
 only setting that determines its filesystem location.
 
-Quick builds do not update the sitemap. They intentionally do not resolve the
+Quick builds do not update the sitemap. They do not resolve the
 complete output topology, so regenerating it could make the sitemap disagree
 with stale generated output. Run a full build after changes that affect site
 structure.
@@ -125,7 +125,7 @@ updated = 2026-08-27T14:35:00 # optional
 ```
 
 `published` is when the page first became publicly available. `updated` is the
-most recent change that the author considers meaningful to readers and search
+most recent change that matters to readers and search
 engines. It is not changed for a rebuild, a filesystem timestamp, or an
 insignificant site-wide edit. `updated` must not precede `published`.
 
@@ -141,15 +141,15 @@ them directly usable with `format_date()` and avoids exposing an ambiguous
 local time at the template boundary.
 
 Heine never uses the build machine's time zone. A named IANA zone makes the
-source's intended interpretation clear and accounts for daylight-saving
-changes. Heine resolves it using a bundled, versioned IANA timezone database,
-not the host's zoneinfo files, so the same Heine version produces the same
-instant on every supported platform.
+intended interpretation of source dates unambiguous and accounts for
+daylight-saving changes. Heine resolves it using a bundled, versioned IANA
+timezone database, not the host's zoneinfo files, so the same Heine version
+produces the same instant on every supported platform.
 
 A local date-time that never occurred during a clock change is an error. A
 local date-time that occurred twice is also an error. In both cases, the
 diagnostic identifies the authored timestamp and configured zone and explains
-the transition. The repeated-hour restriction is deliberate: without an offset
+the transition. The repeated-hour restriction exists because without an offset
 or another disambiguator, the source cannot name which of the two real
 instants it means. Heine does not accept offset-bearing timestamps as an
 escape hatch in this version.
@@ -252,19 +252,19 @@ every pager derived from those pages. It is not a default: a nested descriptor
 or page cannot re-include a descendant. A page setting of `sitemap = true` is
 always invalid; below this boundary its diagnostic also points to the
 descriptor that established the exclusion. This makes a directory exclusion a
-reliable policy for drafts and previews rather than a preference a nested page
+policy for drafts and previews rather than a preference a nested page
 can silently undo.
 
 As with page opt-outs, `[pages] sitemap = false` requires global sitemap
 generation. A redundant page opt-out below a directory boundary is allowed: it
-has the same effect and can make an individual page's intent clear without
+has the same effect and can state an individual page's intent without
 weakening the boundary.
 
 Generated pagers cannot have an independent opt-out. Taxonomy pages have no
 authored owner in the first version, so they likewise have no individual
 opt-out.
 
-## Intentional first-version boundary
+## First-version boundary
 
 The initial sitemap contains required `<loc>` entries and `<lastmod>` only when
 page chronology supplies it. It does not provide:
@@ -278,6 +278,6 @@ page chronology supplies it. It does not provide:
 
 These omissions keep the sitemap an exact, checked view of output that Heine
 knows it rendered. Later extensions must retain that property and add authored
-metadata only when its semantics are clear. Atom feeds use the same page
+metadata only when its semantics are defined. Atom feeds use the same page
 chronology while separately defining feed-level metadata and timestamps; see
 the [Atom-feed guide](atom-feeds.md).

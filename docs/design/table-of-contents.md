@@ -31,12 +31,12 @@ Markdown domain can then derive the headings and their anchors from one source
 of truth, and the template receives data rather than a prescribed navigation
 layout.
 
-`main` remains a useful conventional name for a page's primary document, but
+`main` remains a conventional name for a page's primary document, but
 it has no privileged meaning to Heine.
 
 ## Eligibility and scope
 
-The authored model is intentionally narrow: a complete page `[toc]` table or
+The authored model supports a complete page `[toc]` table or
 recursive `[pages.toc]` directory default selects one declared, unsegmented
 Markdown input of a rendered authored page. A page or descriptor can use
 `toc = false` only to suppress an inherited setting. Nearest settings replace,
@@ -118,7 +118,7 @@ the complete candidate against every identifier already assigned. Thus two
 `Introduction` headings become `introduction` and `introduction-2`; an
 earlier literal `Introduction 2` cannot cause a duplicate identifier.
 
-Identifiers preserve meaningful Unicode rather than transliterating it. For
+Identifiers preserve Unicode rather than transliterating it. For
 example, `Überblick` becomes `überblick`. `fragment` contains the identifier
 itself, not a percent-encoded URL fragment; templates use it after `#` as in
 the example above. Heine's own generated identifiers are unique within the
@@ -132,7 +132,7 @@ IDs. Headings in other Markdown values and template markup remain untouched.
 
 Source discovery and page loading resolve the effective ToC setting after
 directory policy and page metadata are known. The Markdown domain parses the
-selected source into a small heading and anchor plan. The resolved page retains
+selected source into a heading and anchor plan. The resolved page retains
 only the selected content name and render-facing heading facts.
 
 During `markdown(content=...)`, the Markdown renderer uses that anchor plan
@@ -154,7 +154,7 @@ site. Duplicate headings are not errors: source-order suffixes resolve them.
 The [reference](../reference.md#markdown) is the canonical list of current
 constraints and error behavior.
 
-## Intentional boundaries
+## Boundaries
 
 The first version does not provide:
 
@@ -190,9 +190,9 @@ Implementation must cover at least:
   text, plus a checked error for an exact selected-source match;
 - source-aware `markdown(content=...)` rendering with and without a selected
   ToC source;
-- template diagnostics for invalid function use with useful spans;
+- template diagnostics for invalid function use with source spans;
 - page and descriptor diagnostics for invalid settings and ineligible inputs;
 - interaction with Markdown links, math modes, syntax highlighting,
   localization, paginated listings, and quick builds;
 - complete updates to the tutorial, glossary, reference, a focused ToC guide,
-  and a natural starter-site example.
+  and a starter-site example.

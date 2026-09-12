@@ -21,7 +21,7 @@ The copied site root is owned by the user. A kit is updated or replaced without
 editing its files. Root templates adapt public kit originals through explicit
 namespaced references; root assets, messages, and license texts retain their
 normal value-overlay behavior. Changing kits is not promised to preserve
-content conventions and may require a deliberate migration.
+content conventions and may require migration.
 
 ## Motivation
 
@@ -131,7 +131,7 @@ It therefore selects the kit being distributed, never another kit. A reference
 site cannot compose kits through its own copied configuration.
 
 Heine does not initially provide a package resolver, an installer, or a
-`heine new` command. Copying is intentionally visible. A later convenience
+`heine new` command. Copying remains visible. A later convenience
 command may automate this procedure without changing its semantics.
 
 ## Developing and packaging a kit
@@ -257,8 +257,8 @@ definition in the selected kit's component namespace is a build error, so
 invocation can never quietly become replacement.
 
 Public template and asset paths are literal logical paths in the first version.
-Glob patterns are deliberately unsupported: a small compatibility surface must
-remain visible, and a newly added file must not become public merely because it
+Glob patterns are unsupported: the compatibility surface must remain visible,
+and a newly added file must not become public merely because it
 matches a broad pattern.
 
 The asset rule promotes a manifest-declared kit asset such as
@@ -271,7 +271,7 @@ templates and Markdown cannot address that private ID through `asset()` or an
 asset lookup and is not checked. This keeps internal kit assets out of the root
 asset namespace while preserving relative URLs between private kit assets.
 “Private” describes the checked kit API, not browser access: the file is a
-published static resource, and its namespaced output path intentionally makes
+published static resource, and its namespaced output path makes
 its kit ownership visible. Other regular files in `content/` remain ordinary
 site-only copied assets.
 
@@ -314,8 +314,8 @@ the public kit template that invokes the component, using the extension
 mechanism above when appropriate, and calls a root-owned component or writes
 the required markup there. A kit author should expose a public template or
 documented template block when that form of customization is expected.
-Private kit partials are intentionally not root customization points. For a
-small structural change, a root adapter overrides a documented block in its
+Private kit partials are not root customization points. For a structural
+change, a root adapter overrides a documented block in its
 public parent template. Replacing the adapter outright remains possible, but
 is a larger, consciously site-owned presentation change.
 
@@ -353,7 +353,7 @@ wording for a specific locale. The kit never contributes locale configuration;
 the root site remains the source of configured locales and text direction.
 
 If no kit is selected, or a different kit is selected, a root template that
-names `kit/<name>/...` fails at that template reference with a clear migration
+names `kit/<name>/...` fails at that template reference with a migration
 diagnostic. A normal unqualified template lookup continues to report its
 missing template at the authored page or template reference. Other root
 templates and resources remain ordinary root inputs; removing `[kit]` does not
@@ -383,8 +383,8 @@ the asset that cites a text does not namespace or otherwise alter that text's
 logical `LICENSES/` path.
 
 Assets, Fluent entries, and license texts are value overlays. Removing a root
-value resumes the selected kit's corresponding value, whether the removal was
-intentional or corrects an earlier mistake. Templates differ because selecting
+value resumes the selected kit's corresponding value, whether the removal is a
+user change or corrects an earlier mistake. Templates differ because selecting
 a page's structural rendering entry point must never silently change source.
 
 ## Source discovery, output, and development server
@@ -404,7 +404,7 @@ a page's structural rendering entry point must never silently change source.
 - Changing `[kit]`, its version requirement, or the selected name requires a
   full build; quick mode retains its existing configuration-change limitation.
 
-## Intentional boundaries
+## Boundaries
 
 Kits do not contribute or merge these root domains at build time:
 
@@ -421,15 +421,15 @@ universal semantic content-role model.
 
 Kit templates do not participate in unqualified root-first fallback. A site
 selects root-owned template entry points, and root adapters name kit originals
-only where the site intentionally depends on them.
+only where the site depends on them.
 
 ## Rejected alternatives
 
 ### A visual theme without a reference site
 
 This leaves content requirements as informal documentation or template errors.
-The required `site/` tree is a more reliable and inspectable statement of a
-kit's intended structure.
+The required `site/` tree states a kit's intended structure in files that can
+be inspected and built.
 
 ### A full runtime overlay of kit and root configuration, content, and data
 
@@ -453,28 +453,28 @@ entry point into a checked error at its authored selection.
 
 ### Components and site-owned adapters as the whole feature
 
-Components are useful inside kits, but they do not communicate a complete
+Components can be used inside kits, but they do not communicate a complete
 design's required content shape. They would provide a visual toolkit, not a
-coherent starting site.
+site structure.
 
 ### Multiple kits or kit components
 
 Multiple precedence layers make template, asset, message, configuration, and
-license resolution order-dependent. One selected kit keeps the mental model
-small. Revisit composition only after a concrete use case justifies it.
+license resolution order-dependent. Selecting one kit preserves one root-over-kit
+precedence layer. Revisit composition only after a concrete use case justifies it.
 
 ### Glob-based public declarations
 
 Globs would shorten a large manifest, but they would also expose future files
 accidentally and make the kit's compatibility surface less visible. Literal
-paths keep each public member deliberate and make semantic-version changes
+paths make each public member visible and make semantic-version changes
 auditable.
 
 ### Treating kits as freely swappable
 
 A kit can be overridden and updated independently, but another kit may expect
-different content and data conventions. Changing kits is therefore a deliberate
-migration, not a build-time switch that Heine claims will preserve a site.
+different content and data conventions. Changing kits is therefore a migration,
+not a build-time switch that Heine claims will preserve a site.
 
 ## Implementation acceptance criteria
 
@@ -491,7 +491,7 @@ Implementation must include focused and fixture-site coverage for:
   partials inaccessible to root templates;
 - root precedence for declared public assets, messages, and license texts;
 - public and private kit asset identities, including root rejection of a
-  private kit asset lookup and the intentionally published private output
+  private kit asset lookup and the published private output
   path;
 - manifest declarations for missing, duplicate, or unsafe public templates,
   assets, and components;
@@ -511,5 +511,5 @@ Implementation must include focused and fixture-site coverage for:
   `site/` kit paths;
 - full and quick-build behavior, including the existing quick-build limits.
 
-Public documentation, the reference, tutorial, glossary, and a natural starter
-example must be updated only when the feature is implemented.
+Public documentation, the reference, tutorial, glossary, and a starter example
+must be updated only when the feature is implemented.

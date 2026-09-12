@@ -151,7 +151,7 @@ translationid = "welcome-post"
 ```
 
 The same ID on pages from different locales creates a translation group. A
-group is intentionally partial: it may have English and German pages without
+group may be partial: it may have English and German pages without
 Polish. A page belongs to at most one group, and a group may contain no more
 than one page from each locale. Duplicate pages in one locale are a build
 error that identifies both declarations.
@@ -245,7 +245,7 @@ errors. Heine does not use warnings for translation-resolution failures.
 
 ## Render boundary and checks
 
-Templates receive a small render-facing model, including `locale`, shared
+Templates receive a render-facing model, including `locale`, shared
 `data`, `locale_data`, `page`, `page.translations`, `t()`, `asset()`, and
 `page()`. They do not receive raw resource bundles, source paths, mutable site
 state, or arbitrary access to every locale's content.

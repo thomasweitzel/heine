@@ -1,6 +1,6 @@
 # Heine
 
-Heine is a small, synchronous Rust static-site generator. It compiles a
+Heine is a synchronous Rust static-site generator. It compiles a
 configured content tree and [Tera2](https://github.com/Keats/tera) templates
 into a checked, managed output tree.
 
@@ -24,7 +24,7 @@ localization, checked page and asset links, collections, pagination,
 taxonomies, Series, Atom feeds, sitemaps, search-document indexes, and a
 development server with live reload, media range requests, and draft previews.
 Copied assets may carry checked REUSE-compatible declarations, including
-optional complete coverage and exact shared declarations for coherent asset
+optional complete coverage and exact shared declarations for asset
 sets.
 
 Heine does not bundle a frontend toolchain or deployment integration. Use
@@ -119,8 +119,8 @@ The [documentation map](docs/README.md) explains the available reading paths.
   or the [development server](docs/development-server.md).
 - Use the [reference](docs/reference.md) for exact fields, defaults, template
   functions, and constraints.
-- Consult the [roadmap](docs/roadmap.md) for planned work and intentionally
-  undecided boundaries.
+- Consult the [roadmap](docs/roadmap.md) for planned work and undecided
+  boundaries.
 
 ## Starter site
 
@@ -162,7 +162,7 @@ and copying succeed. It replaces stale generated files left by renamed or
 deleted inputs. If an existing output directory was not created by Heine, use
 `--clean-output` only after confirming that it is safe to replace.
 
-`--quick` updates changed present inputs in place. It intentionally does not
+`--quick` updates changed present inputs in place. It does not
 notice template, configuration, relationship, rename, or deletion changes, so
 use a normal build after those changes. The [glossary](docs/glossary.md#quick-build)
 and [reference](docs/reference.md#site-root-and-commands) describe the exact

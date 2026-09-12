@@ -1,6 +1,6 @@
 # Roadmap
 
-Heine grows through small, complete vertical features. A planned item is not a
+Heine grows through complete vertical features. A planned item is not a
 compatibility promise or a commitment to a particular interface. Before work
 starts, it needs a concrete use case, an issue, a design, tests, documentation,
 and a cohesive starter-site example where one fits naturally.
