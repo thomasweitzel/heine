@@ -36,6 +36,7 @@ pub(super) struct TemplateRuntime {
     series: Arc<SeriesCatalog>,
     localization: Arc<Localization>,
     highlight_css: Option<String>,
+    table_scroll_message: Option<String>,
     source_aware_renders: Arc<Mutex<Vec<SourceAwareRender>>>,
 }
 
@@ -109,12 +110,27 @@ impl From<TemplateResources> for TemplateRuntime {
             series,
             localization: resources.localization,
             highlight_css: resources.highlight_css,
+            table_scroll_message: resources.table_scroll_message,
             source_aware_renders: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
 
 impl TemplateRuntime {
+    pub(super) fn table_scroll_label(
+        &self,
+        state: &tera::State,
+    ) -> tera::TeraResult<Option<String>> {
+        let Some(message) = &self.table_scroll_message else {
+            return Ok(None);
+        };
+        let locale = self.locale(state)?;
+        self.localization
+            .format(&locale, message, None, &Arguments::new())
+            .map(Some)
+            .map_err(tera::Error::message)
+    }
+
     pub(super) fn assets(&self) -> &AssetLinks {
         &self.assets
     }

@@ -26,6 +26,7 @@ post-updated = Updated
 # Labels for page-local navigation and margin-footnote controls.
 toc-label = Table of contents
 footnote-marker = Footnote { $number }
+table-scroll = Scrollable table
 pagination-label = Pagination
 page-navigation = Page navigation
 

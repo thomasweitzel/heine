@@ -449,11 +449,19 @@ footer {
     }
 }
 
-.prose table {
-    display: block;
+.prose .heine-table-scroll[role="region"][aria-label][tabindex="0"] {
     max-inline-size: 100%;
     margin-block: var(--spacing-m);
     overflow-x: auto;
+}
+
+.prose .heine-table-scroll[role="region"][aria-label][tabindex="0"]:focus-visible {
+    outline: 2px solid var(--color-2);
+    outline-offset: 2px;
+}
+
+.prose table {
+    min-inline-size: 100%;
     border-collapse: collapse;
 }
 

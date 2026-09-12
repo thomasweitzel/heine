@@ -97,6 +97,9 @@ de = "Statische Seiten"
 extensions = ["tables", "strikethrough", "task_lists", "footnotes"]
 math = "mathml"
 
+[markdown.tables]
+scroll_message = "table-scroll"
+
 [markdown.margin_footnotes]
 marker_message = "footnote-marker"
 

@@ -389,7 +389,7 @@ pub(crate) fn render(
     renderer: &Renderer,
     assets: Option<&AssetLinks>,
 ) -> Result<String, RenderError> {
-    render_with_links(input, renderer, assets, None)
+    render_with_links(input, renderer, assets, None, None)
 }
 
 pub(crate) fn render_with_links(
@@ -397,8 +397,9 @@ pub(crate) fn render_with_links(
     renderer: &Renderer,
     assets: Option<&AssetLinks>,
     pages: Option<&PageLinks>,
+    table_scroll_label: Option<&str>,
 ) -> Result<String, RenderError> {
-    render_with_links_anchors(input, renderer, assets, pages, None)
+    render_with_links_anchors(input, renderer, assets, pages, None, table_scroll_label)
 }
 
 pub(crate) fn render_with_links_anchors(
@@ -407,6 +408,7 @@ pub(crate) fn render_with_links_anchors(
     assets: Option<&AssetLinks>,
     pages: Option<&PageLinks>,
     anchors: Option<&[String]>,
+    table_scroll_label: Option<&str>,
 ) -> Result<String, RenderError> {
     if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config()) {
         return Err(RenderError::Footnote { label, span });
@@ -447,9 +449,47 @@ pub(crate) fn render_with_links_anchors(
         events.push((transformed, span));
     }
     let events = highlight_code_blocks(events, renderer.highlighter.as_deref())?;
+    let events = match table_scroll_label {
+        Some(label) => wrap_tables(events, label),
+        None => events,
+    };
     let mut output = String::new();
     html::push_html(&mut output, events.into_iter().map(|(event, _)| event));
     Ok(output)
+}
+
+/// Keeps parsed tables semantic while giving site CSS one scrollable owner.
+///
+/// Changing a table's own `display` can remove its table semantics for assistive
+/// technology. Raw HTML remains authored input and deliberately bypasses this
+/// Markdown-specific structure.
+pub(super) fn wrap_tables(
+    events: Vec<(Event<'static>, Range<usize>)>,
+    table_scroll_label: &str,
+) -> Vec<(Event<'static>, Range<usize>)> {
+    let mut wrapped = Vec::with_capacity(events.len());
+
+    for (event, span) in events {
+        let starts_table = matches!(&event, Event::Start(Tag::Table(_)));
+        let ends_table = matches!(&event, Event::End(TagEnd::Table));
+
+        if starts_table {
+            let mut wrapper = String::from(
+                "<div class=\"heine-table-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"",
+            );
+            push_html_attribute(table_scroll_label, &mut wrapper);
+            wrapper.push_str("\">");
+            wrapped.push((Event::Html(wrapper.into()), span.clone()));
+        }
+        if ends_table {
+            wrapped.push((event, span.clone()));
+            wrapped.push((Event::Html("</div>\n".into()), span));
+        } else {
+            wrapped.push((event, span));
+        }
+    }
+
+    wrapped
 }
 
 /// Validates Markdown transformations while a content-file source is still
@@ -473,8 +513,10 @@ pub(crate) fn validate_source_with_links(
     ) {
         return Ok(());
     }
-    render_with_links(input, renderer, assets, pages).map(|_| ()).map_err(|error| {
-        let (kind, label, help, span) = match &error {
+    render_with_links(input, renderer, assets, pages, None)
+        .map(|_| ())
+        .map_err(|error| {
+            let (kind, label, help, span) = match &error {
             RenderError::Math { span, .. } => (
                 "math",
                 "invalid TeX here",
@@ -522,17 +564,21 @@ pub(crate) fn validate_source_with_links(
                 "add one [^label]: definition, or remove this reference".into(),
                 span.clone(),
             ),
-        };
-        Box::new(SourceError {
-            path: display_path.into(),
-            kind,
-            message: error.to_string(),
-            source_code: crate::source_diagnostic::named_source_at_display_path(display_path, input, "Markdown"),
-            span: span.into(),
-            label,
-            help,
+            };
+            Box::new(SourceError {
+                path: display_path.into(),
+                kind,
+                message: error.to_string(),
+                source_code: crate::source_diagnostic::named_source_at_display_path(
+                    display_path,
+                    input,
+                    "Markdown",
+                ),
+                span: span.into(),
+                label,
+                help,
+            })
         })
-    })
 }
 
 /// Markdown only needs an early pass when it can report a problem against the

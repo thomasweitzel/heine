@@ -209,7 +209,7 @@ pub(crate) enum Error {
     MarginFootnotes(#[from] Box<markdown::MarginFootnoteDiagnostic>),
     #[error(transparent)]
     #[diagnostic(transparent)]
-    MarginFootnoteConfiguration(#[from] Box<loader::MarginFootnoteConfigurationDiagnostic>),
+    MarkdownMessageConfiguration(#[from] Box<loader::MarkdownMessageConfigurationDiagnostic>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     Asset(#[from] crate::asset::Error),
@@ -622,6 +622,11 @@ impl Site {
             markdown_renderer
                 .stylesheet_path()
                 .map(|path| base_path.join(&path.url_path())),
+            options
+                .config()
+                .markdown()
+                .tables()
+                .map(|tables| tables.scroll_message().to_owned()),
         );
         let engine =
             TemplateEngine::load(templates, resources, markdown_renderer.clone(), diagnostics)?;

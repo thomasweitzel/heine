@@ -287,11 +287,11 @@ fn margin_footnotes_render_local_checked_note_instances() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+        "[markdown]\nextensions = ['footnotes', 'tables']\n\n[markdown.tables]\nscroll_message = 'table-scroll'\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
     );
     fixture.write(
         "locales/en/site.ftl",
-        "footnote-marker = Footnote { $number }\n",
+        "footnote-marker = Footnote { $number }\ntable-scroll = Scrollable table\n",
     );
     fixture.write(
         "content/en/index.page",
@@ -299,7 +299,7 @@ fn margin_footnotes_render_local_checked_note_instances() {
     );
     fixture.write(
         "content/en/index.md",
-        "## Heine footnote note 1\n\nA locally explained claim.[^one] Another claim.[^two] The first claim again.[^one]\n\n[^one]: Its local explanation.\n\n[^two]: A second explanation.\n",
+        "## Heine footnote note 1\n\n| Term | Meaning |\n| --- | --- |\n| Note | Local |\n\nA locally explained claim.[^one] Another claim.[^two] The first claim again.[^one]\n\n[^one]: Its local explanation.\n\n[^two]: A second explanation.\n",
     );
     fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
 
@@ -325,6 +325,10 @@ fn margin_footnotes_render_local_checked_note_instances() {
     );
     assert!(
         output.contains("<label for=\"__heine-footnote-toggle-2\">2</label>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<div class=\"heine-table-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"Scrollable table\"><table>"),
         "{output}"
     );
     assert!(
@@ -596,19 +600,47 @@ fn source_aware_markdown_reports_every_unrendered_selected_source() {
 }
 
 #[test]
+fn source_aware_markdown_keeps_tables_plain_without_responsive_configuration() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes', 'tables']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "| Term | Meaning |\n| --- | --- |\n| Note | Local |\n\nA claim.[^one]\n\n[^one]: Its local explanation.\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("source-aware Markdown builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<table>"), "{output}");
+    assert!(!output.contains("heine-table-scroll"), "{output}");
+}
+
+#[test]
 fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[markdown]\nextensions = ['tables', 'strikethrough', 'task_lists', 'footnotes']\nmath = 'mathml'\n",
+        "[markdown]\nextensions = ['tables', 'strikethrough', 'task_lists', 'footnotes']\nmath = 'mathml'\n\n[markdown.tables]\nscroll_message = 'table-scroll'\n",
     );
     fixture.write(
         "content/en/index.page",
         "template = 'page.tera'\ncontent.main = 'index.md'\n",
     );
+    fixture.write("locales/en/site.ftl", "table-scroll = Scrollable table\n");
     fixture.write(
         "content/en/index.md",
-        "~~old~~\n\n| Name |\n| --- |\n| Heine |\n\n- [x] **Publish** `site`\n  - [ ] Nested task\n- [ ] <span>Quote \"and\" escape</span>\n- [ ]\n\nA note[^one].\n\n[^one]: Footnote\n\n$x^2$\n\n$$\\frac{1}{2}$$\n",
+        "~~old~~\n\n| Name |\n| --- |\n| Heine |\n\n<table><tr><td>Raw table</td></tr></table>\n\n- [x] **Publish** `site`\n  - [ ] Nested task\n- [ ] <span>Quote \"and\" escape</span>\n- [ ]\n\nA note[^one].\n\n[^one]: Footnote\n\n$x^2$\n\n$$\\frac{1}{2}$$\n",
     );
     fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
 
@@ -616,7 +648,15 @@ fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
     let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
 
     assert!(output.contains("<del>old</del>"), "{output}");
-    assert!(output.contains("<table>"), "{output}");
+    assert!(
+        output.contains("<div class=\"heine-table-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"Scrollable table\"><table>"),
+        "{output}"
+    );
+    assert_eq!(output.matches("heine-table-scroll").count(), 1, "{output}");
+    assert!(
+        output.contains("<table><tr><td>Raw table</td></tr></table>"),
+        "{output}"
+    );
     assert!(
         output.contains("type=\"checkbox\" checked=\"\" aria-label=\"Publish site\""),
         "{output}"

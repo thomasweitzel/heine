@@ -157,7 +157,13 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         entries_by_locale.insert(locale.clone(), entries);
         content_inputs.insert(locale.clone(), locale_inputs);
     }
-    validate_margin_footnote_messages(&pages, markdown, localization, draft_uses_margin_footnotes)?;
+    validate_markdown_messages(
+        &pages,
+        markdown,
+        localization,
+        i18n,
+        draft_uses_margin_footnotes,
+    )?;
     tasks.sort_by(|left, right| {
         left.locale
             .cmp(&right.locale)
@@ -173,6 +179,17 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         shared_root,
         shared_entries,
     })
+}
+
+fn validate_markdown_messages(
+    pages: &BTreeMap<Locale, BTreeMap<PageId, Page>>,
+    markdown: &MarkdownConfig,
+    localization: &Localization,
+    i18n: &I18nConfig,
+    draft_uses_margin_footnotes: bool,
+) -> Result<(), Error> {
+    validate_margin_footnote_messages(pages, markdown, localization, draft_uses_margin_footnotes)?;
+    validate_table_scroll_messages(markdown, localization, i18n)
 }
 
 fn validate_margin_footnote_messages(
@@ -199,8 +216,14 @@ fn validate_margin_footnote_messages(
         })
         .collect::<BTreeMap<_, _>>();
     if effective_locales.is_empty() && !draft_uses_margin_footnotes {
-        return Err(Error::MarginFootnoteConfiguration(Box::new(
-            loader::MarginFootnoteConfigurationDiagnostic::unused(source.clone(), span),
+        return Err(Error::MarkdownMessageConfiguration(Box::new(
+            loader::MarkdownMessageConfigurationDiagnostic::unused(
+                source.clone(),
+                span,
+                "margin-footnote marker-message",
+                "remove [markdown.margin_footnotes], or select margin footnotes for a rendered page"
+                    .into(),
+            ),
         )));
     }
     for (locale, highest_number) in effective_locales {
@@ -216,16 +239,54 @@ fn validate_margin_footnote_messages(
                 Err(message) => Some(message),
             };
             if let Some(message) = problem {
-                return Err(Error::MarginFootnoteConfiguration(Box::new(
-                    loader::MarginFootnoteConfigurationDiagnostic::localization(
+                return Err(Error::MarkdownMessageConfiguration(Box::new(
+                    loader::MarkdownMessageConfigurationDiagnostic::localization(
                         source.clone(),
                         span,
+                        "margin-footnote marker-message",
                         locale,
                         message,
+                        "define a non-empty message that accepts $number".into(),
                         localization.message_origin(locale, config.marker_message()),
                     ),
                 )));
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_table_scroll_messages(
+    markdown: &MarkdownConfig,
+    localization: &Localization,
+    i18n: &I18nConfig,
+) -> Result<(), Error> {
+    let Some(config) = markdown.tables() else {
+        return Ok(());
+    };
+    let Some((source, span)) = config.scroll_message_origin() else {
+        return Ok(());
+    };
+    for locale in i18n.locales() {
+        let formatted =
+            localization.format(locale, config.scroll_message(), None, &Arguments::new());
+        let problem = match formatted {
+            Ok(value) if value.trim().is_empty() => Some("message formats to empty text".into()),
+            Ok(_) => None,
+            Err(message) => Some(message),
+        };
+        if let Some(message) = problem {
+            return Err(Error::MarkdownMessageConfiguration(Box::new(
+                loader::MarkdownMessageConfigurationDiagnostic::localization(
+                    source.clone(),
+                    span,
+                    "table-scroll message",
+                    locale,
+                    message,
+                    "define a non-empty message".into(),
+                    localization.message_origin(locale, config.scroll_message()),
+                ),
+            )));
         }
     }
     Ok(())
