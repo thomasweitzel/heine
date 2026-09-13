@@ -130,7 +130,11 @@ fn sitemap_boundary_reports_a_page_attempting_to_reverse_it() {
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("override is rejected");
     let rendered = format!("{error:?}");
-    assert!(rendered.contains("cannot override an excluded directory"));
+    assert!(
+        error
+            .to_string()
+            .contains("cannot override an excluded directory")
+    );
     assert!(rendered.contains("preview.page"));
     assert!(rendered.contains("_directory.toml"));
     assert!(rendered.contains("recursive sitemap boundary"));

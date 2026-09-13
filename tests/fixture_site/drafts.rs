@@ -74,7 +74,9 @@ fn excluded_non_rendered_drafts_do_not_promise_preview_output() {
         .expect_err("published pages cannot resolve an excluded draft");
     let report = format!("{error:?}");
     assert!(
-        report.contains("ordinary builds cannot link to drafts"),
+        error
+            .to_string()
+            .contains("ordinary builds cannot link to drafts"),
         "{report}"
     );
 

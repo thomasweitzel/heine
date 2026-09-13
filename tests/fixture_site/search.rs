@@ -149,7 +149,9 @@ fn search_configuration_and_template_calls_are_checked() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("found; available search indexes: site"),
+        error
+            .to_string()
+            .contains("found; available search indexes: site"),
         "{diagnostic}"
     );
     assert!(

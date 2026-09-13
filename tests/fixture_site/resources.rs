@@ -715,7 +715,9 @@ fn sibling_neighbors_report_non_participating_pages_at_the_call_site() {
     let diagnostic = format!("{error:?}");
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(
-        diagnostic.contains("does not participate in sibling ordering"),
+        error
+            .to_string()
+            .contains("does not participate in sibling ordering"),
         "{diagnostic}"
     );
 }

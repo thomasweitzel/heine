@@ -85,7 +85,9 @@ fn reports_the_page_location_for_invalid_toml() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("invalid TOML in content definition"),
+        error
+            .to_string()
+            .contains("invalid TOML in content definition"),
         "{diagnostic}"
     );
 }

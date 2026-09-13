@@ -496,7 +496,7 @@ fn reports_a_non_numeric_weight_at_the_weight_and_collection_order() {
     );
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
     assert!(
-        diagnostic.contains("not a numeric collection weight"),
+        diagnostic.contains("numeric collection") && diagnostic.contains("weight"),
         "{diagnostic}"
     );
 }

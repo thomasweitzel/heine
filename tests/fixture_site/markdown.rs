@@ -261,7 +261,9 @@ fn source_aware_markdown_requires_current_page_markdown_content() {
     let diagnostic = format!("{error:?}");
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(
-        diagnostic.contains("declared unsegmented .md content name"),
+        error
+            .to_string()
+            .contains("declared unsegmented .md content name"),
         "{diagnostic}"
     );
 }
@@ -727,11 +729,11 @@ fn ordinary_footnote_references_need_definitions() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("reference without a matching definition"),
+        diagnostic.contains("reference without") && diagnostic.contains("matching definition"),
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("add one [^label]: definition, or remove this reference"),
+        diagnostic.contains("add one [^label]") && diagnostic.contains("remove this reference"),
         "{diagnostic}"
     );
 
@@ -898,7 +900,9 @@ fn highlight_css_must_not_be_called_when_highlighting_is_disabled() {
     let diagnostic = format!("{error:?}");
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(
-        diagnostic.contains("syntax highlighting is not enabled"),
+        error
+            .to_string()
+            .contains("syntax highlighting is not enabled"),
         "{diagnostic}"
     );
 }

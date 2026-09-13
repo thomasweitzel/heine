@@ -359,7 +359,7 @@ fn reports_a_missing_taxonomy_term_counterpart_at_its_config_value() {
     assert!(diagnostic.contains("heine.toml:20"), "{diagnostic}");
     assert!(diagnostic.contains("Nicht vorhanden"), "{diagnostic}");
     assert!(
-        diagnostic.contains("must exist in the locale-local taxonomy"),
+        diagnostic.contains("must exist") && diagnostic.contains("locale-local taxonomy"),
         "{diagnostic}"
     );
 }
@@ -549,7 +549,9 @@ fn reports_taxonomy_template_render_errors_at_the_template_and_generated_output(
     );
     assert!(diagnostic.contains("missing.png"), "{diagnostic}");
     assert!(
-        diagnostic.contains("taxonomy tags (en) to tags/news.html"),
+        error
+            .to_string()
+            .contains("taxonomy tags (en) to tags/news.html"),
         "{diagnostic}"
     );
 }

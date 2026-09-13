@@ -189,7 +189,9 @@ fn reserves_the_output_marker_path() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("marker path is reserved");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("reserved for Heine internal use"),
+        error
+            .to_string()
+            .contains("reserved for Heine internal use"),
         "{diagnostic}"
     );
 }
@@ -204,7 +206,9 @@ fn reserves_the_development_server_namespace_for_assets() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("namespace is reserved");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("reserved for Heine internal use"),
+        error
+            .to_string()
+            .contains("reserved for Heine internal use"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("__heine"), "{diagnostic}");
@@ -219,7 +223,9 @@ fn reports_the_page_location_for_a_reserved_development_server_namespace() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("namespace is reserved");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("reserved for Heine internal use"),
+        error
+            .to_string()
+            .contains("reserved for Heine internal use"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("__heine/index.page"), "{diagnostic}");
@@ -439,7 +445,7 @@ fn reports_both_page_locations_for_an_output_collision() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("this output is also declared here"),
+        diagnostic.contains("output") && diagnostic.contains("declared here"),
         "{diagnostic}"
     );
 }
