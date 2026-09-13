@@ -366,7 +366,9 @@ fn template_errors_name_the_generated_pager_being_rendered() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("pagination page 2 of listing blog/index (en)"),
+        error
+            .to_string()
+            .contains("pagination page 2 of listing blog/index (en)"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("page/2.html"), "{diagnostic}");

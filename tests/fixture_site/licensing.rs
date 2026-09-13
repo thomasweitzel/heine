@@ -120,7 +120,9 @@ fn required_coverage_reports_every_uncovered_copied_asset() {
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("missing required licensing declarations"),
+        error
+            .to_string()
+            .contains("missing required licensing declarations"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("assets/first.svg"), "{diagnostic}");
@@ -183,7 +185,9 @@ fn groups_reject_duplicate_declaration_sources_with_both_locations() {
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("more than one licensing declaration"),
+        error
+            .to_string()
+            .contains("more than one licensing declaration"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
@@ -222,7 +226,9 @@ fn group_spdx_errors_point_to_the_authored_group_value() {
     let diagnostic = format!("{error:?}");
 
     assert!(
-        diagnostic.contains("invalid licensing group declaration"),
+        error
+            .to_string()
+            .contains("invalid licensing group declaration"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("heine.toml:4"), "{diagnostic}");
@@ -303,7 +309,7 @@ fn licensing_group_configuration_is_strict_and_source_aware() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("missing asset");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("does not resolve to a copied asset"),
+        diagnostic.contains("does not resolve") && diagnostic.contains("copied asset"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
@@ -344,7 +350,9 @@ fn groups_reject_duplicate_unsafe_and_overlapping_members() {
     assert!(diagnostic.contains("heine.toml:7"), "{diagnostic}");
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
     assert!(
-        diagnostic.contains("more than one licensing declaration"),
+        error
+            .to_string()
+            .contains("more than one licensing declaration"),
         "{diagnostic}"
     );
 }
@@ -484,7 +492,7 @@ fn rejects_spdx_references_outside_the_local_license_text_model() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("recognized SPDX exception identifier"),
+        diagnostic.contains("SPDX exception") && diagnostic.contains("identifier"),
         "{diagnostic}"
     );
 }

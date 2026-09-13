@@ -8,6 +8,13 @@ This brief section is not a substitute for his writing. Its headings make the
 background material easier to navigate without requiring a second navigation
 system.
 
+:::picture
+alt = "Portrait of Heinrich Heine"
+light = "asset:assets/images/heine-light.jpg"
+dark = "asset:assets/images/heine-dark.jpg"
+caption = "Heinrich Heine in light and dark forms."
+:::
+
 ## Read on
 
 - [Life and exile](page:heine/life/index) considers the places that shaped his

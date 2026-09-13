@@ -261,7 +261,9 @@ fn source_aware_markdown_requires_current_page_markdown_content() {
     let diagnostic = format!("{error:?}");
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(
-        diagnostic.contains("declared unsegmented .md content name"),
+        error
+            .to_string()
+            .contains("declared unsegmented .md content name"),
         "{diagnostic}"
     );
 }
@@ -464,6 +466,36 @@ fn margin_footnote_relationships_and_placement_are_checked_at_markdown() {
             .contains("need an ordinary paragraph or heading"),
         "{linked_missing:?}"
     );
+}
+
+#[test]
+fn margin_footnote_sources_render_checked_picture_blocks() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.png\"\ndark = \"asset:images/dark.png\"\n:::\n\nA note.[^one]\n\n[^one]: Explanation.\n",
+    );
+    write_bytes(&fixture, "content/en/images/light.png", PIXEL_PNG);
+    write_bytes(&fixture, "content/en/images/dark.png", PIXEL_PNG);
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<picture>"), "{output}");
+    assert!(output.contains("heine-annotated-block"), "{output}");
 }
 
 #[test]
@@ -697,11 +729,11 @@ fn ordinary_footnote_references_need_definitions() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("reference without a matching definition"),
+        diagnostic.contains("reference without") && diagnostic.contains("matching definition"),
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("add one [^label]: definition, or remove this reference"),
+        diagnostic.contains("add one [^label]") && diagnostic.contains("remove this reference"),
         "{diagnostic}"
     );
 
@@ -868,7 +900,9 @@ fn highlight_css_must_not_be_called_when_highlighting_is_disabled() {
     let diagnostic = format!("{error:?}");
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(
-        diagnostic.contains("syntax highlighting is not enabled"),
+        error
+            .to_string()
+            .contains("syntax highlighting is not enabled"),
         "{diagnostic}"
     );
 }

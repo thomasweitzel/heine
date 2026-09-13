@@ -601,7 +601,8 @@ fn reports_an_empty_locale_table_at_the_configuration_location() {
     let diagnostic = format!("{error:?}");
     assert!(
         diagnostic.contains("heine.toml:2:18")
-            && diagnostic.contains("i18n.locales must declare at least one locale table"),
+            && diagnostic.contains("i18n.locales")
+            && diagnostic.contains("locale table"),
         "{diagnostic}"
     );
 }

@@ -292,7 +292,7 @@ impl AssetCatalog {
                 .map_or(modified, |latest| latest.max(modified)),
         );
         process_versioned(locale, &id, &mut self.versions);
-        let dimensions = is_image(id.as_path())
+        let dimensions = is_decodable_image(id.as_path())
             .then(|| {
                 image::ImageReader::open(source)
                     .ok()?
@@ -532,6 +532,7 @@ pub(crate) struct AssetLink {
     url: String,
     integrity: Option<String>,
     dimensions: Option<(u32, u32)>,
+    image: bool,
     licensing: Option<Arc<AssetLicensing>>,
 }
 
@@ -582,6 +583,7 @@ impl AssetLinks {
             url: self.base_path.join(&asset.output.url_path()),
             integrity: self.integrities.get(&asset.output).cloned(),
             dimensions: self.catalog.dimensions(&asset.output),
+            image: is_image_media(asset.output.as_path()),
             licensing: self.catalog.licensing(&asset.output).cloned(),
             path: asset.output,
         })
@@ -642,6 +644,9 @@ impl AssetLink {
     pub(crate) fn dimensions(&self) -> Option<(u32, u32)> {
         self.dimensions
     }
+    pub(crate) fn is_image(&self) -> bool {
+        self.image
+    }
     pub(crate) fn licensing_view(
         &self,
         root: &str,
@@ -693,7 +698,7 @@ fn relative_path(root: &Path, path: &Path) -> Result<PathBuf, Error> {
     })
 }
 
-fn is_image(path: &Path) -> bool {
+fn is_decodable_image(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
@@ -702,6 +707,12 @@ fn is_image(path: &Path) -> bool {
                 "jpeg" | "jpg" | "webp" | "png" | "gif"
             )
         })
+}
+
+fn is_image_media(path: &Path) -> bool {
+    mime_guess::from_path(path)
+        .first_raw()
+        .is_some_and(|mime| mime.starts_with("image/"))
 }
 
 fn process_versioned(

@@ -29,6 +29,7 @@ use crate::{
 
 mod highlighting;
 pub(crate) mod margin_footnotes;
+mod picture;
 mod search_text;
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
@@ -358,6 +359,8 @@ pub(super) enum RenderError {
     Footnote { label: String, span: Range<usize> },
     #[error("could not render margin footnotes: {message}")]
     MarginFootnote { message: String, span: Range<usize> },
+    #[error("{0}")]
+    Picture(#[from] picture::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -430,9 +433,13 @@ pub(crate) fn render_with_links_anchors(
         assets,
         pages,
     };
+    let events = Parser::new_ext(input, options(renderer.config()))
+        .into_offset_iter()
+        .collect();
+    let events = picture::transform(input, events, assets)?;
     let mut footnote_definition_depth = 0usize;
-    let mut events = Vec::new();
-    for (event, span) in Parser::new_ext(input, options(renderer.config())).into_offset_iter() {
+    let mut transformed_events = Vec::with_capacity(events.len());
+    for (event, span) in events {
         let transformed = transform_event(
             (event.clone(), span.clone()),
             links,
@@ -446,9 +453,9 @@ pub(crate) fn render_with_links_anchors(
             Event::End(TagEnd::FootnoteDefinition) => footnote_definition_depth -= 1,
             _ => {}
         }
-        events.push((transformed, span));
+        transformed_events.push((transformed, span));
     }
-    let events = highlight_code_blocks(events, renderer.highlighter.as_deref())?;
+    let events = highlight_code_blocks(transformed_events, renderer.highlighter.as_deref())?;
     let events = match table_scroll_label {
         Some(label) => wrap_tables(events, label),
         None => events,
@@ -564,6 +571,12 @@ pub(crate) fn validate_source_with_links(
                 "add one [^label]: definition, or remove this reference".into(),
                 span.clone(),
             ),
+            RenderError::Picture(error) => (
+                "picture",
+                error.label(),
+                error.help().into(),
+                error.span(),
+            ),
             };
             Box::new(SourceError {
                 path: display_path.into(),
@@ -603,7 +616,21 @@ fn unresolved_footnote_reference(
     }
     let mut scanner = UnresolvedFootnoteReferenceScanner::default();
     let mut in_code_block = false;
+    let mut picture_paragraph_depth = 0usize;
     for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
+        if picture_paragraph_depth > 0 {
+            if matches!(event, Event::End(TagEnd::Paragraph)) {
+                picture_paragraph_depth -= 1;
+            }
+            continue;
+        }
+        if matches!(event, Event::Start(Tag::Paragraph))
+            && picture::starts_directive(&input[span.clone()])
+        {
+            picture_paragraph_depth += 1;
+            scanner.clear();
+            continue;
+        }
         match event {
             Event::Start(Tag::CodeBlock(_)) => {
                 scanner.clear();
@@ -916,6 +943,17 @@ fn task_list_marker(checked: bool, label: Option<&str>) -> String {
     output
 }
 
+pub(super) fn push_html_text(value: &str, output: &mut String) {
+    for character in value.chars() {
+        match character {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            _ => output.push(character),
+        }
+    }
+}
+
 fn push_html_attribute(value: &str, output: &mut String) {
     for character in value.chars() {
         match character {
@@ -1061,6 +1099,20 @@ mod tests {
         let rendered = render("$_emphasis_$", &renderer, None).unwrap();
 
         assert_eq!(rendered, "<p>$<em>emphasis</em>$</p>\n");
+    }
+
+    #[test]
+    fn fenced_picture_examples_remain_literal_markdown() {
+        let renderer = Renderer::new(MarkdownConfig::default()).unwrap();
+        let rendered = render(
+            "```markdown\n:::picture\nlight = \"asset:images/light.png\"\n:::\n```\n",
+            &renderer,
+            None,
+        )
+        .unwrap();
+
+        assert!(rendered.contains(":::picture"), "{rendered}");
+        assert!(rendered.contains("asset:images/light.png"), "{rendered}");
     }
 
     #[test]

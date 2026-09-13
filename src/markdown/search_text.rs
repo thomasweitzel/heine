@@ -39,7 +39,25 @@ pub(crate) fn search_sections(
     let mut section = SectionBuilder::default();
     let mut fragments = fragments.unwrap_or_default().iter();
     let mut footnote_definition_depth = 0usize;
-    for event in Parser::new_ext(input, options(config)) {
+    let mut picture_paragraph = None;
+    for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
+        if let Some(picture_span) = picture_paragraph.take() {
+            if matches!(event, Event::End(TagEnd::Paragraph)) {
+                if let Some(text) = super::picture::search_text(&input[picture_span]) {
+                    append_text(&mut section.text, &text);
+                    append_boundary(&mut section.text);
+                }
+            } else {
+                picture_paragraph = Some(picture_span);
+            }
+            continue;
+        }
+        if matches!(event, Event::Start(Tag::Paragraph))
+            && super::picture::starts_directive(&input[span.clone()])
+        {
+            picture_paragraph = Some(span);
+            continue;
+        }
         match event {
             Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
             Event::End(TagEnd::FootnoteDefinition) => {
@@ -271,6 +289,24 @@ mod tests {
         assert!(text.contains("نص عربي"), "{text}");
         assert!(!text.contains("not searchable"), "{text}");
         assert!(!text.contains("https://example.org"), "{text}");
+    }
+
+    #[test]
+    fn picture_blocks_contribute_their_alternative_text_and_caption() {
+        let source = "Before.\n\n:::picture\nalt = \"Heine portrait\"\nlight = \"asset:images/light.png\"\ndark = \"asset:images/dark.png\"\ncaption = \"A portrait in two color schemes\"\n:::\n\nAfter.\n\n```markdown\n:::picture\nlight = \"literal example\"\n:::\n```\n";
+        let sections = search_sections(source, &MarkdownConfig::default(), None);
+        let text = sections
+            .iter()
+            .map(|section| section.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        assert!(text.contains("Before."), "{text}");
+        assert!(text.contains("Heine portrait"), "{text}");
+        assert!(text.contains("A portrait in two color schemes"), "{text}");
+        assert!(text.contains("After."), "{text}");
+        assert!(!text.contains("asset:images/light.png"), "{text}");
+        assert!(text.contains("literal example"), "{text}");
     }
 
     #[test]

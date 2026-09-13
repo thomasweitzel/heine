@@ -80,6 +80,11 @@ Renderer requests use one `render` concept with forms appropriate to Markdown's
 two structural contexts. They do not reuse Tera syntax and do not change the
 meaning of ordinary fenced code blocks.
 
+`render` is a distinct adapter request role, not a catch-all directive
+registry. A built-in Markdown construct with its own checked contract, such as
+the native `:::picture` color-scheme image block, remains owned by Heine and
+does not select an adapter.
+
 ### Inline role
 
 An inline request has a header and a body delimited by one or more backticks:

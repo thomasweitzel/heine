@@ -508,10 +508,35 @@ a:focus-visible {
 
 .featured-image img {
     display: block;
-    max-width: 100%;
-    height: auto;
+    max-inline-size: 100%;
+    block-size: auto;
     margin: var(--spacing-m) auto;
     border-radius: var(--image-border-radius);
+}
+
+.prose picture {
+    display: block;
+    margin: var(--spacing-m) auto;
+}
+
+.prose picture img {
+    margin-inline: auto;
+    border-radius: var(--image-border-radius);
+}
+
+.prose figure {
+    margin: var(--spacing-m) auto;
+}
+
+.prose figure picture {
+    margin: 0 auto;
+}
+
+.prose figcaption {
+    margin-top: var(--spacing-s);
+    color: var(--muted-fg);
+    font-size: 0.9rem;
+    text-align: center;
 }
 
 .guide-article > h1 {

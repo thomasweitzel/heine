@@ -90,6 +90,194 @@ fn asset_helper_exposes_detected_image_dimensions() {
 }
 
 #[test]
+fn markdown_pictures_resolve_both_color_scheme_assets_and_dimensions() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"A & B\"\nlight = \"asset:images/light.PNG\"\ndark = \"asset:images/dark.PNG\"\nwidth = 24\n:::\n",
+    );
+    write_bytes(&fixture, "content/en/images/light.PNG", PIXEL_PNG);
+    write_bytes(&fixture, "content/en/images/dark.PNG", PIXEL_PNG);
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("output"),
+        "<picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"/images/dark.PNG\"><img src=\"/images/light.PNG\" width=\"24\" height=\"24\" alt=\"A &amp; B\"></picture>\n"
+    );
+}
+
+#[test]
+fn markdown_picture_captions_render_a_native_figure_and_are_escaped() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.PNG\"\ndark = \"asset:images/dark.PNG\"\ncaption = \"Heine & <friends>\\\"\"\n:::\n",
+    );
+    write_bytes(&fixture, "content/en/images/light.PNG", PIXEL_PNG);
+    write_bytes(&fixture, "content/en/images/dark.PNG", PIXEL_PNG);
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("output"),
+        "<figure>\n<picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"/images/dark.PNG\"><img src=\"/images/light.PNG\" width=\"1\" height=\"1\" alt=\"A portrait\"></picture>\n<figcaption>Heine &amp; &lt;friends&gt;\"</figcaption>\n</figure>\n"
+    );
+}
+
+#[test]
+fn markdown_picture_captions_are_nonempty_plain_text() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.PNG\"\ndark = \"asset:images/dark.PNG\"\ncaption = \"  \"\n:::\n",
+    );
+    write_bytes(&fixture, "content/en/images/light.PNG", PIXEL_PNG);
+    write_bytes(&fixture, "content/en/images/dark.PNG", PIXEL_PNG);
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("build fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("empty caption"), "{diagnostic}");
+    assert!(diagnostic.contains("caption = \"  \""), "{diagnostic}");
+}
+
+#[test]
+fn markdown_picture_fields_are_not_interpreted_as_markdown() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.PNG\"\ndark = \"asset:images/dark.PNG\"\ncaption = \"See [an absent page](page:missing)\"\n:::\n",
+    );
+    write_bytes(&fixture, "content/en/images/light.PNG", PIXEL_PNG);
+    write_bytes(&fixture, "content/en/images/dark.PNG", PIXEL_PNG);
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<figcaption>See [an absent page](page:missing)</figcaption>"),
+        "{output}"
+    );
+}
+
+#[test]
+fn markdown_pictures_require_checked_assets_at_the_authored_source() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"Missing\"\nlight = \"https://example.org/light.png\"\ndark = \"asset:images/dark.PNG\"\n:::\n",
+    );
+    write_bytes(&fixture, "content/en/images/dark.PNG", PIXEL_PNG);
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("build fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("unchecked picture source"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("light = \"https://example.org/light.png\""),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn markdown_pictures_reject_non_image_assets() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"Not an image\"\nlight = \"asset:notes.txt\"\ndark = \"asset:images/dark.PNG\"\n:::\n",
+    );
+    fixture.write("content/en/notes.txt", "ordinary text");
+    write_bytes(&fixture, "content/en/images/dark.PNG", PIXEL_PNG);
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("build fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("non-image picture source"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn markdown_pictures_omit_automatic_dimensions_when_one_source_is_unknown() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.PNG\"\ndark = \"asset:images/dark.svg\"\n:::\n",
+    );
+    write_bytes(&fixture, "content/en/images/light.PNG", PIXEL_PNG);
+    fixture.write(
+        "content/en/images/dark.svg",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+    );
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(!output.contains(" width="), "{output}");
+    assert!(!output.contains(" height="), "{output}");
+}
+
+#[test]
+fn markdown_pictures_reject_known_aspect_ratio_mismatches() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.png\"\ndark = \"asset:images/dark.png\"\n:::\n",
+    );
+    write_bytes(&fixture, "content/en/images/light.png", &png(2, 1));
+    write_bytes(&fixture, "content/en/images/dark.png", &png(1, 2));
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("build fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("dark image ratio differs here"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn resource_urls_encode_literal_source_filenames_once() {
     let fixture = Fixture::new();
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
@@ -527,7 +715,9 @@ fn sibling_neighbors_report_non_participating_pages_at_the_call_site() {
     let diagnostic = format!("{error:?}");
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(
-        diagnostic.contains("does not participate in sibling ordering"),
+        error
+            .to_string()
+            .contains("does not participate in sibling ordering"),
         "{diagnostic}"
     );
 }

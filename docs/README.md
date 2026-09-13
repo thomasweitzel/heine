@@ -45,6 +45,8 @@ required prerequisite for the guides.
   navigation.
 - [Margin footnotes](margin-footnotes.md): checked local presentation of
   ordinary Markdown footnotes.
+- [Color-scheme Markdown pictures](markdown-pictures.md): checked light and
+  dark variants of one authored image.
 - [Series](series.md): checked page-local ordered reading sequences.
 
 ## Reference material

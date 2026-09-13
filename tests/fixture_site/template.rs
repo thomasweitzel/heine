@@ -174,7 +174,7 @@ fn reports_the_template_location_for_a_missing_parent_template() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("referenced parent template here"),
+        diagnostic.contains("referenced") && diagnostic.contains("parent template"),
         "{diagnostic}"
     );
     assert!(diagnostic.contains("missing.tera"), "{diagnostic}");

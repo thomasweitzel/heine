@@ -90,7 +90,9 @@ fn rejects_deployment_files_that_claim_reserved_output_paths() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("reserved path");
     let diagnostic = format!("{error:?}");
     assert!(
-        diagnostic.contains("reserved for Heine internal use"),
+        error
+            .to_string()
+            .contains("reserved for Heine internal use"),
         "{diagnostic}"
     );
     assert!(
