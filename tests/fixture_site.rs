@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::Cursor,
     time::{Duration, SystemTime},
 };
 
@@ -20,6 +21,14 @@ fn write_bytes(fixture: &Fixture, relative: &str, contents: &[u8]) {
     fs::create_dir_all(path.parent().expect("fixture file has a parent"))
         .expect("fixture parent directory");
     fs::write(path, contents).expect("fixture file");
+}
+
+fn png(width: u32, height: u32) -> Vec<u8> {
+    let mut output = Cursor::new(Vec::new());
+    image::DynamicImage::new_rgba8(width, height)
+        .write_to(&mut output, image::ImageFormat::Png)
+        .expect("test image encodes");
+    output.into_inner()
 }
 
 #[path = "fixture_site/content.rs"]

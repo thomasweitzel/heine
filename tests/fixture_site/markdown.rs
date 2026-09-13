@@ -467,6 +467,36 @@ fn margin_footnote_relationships_and_placement_are_checked_at_markdown() {
 }
 
 #[test]
+fn margin_footnote_sources_render_checked_picture_blocks() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    fixture.write(
+        "content/en/index.md",
+        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.png\"\ndark = \"asset:images/dark.png\"\n:::\n\nA note.[^one]\n\n[^one]: Explanation.\n",
+    );
+    write_bytes(&fixture, "content/en/images/light.png", PIXEL_PNG);
+    write_bytes(&fixture, "content/en/images/dark.png", PIXEL_PNG);
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<picture>"), "{output}");
+    assert!(output.contains("heine-annotated-block"), "{output}");
+}
+
+#[test]
 fn margin_footnote_defaults_and_marker_configuration_are_checked() {
     let fixture = Fixture::new();
     fixture.write(

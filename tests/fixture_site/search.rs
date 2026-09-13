@@ -23,8 +23,10 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     );
     fixture.write(
         "content/en/post.md",
-        "# Post heading\n\nA [link label](https://example.org) and `code`.\n\n<blockquote lang=\"ar\" dir=\"rtl\"><p>نص عربي</p></blockquote>\n",
+        "# Post heading\n\nA [link label](https://example.org) and `code`.\n\n:::picture\nalt = \"Searchable portrait\"\nlight = \"asset:images/light.png\"\ndark = \"asset:images/dark.png\"\ncaption = \"Searchable image context\"\n:::\n\n<blockquote lang=\"ar\" dir=\"rtl\"><p>نص عربي</p></blockquote>\n",
     );
+    write_bytes(&fixture, "content/en/images/light.png", PIXEL_PNG);
+    write_bytes(&fixture, "content/en/images/dark.png", PIXEL_PNG);
     fixture.write("content/en/notes.md", "# Unanchored note\n\nExtra text.\n");
     fixture.write(
         "content/en/docs.page",
@@ -65,6 +67,9 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     assert_eq!(json["documents"].as_array().expect("documents").len(), 2);
     assert!(english.contains("Post heading"), "{english}");
     assert!(english.contains("link label"), "{english}");
+    assert!(english.contains("Searchable portrait"), "{english}");
+    assert!(english.contains("Searchable image context"), "{english}");
+    assert!(!english.contains("asset:images/light.png"), "{english}");
     assert!(english.contains("نص عربي"), "{english}");
     assert!(english.contains("/guide/post.html"), "{english}");
     let post = json["documents"]

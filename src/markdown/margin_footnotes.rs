@@ -17,7 +17,7 @@ use thiserror::Error;
 use super::{
     GENERATED_FOOTNOTE_ID_PREFIX, RenderError, Renderer, TransformLinks,
     UnresolvedFootnoteReferenceScanner, highlight_code_blocks, is_escaped_markdown_character,
-    options, push_html_attribute, task_labels, transform_event, wrap_tables,
+    options, picture, push_html_attribute, task_labels, transform_event, wrap_tables,
 };
 use crate::{asset::AssetLinks, config::MarkdownConfig, site::PageLinks};
 
@@ -144,8 +144,22 @@ fn plan_inner(
     let mut prohibited_depth = 0usize;
     let mut definition_depth = 0usize;
     let mut unresolved = UnresolvedFootnoteReferenceScanner::default();
+    let mut picture_paragraph_depth = 0usize;
 
     for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
+        if picture_paragraph_depth > 0 {
+            if matches!(event, Event::End(TagEnd::Paragraph)) {
+                picture_paragraph_depth -= 1;
+            }
+            continue;
+        }
+        if matches!(event, Event::Start(Tag::Paragraph))
+            && picture::starts_directive(&input[span.clone()])
+        {
+            picture_paragraph_depth += 1;
+            unresolved.clear();
+            continue;
+        }
         match event {
             Event::Start(Tag::FootnoteDefinition(label)) => {
                 let label = label.into_string();
@@ -389,11 +403,13 @@ pub(crate) fn render(
         assets: context.assets,
         pages: context.pages,
     };
+    let events = Parser::new_ext(input, options(context.renderer.config()))
+        .into_offset_iter()
+        .collect();
+    let events = picture::transform(input, events, context.assets)?;
     let mut in_definition = 0usize;
-    let mut events = Vec::new();
-    for (event, span) in
-        Parser::new_ext(input, options(context.renderer.config())).into_offset_iter()
-    {
+    let mut transformed_events = Vec::with_capacity(events.len());
+    for (event, span) in events {
         let anchors_enabled = in_definition == 0;
         let transformed = transform_event(
             (event.clone(), span.clone()),
@@ -408,9 +424,10 @@ pub(crate) fn render(
             Event::End(TagEnd::FootnoteDefinition) => in_definition -= 1,
             _ => {}
         }
-        events.push((transformed, span));
+        transformed_events.push((transformed, span));
     }
-    let events = highlight_code_blocks(events, context.renderer.highlighter.as_deref())?;
+    let events =
+        highlight_code_blocks(transformed_events, context.renderer.highlighter.as_deref())?;
     let events = match context.table_scroll_label {
         Some(label) => wrap_tables(events, label),
         None => events,

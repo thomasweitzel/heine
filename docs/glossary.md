@@ -130,6 +130,14 @@ A regular file below `content/` that is neither a `.page` file nor a file
 declared by a page's `[content]` table. Heine copies it to its corresponding
 generated output path. Templates use `asset()` to link to one safely.
 
+### Color-scheme picture
+
+A standalone Markdown `:::picture` block that names checked light and dark
+variants of one image, plus its alternative text and, when needed, a plain-text
+caption. Heine emits a native HTML `picture`, or a `figure` with `figcaption`;
+the browser selects its dark source from
+`prefers-color-scheme: dark`. See [color-scheme Markdown pictures](markdown-pictures.md).
+
 ### Declared content file
 
 A file named by a page's `[content]` table. Heine reads it as page content but

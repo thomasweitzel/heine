@@ -33,6 +33,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Color-scheme Markdown pictures.** A standalone `:::picture` block now
+  connects checked light and dark copied assets to one native HTML `picture`,
+  with an optional semantic `figure` caption. It keeps Markdown documentation
+  and prose independent of template markup while preserving source-spanned
+  asset diagnostics, intrinsic layout dimensions, and source-level search text.
+
 - **Semantic responsive Markdown tables.** Sites can opt into localized,
   labelled `heine-table-scroll` regions for parsed Markdown tables, allowing
   site CSS to provide keyboard-accessible narrow-screen horizontal scrolling

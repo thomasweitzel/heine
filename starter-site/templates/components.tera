@@ -40,13 +40,6 @@
   </li>
 {% endcomponent ui.page_list_item %}
 
-{% component ui.color_scheme_image(light, dark, alt: string) %}
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="{{ dark.url }}">
-    <img src="{{ light.url }}"{% if light.width %} width="{{ light.width }}" height="{{ light.height }}"{% endif %} alt="{{ alt }}">
-  </picture>
-{% endcomponent ui.color_scheme_image %}
-
 {% component ui.arrow(direction: string) %}
   <svg class="navigation-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     {% if direction == "up" %}

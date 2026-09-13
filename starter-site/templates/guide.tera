@@ -4,13 +4,6 @@
 <article class="guide-article">
   <h1>{{ <ui.page_title draft={page.draft} label={t(id="draft-marker")} title={page.title} /> }}</h1>
   {% include "table-of-contents.tera" %}
-  {% if page.extra.color_scheme_image %}
-    {% set light = asset(id=page.extra.color_scheme_image.light) %}
-    {% set dark = asset(id=page.extra.color_scheme_image.dark) %}
-    <figure class="featured-image">
-      {{ <ui.color_scheme_image light={light} dark={dark} alt={page.extra.color_scheme_image.alt} /> }}
-    </figure>
-  {% endif %}
   <div class="prose">
     {{ markdown(content="main") }}
   </div>

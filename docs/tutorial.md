@@ -635,6 +635,11 @@ When ordinary Markdown footnotes should stay beside the prose they qualify,
 the [margin-footnotes guide](margin-footnotes.md) shows the page-owned,
 CSS-controlled presentation and its checked source relationship.
 
+When one image needs light and dark visual variants, use a native Markdown
+`picture` block rather than template markup. The
+[color-scheme picture guide](markdown-pictures.md) shows the checked copied
+asset relationship and native browser selection.
+
 To see highlighting, replace `content/en/blog/second.md` with:
 
 ````markdown
