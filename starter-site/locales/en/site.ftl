@@ -17,11 +17,28 @@ series-label = Series
 series-position = Part { $number } of { $total }
 series-listing-description = Read the { $series } Series in order.
 
-# Labels for post publication facts.
+# Labels for post metadata.
 draft-marker = DRAFT
 post-published = Published
-post-byline = By { $authors }
+post-byline = By
 post-updated = Updated
+post-dates = Publication dates
+post-reading-facts = Word count and reading time
+word-count = { $words ->
+   [one] One word
+  *[other] { $words } words
+}
+reading-time = about { $minutes ->
+   [one] one minute
+  *[other] { $minutes } minutes
+} read
+reading-facts = { $words ->
+   [one] One word
+  *[other] { $words } words
+} · about { $minutes ->
+   [one] one minute
+  *[other] { $minutes } minutes
+} read
 
 # Labels for page-local navigation and margin-footnote controls.
 toc-label = Table of contents

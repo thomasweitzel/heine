@@ -4,6 +4,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs, io,
+    num::NonZeroU64,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -39,6 +40,7 @@ pub(crate) struct SiteConfig {
     assets: AssetConfig,
     licensing: LicensingConfig,
     markdown: MarkdownConfig,
+    reading_time: ReadingTimeConfig,
     i18n: I18nConfig,
     collections: CollectionsConfig,
     taxonomies: TaxonomiesConfig,
@@ -107,6 +109,10 @@ impl SiteConfig {
 
     pub(crate) fn i18n(&self) -> &I18nConfig {
         &self.i18n
+    }
+
+    pub(crate) fn reading_time(&self) -> &ReadingTimeConfig {
+        &self.reading_time
     }
 
     pub(crate) fn collections(&self) -> &CollectionsConfig {
@@ -642,6 +648,19 @@ pub(crate) struct I18nConfig {
     locales: BTreeMap<Locale, LocaleSettings>,
 }
 
+/// Site-owned estimate policy. It is deliberately separate from locale
+/// identity, because a reading rate is not an intrinsic property of a locale.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ReadingTimeConfig {
+    words_per_minute: BTreeMap<Locale, NonZeroU64>,
+}
+
+impl ReadingTimeConfig {
+    pub(crate) fn words_per_minute(&self, locale: &Locale) -> Option<NonZeroU64> {
+        self.words_per_minute.get(locale).copied()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct LocaleSettings {
     direction: TextDirection,
@@ -975,6 +994,7 @@ struct RawSiteConfig {
     licensing: RawLicensingConfig,
     #[serde(default)]
     markdown: RawMarkdownConfig,
+    reading_time: Option<toml::Spanned<RawReadingTimeConfig>>,
     i18n: RawI18nConfig,
     #[serde(default)]
     collections: BTreeMap<toml::Spanned<String>, RawCollectionDefinition>,
@@ -986,6 +1006,12 @@ struct RawSiteConfig {
     feeds: BTreeMap<toml::Spanned<String>, RawFeedDefinition>,
     #[serde(default)]
     search: BTreeMap<toml::Spanned<String>, RawSearchDefinition>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawReadingTimeConfig {
+    words_per_minute: BTreeMap<toml::Spanned<String>, toml::Spanned<u64>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1240,6 +1266,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 message: "i18n.locales must include i18n.default_locale".into(),
             });
         }
+        let reading_time = parse_reading_time(raw.reading_time, &locales)?;
         let base_path_span = raw.site.base_path.span();
         let base_path = raw
             .site
@@ -1759,6 +1786,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 tables,
                 margin_footnotes,
             },
+            reading_time,
             i18n: I18nConfig {
                 default_locale,
                 locales,
@@ -1777,6 +1805,68 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             },
         })
     }
+}
+
+fn parse_reading_time(
+    raw: Option<toml::Spanned<RawReadingTimeConfig>>,
+    locales: &BTreeMap<Locale, LocaleSettings>,
+) -> Result<ReadingTimeConfig, ConfigValueError> {
+    let Some(raw) = raw else {
+        return Ok(ReadingTimeConfig::default());
+    };
+    let table_span: SourceSpan = raw.span().into();
+    let mut rates = BTreeMap::new();
+    for (locale, rate) in raw.into_inner().words_per_minute {
+        let locale_span: SourceSpan = locale.span().into();
+        let value = locale.into_inner();
+        let parsed: Locale = value.parse().map_err(|error| ConfigValueError {
+            span: locale_span,
+            message: format!(
+                "reading_time.words_per_minute key {value:?} must be a valid BCP-47 locale: {error}"
+            ),
+        })?;
+        if parsed.to_string() != value {
+            return Err(ConfigValueError {
+                span: locale_span,
+                message: format!(
+                    "reading_time.words_per_minute key {value:?} must use canonical BCP-47 spelling {:?}",
+                    parsed
+                ),
+            });
+        }
+        if !locales.contains_key(&parsed) {
+            return Err(ConfigValueError {
+                span: locale_span,
+                message: format!(
+                    "reading_time.words_per_minute names locale {value:?}, which is not configured under i18n.locales"
+                ),
+            });
+        }
+        let rate_span: SourceSpan = rate.span().into();
+        let rate = NonZeroU64::new(rate.into_inner()).ok_or_else(|| ConfigValueError {
+            span: rate_span,
+            message: "reading_time.words_per_minute values must be positive integers".into(),
+        })?;
+        if rates.insert(parsed.clone(), rate).is_some() {
+            return Err(ConfigValueError {
+                span: locale_span,
+                message: format!(
+                    "reading_time.words_per_minute declares locale {parsed:?} more than once"
+                ),
+            });
+        }
+    }
+    if let Some(locale) = locales.keys().find(|locale| !rates.contains_key(*locale)) {
+        return Err(ConfigValueError {
+            span: table_span,
+            message: format!(
+                "reading_time.words_per_minute must define a positive rate for configured locale {locale}"
+            ),
+        });
+    }
+    Ok(ReadingTimeConfig {
+        words_per_minute: rates,
+    })
 }
 
 impl SiteConfig {

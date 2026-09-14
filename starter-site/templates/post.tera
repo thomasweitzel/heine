@@ -22,23 +22,43 @@
 {% block content %}
 <h1>{{ <ui.page_title draft={page.draft} label={t(id="draft-marker")} title={page.title} /> }}</h1>
 {% set published = format_date(value=page.published, style="long") %}
-<div class="page-meta">
-  <p>{{ t(id="post-published") }} <time datetime="{{ page.published }}">{{ published }}</time></p>
+<dl class="post-meta">
   {% if page.authors %}
-    <p>{{ t(id="post-byline", authors=page.authors | join(sep=", ")) }}</p>
+    <div class="post-meta-author">
+      <dt>{{ t(id="post-byline") }}</dt>
+      <dd>{{ page.authors | join(sep=", ") }}</dd>
+    </div>
   {% endif %}
-  {% if page.updated %}
-    {% set updated = format_date(value=page.updated, style="long") %}
-    <p>{{ t(id="post-updated") }} <time datetime="{{ page.updated }}">{{ updated }}</time></p>
+  <div class="post-meta-publication">
+    <dt class="visually-hidden">{{ t(id="post-dates") }}</dt>
+    <dd>
+      <span>{{ t(id="post-published") }} <time datetime="{{ page.published }}">{{ published }}</time></span>
+      {% if page.updated %}
+        {% set updated = format_date(value=page.updated, style="long") %}
+        <span>{{ t(id="post-updated") }} <time datetime="{{ page.updated }}">{{ updated }}</time></span>
+      {% endif %}
+    </dd>
+  </div>
+  {% if page.markdown.main.reading_time %}
+    <div class="post-meta-facts">
+      <dt class="visually-hidden">{{ t(id="post-reading-facts") }}</dt>
+      <dd>
+        <span>{{ t(id="word-count", words=page.markdown.main.word_count) }}</span>
+        <span>{{ t(id="reading-time", minutes=page.markdown.main.reading_time) }}</span>
+      </dd>
+    </div>
   {% endif %}
-</div>
-{% if page.taxonomies.tags %}
-  <p>{{ t(id="tags", count=page.taxonomies.tags | length) }}:
-    {% for tag in page.taxonomies.tags %}
-      <a href="{{ tag.relative_url }}">{{ tag.name }}</a>{% if not loop.last %}, {% endif %}
-    {% endfor %}
-  </p>
-{% endif %}
+  {% if page.taxonomies.tags %}
+    <div class="post-meta-tags">
+      <dt>{{ t(id="tags", count=page.taxonomies.tags | length) }}</dt>
+      <dd>
+        {% for tag in page.taxonomies.tags %}
+          <a href="{{ tag.relative_url }}">{{ tag.name }}</a>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </dd>
+    </div>
+  {% endif %}
+</dl>
 {% if page.extra.featured_image %}
   {% set image = asset(id=page.extra.featured_image.id) %}
   <figure class="featured-image">

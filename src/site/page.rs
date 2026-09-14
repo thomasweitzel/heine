@@ -350,6 +350,7 @@ pub(super) struct Page {
     /// Original declared Markdown inputs are retained for source-derived
     /// generated-resource consumers such as search, not for template rendering.
     pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
+    pub(super) markdown_facts: BTreeMap<String, crate::markdown::MarkdownFacts>,
     pub(super) toc: Option<TocPlan>,
     pub(super) footnotes: Option<MarginFootnotePlan>,
     pub(super) draft: bool,
@@ -489,6 +490,7 @@ impl Page {
             subdirs: self.subdirs,
             content: self.content,
             markdown_content: self.markdown_content,
+            markdown: self.markdown_facts,
             toc: self.toc,
             footnotes: self.footnotes.map(FootnotesView::from),
             draft: self.draft,
@@ -517,6 +519,7 @@ pub(crate) struct PageView {
     content: BTreeMap<String, Value>,
     #[serde(skip)]
     markdown_content: BTreeSet<String>,
+    markdown: BTreeMap<String, crate::markdown::MarkdownFacts>,
     toc: Option<TocPlan>,
     footnotes: Option<FootnotesView>,
     draft: bool,

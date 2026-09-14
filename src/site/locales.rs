@@ -9,8 +9,8 @@ use walkdir::DirEntry;
 
 use crate::{
     config::{
-        CollectionsConfig, EditorialTimeZone, I18nConfig, MarkdownConfig, SeriesConfig,
-        TaxonomiesConfig,
+        CollectionsConfig, EditorialTimeZone, I18nConfig, MarkdownConfig, ReadingTimeConfig,
+        SeriesConfig, TaxonomiesConfig,
     },
     locale::Locale,
     localization::{Arguments, Localization},
@@ -48,6 +48,7 @@ pub(super) struct Inputs<'a> {
     pub(super) time_zone: Option<&'a EditorialTimeZone>,
     pub(super) sitemap_enabled: bool,
     pub(super) markdown: &'a MarkdownConfig,
+    pub(super) reading_time: &'a ReadingTimeConfig,
     pub(super) localization: &'a Localization,
     pub(super) publication: PublicationMode,
 }
@@ -63,6 +64,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         time_zone,
         sitemap_enabled,
         markdown,
+        reading_time,
         localization,
         publication,
     } = inputs;
@@ -143,6 +145,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
                     time_zone,
                     sitemap_enabled,
                     markdown,
+                    reading_time,
                 },
             )?;
             if let Some(task) = loaded.task {

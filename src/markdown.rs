@@ -27,10 +27,12 @@ use crate::{
     site::PageLinks,
 };
 
+mod facts;
 mod highlighting;
 pub(crate) mod margin_footnotes;
 mod picture;
 mod search_text;
+pub(crate) use facts::{MarkdownFacts, facts};
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 use search_text::raw_html_text;

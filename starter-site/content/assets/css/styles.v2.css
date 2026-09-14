@@ -278,14 +278,65 @@ html[dir="rtl"] .navigation-arrow {
 }
 
 .page-meta {
-    display: grid;
-    gap: 0.2rem;
     color: var(--muted-fg);
     font-size: 0.95rem;
 }
 
 .page-meta p {
     margin: 0;
+}
+
+.post-meta {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--spacing-m);
+    row-gap: 0.15rem;
+    margin-block: var(--spacing-m);
+    padding: var(--spacing-s) var(--spacing-m);
+    border: var(--border);
+    border-radius: var(--radius);
+    background-color: var(--color-1);
+    color: var(--muted-fg);
+    font-size: 0.95rem;
+}
+
+.post-meta div,
+.post-meta dt,
+.post-meta dd {
+    margin: 0;
+}
+
+.post-meta dt,
+.post-meta dd {
+    display: inline;
+}
+
+.post-meta dt::after {
+    content: " ";
+}
+
+.post-meta-facts,
+.post-meta-tags {
+    flex-basis: 100%;
+}
+
+.post-meta-publication dd,
+.post-meta-facts dd {
+    display: inline-flex;
+    flex-wrap: wrap;
+    column-gap: var(--spacing-m);
+    row-gap: 0.15rem;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .series-list {

@@ -143,6 +143,13 @@ the browser selects its dark source from
 A file named by a page's `[content]` table. Heine reads it as page content but
 does not publish it as an asset.
 
+### Markdown fact
+
+A deterministic value derived from one declared Markdown input, currently its
+Unicode `word_count` and optional locale-policy `reading_time`. Facts appear in
+`page.markdown.<name>` without changing the renderable `page.content.<name>`
+value. See [word counts and reading time](markdown-facts.md).
+
 ### Deployment file
 
 A regular file below optional `deploy/`. Heine copies it unchanged to the

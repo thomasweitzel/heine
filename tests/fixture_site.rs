@@ -45,6 +45,8 @@ mod i18n;
 mod licensing;
 #[path = "fixture_site/markdown.rs"]
 mod markdown;
+#[path = "fixture_site/markdown_facts.rs"]
+mod markdown_facts;
 #[path = "fixture_site/metadata.rs"]
 mod metadata;
 #[path = "fixture_site/output.rs"]

@@ -23,7 +23,9 @@
 <h1>{{ t(id=taxonomy.name, count=1) }}: {{ taxonomy.term.name }}</h1>
 <ul class="page-list">
 {% for post in pagination.pages %}
-  {{ <ui.page_list_item entry={post} draft_label={t(id="draft-marker")} /> }}
+  {% set reading_facts = "" %}
+  {% if post.markdown.main.reading_time %}{% set reading_facts = t(id="reading-facts", words=post.markdown.main.word_count, minutes=post.markdown.main.reading_time) %}{% endif %}
+  {{ <ui.page_list_item entry={post} draft_label={t(id="draft-marker")} reading_facts={reading_facts} /> }}
 {% endfor %}
 </ul>
 {{ <ui.pagination pager={pagination} label={t(id="pagination-label")} /> }}

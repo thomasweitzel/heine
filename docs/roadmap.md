@@ -13,9 +13,6 @@ and a cohesive starter-site example where one fits naturally.
   reproduce the same checks, but it is not a prerequisite for the first
   release. Decide a dependency policy for advisories, source provenance,
   duplicate versions, and acceptable licenses before automating those checks.
-- **Markdown facts:** begin with deterministic Unicode-aware word counts.
-  Reading time needs an explicit locale-aware policy, not an invented universal
-  rate.
 - **Absolute URLs:** expose `absolute_url` beside existing checked `url` and
   `relative_url` values when `site.origin` is configured.
 - **Multilingual sitemap alternates:** opt in to checked `hreflang` XHTML

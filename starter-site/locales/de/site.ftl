@@ -16,11 +16,28 @@ series-label = Reihe
 series-position = Teil { $number } von { $total }
 series-listing-description = Lies die Reihe { $series } in ihrer vorgesehenen Reihenfolge.
 
-# Labels for post publication facts.
+# Beschriftungen für Beitragsmetadaten.
 draft-marker = ENTWURF
 post-published = Veröffentlicht am
-post-byline = Von { $authors }
+post-byline = Von
 post-updated = Aktualisiert am
+post-dates = Datumsangaben zum Beitrag
+post-reading-facts = Wortzahl und Lesezeit
+word-count = { $words ->
+   [one] Ein Wort
+  *[other] { $words } Wörter
+}
+reading-time = etwa { $minutes ->
+   [one] eine Minute
+  *[other] { $minutes } Minuten
+} Lesezeit
+reading-facts = { $words ->
+   [one] Ein Wort
+  *[other] { $words } Wörter
+} · etwa { $minutes ->
+   [one] eine Minute
+  *[other] { $minutes } Minuten
+} Lesezeit
 
 # Beschriftungen für lokale Navigation und Fußnotensteuerungen.
 toc-label = Inhaltsverzeichnis
