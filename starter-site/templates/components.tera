@@ -30,13 +30,14 @@
 
 {% component ui.page_label(draft: bool, label: string, title: string) %}{% if draft %}<span class="page-label">{{ <ui.draft_marker draft={draft} label={label} /> }}<span class="page-label-text">{{ title }}</span></span>{% else %}{{ title }}{% endif %}{% endcomponent ui.page_label %}
 
-{% component ui.page_list_item(entry, draft_label: string) %}
+{% component ui.page_list_item(entry, draft_label: string, reading_facts: string) %}
   <li class="page-list-item">
     <div class="page-list-heading">
       {{ <ui.draft_marker draft={entry.draft} label={draft_label} /> }}
       <a href="{{ entry.relative_url }}"><span class="page-list-title">{{ entry.title or entry.filename }}</span></a>
     </div>
     {% if entry.summary %}<span class="page-list-summary">{{ entry.summary }}</span>{% endif %}
+    {% if reading_facts %}<span class="page-list-summary">{{ reading_facts }}</span>{% endif %}
   </li>
 {% endcomponent ui.page_list_item %}
 

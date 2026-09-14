@@ -23,6 +23,10 @@ integrity = "sha384"
 [licensing]
 required = true
 
+[reading_time.words_per_minute]
+en = 236
+de = 260
+
 [[licensing.groups]]
 assets = [
   "assets/css/styles.v2.css",

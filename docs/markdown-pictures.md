@@ -24,11 +24,11 @@ component language.
 `alt`, `light`, `dark`, and `caption` use TOML strings, which keeps translated
 text and punctuation unambiguous. `width` and `height` use TOML integers.
 
-| Field     | Meaning |
-|-----------|---------|
-| `alt`     | The HTML alternative text. It may be empty only for a genuinely decorative image. |
-| `light`   | A checked `asset:<id>` reference for the ordinary fallback image. |
-| `dark`    | A checked `asset:<id>` reference selected for a dark browser preference. |
+| Field     | Meaning                                                                                                               |
+|-----------|-----------------------------------------------------------------------------------------------------------------------|
+| `alt`     | The HTML alternative text. It may be empty only for a genuinely decorative image.                                     |
+| `light`   | A checked `asset:<id>` reference for the ordinary fallback image.                                                     |
+| `dark`    | A checked `asset:<id>` reference selected for a dark browser preference.                                              |
 | `caption` | Optional visible plain text. When present, Heine wraps the picture in a native `figure` and emits it as `figcaption`. |
 
 The two sources must be copied assets below `content/`. Heine rejects an

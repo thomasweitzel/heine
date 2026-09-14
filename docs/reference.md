@@ -158,6 +158,23 @@ code, and recognized math source. Source-authored raw HTML adds text nodes and
 breaks remain line feeds; block boundaries become two line feeds. Heine does
 not lower-case, tokenize, stem, truncate, or derive text from rendered HTML.
 
+## Markdown facts
+
+Every declared Markdown input exposes `page.markdown.<name>.word_count`.
+`<name>` is the same simple name used by `content.<name>`; non-Markdown inputs
+do not appear in `page.markdown`. The count uses Unicode default word
+segmentation over readable source-level Markdown text. See [word counts and
+reading time](markdown-facts.md) for its inclusion rules and limitations.
+
+| Field                                    | Type             | Default | Constraints                                                                    | Effect                                      |
+|------------------------------------------|------------------|---------|--------------------------------------------------------------------------------|---------------------------------------------|
+| `reading_time.words_per_minute.<locale>` | positive integer | absent  | One exact canonical configured BCP-47 locale key for every configured locale | Enables `page.markdown.<name>.reading_time` |
+
+`[reading_time]` is optional. When absent, every `reading_time` template field
+is `null`; when present, every configured locale must have exactly one positive
+rate and no unconfigured locale may appear. Heine rounds nonzero estimates up
+to whole minutes and reports zero for zero counted words.
+
 ## `_directory.toml`
 
 Place `_directory.toml` in a configured `content/<locale>/` tree. It is non-rendered, non-published, and provides directory metadata plus recursive policy.
@@ -412,7 +429,8 @@ they are scoped to the locale currently being rendered unless noted otherwise.
 | Value               | Fields and meaning                                                                                                                                                                                                                                                                                                                           |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `locale`            | `code` is the configured BCP-47 locale; `direction` is its configured `"ltr"` or `"rtl"` value. Use both on the document element.                                                                                                                                                                                                            |
-| `page`              | An authored page's `id`, `path`, `filename`, `dir`, `subdirs`, `content`, `title`, `description`, `summary`, `authors`, `published`, `updated`, `extra`, `directory`, `taxonomies`, `series`, `toc`, `footnotes`, `draft`, `weight`, and `translations`; `null` for generated templates. `path` and `filename` are absent without rendering. |
+| `page`              | An authored page's `id`, `path`, `filename`, `dir`, `subdirs`, `content`, `markdown`, `title`, `description`, `summary`, `authors`, `published`, `updated`, `extra`, `directory`, `taxonomies`, `series`, `toc`, `footnotes`, `draft`, `weight`, and `translations`; `null` for generated templates. `path` and `filename` are absent without rendering. |
+| `page.markdown`     | Facts keyed by declared Markdown content name. Each record has deterministic `word_count` and nullable `reading_time`; non-Markdown inputs are absent. See [word counts and reading time](markdown-facts.md). |
 | `page.draft`        | `true` for an authored draft included through `heine serve --drafts`, otherwise `false`. It never appears for a generated template. See [drafts](drafts.md).                                                                                                                                                                                 |
 | `page.toc`          | `null` unless the authored page has an effective table-of-contents setting. Otherwise `content` names the selected declaration and `headings` is the source-order array of `level`, `depth`, `text`, and `fragment`. See [table of contents](table-of-contents.md).                                                                          |
 | `page.footnotes`    | `null` unless the authored page has an effective margin-footnote setting. Otherwise `content` names the selected declaration. Render that source exactly once through `markdown(content="…")`. See [margin footnotes](margin-footnotes.md).                                                                                                  |

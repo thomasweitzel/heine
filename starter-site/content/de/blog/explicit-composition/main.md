@@ -1,2 +1,1 @@
-Dieser Beitrag hält Metadaten, Inhalt und die Beziehung zum Template in
-getrennten, kleinen Dateien sichtbar.
+Dieser Beitrag trennt Metadaten, Inhalt und die Verbindung zum Template klar sichtbar in eigene, kleine Dateien.

@@ -115,6 +115,7 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) licenses: &'a LicenseCatalog,
     pub(crate) licensing: &'a LicensingConfig,
     pub(crate) markdown_renderer: &'a MarkdownRenderer,
+    pub(crate) reading_time: &'a crate::config::ReadingTimeConfig,
     pub(crate) publication: PublicationMode,
 }
 
@@ -293,6 +294,7 @@ impl Site {
             licenses,
             licensing,
             markdown_renderer,
+            reading_time,
             publication,
         } = inputs;
         match fs::symlink_metadata(content_root) {
@@ -331,6 +333,7 @@ impl Site {
             time_zone: site_settings.time_zone(),
             sitemap_enabled: sitemap_config.is_some(),
             markdown: markdown_renderer.config(),
+            reading_time,
             localization: &localization,
             publication,
         })?;

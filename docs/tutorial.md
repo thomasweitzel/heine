@@ -640,6 +640,10 @@ When one image needs light and dark visual variants, use a native Markdown
 [color-scheme picture guide](markdown-pictures.md) shows the checked copied
 asset relationship and native browser selection.
 
+When an article template should show its source length or a site-owned reading
+estimate, the [word counts and reading-time guide](markdown-facts.md) explains
+the per-input `page.markdown` facts and locale-specific rate policy.
+
 To see highlighting, replace `content/en/blog/second.md` with:
 
 ````markdown

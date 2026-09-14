@@ -336,7 +336,11 @@ fn builds_the_documented_starter_site() {
         german_post.contains("aria-label=\"Englisch\""),
         "{german_post}"
     );
-    assert!(german_post.contains("Schlagwort:"), "{german_post}");
+    assert!(
+        german_post.contains("<dt>Schlagwort</dt>")
+            && german_post.contains("<a href=\"../../../de/tags/Rust.html\">Rust</a>"),
+        "{german_post}"
+    );
 
     let post = fs::read_to_string(output.join("blog/mathml-audio/index.html")).expect("post page");
     assert!(
@@ -349,7 +353,7 @@ fn builds_the_documented_starter_site() {
         .find("class=\"page-local-navigation\" aria-label=\"Page navigation\"")
         .expect("page-local navigation renders");
     let post_metadata = post
-        .find("class=\"page-meta\"")
+        .find("class=\"post-meta\"")
         .expect("post metadata renders");
     assert!(
         header_end < local_navigation && local_navigation < post_metadata,

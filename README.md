@@ -117,6 +117,7 @@ The [documentation map](docs/README.md) explains the available reading paths.
   [Atom feeds](docs/atom-feeds.md), [table of contents](docs/table-of-contents.md),
   [margin footnotes](docs/margin-footnotes.md),
   [color-scheme Markdown pictures](docs/markdown-pictures.md),
+  [word counts and reading time](docs/markdown-facts.md),
   [search indexes](docs/search.md),
   [Series](docs/series.md), [drafts](docs/drafts.md),
   or the [development server](docs/development-server.md).

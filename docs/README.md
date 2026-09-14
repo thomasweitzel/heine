@@ -47,6 +47,8 @@ required prerequisite for the guides.
   ordinary Markdown footnotes.
 - [Color-scheme Markdown pictures](markdown-pictures.md): checked light and
   dark variants of one authored image.
+- [Word counts and reading time](markdown-facts.md): deterministic Markdown
+  facts and an opt-in, locale-specific reading-time estimate.
 - [Series](series.md): checked page-local ordered reading sequences.
 
 ## Reference material

@@ -33,6 +33,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Markdown word counts and reading-time estimates.** Every declared Markdown
+  input now exposes a deterministic Unicode `word_count` through
+  `page.markdown.<name>`. Sites may opt into checked locale-specific
+  `reading_time` estimates with `[reading_time.words_per_minute]`, keeping the
+  chosen policy separate from the source fact.
+
 - **Color-scheme Markdown pictures.** A standalone `:::picture` block now
   connects checked light and dark copied assets to one native HTML `picture`,
   with an optional semantic `figure` caption. It keeps Markdown documentation

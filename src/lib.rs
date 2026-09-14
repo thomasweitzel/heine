@@ -132,6 +132,7 @@ pub(crate) fn build_at_with_publication(
         licenses: &licenses,
         licensing: config.licensing(),
         markdown_renderer: &markdown,
+        reading_time: config.reading_time(),
         publication: build.publication,
     })
     .map_err(miette::Report::new)?;
