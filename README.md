@@ -15,8 +15,9 @@ where it is authored instead of becoming a browser 404.
 
 ## Status
 
-Heine is pre-release and is not published to crates.io yet. Install a current
-stable Rust toolchain, clone this repository, and run it with `cargo run`.
+Heine is pre-release and is not published to crates.io yet. A Linux x86-64
+musl executable and a complete starter site are available from the
+[Download page](https://heine.rs/download/).
 
 It currently provides Markdown rendering with checked color-scheme pictures,
 page-owned tables of contents and margin footnotes, Tera2 templates,
