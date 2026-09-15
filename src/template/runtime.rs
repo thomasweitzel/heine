@@ -149,8 +149,13 @@ impl TemplateRuntime {
         id: &PageId,
         root: &str,
     ) -> BTreeMap<String, Vec<PageTermView>> {
-        self.taxonomies
-            .page_terms(locale, id, self.page_links.base_path(), root)
+        self.taxonomies.page_terms(
+            locale,
+            id,
+            self.page_links.base_path(),
+            self.page_links.canonical_urls(),
+            root,
+        )
     }
 
     pub(super) fn taxonomy_index(
@@ -160,9 +165,13 @@ impl TemplateRuntime {
         root: &str,
     ) -> Result<Option<TaxonomyIndexView>, String> {
         let name = crate::config::TaxonomyName::parse(name.to_owned())?;
-        Ok(self
-            .taxonomies
-            .index(locale, &name, self.page_links.base_path(), root))
+        Ok(self.taxonomies.index(
+            locale,
+            &name,
+            self.page_links.base_path(),
+            self.page_links.canonical_urls(),
+            root,
+        ))
     }
 
     pub(super) fn taxonomy_names(&self, locale: &Locale) -> Vec<String> {
@@ -222,8 +231,13 @@ impl TemplateRuntime {
     }
 
     pub(super) fn feed(&self, locale: &Locale, name: &str, root: &str) -> Option<FeedView> {
-        self.feeds
-            .view(locale, name, root, self.page_links.base_path())
+        self.feeds.view(
+            locale,
+            name,
+            root,
+            self.page_links.base_path(),
+            self.page_links.canonical_urls(),
+        )
     }
 
     pub(super) fn feed_names(&self, locale: &Locale) -> Vec<String> {
@@ -231,8 +245,13 @@ impl TemplateRuntime {
     }
 
     pub(super) fn search(&self, locale: &Locale, name: &str, root: &str) -> Option<SearchView> {
-        self.search
-            .view(locale, name, root, self.page_links.base_path())
+        self.search.view(
+            locale,
+            name,
+            root,
+            self.page_links.base_path(),
+            self.page_links.canonical_urls(),
+        )
     }
 
     pub(super) fn search_names(&self, locale: &Locale) -> Vec<String> {
@@ -249,12 +268,22 @@ impl TemplateRuntime {
         name: &crate::config::SeriesName,
         root: &str,
     ) -> Option<SeriesView> {
-        self.series
-            .view(locale, name, self.page_links.base_path(), root)
+        self.series.view(
+            locale,
+            name,
+            self.page_links.base_path(),
+            self.page_links.canonical_urls(),
+            root,
+        )
     }
 
     pub(super) fn series_index(&self, locale: &Locale, root: &str) -> Option<SeriesView> {
-        self.series.index(locale, self.page_links.base_path(), root)
+        self.series.index(
+            locale,
+            self.page_links.base_path(),
+            self.page_links.canonical_urls(),
+            root,
+        )
     }
 
     pub(super) fn localization(&self) -> &Localization {

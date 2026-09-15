@@ -33,6 +33,13 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Checked absolute URLs.** Configuring `site.origin` now exposes the
+  base-path-aware canonical root as `site.url` and `absolute_url` on known
+  page, asset, and generated-resource views. This supports canonical and
+  metadata markup without exposing a raw origin or accepting unchecked
+  template URL construction. **Migration:** configure an HTTP(S)
+  `site.origin` before a template reads either new field.
+
 - **Markdown word counts and reading-time estimates.** Every declared Markdown
   input now exposes a deterministic Unicode `word_count` through
   `page.markdown.<name>`. Sites may opt into checked locale-specific

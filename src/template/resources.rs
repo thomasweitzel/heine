@@ -21,6 +21,9 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             let root = asset_runtime.root(state)?;
             let mut result = tera::Map::new();
             result.insert("url".into(), asset.url().into());
+            if let Some(url) = asset.absolute_url() {
+                result.insert("absolute_url".into(), url.into());
+            }
             result.insert(
                 "relative_url".into(),
                 format!("{root}{}", asset.path().url_path().as_str()).into(),
@@ -35,7 +38,11 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             result.insert(
                 "licensing".into(),
                 asset
-                    .licensing_view(&root, asset_runtime.assets().base_path())
+                    .licensing_view(
+                        &root,
+                        asset_runtime.assets().base_path(),
+                        asset_runtime.assets().canonical_urls(),
+                    )
                     .map(|value| tera::Value::try_from_serializable(&value))
                     .transpose()
                     .map_err(|_| {
@@ -297,9 +304,11 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                 )
             })?;
             let root = pagination_runtime.root(state)?;
-            tera::Value::try_from_serializable(
-                &pager.links(pagination_runtime.pages().base_path(), &root),
-            )
+            tera::Value::try_from_serializable(&pager.links(
+                pagination_runtime.pages().base_path(),
+                pagination_runtime.pages().canonical_urls(),
+                &root,
+            ))
             .map_err(|_| tera::Error::message("Heine pagination links are not serializable"))
         },
     );
@@ -475,7 +484,7 @@ fn page_value(
     let page = runtime
         .page_view(&target.locale, &target.id)
         .ok_or_else(|| tera::Error::message("Heine page catalog is inconsistent"))?;
-    let mut result = tera::Value::try_from_serializable(page)
+    let mut result = tera::Value::try_from_serializable(&page)
         .map_err(|_| tera::Error::message("Heine page view is not serializable"))?
         .into_map()
         .ok_or_else(|| tera::Error::message("Heine page view is not a map"))?;

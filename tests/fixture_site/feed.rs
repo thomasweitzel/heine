@@ -37,7 +37,7 @@ fn generates_locale_local_atom_feeds_with_checked_template_links() {
     );
     fixture.write(
         "templates/page.tera",
-        "{% set current = feed(name='posts') %}{% set german = feed(name='posts', locale='de') %}{{ current.url }}|{{ current.relative_url }}|{{ current.title }}|{{ german.url }}",
+        "{% set current = feed(name='posts') %}{% set german = feed(name='posts', locale='de') %}{{ current.url }}|{{ current.relative_url }}|{{ current.absolute_url }}|{{ current.title }}|{{ german.url }}|{{ german.absolute_url }}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
@@ -70,7 +70,7 @@ fn generates_locale_local_atom_feeds_with_checked_template_links() {
     let page = fs::read_to_string(fixture.path().join("public/index.html")).expect("page output");
     assert_eq!(
         page,
-        "/guide/feeds/posts.xml|./feeds/posts.xml|English posts|/guide/de/feeds/posts.xml"
+        "/guide/feeds/posts.xml|./feeds/posts.xml|https://example.org/guide/feeds/posts.xml|English posts|/guide/de/feeds/posts.xml|https://example.org/guide/de/feeds/posts.xml"
     );
 }
 

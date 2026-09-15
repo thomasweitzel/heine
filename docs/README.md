@@ -37,6 +37,8 @@ required prerequisite for the guides.
 - [Development server](development-server.md): local serving, live reload,
   and byte-range responses for media.
 - [Drafts](drafts.md): unpublished pages and complete local previews.
+- [Absolute URLs](absolute-urls.md): canonical site and resource addresses
+  built from a configured origin.
 - [Sitemaps](sitemap.md): canonical discovery documents generated from rendered output.
 - [Atom feeds](atom-feeds.md): locale-local collection syndication feeds.
 - [Search indexes](search.md): locale-local JSON documents for a site-owned

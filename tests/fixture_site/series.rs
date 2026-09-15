@@ -55,7 +55,10 @@ fn preserves_authored_membership_order_and_resolves_each_series_independently() 
 #[test]
 fn generates_checked_series_views_and_paginated_listings() {
     let fixture = Fixture::new();
-    fixture.write("heine.toml", config());
+    fixture.write(
+        "heine.toml",
+        &format!("[site]\norigin = 'https://example.org'\n\n{}", config()),
+    );
     fixture.write(
         "content/en/one.page",
         "template = 'page.tera'\ntitle = 'One'\n[[series]]\nid = 'guide'\nposition = 10\n",
@@ -69,24 +72,36 @@ fn generates_checked_series_views_and_paginated_listings() {
         "template = 'page.tera'\ntitle = 'Three'\n[[series]]\nid = 'guide'\nposition = 30\n",
     );
     resources(&fixture);
+    fixture.write(
+        "templates/page.tera",
+        "{{ page.title }}:{% for membership in page.series %}{{ membership.id }} {{ membership.number }} {{ membership.position }}/{{ membership.total }} {% if membership.previous %}{{ membership.previous.title }}{% endif %}{% if membership.next %}{{ membership.next.title }}{% endif %}{% endfor %}|{% for membership in page.series %}{{ membership.absolute_url }}|{% if membership.previous %}{{ membership.previous.absolute_url }}{% endif %}|{% if membership.next %}{{ membership.next.absolute_url }}{% endif %}{% endfor %}",
+    );
+    fixture.write(
+        "templates/series-index.tera",
+        "{{ series.title }}:{% for item in series.series %}{{ item.title }}={{ item.count }};{% endfor %}|{{ series.absolute_url }}|{{ series.series[0].absolute_url }}",
+    );
+    fixture.write(
+        "templates/series.tera",
+        "{{ series.title }}:{{ pagination.page_number }}/{{ pagination.page_count }}:{% for item in pagination.pages %}{{ item.title }};{% endfor %}|{{ series.absolute_url }}|{{ pagination.current.absolute_url }}|{{ pagination.pages[0].absolute_url }}",
+    );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/series/index.html")).expect("index"),
-        "Series:Guide=3;"
+        "Series:Guide=3;|https://example.org/series/index.html|https://example.org/series/guide/index.html"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/series/guide/index.html")).expect("listing"),
-        "Guide:1/2:One;Two;"
+        "Guide:1/2:One;Two;|https://example.org/series/guide/index.html|https://example.org/series/guide/index.html|https://example.org/one.html"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/series/guide/page/2.html")).expect("pager"),
-        "Guide:2/2:Three;"
+        "Guide:2/2:Three;|https://example.org/series/guide/index.html|https://example.org/series/guide/page/2.html|https://example.org/three.html"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/two.html")).expect("member"),
-        "Two:guide 2 20/3 OneThree"
+        "Two:guide 2 20/3 OneThree|https://example.org/series/guide/index.html|https://example.org/one.html|https://example.org/three.html"
     );
 }
 

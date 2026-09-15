@@ -465,13 +465,20 @@ pub(super) struct TaxonomyTermMembership {
 pub(super) struct PageLink {
     pub(super) id: PageId,
     pub(super) path: String,
+    #[serde(skip)]
+    pub(super) output_path: OutputPath,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) absolute_url: Option<String>,
 }
 
 impl Page {
     /// Drops loading-only state after all site relationships are resolved.
     /// The resulting value is the sole page representation retained while
     /// templates render.
-    pub(super) fn into_view(self) -> PageView {
+    pub(super) fn into_view(
+        self,
+        canonical_urls: Option<&crate::config::CanonicalUrls>,
+    ) -> PageView {
         let Metadata {
             title,
             description,
@@ -482,8 +489,17 @@ impl Page {
             extra,
             ..
         } = self.metadata;
+        let absolute_url = self
+            .output_path
+            .as_ref()
+            .and_then(|path| canonical_urls.map(|urls| urls.output_url(path)));
+        let mut translations = self.translations;
+        for link in translations.values_mut() {
+            link.absolute_url = canonical_urls.map(|urls| urls.output_url(&link.output_path));
+        }
         PageView {
             id: self.id,
+            absolute_url,
             path: self.path.map(|path| path.as_str().into()),
             dir: self.dir,
             filename: self.filename,
@@ -501,7 +517,7 @@ impl Page {
             published: published.as_ref().map(PublicationTime::render),
             updated: updated.as_ref().map(PublicationTime::render),
             extra,
-            translations: self.translations,
+            translations,
             directory: self.directory,
             weight: self.weight.ordered(),
         }
@@ -512,6 +528,8 @@ impl Page {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct PageView {
     id: PageId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
     path: Option<String>,
     dir: String,
     filename: Option<String>,

@@ -4,7 +4,10 @@ use std::time::{Duration, SystemTime};
 #[test]
 fn publishes_license_texts_and_exposes_asset_licensing_to_templates() {
     let fixture = Fixture::new();
-    fixture.write("heine.toml", "[site]\nbase_path = '/guide/'\n");
+    fixture.write(
+        "heine.toml",
+        "[site]\norigin = 'https://example.org'\nbase_path = '/guide/'\n",
+    );
     fixture.write("content/assets/logo.svg", "<svg/>");
     fixture.write(
         "content/assets/logo.svg.license",
@@ -14,14 +17,14 @@ fn publishes_license_texts_and_exposes_asset_licensing_to_templates() {
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
-        "{% set logo = asset(id='assets/logo.svg') %}{{ logo.licensing.copyrights[0] }}|{{ logo.licensing.expressions[0] }}|{{ logo.licensing.license_texts[0].url }}|{% for item in attributions() %}{{ item.asset.output_path }}:{{ item.asset.url }}{% endfor %}",
+        "{% set logo = asset(id='assets/logo.svg') %}{{ logo.licensing.copyrights[0] }}|{{ logo.licensing.expressions[0] }}|{{ logo.licensing.license_texts[0].url }}|{{ logo.licensing.license_texts[0].absolute_url }}|{% for item in attributions() %}{{ item.asset.output_path }}:{{ item.asset.url }}:{{ item.asset.absolute_url }}:{{ item.licensing.license_texts[0].absolute_url }}{% endfor %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).expect("rendered page"),
-        "Example Authors|MIT|/guide/LICENSES/MIT.txt|assets/logo.svg:/guide/assets/logo.svg"
+        "Example Authors|MIT|/guide/LICENSES/MIT.txt|https://example.org/guide/LICENSES/MIT.txt|assets/logo.svg:/guide/assets/logo.svg:https://example.org/guide/assets/logo.svg:https://example.org/guide/LICENSES/MIT.txt"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/LICENSES/MIT.txt"))

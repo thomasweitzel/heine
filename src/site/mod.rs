@@ -437,13 +437,13 @@ impl Site {
         let taxonomies = std::sync::Arc::new(taxonomies);
         series.update_latest_inputs(&latest_inputs, &shared_latest);
         let series = std::sync::Arc::new(series);
+        let canonical_urls = site_settings.canonical_urls();
         let feeds = feed::Catalog::resolve(feed::Inputs {
             pages: &pages,
             collections: &collections,
             config: &feed_config,
             prefixes: &prefixes,
-            origin: site_settings.origin(),
-            base_path: site_settings.base_path(),
+            urls: canonical_urls.as_ref(),
             localization: &localization,
         })
         .map_err(|error| Error::Feed(Box::new(error)))?;
@@ -458,17 +458,10 @@ impl Site {
         })
         .map_err(|error| Error::Search(Box::new(error)))?;
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks, series.tasks());
-        let sitemap = match (sitemap_config, site_settings.origin()) {
-            (Some(config), Some(origin)) => Some(
-                sitemap::Sitemap::new(
-                    config,
-                    origin,
-                    site_settings.base_path(),
-                    &tasks,
-                    &taxonomy_tasks,
-                    series.tasks(),
-                )
-                .map_err(Error::Sitemap)?,
+        let sitemap = match (sitemap_config, canonical_urls.as_ref()) {
+            (Some(config), Some(urls)) => Some(
+                sitemap::Sitemap::new(config, urls, &tasks, &taxonomy_tasks, series.tasks())
+                    .map_err(Error::Sitemap)?,
             ),
             _ => None,
         };
@@ -528,12 +521,14 @@ impl Site {
         let asset_links = assets.links(
             i18n.default_locale().clone(),
             BasePath::root(),
+            None,
             BTreeMap::new(),
         );
         let page_links = PageCatalog::links_from_pages(
             &pages,
             i18n.default_locale().clone(),
             BasePath::root(),
+            None,
             excluded_drafts.clone(),
         );
         for (locale, locale_pages) in &pages {
@@ -551,7 +546,7 @@ impl Site {
                 }
             }
         }
-        let pages = PageCatalog::from_pages(pages, excluded_drafts);
+        let pages = PageCatalog::from_pages(pages, excluded_drafts, canonical_urls.as_ref());
         let collections = std::sync::Arc::new(
             collections
                 .into_iter()
@@ -597,6 +592,7 @@ impl Site {
         diagnostics: &crate::source_diagnostic::DiagnosticPaths,
     ) -> Result<Vec<GeneratedFile>, Error> {
         let base_path = options.config().site().base_path().to_owned();
+        let canonical_urls = options.config().site().canonical_urls();
         let integrities = self
             .assets
             .integrity_values(options.config().assets().integrity())?;
@@ -604,12 +600,14 @@ impl Site {
             self.assets.links(
                 self.i18n.default_locale().clone(),
                 base_path.clone(),
+                canonical_urls.clone(),
                 integrities,
             ),
             TemplateRelationships::new(
                 self.pages.clone(),
                 self.i18n.default_locale().clone(),
                 base_path.clone(),
+                canonical_urls.clone(),
                 TemplateIndexes {
                     collections: self.collections.clone(),
                     siblings: self.siblings.clone(),
@@ -651,6 +649,7 @@ impl Site {
                     &task.locale,
                     &task.page_id,
                     &base_path,
+                    canonical_urls.as_ref(),
                     &root,
                 ),
                 series: self.series.page_memberships(
@@ -658,13 +657,19 @@ impl Site {
                     &task.page_id,
                     &self.pages,
                     &base_path,
+                    canonical_urls.as_ref(),
                     &root,
                 ),
             };
-            let pagination = task
-                .pagination
-                .as_ref()
-                .map(|pager| pager.view(&self.pages, &task.locale, &base_path, &root));
+            let pagination = task.pagination.as_ref().map(|pager| {
+                pager.view(
+                    &self.pages,
+                    &task.locale,
+                    &base_path,
+                    canonical_urls.as_ref(),
+                    &root,
+                )
+            });
             let rendering = task.pagination.as_ref().map_or_else(
                 || {
                     format!(
@@ -687,6 +692,7 @@ impl Site {
             let contents = engine.render(
                 &task.template,
                 RenderContext {
+                    site: crate::template::SiteView::from_canonical_urls(canonical_urls.as_ref()),
                     locale: LocaleView {
                         code: task.locale.to_string(),
                         direction: self.i18n.direction(&task.locale).as_str().into(),
@@ -729,19 +735,25 @@ impl Site {
                 continue;
             }
             let root = root_for(task.output_path.as_path());
-            let pagination = task
-                .pagination
-                .as_ref()
-                .map(|pager| pager.view(&self.pages, &task.locale, &base_path, &root));
+            let pagination = task.pagination.as_ref().map(|pager| {
+                pager.view(
+                    &self.pages,
+                    &task.locale,
+                    &base_path,
+                    canonical_urls.as_ref(),
+                    &root,
+                )
+            });
             let contents = engine.render(
                 &task.template,
                 RenderContext {
+                    site: crate::template::SiteView::from_canonical_urls(canonical_urls.as_ref()),
                     locale: LocaleView {
                         code: task.locale.to_string(),
                         direction: self.i18n.direction(&task.locale).as_str().into(),
                     },
                     page: None,
-                    taxonomy: Some(task.taxonomy_view(&base_path, &root)),
+                    taxonomy: Some(task.taxonomy_view(&base_path, canonical_urls.as_ref(), &root)),
                     series: None,
                     pagination,
                     data: self.data.value(),
@@ -789,13 +801,19 @@ impl Site {
             }
             let root = root_for(task.output_path.as_path());
             let series = match &task.series_id {
-                Some(id) => self.series.view(&task.locale, id, &base_path, &root),
-                None => self.series.index(&task.locale, &base_path, &root),
+                Some(id) => {
+                    self.series
+                        .view(&task.locale, id, &base_path, canonical_urls.as_ref(), &root)
+                }
+                None => self
+                    .series
+                    .index(&task.locale, &base_path, canonical_urls.as_ref(), &root),
             }
             .expect("resolved Series task keeps its corresponding view");
             let contents = engine.render(
                 &task.template,
                 RenderContext {
+                    site: crate::template::SiteView::from_canonical_urls(canonical_urls.as_ref()),
                     locale: LocaleView {
                         code: task.locale.to_string(),
                         direction: self.i18n.direction(&task.locale).as_str().into(),
@@ -803,10 +821,15 @@ impl Site {
                     page: None,
                     taxonomy: None,
                     series: Some(series),
-                    pagination: task
-                        .pagination
-                        .as_ref()
-                        .map(|pager| pager.view(&self.pages, &task.locale, &base_path, &root)),
+                    pagination: task.pagination.as_ref().map(|pager| {
+                        pager.view(
+                            &self.pages,
+                            &task.locale,
+                            &base_path,
+                            canonical_urls.as_ref(),
+                            &root,
+                        )
+                    }),
                     data: self.data.value(),
                     locale_data: self.locale_data[&task.locale].value(),
                     root: &root,

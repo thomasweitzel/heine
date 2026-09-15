@@ -220,7 +220,7 @@ fn collection_neighbors_follow_locale_local_collection_order() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n[collections.posts]\norder = 'published-desc'\n",
+        "[site]\norigin = 'https://example.org'\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n[collections.posts]\norder = 'published-desc'\n",
     );
     fixture.write(
         "content/en/blog/older.page",
@@ -240,23 +240,23 @@ fn collection_neighbors_follow_locale_local_collection_order() {
     );
     fixture.write(
         "templates/post.tera",
-        "{% set neighbors = collection_neighbors(name='posts') %}{{ page.id }}|{% if neighbors.before %}{{ neighbors.before.id }}:{{ neighbors.before.url }}{% else %}none{% endif %}|{% if neighbors.after %}{{ neighbors.after.id }}:{{ neighbors.after.url }}{% else %}none{% endif %}",
+        "{% set neighbors = collection_neighbors(name='posts') %}{{ page.id }}|{% if neighbors.before %}{{ neighbors.before.id }}:{{ neighbors.before.url }}:{{ neighbors.before.absolute_url }}{% else %}none{% endif %}|{% if neighbors.after %}{{ neighbors.after.id }}:{{ neighbors.after.url }}:{{ neighbors.after.absolute_url }}{% else %}none{% endif %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/blog/newer.html")).expect("newer output"),
-        "blog/newer|none|blog/older:/blog/older.html"
+        "blog/newer|none|blog/older:/blog/older.html:https://example.org/blog/older.html"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/blog/older.html")).expect("older output"),
-        "blog/older|blog/newer:/blog/newer.html|none"
+        "blog/older|blog/newer:/blog/newer.html:https://example.org/blog/newer.html|none"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/de/blog/zwei.html"))
             .expect("German newer output"),
-        "blog/zwei|none|blog/eins:/de/blog/eins.html"
+        "blog/zwei|none|blog/eins:/de/blog/eins.html:https://example.org/de/blog/eins.html"
     );
 }
 

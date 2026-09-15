@@ -20,7 +20,7 @@ use walkdir::WalkDir;
 
 use crate::{
     asset::AssetLinks,
-    config::BasePath,
+    config::{BasePath, CanonicalUrls},
     locale::Locale,
     localization::Localization,
     site::{
@@ -155,6 +155,7 @@ pub(crate) struct TemplateIndexes {
 /// between the resolved site model and Tera's serialization requirements.
 #[derive(Serialize)]
 pub(crate) struct RenderContext<'a> {
+    pub(crate) site: SiteView,
     pub(crate) locale: LocaleView,
     pub(crate) page: Option<RenderedPage<'a>>,
     pub(crate) taxonomy: Option<crate::site::TaxonomyView>,
@@ -165,6 +166,23 @@ pub(crate) struct RenderContext<'a> {
     pub(crate) root: &'a str,
     #[serde(rename = "__heine_runtime")]
     pub(crate) runtime: RuntimeContext<'a>,
+}
+
+/// The checked site-wide URL fact exposed to templates. The raw origin stays
+/// configuration-only because it is not the canonical site root below a
+/// deployment subpath.
+#[derive(Serialize)]
+pub(crate) struct SiteView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) url: Option<String>,
+}
+
+impl SiteView {
+    pub(crate) fn from_canonical_urls(canonical_urls: Option<&CanonicalUrls>) -> Self {
+        Self {
+            url: canonical_urls.map(CanonicalUrls::site_url),
+        }
+    }
 }
 
 /// The locale identity deliberately exposed to templates. It does not leak
@@ -212,10 +230,11 @@ impl TemplateRelationships {
         page_catalog: PageCatalog,
         default_locale: Locale,
         base_path: BasePath,
+        canonical_urls: Option<crate::config::CanonicalUrls>,
         indexes: TemplateIndexes,
     ) -> Self {
         Self {
-            page_links: page_catalog.links(default_locale, base_path),
+            page_links: page_catalog.links(default_locale, base_path, canonical_urls),
             page_catalog,
             collections: indexes.collections,
             siblings: indexes.siblings,
@@ -249,6 +268,7 @@ pub(crate) struct TemplateEngine {
     tera: tera::Tera,
     sources: BTreeMap<TemplateName, miette::NamedSource<String>>,
     runtime: runtime::TemplateRuntime,
+    canonical_urls_configured: bool,
 }
 
 impl TemplateEngine {
@@ -259,6 +279,7 @@ impl TemplateEngine {
         diagnostics: &crate::source_diagnostic::DiagnosticPaths,
     ) -> Result<Self, Error> {
         let mut tera = tera::Tera::default();
+        let canonical_urls_configured = resources.asset_links.canonical_urls().is_some();
         let runtime = runtime::TemplateRuntime::from(resources);
         resources::register(&mut tera, &runtime);
         content::register(&mut tera, &runtime, markdown_renderer);
@@ -319,12 +340,14 @@ impl TemplateEngine {
         let raw_templates = sources
             .iter()
             .map(|(name, source)| (name.as_str(), source.inner().as_str()));
-        tera.add_raw_templates(raw_templates)
-            .map_err(|source| Error::from_tera("parse", templates, &sources, source, None))?;
+        tera.add_raw_templates(raw_templates).map_err(|source| {
+            Error::from_tera("parse", templates, &sources, source, None, false)
+        })?;
         Ok(Self {
             tera,
             sources,
             runtime,
+            canonical_urls_configured,
         })
     }
 
@@ -354,6 +377,7 @@ impl TemplateEngine {
                     &self.sources,
                     source,
                     Some(rendering),
+                    self.canonical_urls_configured,
                 )
             });
         let source_aware_renders =
@@ -441,6 +465,7 @@ impl Error {
         sources: &BTreeMap<TemplateName, miette::NamedSource<String>>,
         source: tera::Error,
         rendering: Option<&str>,
+        canonical_urls_configured: bool,
     ) -> Self {
         if let tera::ErrorKind::MissingParent { current, parent } = source.kind()
             && let Some(diagnostic) = Self::template_reference_diagnostic(
@@ -496,15 +521,34 @@ impl Error {
             };
         };
         let range = report.span().range.clone();
+        let source_fragment = source_code.inner().get(range.clone()).unwrap_or_default();
+        // Tera knows that this field is absent, but not that Heine makes an
+        // origin a prerequisite for canonical URL output. Preserve Tera's
+        // precise source span while reporting the relevant configuration fact.
+        let missing_canonical_url = !canonical_urls_configured
+            && (source_fragment == "absolute_url"
+                || (source_fragment == "url"
+                    && source_code
+                        .inner()
+                        .get(..range.start)
+                        .is_some_and(|prefix| prefix.ends_with("site."))));
+        let (message, label) = if missing_canonical_url {
+            (
+                "canonical URLs require site.origin; configure an HTTP(S) origin in [site]".into(),
+                "site.origin is not configured".into(),
+            )
+        } else {
+            (report.message().into(), "error here".into())
+        };
         Self::Detailed(Box::new(TemplateDiagnostic {
             stage,
             rendering: rendering
                 .map(|rendering| format!(" (while rendering {rendering})"))
                 .unwrap_or_default(),
             template: template.into(),
-            message: report.message().into(),
+            message,
             source_code: source_code.clone(),
-            label: "error here".into(),
+            label,
             span: (range.start, range.len()).into(),
         }))
     }

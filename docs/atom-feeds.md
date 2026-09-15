@@ -32,6 +32,9 @@ empty_updated = 2026-08-01T09:00:00
 empty_authors = ["Example Author"]
 ```
 
+Templates use the same origin and base-path construction through [checked
+absolute URL views](absolute-urls.md).
+
 The title is locale-facing text, so `title_key` names a Fluent message rather
 than containing literal Atom text:
 
