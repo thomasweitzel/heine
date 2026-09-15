@@ -15,7 +15,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    config::{BasePath, SearchConfig, SearchDefinition, SearchName, TaxonomiesConfig},
+    config::{
+        BasePath, CanonicalUrls, SearchConfig, SearchDefinition, SearchName, TaxonomiesConfig,
+    },
     locale::Locale,
     markdown,
     output::{GeneratedFile, OutputClaim, OutputPath, OutputPlan},
@@ -47,6 +49,8 @@ pub(crate) struct View {
     pub(crate) name: String,
     pub(crate) count: usize,
     pub(crate) url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) absolute_url: Option<String>,
     pub(crate) relative_url: String,
 }
 
@@ -185,12 +189,14 @@ impl Catalog {
         name: &str,
         root: &str,
         base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
     ) -> Option<View> {
         let index = self.locales.get(locale)?.get(name)?;
         Some(View {
             name: index.name.clone(),
             count: index.count,
             url: base_path.join(&index.path.url_path()),
+            absolute_url: canonical_urls.map(|urls| urls.output_url(&index.path)),
             relative_url: format!("{root}{}", index.path.url_path().as_str()),
         })
     }

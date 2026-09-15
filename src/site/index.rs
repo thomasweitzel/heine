@@ -69,15 +69,20 @@ pub(super) fn resolve_translations(
             .iter()
             .filter_map(|(locale, id)| {
                 let page = pages.get(locale)?.get(id)?;
-                page.path.as_ref().map(|path| {
-                    (
-                        locale.to_string(),
-                        PageLink {
-                            id: id.clone(),
-                            path: path.as_str().to_owned(),
-                        },
-                    )
-                })
+                page.path
+                    .as_ref()
+                    .zip(page.output_path.as_ref())
+                    .map(|(path, output_path)| {
+                        (
+                            locale.to_string(),
+                            PageLink {
+                                id: id.clone(),
+                                path: path.as_str().to_owned(),
+                                output_path: output_path.clone(),
+                                absolute_url: None,
+                            },
+                        )
+                    })
             })
             .collect::<BTreeMap<_, _>>();
         for (locale, id) in members {

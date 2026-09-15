@@ -49,6 +49,12 @@ fn builds_the_documented_starter_site() {
     assert!(index.contains("Heine Starter Site"), "{index}");
     assert!(
         index.contains(
+            "<link rel=\"canonical\" href=\"https://example.org/my-project/index.html\">"
+        ),
+        "{index}"
+    );
+    assert!(
+        index.contains(
             "<meta name=\"description\" content=\"A small multilingual example site built with Heine, featuring posts and a short guide to Heinrich Heine.\">"
         ),
         "{index}"
@@ -236,6 +242,12 @@ fn builds_the_documented_starter_site() {
         "{english_blog}"
     );
     assert!(
+        english_blog.contains(
+            "<link rel=\"canonical\" href=\"https://example.org/my-project/blog/index.html\">"
+        ),
+        "{english_blog}"
+    );
+    assert!(
         english_blog.contains("href=\"/my-project/atom.xml\">Subscribe with Atom</a>"),
         "{english_blog}"
     );
@@ -251,6 +263,12 @@ fn builds_the_documented_starter_site() {
     );
     let tags = fs::read_to_string(output.join("tags/index.html")).expect("English tag index");
     assert!(tags.contains("<h1>Tags</h1>"), "{tags}");
+    assert!(
+        tags.contains(
+            "<link rel=\"canonical\" href=\"https://example.org/my-project/tags/index.html\">"
+        ),
+        "{tags}"
+    );
     assert!(
         tags.contains(
             "<meta name=\"description\" content=\"Browse the tags used by posts in this Heine starter site.\">"
@@ -288,6 +306,12 @@ fn builds_the_documented_starter_site() {
     let series_index =
         fs::read_to_string(output.join("series/index.html")).expect("English Series index");
     assert!(series_index.contains("<h1>Series</h1>"), "{series_index}");
+    assert!(
+        series_index.contains(
+            "<link rel=\"canonical\" href=\"https://example.org/my-project/series/index.html\">"
+        ),
+        "{series_index}"
+    );
     assert!(
         series_index.contains(
             "<meta name=\"description\" content=\"Ordered reading paths through this example site.\">"

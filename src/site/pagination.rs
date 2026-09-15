@@ -8,7 +8,11 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use serde::Serialize;
 
-use crate::{config::BasePath, locale::Locale, output::OutputPath};
+use crate::{
+    config::{BasePath, CanonicalUrls},
+    locale::Locale,
+    output::OutputPath,
+};
 
 use super::{
     PageCatalog, PageView,
@@ -203,13 +207,15 @@ pub(crate) struct View {
 pub(crate) struct Link {
     page_number: usize,
     url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
     relative_url: String,
     current: bool,
 }
 
-/// A selected page view augmented with links relative to the current pager.
-/// `PageView` intentionally has no URL fields because ordinary page rendering
-/// does not have one universal relative origin; a generated listing does.
+/// A selected page view augmented with URLs relative to the current pager.
+/// `PageView` retains its own canonical address, but a generated listing owns
+/// the base-path and relative links appropriate to the listing output.
 #[derive(Debug, Serialize)]
 struct ListingPage {
     #[serde(flatten)]
@@ -231,6 +237,7 @@ impl Pager {
         catalog: &PageCatalog,
         locale: &Locale,
         base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
         root: &str,
     ) -> View {
         let pages = self
@@ -254,7 +261,9 @@ impl Pager {
             navigation_links(self.page_number, self.page_count, self.navigation_window)
                 .into_iter()
                 .map(|number| match number {
-                    Some(number) => NavigationItem::Link(self.link(number, base_path, root)),
+                    Some(number) => {
+                        NavigationItem::Link(self.link(number, base_path, canonical_urls, root))
+                    }
                     None => NavigationItem::Gap,
                 })
                 .collect();
@@ -270,30 +279,42 @@ impl Pager {
             },
             page_number: self.page_number,
             page_count: self.page_count,
-            current: self.link(self.page_number, base_path, root),
-            first: self.link(1, base_path, root),
-            last: self.link(self.page_count, base_path, root),
+            current: self.link(self.page_number, base_path, canonical_urls, root),
+            first: self.link(1, base_path, canonical_urls, root),
+            last: self.link(self.page_count, base_path, canonical_urls, root),
             previous: self
                 .page_number
                 .checked_sub(2)
-                .map(|index| self.link(index + 1, base_path, root)),
+                .map(|index| self.link(index + 1, base_path, canonical_urls, root)),
             next: (self.page_number < self.page_count)
-                .then(|| self.link(self.page_number + 1, base_path, root)),
+                .then(|| self.link(self.page_number + 1, base_path, canonical_urls, root)),
             navigation,
         }
     }
 
-    pub(crate) fn links(&self, base_path: &BasePath, root: &str) -> Vec<Link> {
+    pub(crate) fn links(
+        &self,
+        base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
+        root: &str,
+    ) -> Vec<Link> {
         (1..=self.page_count)
-            .map(|number| self.link(number, base_path, root))
+            .map(|number| self.link(number, base_path, canonical_urls, root))
             .collect()
     }
 
-    fn link(&self, page_number: usize, base_path: &BasePath, root: &str) -> Link {
+    fn link(
+        &self,
+        page_number: usize,
+        base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
+        root: &str,
+    ) -> Link {
         let path = &self.paths[page_number - 1];
         Link {
             page_number,
             url: base_path.join(&path.url_path()),
+            absolute_url: canonical_urls.map(|urls| urls.output_url(path)),
             relative_url: format!("{root}{}", path.url_path().as_str()),
             current: page_number == self.page_number,
         }

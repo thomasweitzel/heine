@@ -16,7 +16,7 @@ use thiserror::Error;
 use walkdir::DirEntry;
 
 use crate::{
-    config::{BasePath, IntegrityAlgorithm},
+    config::{BasePath, CanonicalUrls, IntegrityAlgorithm},
     locale::Locale,
     output::{CopiedFiles, OutputPath},
     source_path::{self, LogicalPath},
@@ -438,12 +438,14 @@ impl AssetCatalog {
         self: &Arc<Self>,
         locale: Locale,
         base_path: BasePath,
+        canonical_urls: Option<CanonicalUrls>,
         integrities: BTreeMap<OutputPath, String>,
     ) -> AssetLinks {
         AssetLinks {
             catalog: self.clone(),
             locale,
             base_path,
+            canonical_urls,
             integrities: Arc::new(integrities),
         }
     }
@@ -523,6 +525,7 @@ pub(crate) struct AssetLinks {
     catalog: Arc<AssetCatalog>,
     locale: Locale,
     base_path: BasePath,
+    canonical_urls: Option<CanonicalUrls>,
     integrities: Arc<BTreeMap<OutputPath, String>>,
 }
 
@@ -530,6 +533,7 @@ pub(crate) struct AssetLinks {
 pub(crate) struct AssetLink {
     path: OutputPath,
     url: String,
+    absolute_url: Option<String>,
     integrity: Option<String>,
     dimensions: Option<(u32, u32)>,
     image: bool,
@@ -549,6 +553,8 @@ pub(crate) struct AssetLicenseTextView {
     id: String,
     url: String,
     relative_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -562,17 +568,24 @@ pub(crate) struct AssetAttributionAssetView {
     output_path: String,
     url: String,
     relative_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
 }
 
 impl AssetLinks {
     pub(crate) fn base_path(&self) -> &BasePath {
         &self.base_path
     }
+
+    pub(crate) fn canonical_urls(&self) -> Option<&CanonicalUrls> {
+        self.canonical_urls.as_ref()
+    }
     pub(crate) fn with_locale(&self, locale: Locale) -> Self {
         Self {
             catalog: self.catalog.clone(),
             locale,
             base_path: self.base_path.clone(),
+            canonical_urls: self.canonical_urls.clone(),
             integrities: self.integrities.clone(),
         }
     }
@@ -581,6 +594,10 @@ impl AssetLinks {
         let asset = self.catalog.resolve_id(&self.locale, id)?;
         Ok(AssetLink {
             url: self.base_path.join(&asset.output.url_path()),
+            absolute_url: self
+                .canonical_urls
+                .as_ref()
+                .map(|urls| urls.output_url(&asset.output)),
             integrity: self.integrities.get(&asset.output).cloned(),
             dimensions: self.catalog.dimensions(&asset.output),
             image: is_image_media(asset.output.as_path()),
@@ -623,8 +640,12 @@ impl AssetLinks {
                         output_path: path.logical_spelling(),
                         url: self.base_path.join(&path.url_path()),
                         relative_url: format!("{root}{}", path.url_path().as_str()),
+                        absolute_url: self
+                            .canonical_urls
+                            .as_ref()
+                            .map(|urls| urls.output_url(path)),
                     },
-                    licensing: licensing.view(&self.base_path, root),
+                    licensing: licensing.view(&self.base_path, root, self.canonical_urls.as_ref()),
                 })
             })
             .collect()
@@ -641,6 +662,9 @@ impl AssetLink {
     pub(crate) fn integrity(&self) -> Option<&str> {
         self.integrity.as_deref()
     }
+    pub(crate) fn absolute_url(&self) -> Option<&str> {
+        self.absolute_url.as_deref()
+    }
     pub(crate) fn dimensions(&self) -> Option<(u32, u32)> {
         self.dimensions
     }
@@ -651,15 +675,21 @@ impl AssetLink {
         &self,
         root: &str,
         base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
     ) -> Option<AssetLicensingView> {
         self.licensing
             .as_ref()
-            .map(|licensing| licensing.view(base_path, root))
+            .map(|licensing| licensing.view(base_path, root, canonical_urls))
     }
 }
 
 impl AssetLicensing {
-    fn view(&self, base_path: &BasePath, root: &str) -> AssetLicensingView {
+    fn view(
+        &self,
+        base_path: &BasePath,
+        root: &str,
+        canonical_urls: Option<&CanonicalUrls>,
+    ) -> AssetLicensingView {
         AssetLicensingView {
             copyrights: self.copyrights.clone(),
             expressions: self.expressions.clone(),
@@ -671,6 +701,7 @@ impl AssetLicensing {
                     id: license.id.clone(),
                     url: base_path.join(&license.output.url_path()),
                     relative_url: format!("{root}{}", license.output.url_path().as_str()),
+                    absolute_url: canonical_urls.map(|urls| urls.output_url(&license.output)),
                 })
                 .collect(),
         }

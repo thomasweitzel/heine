@@ -44,14 +44,14 @@ fn paginates_a_collection_with_generated_routes_and_navigation() {
 #[test]
 fn pagination_links_are_base_path_aware_and_relative_to_every_generated_page() {
     let fixture = Fixture::new();
-    fixture.write("heine.toml", "[site]\nbase_path = '/guide/'\n[build]\noutput_dir = 'public/guide'\n[collections.posts]\norder = 'id-asc'\n");
+    fixture.write("heine.toml", "[site]\norigin = 'https://example.org'\nbase_path = '/guide/'\n[build]\noutput_dir = 'public/guide'\n[collections.posts]\norder = 'id-asc'\n");
     listing_fixture(
         &fixture,
         "template = 'listing.tera'\ncollections = []\n[pagination]\ncollection = 'posts'\nper_page = 2\n",
     );
     fixture.write(
         "templates/listing.tera",
-        "{% if pagination.page_number == 2 %}{{ pagination.current.url }}|{{ pagination.current.relative_url }}|{{ pagination.next.url }}|{{ pagination.next.relative_url }}{% endif %}",
+        "{% if pagination.page_number == 2 %}{{ pagination.current.url }}|{{ pagination.current.relative_url }}|{{ pagination.current.absolute_url }}|{{ pagination.next.url }}|{{ pagination.next.relative_url }}|{{ pagination.next.absolute_url }}{% endif %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
@@ -59,7 +59,7 @@ fn pagination_links_are_base_path_aware_and_relative_to_every_generated_page() {
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/guide/blog/page/2.html"))
             .expect("pager two"),
-        "/guide/blog/page/2.html|../../blog/page/2.html|/guide/blog/page/3.html|../../blog/page/3.html"
+        "/guide/blog/page/2.html|../../blog/page/2.html|https://example.org/guide/blog/page/2.html|/guide/blog/page/3.html|../../blog/page/3.html|https://example.org/guide/blog/page/3.html"
     );
 }
 

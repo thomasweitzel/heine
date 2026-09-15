@@ -10,7 +10,9 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
-    config::{BasePath, CollectionName, TaxonomiesConfig, TaxonomyDefinition, TaxonomyName},
+    config::{
+        BasePath, CanonicalUrls, CollectionName, TaxonomiesConfig, TaxonomyDefinition, TaxonomyName,
+    },
     locale::Locale,
     output::OutputPath,
     template::TemplateName,
@@ -100,6 +102,12 @@ pub(super) struct Task {
 pub(crate) struct View {
     pub(crate) name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    relative_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     term: Option<TermView>,
     terms: Vec<TermView>,
 }
@@ -111,6 +119,8 @@ pub(crate) struct TermView {
     #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     relative_url: Option<String>,
     counterparts: BTreeMap<String, TermLinkView>,
 }
@@ -119,6 +129,8 @@ pub(crate) struct TermView {
 struct TermLinkView {
     name: String,
     url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
     relative_url: String,
 }
 
@@ -535,6 +547,7 @@ impl Catalog {
         locale: &Locale,
         name: &TaxonomyName,
         base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
         root: &str,
     ) -> Option<IndexView> {
         let taxonomy = self.locales.get(locale)?.get(name)?;
@@ -543,6 +556,7 @@ impl Catalog {
         Some(IndexView {
             name: taxonomy.name.to_string(),
             url: base_path.join(&output_path.url_path()),
+            absolute_url: canonical_urls.map(|urls| urls.output_url(&output_path)),
             relative_url: format!("{root}{}", output_path.url_path().as_str()),
         })
     }
@@ -559,6 +573,7 @@ impl Catalog {
         locale: &Locale,
         page: &PageId,
         base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
         root: &str,
     ) -> BTreeMap<String, Vec<PageTermView>> {
         self.page_terms
@@ -575,6 +590,8 @@ impl Catalog {
                                 .map(|term| PageTermView {
                                     name: term.name.clone(),
                                     url: base_path.join(&term.output_path.url_path()),
+                                    absolute_url: canonical_urls
+                                        .map(|urls| urls.output_url(&term.output_path)),
                                     relative_url: format!(
                                         "{root}{}",
                                         term.output_path.url_path().as_str()
@@ -616,6 +633,9 @@ impl Catalog {
                         .max(locale_latest[locale]),
                     taxonomy: View {
                         name: taxonomy.name.to_string(),
+                        url: None,
+                        absolute_url: None,
+                        relative_url: None,
                         term: None,
                         terms: taxonomy.terms.iter().map(term_view).collect(),
                     },
@@ -645,6 +665,8 @@ impl Catalog {
 pub(crate) struct IndexView {
     name: String,
     url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
     relative_url: String,
 }
 
@@ -652,6 +674,8 @@ pub(crate) struct IndexView {
 pub(crate) struct PageTermView {
     name: String,
     url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
     relative_url: String,
 }
 
@@ -705,6 +729,9 @@ fn term_tasks(
             latest_input,
             taxonomy: View {
                 name: taxonomy.name.to_string(),
+                url: None,
+                absolute_url: None,
+                relative_url: None,
                 term: Some(term_view(term)),
                 terms: Vec::new(),
             },
@@ -734,11 +761,20 @@ fn localized_root(
 }
 
 impl Task {
-    pub(super) fn taxonomy_view(&self, base_path: &BasePath, root: &str) -> View {
+    pub(super) fn taxonomy_view(
+        &self,
+        base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
+        root: &str,
+    ) -> View {
         let mut view = self.taxonomy.clone();
+        view.url = Some(base_path.join(&self.output_path.url_path()));
+        view.absolute_url = canonical_urls.map(|urls| urls.output_url(&self.output_path));
+        view.relative_url = Some(format!("{root}{}", self.output_path.url_path().as_str()));
         for term in view.terms.iter_mut().chain(view.term.iter_mut()) {
             let path = &self.term_paths[&term.name];
             term.url = Some(base_path.join(&path.url_path()));
+            term.absolute_url = canonical_urls.map(|urls| urls.output_url(path));
             term.relative_url = Some(format!("{root}{}", path.url_path().as_str()));
             term.counterparts = self
                 .term_counterparts
@@ -751,6 +787,8 @@ impl Task {
                         TermLinkView {
                             name: target.name.clone(),
                             url: base_path.join(&target.output_path.url_path()),
+                            absolute_url: canonical_urls
+                                .map(|urls| urls.output_url(&target.output_path)),
                             relative_url: format!(
                                 "{root}{}",
                                 target.output_path.url_path().as_str()
@@ -806,6 +844,7 @@ fn term_view(term: &ResolvedTerm) -> TermView {
         name: term.name.clone(),
         count: term.members.len(),
         url: None,
+        absolute_url: None,
         relative_url: None,
         counterparts: BTreeMap::new(),
     }

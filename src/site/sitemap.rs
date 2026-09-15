@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    config::{BasePath, SiteOrigin, SitemapConfig},
+    config::{CanonicalUrls, SitemapConfig},
     output::{GeneratedFile, OutputClaim, OutputPath, OutputPlan},
 };
 
@@ -35,8 +35,7 @@ pub(crate) enum Error {
 impl Sitemap {
     pub(super) fn new(
         config: &SitemapConfig,
-        origin: &SiteOrigin,
-        base_path: &BasePath,
+        urls: &CanonicalUrls,
         tasks: &[Task],
         taxonomy_tasks: &[taxonomy::Task],
         series_tasks: &[series::Task],
@@ -46,20 +45,20 @@ impl Sitemap {
             .filter(|task| task.sitemap_include)
             .map(|task| {
                 Ok(Entry {
-                    url: canonical(origin, base_path, &task.output_path)?,
+                    url: canonical(urls, &task.output_path)?,
                     lastmod: task.sitemap_lastmod.as_ref().map(|time| time.render()),
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
         for task in taxonomy_tasks {
             entries.push(Entry {
-                url: canonical(origin, base_path, &task.output_path)?,
+                url: canonical(urls, &task.output_path)?,
                 lastmod: None,
             });
         }
         for task in series_tasks {
             entries.push(Entry {
-                url: canonical(origin, base_path, &task.output_path)?,
+                url: canonical(urls, &task.output_path)?,
                 lastmod: None,
             });
         }
@@ -76,7 +75,7 @@ impl Sitemap {
             let child_paths = (1..=groups.len()).map(child_path).collect::<Vec<_>>();
             let locations = child_paths
                 .iter()
-                .map(|path| canonical(origin, base_path, path))
+                .map(|path| canonical(urls, path))
                 .collect::<Result<Vec<_>, _>>()?;
             let index = sitemap_index(&locations);
             if index.len() > BYTE_LIMIT {
@@ -117,12 +116,8 @@ struct Entry {
     lastmod: Option<String>,
 }
 
-fn canonical(
-    origin: &SiteOrigin,
-    base_path: &BasePath,
-    path: &OutputPath,
-) -> Result<String, Error> {
-    let url = origin.canonical_url(&base_path.join(&path.url_path()));
+fn canonical(urls: &CanonicalUrls, path: &OutputPath) -> Result<String, Error> {
+    let url = urls.output_url(path);
     if url.len() >= URL_LIMIT {
         return Err(Error::UrlTooLong { url });
     }

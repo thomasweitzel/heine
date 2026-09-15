@@ -15,7 +15,7 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[site]\nbase_path = '/guide/'\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[collections.docs]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 10\n\n[search.site]\ncollections = ['posts', 'docs']\npath = 'search/site.json'\n",
+        "[site]\norigin = 'https://example.org'\nbase_path = '/guide/'\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[collections.docs]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 10\n\n[search.site]\ncollections = ['posts', 'docs']\npath = 'search/site.json'\n",
     );
     fixture.write(
         "content/en/post.page",
@@ -44,7 +44,7 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     );
     fixture.write(
         "templates/page.tera",
-        "{% if page.id == 'post' %}{{ markdown(content='main') }}{% endif %}{% set current = search(name='site') %}{% set german = search(name='site', locale='de') %}{{ current.url }}|{{ current.relative_url }}|{{ current.count }}|{{ german.url }}",
+        "{% if page.id == 'post' %}{{ markdown(content='main') }}{% endif %}{% set current = search(name='site') %}{% set german = search(name='site', locale='de') %}{{ current.url }}|{{ current.relative_url }}|{{ current.absolute_url }}|{{ current.count }}|{{ german.url }}|{{ german.absolute_url }}",
     );
     fixture.write("templates/taxonomy-index.tera", "index");
     fixture.write("templates/taxonomy-term.tera", "term");
@@ -118,7 +118,15 @@ fn generates_versioned_locale_local_search_documents_from_collections() {
     let page = fs::read_to_string(fixture.path().join("public/index.html")).expect("page output");
     assert!(page.starts_with("/guide/search/site."), "{page}");
     assert!(page.contains("|./search/site."), "{page}");
+    assert!(
+        page.contains("|https://example.org/guide/search/site."),
+        "{page}"
+    );
     assert!(page.contains("|2|/guide/de/search/site."), "{page}");
+    assert!(
+        page.contains("|https://example.org/guide/de/search/site."),
+        "{page}"
+    );
 }
 
 #[test]

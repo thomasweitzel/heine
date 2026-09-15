@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     author::AuthorName,
-    config::{BasePath, FeedDefinition, FeedName, FeedsConfig, SiteOrigin},
+    config::{BasePath, CanonicalUrls, FeedDefinition, FeedName, FeedsConfig},
     locale::Locale,
     localization::{Arguments, Localization},
     output::{GeneratedFile, OutputClaim, OutputPath, OutputPlan},
@@ -38,6 +38,8 @@ pub(crate) struct View {
     pub(crate) name: String,
     pub(crate) title: String,
     pub(crate) url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) absolute_url: Option<String>,
     pub(crate) relative_url: String,
 }
 
@@ -106,7 +108,7 @@ impl Catalog {
                 locales: BTreeMap::new(),
             });
         }
-        let origin = inputs.origin.ok_or(Error::MissingOrigin)?;
+        let urls = inputs.urls.ok_or(Error::MissingOrigin)?;
         let mut locales = BTreeMap::new();
         for (locale, locale_pages) in inputs.pages {
             let mut feeds = BTreeMap::new();
@@ -150,16 +152,7 @@ impl Catalog {
                 let mut entries = collection
                     .page_ids()
                     .iter()
-                    .map(|id| {
-                        entry(
-                            name,
-                            definition,
-                            id,
-                            &locale_pages[id],
-                            origin,
-                            inputs.base_path,
-                        )
-                    })
+                    .map(|id| entry(name, definition, id, &locale_pages[id], urls))
                     .collect::<Result<Vec<_>, _>>()?;
                 entries.sort_by(|left, right| {
                     right
@@ -189,7 +182,7 @@ impl Catalog {
                     }
                     (updated, Some(authors))
                 };
-                let url = canonical(origin, inputs.base_path, &path);
+                let url = urls.output_url(&path);
                 let xml = atom(
                     &locale.to_string(),
                     &title,
@@ -243,12 +236,14 @@ impl Catalog {
         name: &str,
         root: &str,
         base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
     ) -> Option<View> {
         let feed = self.locales.get(locale)?.get(name)?;
         Some(View {
             name: feed.name.clone(),
             title: feed.title.clone(),
             url: base_path.join(&feed.path.url_path()),
+            absolute_url: canonical_urls.map(|urls| urls.output_url(&feed.path)),
             relative_url: format!("{root}{}", feed.path.url_path().as_str()),
         })
     }
@@ -268,8 +263,7 @@ pub(super) struct Inputs<'a> {
         &'a BTreeMap<Locale, BTreeMap<crate::config::CollectionName, ResolvedCollection>>,
     pub(super) config: &'a FeedsConfig,
     pub(super) prefixes: &'a BTreeMap<Locale, PathBuf>,
-    pub(super) origin: Option<&'a SiteOrigin>,
-    pub(super) base_path: &'a BasePath,
+    pub(super) urls: Option<&'a CanonicalUrls>,
     pub(super) localization: &'a Localization,
 }
 
@@ -289,8 +283,7 @@ fn entry(
     definition: &FeedDefinition,
     id: &PageId,
     page: &Page,
-    origin: &SiteOrigin,
-    base_path: &BasePath,
+    urls: &CanonicalUrls,
 ) -> Result<Entry, Error> {
     let membership = page
         .collections
@@ -369,7 +362,7 @@ fn entry(
         authors: authors.names().to_vec(),
         published,
         updated: page.metadata.updated.unwrap_or(published),
-        url: canonical(origin, base_path, path),
+        url: urls.output_url(path),
     })
 }
 
@@ -488,10 +481,6 @@ fn output_claim(name: &FeedName, definition: &FeedDefinition, path: OutputPath) 
         source.as_ref().clone(),
         span,
     )
-}
-
-fn canonical(origin: &SiteOrigin, base_path: &BasePath, path: &OutputPath) -> String {
-    origin.canonical_url(&base_path.join(&path.url_path()))
 }
 
 fn atom(

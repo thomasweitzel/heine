@@ -6,7 +6,11 @@
 
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
-use crate::{config::BasePath, locale::Locale, output::OutputPath};
+use crate::{
+    config::{BasePath, CanonicalUrls},
+    locale::Locale,
+    output::OutputPath,
+};
 
 use super::page::{Page, PageId, PageView};
 
@@ -27,6 +31,7 @@ impl PageCatalog {
     pub(super) fn from_pages(
         pages: BTreeMap<Locale, BTreeMap<PageId, Page>>,
         excluded_drafts: Arc<BTreeMap<Locale, BTreeMap<PageId, PathBuf>>>,
+        canonical_urls: Option<&CanonicalUrls>,
     ) -> Self {
         let mut views = BTreeMap::new();
         let mut targets = BTreeMap::new();
@@ -37,7 +42,7 @@ impl PageCatalog {
                 if let Some(output) = page.output_path.clone() {
                     locale_targets.insert(id.clone(), output);
                 }
-                locale_views.insert(id, page.into_view());
+                locale_views.insert(id, page.into_view(canonical_urls));
             }
             views.insert(locale.clone(), locale_views);
             targets.insert(locale, locale_targets);
@@ -49,10 +54,16 @@ impl PageCatalog {
         }
     }
 
-    pub(crate) fn links(&self, current_locale: Locale, base_path: BasePath) -> PageLinks {
+    pub(crate) fn links(
+        &self,
+        current_locale: Locale,
+        base_path: BasePath,
+        canonical_urls: Option<CanonicalUrls>,
+    ) -> PageLinks {
         PageLinks::from_targets(
             current_locale,
             base_path,
+            canonical_urls,
             self.targets.clone(),
             self.excluded_drafts.clone(),
         )
@@ -62,6 +73,7 @@ impl PageCatalog {
         pages: &BTreeMap<Locale, BTreeMap<PageId, Page>>,
         current_locale: Locale,
         base_path: BasePath,
+        canonical_urls: Option<CanonicalUrls>,
         excluded_drafts: Arc<BTreeMap<Locale, BTreeMap<PageId, PathBuf>>>,
     ) -> PageLinks {
         let targets = pages
@@ -83,6 +95,7 @@ impl PageCatalog {
         PageLinks::from_targets(
             current_locale,
             base_path,
+            canonical_urls,
             Arc::new(targets),
             excluded_drafts,
         )
@@ -103,6 +116,7 @@ impl PageCatalog {
 pub(crate) struct PageLinks {
     current_locale: Locale,
     base_path: BasePath,
+    canonical_urls: Option<CanonicalUrls>,
     targets: Arc<BTreeMap<Locale, BTreeMap<PageId, OutputPath>>>,
     excluded_drafts: Arc<BTreeMap<Locale, BTreeMap<PageId, PathBuf>>>,
 }
@@ -137,12 +151,14 @@ impl PageLinks {
     pub(crate) fn from_targets(
         current_locale: Locale,
         base_path: BasePath,
+        canonical_urls: Option<CanonicalUrls>,
         targets: Arc<BTreeMap<Locale, BTreeMap<PageId, OutputPath>>>,
         excluded_drafts: Arc<BTreeMap<Locale, BTreeMap<PageId, PathBuf>>>,
     ) -> Self {
         Self {
             current_locale,
             base_path,
+            canonical_urls,
             targets,
             excluded_drafts,
         }
@@ -152,6 +168,7 @@ impl PageLinks {
         Self {
             current_locale,
             base_path: self.base_path.clone(),
+            canonical_urls: self.canonical_urls.clone(),
             targets: self.targets.clone(),
             excluded_drafts: self.excluded_drafts.clone(),
         }
@@ -159,6 +176,10 @@ impl PageLinks {
 
     pub(crate) fn base_path(&self) -> &BasePath {
         &self.base_path
+    }
+
+    pub(crate) fn canonical_urls(&self) -> Option<&CanonicalUrls> {
+        self.canonical_urls.as_ref()
     }
 
     pub(crate) fn resolve(

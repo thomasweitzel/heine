@@ -12,7 +12,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
-    config::{BasePath, SeriesConfig, SeriesName},
+    config::{BasePath, CanonicalUrls, SeriesConfig, SeriesName},
     locale::Locale,
     localization::{Arguments, Localization},
     output::OutputPath,
@@ -92,6 +92,8 @@ pub(crate) struct View {
     #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     relative_url: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     series: Vec<IndexEntry>,
@@ -107,6 +109,8 @@ struct IndexEntry {
     description: Option<String>,
     count: usize,
     url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
     relative_url: String,
 }
 
@@ -120,6 +124,8 @@ pub(crate) struct MembershipView {
     number: usize,
     total: usize,
     url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
     relative_url: String,
     previous: Option<PageLinkView>,
     next: Option<PageLinkView>,
@@ -131,6 +137,8 @@ struct PageLinkView {
     title: String,
     draft: bool,
     url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
     relative_url: String,
 }
 
@@ -589,7 +597,13 @@ impl Catalog {
         self.definitions.contains(id)
     }
 
-    pub(crate) fn index(&self, locale: &Locale, base_path: &BasePath, root: &str) -> Option<View> {
+    pub(crate) fn index(
+        &self,
+        locale: &Locale,
+        base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
+        root: &str,
+    ) -> Option<View> {
         let catalog = self.locales.get(locale)?;
         let path = catalog.index.path.as_ref()?;
         let collation = collation::TextCollation::for_locale(locale);
@@ -602,6 +616,7 @@ impl Catalog {
                 description: series.description.clone(),
                 count: series.members.len(),
                 url: base_path.join(&series.path.url_path()),
+                absolute_url: canonical_urls.map(|urls| urls.output_url(&series.path)),
                 relative_url: format!("{root}{}", series.path.url_path().as_str()),
             })
             .collect::<Vec<_>>();
@@ -616,6 +631,7 @@ impl Catalog {
             description: catalog.index.description.clone(),
             count: entries.len(),
             url: Some(base_path.join(&path.url_path())),
+            absolute_url: canonical_urls.map(|urls| urls.output_url(path)),
             relative_url: Some(format!("{root}{}", path.url_path().as_str())),
             series: entries,
             page_ids: Vec::new(),
@@ -627,6 +643,7 @@ impl Catalog {
         locale: &Locale,
         id: &SeriesName,
         base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
         root: &str,
     ) -> Option<View> {
         let series = self.locales.get(locale)?.series.get(id)?;
@@ -636,6 +653,7 @@ impl Catalog {
             description: series.description.clone(),
             count: series.members.len(),
             url: Some(base_path.join(&series.path.url_path())),
+            absolute_url: canonical_urls.map(|urls| urls.output_url(&series.path)),
             relative_url: Some(format!("{root}{}", series.path.url_path().as_str())),
             series: Vec::new(),
             page_ids: series.members.page_ids().to_vec(),
@@ -648,6 +666,7 @@ impl Catalog {
         page: &PageId,
         pages: &PageCatalog,
         base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
         root: &str,
     ) -> Vec<MembershipView> {
         let Some(catalog) = self.locales.get(locale) else {
@@ -676,13 +695,14 @@ impl Catalog {
                         + 1,
                     total: series.members.len(),
                     url: base_path.join(&series.path.url_path()),
+                    absolute_url: canonical_urls.map(|urls| urls.output_url(&series.path)),
                     relative_url: format!("{root}{}", series.path.url_path().as_str()),
-                    previous: neighbors
-                        .before
-                        .and_then(|id| page_link(locale, &id, pages, base_path, root)),
-                    next: neighbors
-                        .after
-                        .and_then(|id| page_link(locale, &id, pages, base_path, root)),
+                    previous: neighbors.before.and_then(|id| {
+                        page_link(locale, &id, pages, base_path, canonical_urls, root)
+                    }),
+                    next: neighbors.after.and_then(|id| {
+                        page_link(locale, &id, pages, base_path, canonical_urls, root)
+                    }),
                 }
             })
             .collect()
@@ -707,6 +727,7 @@ fn page_link(
     id: &PageId,
     pages: &PageCatalog,
     base_path: &BasePath,
+    canonical_urls: Option<&CanonicalUrls>,
     root: &str,
 ) -> Option<PageLinkView> {
     let page = pages.view(locale, id)?;
@@ -716,6 +737,7 @@ fn page_link(
         title: page.title()?.to_owned(),
         draft: page.is_draft(),
         url: base_path.join(&path.url_path()),
+        absolute_url: canonical_urls.map(|urls| urls.output_url(path)),
         relative_url: format!("{root}{}", path.url_path().as_str()),
     })
 }

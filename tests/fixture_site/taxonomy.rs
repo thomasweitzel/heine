@@ -148,18 +148,24 @@ fn quick_build_rerenders_the_affected_taxonomy_listing_for_a_member_change() {
 #[test]
 fn taxonomy_function_resolves_the_locale_local_index_and_reports_invalid_lookups() {
     let fixture = Fixture::new();
-    fixture.write("heine.toml", taxonomy_config());
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "[site]\norigin = 'https://example.org'\n\n{}",
+            taxonomy_config()
+        ),
+    );
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     templates(&fixture);
     fixture.write(
         "templates/page.tera",
-        "{% set tags = taxonomy(name='tags') %}{{ tags.name }}|{{ tags.url }}|{{ tags.relative_url }}",
+        "{% set tags = taxonomy(name='tags') %}{{ tags.name }}|{{ tags.url }}|{{ tags.relative_url }}|{{ tags.absolute_url }}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("taxonomy index lookup builds");
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).expect("page output"),
-        "tags|/tags/index.html|./tags/index.html"
+        "tags|/tags/index.html|./tags/index.html|https://example.org/tags/index.html"
     );
 
     fixture.write("templates/page.tera", "{{ taxonomy(name='unknown') }}");
@@ -439,7 +445,7 @@ fn taxonomy_routes_are_locale_and_base_path_aware_and_sort_terms_for_the_locale(
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[site]\nbase_path = '/guide/'\n\n[build]\noutput_dir = 'public/guide'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n",
+        "[site]\norigin = 'https://example.org'\nbase_path = '/guide/'\n\n[build]\noutput_dir = 'public/guide'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[collections.posts]\norder = 'id-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n",
     );
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write("content/de/index.page", "template = 'page.tera'\n");
@@ -453,25 +459,38 @@ fn taxonomy_routes_are_locale_and_base_path_aware_and_sort_terms_for_the_locale(
     );
     fixture.write(
         "templates/page.tera",
-        "{% set tags = taxonomy(name='tags') %}{{ tags.url }}|{{ tags.relative_url }}",
+        "{% set tags = taxonomy(name='tags') %}{{ tags.url }}|{{ tags.relative_url }}|{{ tags.absolute_url }}{% if page.id == 'first' %}|{{ page.taxonomies.tags[0].absolute_url }}{% endif %}",
     );
     fixture.write(
         "templates/taxonomy-index.tera",
-        "{% for term in taxonomy.terms %}{{ term.name }}|{% endfor %}",
+        "{{ taxonomy.absolute_url }}|{% for term in taxonomy.terms %}{{ term.name }}={{ term.absolute_url }}|{% endfor %}",
     );
-    fixture.write("templates/taxonomy-term.tera", "term");
+    fixture.write(
+        "templates/taxonomy-term.tera",
+        "{{ taxonomy.absolute_url }}|{{ taxonomy.term.absolute_url }}",
+    );
 
     build_at(fixture.path(), BuildMode::Full).expect("localized taxonomy site builds");
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/guide/de/index.html"))
             .expect("German index"),
-        "/guide/de/tags/index.html|../de/tags/index.html"
+        "/guide/de/tags/index.html|../de/tags/index.html|https://example.org/guide/de/tags/index.html"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/guide/de/tags/index.html"))
             .expect("German taxonomy index"),
-        "Ähre|Apfel|"
+        "https://example.org/guide/de/tags/index.html|Ähre=https://example.org/guide/de/tags/%C3%84hre.html|Apfel=https://example.org/guide/de/tags/Apfel.html|"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/guide/de/tags/Apfel.html"))
+            .expect("German taxonomy term"),
+        "https://example.org/guide/de/tags/Apfel.html|https://example.org/guide/de/tags/Apfel.html"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/guide/de/first.html"))
+            .expect("German member page"),
+        "/guide/de/tags/index.html|../de/tags/index.html|https://example.org/guide/de/tags/index.html|https://example.org/guide/de/tags/%C3%84hre.html"
     );
 }
 

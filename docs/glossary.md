@@ -9,8 +9,8 @@ when reading configuration, templates, diagnostics, or the reference.
 ### Base path
 
 The absolute URL-directory prefix below which a site is deployed, configured
-as `site.base_path`. For example, `/guide/` makes generated absolute URLs begin
-with `/guide/`; it does not change the source layout.
+as `site.base_path`. For example, `/guide/` prefixes Heine's base-path-aware
+`url` values; it does not change the source layout.
 
 ### Full build
 
@@ -70,8 +70,16 @@ live beside them.
 ### Site origin
 
 The scheme, host, and optional port configured as `site.origin`, for example
-`https://example.org`. It has no deployment path; combine it with the base path
-when a generated document needs an absolute canonical URL.
+`https://example.org`. It has no deployment path and is configuration-only.
+Heine combines it with the base path when a generated document or template
+needs an absolute canonical URL.
+
+### Site URL
+
+The canonical root URL exposed as `site.url` when `site.origin` is configured.
+It combines the origin and `site.base_path`, including the trailing slash. A
+site with origin `https://example.org` and base path `/guide/` has site URL
+`https://example.org/guide/`.
 
 ### Sitemap
 
@@ -265,6 +273,12 @@ and resolves an exact rendered page.
 
 The absolute-path form Heine exposes as `url`. It begins with the configured
 base path, such as `/guide/blog/first-post.html`; it is not a full site origin.
+
+### Absolute URL
+
+A canonical public URL exposed as `absolute_url` on a known page, asset, or
+generated-resource view when `site.origin` is configured. It combines the
+origin, base path, and that view's checked output path. See [absolute URLs](absolute-urls.md).
 
 ## Localization
 

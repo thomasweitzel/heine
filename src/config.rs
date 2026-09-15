@@ -30,7 +30,8 @@ use licensing::RawLicensingConfig;
 pub(crate) use licensing::{
     LicensingConfig, LicensingCoverage, LicensingDeclaration, LicensingValue,
 };
-pub(crate) use origin::SiteOrigin;
+pub(crate) use origin::CanonicalUrls;
+use origin::SiteOrigin;
 pub(crate) use time_zone::EditorialTimeZone;
 
 #[derive(Debug, Clone)]
@@ -706,8 +707,10 @@ impl SiteSettings {
     pub(crate) fn base_path(&self) -> &BasePath {
         &self.base_path
     }
-    pub(crate) fn origin(&self) -> Option<&SiteOrigin> {
-        self.origin.as_ref()
+    pub(crate) fn canonical_urls(&self) -> Option<CanonicalUrls> {
+        self.origin
+            .clone()
+            .map(|origin| CanonicalUrls::new(origin, self.base_path.clone()))
     }
     pub(crate) fn time_zone(&self) -> Option<&EditorialTimeZone> {
         self.time_zone.as_ref()

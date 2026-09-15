@@ -23,6 +23,7 @@ example. It is an absolute HTTP or HTTPS origin with no credentials, query,
 fragment, or path other than `/`. `site.base_path` supplies the path below that
 origin where the site is deployed. Together they produce canonical URLs such
 as `https://example.org/guide/blog/first-post.html`.
+Templates use the same construction through [checked absolute URL views](absolute-urls.md).
 
 Sitemap locations use Heine's literal generated-file URLs. For example,
 `public/blog/index.html` becomes

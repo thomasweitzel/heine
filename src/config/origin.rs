@@ -2,13 +2,43 @@
 
 use url::Url;
 
+use crate::output::OutputPath;
+
+use super::BasePath;
+
 /// An absolute HTTP(S) origin without a deployment path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SiteOrigin(Url);
 
 impl SiteOrigin {
-    pub(crate) fn canonical_url(&self, path: &str) -> String {
+    fn canonical_url(&self, path: &str) -> String {
         format!("{}{}", self.0.as_str().trim_end_matches('/'), path)
+    }
+}
+
+/// Canonical URL construction for one configured deployment.
+///
+/// Keeping the origin and deployment path together prevents consumers from
+/// accidentally treating an origin as the site root when the site lives below
+/// a subpath.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CanonicalUrls {
+    origin: SiteOrigin,
+    base_path: BasePath,
+}
+
+impl CanonicalUrls {
+    pub(crate) fn new(origin: SiteOrigin, base_path: BasePath) -> Self {
+        Self { origin, base_path }
+    }
+
+    pub(crate) fn site_url(&self) -> String {
+        self.origin.canonical_url(self.base_path.as_str())
+    }
+
+    pub(crate) fn output_url(&self, path: &OutputPath) -> String {
+        self.origin
+            .canonical_url(&self.base_path.join(&path.url_path()))
     }
 }
 
@@ -56,5 +86,21 @@ mod tests {
         ] {
             assert!(SiteOrigin::try_from(value.to_owned()).is_err(), "{value}");
         }
+    }
+
+    #[test]
+    fn joins_the_origin_with_the_complete_site_root_and_output_path() {
+        let urls = super::CanonicalUrls::new(
+            SiteOrigin::try_from("https://example.org".to_owned()).expect("valid origin"),
+            "/guide/".try_into().expect("valid base path"),
+        );
+        let path = crate::output::OutputPath::try_new("blog/index.html".into())
+            .expect("valid output path");
+
+        assert_eq!(urls.site_url(), "https://example.org/guide/");
+        assert_eq!(
+            urls.output_url(&path),
+            "https://example.org/guide/blog/index.html"
+        );
     }
 }
