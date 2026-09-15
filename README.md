@@ -15,8 +15,9 @@ where it is authored instead of becoming a browser 404.
 
 ## Status
 
-Heine is pre-release and is not published to crates.io yet. Install a current
-stable Rust toolchain, clone this repository, and run it with `cargo run`.
+Heine is pre-release and is not published to crates.io yet. A Linux x86-64
+musl executable and a complete starter site are available from the
+[Download page](https://heine.rs/download/).
 
 It currently provides Markdown rendering with checked color-scheme pictures,
 page-owned tables of contents and margin footnotes, Tera2 templates,
@@ -129,19 +130,21 @@ The [documentation map](docs/README.md) explains the available reading paths.
 
 ## Starter site
 
-[`starter-site/`](starter-site/) is a complete, working multilingual example.
-Use it after the tutorial when you want to see several features composed in one
-site rather than introduced one at a time:
+The [downloadable starter site](starter-site/) is a complete, working
+multilingual example. Use it after the tutorial when you want to see several
+features composed in one site rather than introduced one at a time. Extract the
+archive, change into its top-level directory, and run the executable downloaded
+from the [Download page](https://heine.rs/download/):
 
 ```bash
-cargo run -- --root starter-site
+/path/to/heine --root .
 ```
 
 Its `public/` directory is generated output. If it already contains unrelated
 files, explicitly adopt and replace it with:
 
 ```bash
-cargo run -- --root starter-site --clean-output
+/path/to/heine --root . --clean-output
 ```
 
 ## External asset tools
