@@ -72,6 +72,14 @@ Do not use Tera conditionals or `default` to turn canonical markup into an
 optional feature. Those constructs can intentionally suppress an absent value,
 as can literal template text, but neither establishes a canonical URL.
 
+## Local previews
+
+Keep `site.origin` set to the intended public origin while developing locally.
+`heine serve` does not infer or replace it with its local address. Use
+`absolute_url` for canonical and metadata markup, not ordinary navigation: an
+anchor using it deliberately points to the public host. Use `url` or
+`relative_url` for links that a reader follows within the locally served site.
+
 Atom feeds and sitemaps use the same configured origin and output-path
 construction. See [sitemaps](sitemap.md) and [Atom feeds](atom-feeds.md) for
 their additional configuration.
