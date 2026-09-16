@@ -720,11 +720,16 @@ impl SiteSettings {
 /// Enables structural generation of canonical sitemap resources.
 #[derive(Debug, Clone)]
 pub(crate) struct SitemapConfig {
+    hreflang: bool,
     span: SourceSpan,
     source: Option<Arc<NamedSource<String>>>,
 }
 
 impl SitemapConfig {
+    pub(crate) fn hreflang(&self) -> bool {
+        self.hreflang
+    }
+
     pub(crate) fn output_claim(&self, path: OutputPath) -> Option<OutputClaim> {
         self.source.as_ref().map(|source| {
             OutputClaim::authored(path, "sitemap", source.as_ref().clone(), self.span)
@@ -1019,7 +1024,9 @@ struct RawReadingTimeConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawSitemapConfig {}
+struct RawSitemapConfig {
+    hreflang: Option<toml::Spanned<bool>>,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1308,9 +1315,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     })
             })
             .transpose()?;
-        let sitemap = raw
-            .sitemap
-            .map(|value| {
+        let sitemap = raw.sitemap.map(|value| {
                 let span: SourceSpan = value.span().into();
                 if origin.is_none() {
                     return Err(ConfigValueError {
@@ -1320,7 +1325,26 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                                 .into(),
                     });
                 }
-                Ok(SitemapConfig { span, source: None })
+                let RawSitemapConfig { hreflang } = value.into_inner();
+                let hreflang = match hreflang {
+                    None => false,
+                    Some(value) => {
+                        let value_span: SourceSpan = value.span().into();
+                        if value.into_inner() {
+                            true
+                        } else {
+                            return Err(ConfigValueError {
+                                span: value_span,
+                                message: "sitemap.hreflang accepts only true; omit it to disable sitemap alternates".into(),
+                            });
+                        }
+                    }
+                };
+                Ok(SitemapConfig {
+                    hreflang,
+                    span,
+                    source: None,
+                })
             })
             .transpose()?;
         if origin.is_none()

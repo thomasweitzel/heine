@@ -181,6 +181,11 @@ convention for localized labels; Heine does not prescribe label text.
 {% endif %}
 ```
 
+When a site enables sitemap `hreflang` annotations, these same explicit groups
+also identify localized sitemap counterparts. Sitemap membership remains
+separate: a page excluded with `sitemap = false` is not named as an alternate.
+See [sitemaps](sitemap.md#localized-counterparts) for that output contract.
+
 `page(id="...")` addresses an exact page ID in the locale currently being
 rendered. Its optional `locale` argument addresses an exact page ID in that
 named locale; it never resolves a translation group implicitly. Markdown has

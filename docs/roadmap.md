@@ -7,14 +7,6 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Next
 
-- **Multilingual sitemap alternates:** opt in to checked `hreflang` XHTML
-  annotations in sitemap entries for explicit authored `translationid` groups.
-  Emit every known group member, including self, in deterministic locale order;
-  partial groups remain partial. Do not infer counterparts from paths or cover
-  generated pagination, collection, taxonomy, or Series pages. Account for
-  alternate URLs and XML bytes when checking and splitting sitemap output.
-  HTML-head annotations belong to a later template-facing companion, built on
-  checked absolute page URLs; never inject them into arbitrary templates.
 - **Kits:** one selected, checked presentation layer with root-owned site
   structure and narrow, declared overrides. See the [design](design/kits.md).
 - **Release hygiene:** establish a repeatable local release procedure before

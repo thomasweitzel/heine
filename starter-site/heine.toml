@@ -13,6 +13,7 @@ origin = "https://example.org"
 time_zone = "Europe/Berlin"
 
 [sitemap]
+hreflang = true
 
 [build]
 output_dir = "public/my-project"

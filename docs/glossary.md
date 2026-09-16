@@ -305,6 +305,12 @@ An opaque page metadata value, `translationid`, that explicitly groups known
 counterpart pages across locales. A group may be partial but contains at most
 one page for each locale.
 
+### Hreflang sitemap alternate
+
+An XHTML sitemap annotation that names every sitemap-included counterpart of a
+page, including itself, with its locale code and canonical URL. Heine emits it
+only when `[sitemap] hreflang = true` is configured.
+
 ## Listings
 
 ### Collection

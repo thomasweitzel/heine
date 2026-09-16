@@ -54,6 +54,40 @@ generation and may gain sitemap-wide settings later. The `sitemap` field in a
 page or `[pages]` descriptor only removes authored output from that generated
 document; it never enables the feature or adds a page to it.
 
+## Localized counterparts
+
+A multilingual site can add [hreflang sitemap alternates](glossary.md#hreflang-sitemap-alternate)
+for pages that it has explicitly declared as counterparts:
+
+```toml
+[sitemap]
+hreflang = true
+```
+
+This setting is optional. Omit it to produce the ordinary sitemap format;
+`hreflang = false` is rejected because it restates that omission. It does not
+invent language relationships. A page participates only when it shares a
+[`translationid`](internationalization.md#page-counterparts) with a rendered,
+sitemap-included page in another locale.
+
+For every participating page, Heine writes one `<xhtml:link
+rel="alternate">` for every sitemap-included member of that group, including
+the page itself. The entries have fully qualified canonical URLs and are sorted
+by configured locale code. The XHTML namespace is added to the sitemap URL-set
+automatically.
+
+The group may be partial. If an English and German page share an ID but no
+Polish page exists, their entries name only English and German. If a member
+uses `sitemap = false`, it is not named by another locale's entry. The
+remaining included members still form a reciprocal set. A group with fewer
+than two included pages emits no self-only annotation.
+
+Only authored pages participate. The first URL of an authored paginated
+listing can be a counterpart, but later pager URLs, taxonomies, Series, feeds,
+search indexes, and other generated resources do not have an authored
+translation identity. Heine does not emit `x-default`, HTML-head annotations,
+or HTTP `Link` headers. Those need an additional, separately authored policy.
+
 ## Generated file
 
 A full build writes `sitemap.xml` at the root of managed output:
@@ -104,6 +138,11 @@ sitemap-index document and writes deterministically numbered child URL-set
 documents below `sitemaps/`. The index refers to those children with canonical
 URLs. Child boundaries follow deterministic URL order and account for both
 entry count and final UTF-8 XML size.
+
+Localized alternate elements count toward XML size, but not toward the URL
+entry count. If one page and its alternate set cannot fit within the byte
+limit, Heine reports that canonical page URL instead of writing an oversized
+sitemap.
 
 Every child is a generated-output claim and participates in the same collision
 checks and atomic publication as `sitemap.xml`. If an individual canonical URL
@@ -198,10 +237,10 @@ Generated pagination, taxonomy, and Series pages have no authored chronology
 of their own. Their initial sitemap entries therefore omit `<lastmod>`.
 
 For a multilingual site, the default locale's routes remain unprefixed and
-other locales retain their normal locale prefixes. The initial sitemap lists
-all of those canonical URLs. It does not infer translation relationships or
-emit `hreflang` alternates: translation groups may be partial, and that
-extension needs its own explicit contract.
+other locales retain their normal locale prefixes. The sitemap lists all of
+those canonical URLs. When `[sitemap] hreflang = true` is configured, explicit
+page counterpart groups add their localized alternate annotations as described
+above.
 
 ## Sitemap membership
 
@@ -272,7 +311,6 @@ page chronology supplies it. It does not provide:
 
 - arbitrary externally supplied URLs;
 - `changefreq` or `priority` fields;
-- `hreflang` alternate links;
 - taxonomy-wide or individual taxonomy-page opt-outs;
 - XML template overrides or template-side sitemap generation; or
 - a development-only sitemap with local-host URLs.

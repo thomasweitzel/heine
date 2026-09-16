@@ -27,6 +27,109 @@ fn generates_canonical_sitemap_entries_for_rendered_pages() {
     );
     assert!(sitemap.contains("2026-08-14T07:30:00Z"), "{sitemap}");
     assert!(!sitemap.contains("hidden.html"), "{sitemap}");
+    assert!(!sitemap.contains("xmlns:xhtml"), "{sitemap}");
+}
+
+#[test]
+fn sitemap_hreflang_uses_explicit_included_translation_groups() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[site]\norigin = 'https://example.org'\nbase_path = '/guide/'\n\n[sitemap]\nhreflang = true\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ntranslationid = 'home'\n",
+    );
+    fixture.write(
+        "content/de/index.page",
+        "template = 'page.tera'\ntranslationid = 'home'\n",
+    );
+    fixture.write(
+        "content/en/private.page",
+        "template = 'page.tera'\ntranslationid = 'private'\nsitemap = false\n",
+    );
+    fixture.write(
+        "content/de/private.page",
+        "template = 'page.tera'\ntranslationid = 'private'\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    let sitemap =
+        fs::read_to_string(fixture.path().join("public/sitemap.xml")).expect("sitemap output");
+    assert!(
+        sitemap.contains("xmlns:xhtml=\"http://www.w3.org/1999/xhtml\""),
+        "{sitemap}"
+    );
+    let english = "<url><loc>https://example.org/guide/index.html</loc><xhtml:link rel=\"alternate\" hreflang=\"de\" href=\"https://example.org/guide/de/index.html\"/><xhtml:link rel=\"alternate\" hreflang=\"en\" href=\"https://example.org/guide/index.html\"/></url>";
+    let german = "<url><loc>https://example.org/guide/de/index.html</loc><xhtml:link rel=\"alternate\" hreflang=\"de\" href=\"https://example.org/guide/de/index.html\"/><xhtml:link rel=\"alternate\" hreflang=\"en\" href=\"https://example.org/guide/index.html\"/></url>";
+    assert!(sitemap.contains(english), "{sitemap}");
+    assert!(sitemap.contains(german), "{sitemap}");
+    assert!(
+        sitemap.contains("<url><loc>https://example.org/guide/de/private.html</loc></url>"),
+        "{sitemap}"
+    );
+    assert!(!sitemap.contains("/private.html\"/>"), "{sitemap}");
+}
+
+#[test]
+fn sitemap_hreflang_accepts_only_true() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\norigin = 'https://example.org'\n\n[sitemap]\nhreflang = false\n",
+    );
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("false is redundant");
+    assert!(
+        format!("{error:?}").contains("sitemap.hreflang accepts only true"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn sitemap_hreflang_includes_only_the_first_translated_listing_page() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[site]\norigin = 'https://example.org'\n\n[sitemap]\nhreflang = true\n\n[collections.posts]\norder = 'title-asc'\n",
+    );
+    for (locale, title) in [("en", "One"), ("de", "Eins")] {
+        fixture.write(
+            format!("content/{locale}/blog/index.page"),
+            "template = 'page.tera'\ntranslationid = 'blog'\n\n[pagination]\ncollection = 'posts'\nper_page = 1\n",
+        );
+        fixture.write(
+            format!("content/{locale}/blog/one.page"),
+            &format!("template = 'page.tera'\ntitle = '{title}'\ncollections = ['posts']\n"),
+        );
+        fixture.write(
+            format!("content/{locale}/blog/two.page"),
+            &format!("template = 'page.tera'\ntitle = '{title} two'\ncollections = ['posts']\n"),
+        );
+    }
+    fixture.write("templates/page.tera", "page");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    let sitemap =
+        fs::read_to_string(fixture.path().join("public/sitemap.xml")).expect("sitemap output");
+    assert!(
+        sitemap.contains(
+            "<url><loc>https://example.org/blog/index.html</loc><xhtml:link rel=\"alternate\" hreflang=\"de\" href=\"https://example.org/de/blog/index.html\"/><xhtml:link rel=\"alternate\" hreflang=\"en\" href=\"https://example.org/blog/index.html\"/></url>"
+        ),
+        "{sitemap}"
+    );
+    assert!(
+        sitemap.contains("<url><loc>https://example.org/blog/page/2.html</loc></url>"),
+        "{sitemap}"
+    );
+    assert!(
+        sitemap.contains("<url><loc>https://example.org/de/blog/page/2.html</loc></url>"),
+        "{sitemap}"
+    );
 }
 
 #[test]

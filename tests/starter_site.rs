@@ -41,6 +41,16 @@ fn builds_the_documented_starter_site() {
         sitemap.contains("https://example.org/my-project/index.html"),
         "{sitemap}"
     );
+    assert!(
+        sitemap.contains("xmlns:xhtml=\"http://www.w3.org/1999/xhtml\""),
+        "{sitemap}"
+    );
+    assert!(
+        sitemap.contains(
+            "<url><loc>https://example.org/my-project/index.html</loc><xhtml:link rel=\"alternate\" hreflang=\"de\" href=\"https://example.org/my-project/de/index.html\"/><xhtml:link rel=\"alternate\" hreflang=\"en\" href=\"https://example.org/my-project/index.html\"/></url>"
+        ),
+        "{sitemap}"
+    );
     let index = fs::read_to_string(output.join("index.html")).expect("home page");
     assert!(
         index.contains("<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\" dir=\"ltr\">"),
