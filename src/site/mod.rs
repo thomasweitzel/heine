@@ -460,8 +460,15 @@ impl Site {
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks, series.tasks());
         let sitemap = match (sitemap_config, canonical_urls.as_ref()) {
             (Some(config), Some(urls)) => Some(
-                sitemap::Sitemap::new(config, urls, &tasks, &taxonomy_tasks, series.tasks())
-                    .map_err(Error::Sitemap)?,
+                sitemap::Sitemap::new(
+                    config,
+                    urls,
+                    &pages,
+                    &tasks,
+                    &taxonomy_tasks,
+                    series.tasks(),
+                )
+                .map_err(Error::Sitemap)?,
             ),
             _ => None,
         };

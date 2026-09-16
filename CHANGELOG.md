@@ -33,6 +33,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Multilingual sitemap alternates.** Sites may opt into
+  `sitemap.hreflang = true` to emit checked, locale-sorted XHTML alternate
+  sets for explicit, sitemap-included `translationid` counterparts. This keeps
+  search-engine language discovery tied to the same authored relationships as
+  Heine's language-switcher data.
+
 - **Checked absolute URLs.** Configuring `site.origin` now exposes the
   base-path-aware canonical root as `site.url` and `absolute_url` on known
   page, asset, and generated-resource views. This supports canonical and
