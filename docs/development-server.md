@@ -5,10 +5,10 @@ watches its inputs, and reloads open HTML pages after a successful rebuild. It
 is for local development, not production hosting. It does not provide TLS,
 compression, production caching or cache revalidation, or conditional requests.
 
-Start it from a Heine checkout:
+Run the downloaded executable:
 
 ```bash
-cargo run -- serve --root /path/to/site
+/path/to/heine serve --root /path/to/site
 ```
 
 The server performs a full build before listening. By default it listens only
@@ -17,7 +17,7 @@ unprivileged port if necessary. Select an interface or starting port when
 needed:
 
 ```bash
-cargo run -- serve --root /path/to/site --host 0.0.0.0 --port 3000
+/path/to/heine serve --root /path/to/site --host 0.0.0.0 --port 3000
 ```
 
 Ports below `1024` are rejected. `--host 0.0.0.0` makes the server reachable
@@ -28,7 +28,7 @@ To preview unfinished [draft](drafts.md) pages declared with `draft = true`,
 add `--drafts`:
 
 ```bash
-cargo run -- serve --root /path/to/site --drafts
+/path/to/heine serve --root /path/to/site --drafts
 ```
 
 This includes drafts in the same complete resolved site as published pages, so
@@ -93,7 +93,7 @@ that Heine does not manage. To adopt one for the initial served build, first
 confirm it may be replaced, then use:
 
 ```bash
-cargo run -- serve --root /path/to/site --clean-output
+/path/to/heine serve --root /path/to/site --clean-output
 ```
 
 `--clean-output` applies only to that initial build. Read the

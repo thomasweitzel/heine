@@ -47,17 +47,17 @@ title = "My site"
 </html>
 ```
 
-Run a full build from a Heine checkout:
+Run a full build:
 
 ```bash
-cargo run -- --root /path/to/my-site
+/path/to/heine --root /path/to/my-site
 ```
 
 Then start the development server in a second terminal and leave it running as
 you follow the tutorial:
 
 ```bash
-cargo run -- serve --root /path/to/my-site
+/path/to/heine serve --root /path/to/my-site
 ```
 
 Open the local address it prints, normally `http://127.0.0.1:1111/`. Each later
@@ -710,7 +710,7 @@ set with identical facts can use one exact
 The server was started in step 1. If it is not running, start it with:
 
 ```bash
-cargo run -- serve --root /path/to/my-site
+/path/to/heine serve --root /path/to/my-site
 ```
 
 It performs a full build before serving the generated output and reloads open

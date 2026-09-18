@@ -5,7 +5,7 @@ matches what you need now.
 
 | Need                                                      | Start here                                    |
 |-----------------------------------------------------------|-----------------------------------------------|
-| Build a first working site                                | [README: First site](../README.md#first-site) |
+| Build a first working site                                | [First site](../README.md#first-site)         |
 | Learn how the pieces compose                              | [Tutorial](tutorial.md)                       |
 | Understand a named Heine concept                          | [Glossary](glossary.md)                       |
 | Add one capability to an existing site                    | The focused guides below                      |
@@ -22,36 +22,68 @@ For a complete working site rather than a teaching-sized example, inspect and
 build [`starter-site/`](../starter-site/). It is a cohesive example, not a
 required prerequisite for the guides.
 
-## Focused guides
+## Build site structure
 
 - [Internationalization and localization](internationalization.md): locale
   trees, Fluent messages, writing direction, and declared counterparts.
 - [Collections](collections.md): page membership and ordering.
 - [Pagination](pagination.md): generated slices of a collection.
 - [Taxonomies](taxonomies.md): tags and other literal term classifications.
+- [Series](series.md): checked page-local ordered reading sequences.
+- [Drafts](drafts.md): unpublished pages and complete local previews.
+
+## Publish and discover content
+
 - [Deployment files](deployment-files.md): output-root files for hosting and
   verification services.
-- [Asset licensing](asset-licensing.md): REUSE-compatible declarations,
-  published license texts, optional complete copied-asset coverage, and
-  template attribution data.
-- [Development server](development-server.md): local serving, live reload,
-  and byte-range responses for media.
-- [Drafts](drafts.md): unpublished pages and complete local previews.
 - [Absolute URLs](absolute-urls.md): canonical site and resource addresses
   built from a configured origin.
 - [Sitemaps](sitemap.md): canonical discovery documents generated from rendered output.
 - [Atom feeds](atom-feeds.md): locale-local collection syndication feeds.
 - [Search indexes](search.md): locale-local JSON documents for a site-owned
   browser search experience.
+
+## Author and present pages
+
 - [Table of contents](table-of-contents.md): page-owned Markdown heading
   navigation.
-- [Margin footnotes](margin-footnotes.md): checked local presentation of
-  ordinary Markdown footnotes.
-- [Color-scheme Markdown pictures](markdown-pictures.md): checked light and
-  dark variants of one authored image.
+- [Margin footnotes](margin-footnotes.md): local presentation of ordinary
+  Markdown footnotes.
+- [Color-scheme Markdown pictures](markdown-pictures.md): light and dark
+  variants of one authored image.
 - [Word counts and reading time](markdown-facts.md): deterministic Markdown
-  facts and an opt-in, locale-specific reading-time estimate.
-- [Series](series.md): checked page-local ordered reading sequences.
+  facts and opt-in, locale-specific reading-time estimates.
+
+## Operate a site and account for assets
+
+- [Development server](development-server.md): local serving, live reload,
+  and byte-range responses for media.
+- [Asset licensing](asset-licensing.md): REUSE-compatible declarations,
+  published license texts, optional complete copied-asset coverage, and
+  template attribution data.
+
+## Design records
+
+The focused guides and reference define Heine's user-facing contract. These
+records explain the accepted design, rationale, and boundaries behind current
+features and planned work.
+
+### Implemented features
+
+- [Absolute URLs](design/absolute-urls.md)
+- [Copied-asset licensing coverage](design/asset-licensing-coverage.md)
+- [Draft publication](design/drafts.md)
+- [Markdown facts](design/markdown-facts.md)
+- [Multilingual sitemap alternates](design/multilingual-sitemap-alternates.md)
+- [Margin footnotes](design/margin-footnotes.md)
+- [Search](design/search.md)
+- [Series](design/series.md)
+- [Table of contents](design/table-of-contents.md)
+
+### Planned work
+
+- [Kits](design/kits.md)
+- [Plugins and renderer adapters](design/plugins.md)
 
 ## Reference material
 
@@ -62,6 +94,9 @@ repeat the tutorials and examples from the guides.
 
 The [glossary](glossary.md) defines Heine's public vocabulary. Guides explain
 terms in context on first use; use the glossary when returning to a term later.
+
+The [changelog](../CHANGELOG.md) records user-visible changes and their
+migrations, including work that has not reached a release yet.
 
 The [roadmap](roadmap.md) records planned capabilities and the open questions
 that need a concrete design before implementation.
