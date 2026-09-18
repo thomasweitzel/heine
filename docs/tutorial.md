@@ -128,6 +128,11 @@ Hello from **Heine**.
 {% endblock %}
 ```
 
+`main` is a declared content input. This tutorial renders one unsegmented
+Markdown document in one reading flow. The [declared-content guide](declared-content.md)
+compares this form with segments, structured JSON or TOML, and several
+independent inputs.
+
 Update the home page to use this Markdown-capable layout too:
 
 ```toml
