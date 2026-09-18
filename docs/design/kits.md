@@ -130,6 +130,12 @@ The reference site's `[kit].name` must equal its containing manifest's `name`.
 It therefore selects the kit being distributed, never another kit. A reference
 site cannot compose kits through its own copied configuration.
 
+The reference `site/heine.toml` records ordinary root-owned configuration. It
+has no runtime status inside the kit. After copying `site/` into a project
+root, it becomes that project's ordinary `heine.toml`; the copied site, rather
+than the kit runtime layer, owns every setting outside the checked
+`[kit.extra]` overlay.
+
 Heine does not initially provide a package resolver, an installer, or a
 `heine new` command. Copying remains visible. A later convenience
 command may automate this procedure without changing its semantics.
@@ -166,7 +172,7 @@ starting point.
 ```toml
 name = "paper"
 version = "1.0.0"
-heine = ">=0.2.0, <0.3.0"
+heine = ">=0.7.0, <0.8.0"
 message_prefix = "paper-"
 
 [public]
@@ -239,13 +245,13 @@ asset not listed under `[public].assets` is private.
 
 Only one kit may be selected. It contributes these runtime domains:
 
-| Domain              | Kit location             | Root location       | Rule                                                                                                                                                   |
-|---------------------|--------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Templates           | `kits/<name>/templates/` | `templates/`        | Kit originals use `kit/<name>/…`; ordinary names address root templates only. Root templates may name public kit originals explicitly.                 |
-| Copied assets       | `kits/<name>/assets/`    | `content/assets/`   | Public kit assets use their declared `assets/…` ID and may be overlaid by a root asset. Private kit assets use `kit/<name>/assets/…` and are kit-only. |
-| Fluent UI messages  | `kits/<name>/locales/`   | `locales/`          | A present root entry may replace an existing prefixed kit message or term.                                                                             |
-| Asset license texts | `kits/<name>/LICENSES/`  | `LICENSES/`         | A present root text wins for the same logical license-text path.                                                                                       |
-| Components          | not applicable           | no replacement path | Defined within kit templates; root templates may invoke declared public components, but cannot replace one.                                            |
+| Domain              | Kit location             | Root location                                 | Rule                                                                                                                                                                                                                                             |
+|---------------------|--------------------------|-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Templates           | `kits/<name>/templates/` | `templates/`                                  | Kit originals use `kit/<name>/…`; ordinary names address root templates only. Root templates may name public kit originals explicitly.                                                                                                           |
+| Copied assets       | `kits/<name>/assets/`    | `content/assets/`, `content/<locale>/assets/` | Public kit assets use their declared shared `assets/…` ID. A root shared asset may overlay one; locale-local root assets retain their ordinary locale lookup and output behavior. Private kit assets use `kit/<name>/assets/…` and are kit-only. |
+| Fluent UI messages  | `kits/<name>/locales/`   | `locales/`                                    | A present root entry may replace an existing prefixed kit message or term.                                                                                                                                                                       |
+| Asset license texts | `kits/<name>/LICENSES/`  | `LICENSES/`                                   | A present root text wins for the same logical license-text path.                                                                                                                                                                                 |
+| Components          | not applicable           | no replacement path                           | Defined within kit templates; root templates may invoke declared public components, but cannot replace one.                                                                                                                                      |
 
 Root resources with no kit counterpart continue to work normally. A private
 kit asset cannot collide with a root asset because its identity and published
@@ -264,12 +270,18 @@ matches a broad pattern.
 The asset rule promotes a manifest-declared kit asset such as
 `kits/paper/assets/css/paper.css` to the public logical ID and published path
 `assets/css/paper.css`. `content/assets/css/paper.css` may then replace it.
+A root `content/<locale>/assets/css/paper.css` file retains its ordinary
+locale-local behavior: it publishes at `<locale>/assets/css/paper.css` and that
+locale's asset lookup finds it before the shared public kit asset. A public kit
+asset is otherwise available to every ordinary root asset consumer, including
+`asset()`, Markdown `asset:` URLs, and `:::picture` sources.
 A private kit asset such as `kits/paper/assets/images/mark.svg` instead has the
 logical ID and published path `kit/paper/assets/images/mark.svg`. Root
 templates and Markdown cannot address that private ID through `asset()` or an
-`asset:` URL; kit templates can. As elsewhere, an authored raw URL is not an
-asset lookup and is not checked. This keeps internal kit assets out of the root
-asset namespace while preserving relative URLs between private kit assets.
+`asset:` URL, including through a `:::picture` source; kit templates can. As
+elsewhere, an authored raw URL is not an asset lookup and is not checked. This
+keeps internal kit assets out of the root asset namespace while preserving
+relative URLs between private kit assets.
 “Private” describes the checked kit API, not browser access: the file is a
 published static resource, and its namespaced output path makes
 its kit ownership visible. Other regular files in `content/` remain ordinary
@@ -371,6 +383,15 @@ Selected kit assets join the same resolved asset inventory as root assets.
 The existing `attributions()` template view therefore exposes their winning
 licensing facts with every other copied asset. Heine does not generate a
 separate attribution document.
+
+The root site's `[licensing]` configuration applies to that combined inventory.
+A root `[[licensing.groups]]` declaration may name a selected kit asset by its
+literal published output path, whether the asset is public or private. It is
+then that asset's one declaration source. A group and an adjacent sidecar that
+applies to the resolved asset conflict, just as two root declaration sources
+do; Heine never chooses one by precedence. This lets a strict root site cover
+an otherwise undeclared kit asset without creating a second kit-specific
+licensing policy.
 
 A root `LICENSES/<path>` file overrides the selected kit's same logical
 license-text path, even when the bytes differ. This lets a site correct a kit
@@ -489,10 +510,11 @@ Implementation must include focused and fixture-site coverage for:
   a missing root adapter that cannot fall back to a kit original;
 - documented-block customization of a public kit template, with private kit
   partials inaccessible to root templates;
-- root precedence for declared public assets, messages, and license texts;
-- public and private kit asset identities, including root rejection of a
-  private kit asset lookup and the published private output
-  path;
+- root precedence for declared public assets, messages, and license texts,
+  including ordinary locale-local asset lookup over a public kit asset;
+- public and private kit asset identities, including public use through
+  `asset()`, Markdown `asset:` URLs, and `:::picture` sources; root rejection
+  of every private asset lookup; and the published private output path;
 - manifest declarations for missing, duplicate, or unsafe public templates,
   assets, and components;
 - errors for inaccessible private kit templates, kit templates that reference
@@ -505,8 +527,9 @@ Implementation must include focused and fixture-site coverage for:
   root-overridden message that references a kit term;
 - message-prefix and component-namespace enforcement at the responsible kit
   or root-authored spans;
-- kit asset integrity, image metadata, licensing, attributions, and output
-  collisions;
+- kit asset integrity, image metadata, licensing, strict root coverage and
+  licensing groups, group-and-sidecar conflicts across root and kit sources,
+  attributions, and output collisions;
 - source discovery and watcher behavior for selected, non-selected, and
   `site/` kit paths;
 - full and quick-build behavior, including the existing quick-build limits.

@@ -45,6 +45,8 @@ required prerequisite for the guides.
 
 ## Author and present pages
 
+- [Declared content](declared-content.md): choose ordinary Markdown, named
+  prose segments, structured data, or several page inputs.
 - [Table of contents](table-of-contents.md): page-owned Markdown heading
   navigation.
 - [Margin footnotes](margin-footnotes.md): local presentation of ordinary

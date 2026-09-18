@@ -349,7 +349,8 @@ For a page declaring it as `main = "questions.md"`, templates receive
 `page.content.main.introduction`, `page.content.main.questions.title`, and the
 ordered array `page.content.main.questions.item`. Segmentation applies only
 when the first line is a marker. Otherwise the complete file remains one text
-value.
+value. The [declared-content guide](declared-content.md) explains when normal
+Markdown, segments, structured data, or several inputs fit a page.
 
 ## Markdown
 

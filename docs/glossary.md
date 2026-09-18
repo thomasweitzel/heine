@@ -151,6 +151,12 @@ the browser selects its dark source from
 A file named by a page's `[content]` table. Heine reads it as page content but
 does not publish it as an asset.
 
+### Segment
+
+A named text part in a declared content file that begins with a segment marker.
+Segments let a template render prose from one authored document in several
+named locations. See [declared content](declared-content.md).
+
 ### Markdown fact
 
 A deterministic value derived from one declared Markdown input, currently its
