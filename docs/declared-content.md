@@ -44,8 +44,9 @@ data format.
 Start a declared text file with a segment marker. Each following marker names
 the text that follows it:
 
+In `content/en/index.md`:
+
 ```markdown
-<!-- content/en/index.md -->
 <!-- segment: lead -->
 Heine checks relationships before it writes the site.
 
