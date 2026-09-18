@@ -14,7 +14,7 @@ Run the development server with `--drafts` to see that page in its real site
 context:
 
 ```bash
-cargo run -- serve --root /path/to/my-site --drafts
+/path/to/heine serve --root /path/to/my-site --drafts
 ```
 
 The preview includes draft pages in page links, collections, pagination,

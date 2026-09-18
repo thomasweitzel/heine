@@ -15,25 +15,15 @@ where it is authored instead of becoming a browser 404.
 
 ## Status
 
-Heine is pre-release and is not published to crates.io yet. A Linux x86-64
-musl executable and a complete starter site are available from the
-[Download page](https://heine.rs/download/).
-
-It currently provides Markdown rendering with checked color-scheme pictures,
-page-owned tables of contents and margin footnotes, Tera2 templates,
-locale-aware content and Fluent localization, checked page and asset links,
-collections, pagination, taxonomies, Series, Atom feeds, sitemaps,
-including optional checked localized alternates, search-document indexes,
-checked canonical absolute URLs, and a development
-server with live reload, media range requests, and draft previews.
-Copied assets may carry checked REUSE-compatible declarations, including
-optional complete coverage and exact shared declarations for asset
-sets.
+Heine is pre-release and is not published to crates.io yet. The
+[Download page](https://heine.rs/download/) provides a Linux x86-64 musl
+executable and a complete starter site. The [documentation overview](docs/README.md)
+maps the implemented features to their guides and reference material.
 
 Heine does not bundle a frontend toolchain or deployment integration. Use
-ordinary tools for general CSS and JavaScript processing, general media
-transformation, deployment, audits, and external services. Kits, plugins, and
-RSS are not implemented yet.
+ordinary tools for CSS and JavaScript processing, media transformation,
+deployment, audits, and external services. Kits, renderer adapters, and RSS
+are not implemented yet.
 
 ## First site
 
@@ -73,10 +63,10 @@ title = "Hello, Heine"
 </html>
 ```
 
-Build it from this repository:
+Run the downloaded executable:
 
 ```bash
-cargo run -- --root /path/to/my-site
+/path/to/heine --root /path/to/my-site
 ```
 
 This generates `public/index.html`. The configured default locale is
@@ -87,7 +77,7 @@ unprefixed; later locale trees receive their locale code in generated URLs.
 Run the development server while writing:
 
 ```bash
-cargo run -- serve --root /path/to/my-site
+/path/to/heine serve --root /path/to/my-site
 ```
 
 It first performs a complete build, serves the generated output, watches the
@@ -104,30 +94,12 @@ appropriate for the host. The
 
 ## Where to go next
 
-The [documentation map](docs/README.md) explains the available reading paths.
-
-- Follow the [tutorial](docs/tutorial.md) to grow this minimal site into a
-  multilingual blog with content, assets, data, collections, pagination, and
-  tags.
-- Use the [glossary](docs/glossary.md) when returning to a Heine term such as
-  “page ID,” “copied asset,” or “managed output.”
-- Read a focused guide when adding
-  [localization](docs/internationalization.md),
-  [collections](docs/collections.md), [pagination](docs/pagination.md),
-  [taxonomies](docs/taxonomies.md), [deployment files](docs/deployment-files.md),
-  [asset licensing](docs/asset-licensing.md), [sitemaps](docs/sitemap.md),
-  [Atom feeds](docs/atom-feeds.md), [table of contents](docs/table-of-contents.md),
-  [margin footnotes](docs/margin-footnotes.md),
-  [color-scheme Markdown pictures](docs/markdown-pictures.md),
-  [word counts and reading time](docs/markdown-facts.md),
-  [absolute URLs](docs/absolute-urls.md),
-  [search indexes](docs/search.md),
-  [Series](docs/series.md), [drafts](docs/drafts.md),
-  or the [development server](docs/development-server.md).
-- Use the [reference](docs/reference.md) for exact fields, defaults, template
-  functions, and constraints.
-- Consult the [roadmap](docs/roadmap.md) for planned work and undecided
-  boundaries.
+Follow the [tutorial](docs/tutorial.md) to grow this minimal site into a
+multilingual blog with content, assets, data, collections, pagination, and
+tags. The [documentation overview](docs/README.md) groups the focused guides by
+task. Use the [glossary](docs/glossary.md) for Heine terms, the
+[reference](docs/reference.md) for exact fields and template values, and the
+[roadmap](docs/roadmap.md) for planned work.
 
 ## Starter site
 
