@@ -3,18 +3,20 @@
 ## Status
 
 This is the accepted design for Heine's first future extension boundary,
-Markdown-aware renderer adapters. It is not implemented and is not part of the
-current public contract. Other extension kinds remain undecided until a
-separate concrete use case requires them. Package discovery, installation, and
-distribution are likewise undecided.
+Markdown-aware renderer adapters and configured external renderer profiles. It
+is not implemented and is not part of the current public contract. Other
+extension kinds remain undecided until a separate concrete use case requires
+them. Package discovery, installation, and distribution are likewise
+undecided.
 
 ## Decision
 
 Heine will not add generic pre-build or post-build hooks. Its first in-Heine
 extension boundary is a renderer adapter: one explicit authored construct or
 declared local input produces one checked rendered replacement and, where
-requested, generated-resource bytes. PlantUML, Mermaid, Graphviz DOT, and
-Typst are representative uses.
+requested, one primary generated resource. A site may configure any number of
+named renderer profiles. PlantUML, Mermaid, Graphviz DOT, Typst, KaTeX, and
+Pandoc are representative uses, not a closed built-in list.
 
 The host retains source discovery, input checking, ordering, output-path
 allocation, collision detection, publication, caching, watching, and
@@ -50,8 +52,12 @@ and one checked result.
   Rhai is one possible future choice, not a current dependency or
   contract.
 - **Renderer adapter**: a content-transformation capability that accepts one
-  explicit renderer request and returns a typed replacement and optional
-  generated resources.
+  explicit renderer request and returns one typed replacement and, when
+  materialized, one primary generated resource. The first implementation uses
+  configured external renderer profiles only.
+- **Renderer profile**: one named, site-owned renderer configuration. Its name
+  selects a checked adapter request and fixes the external bridge's process
+  protocol, arguments, result shape, limits, and cache identity.
 - **External renderer bridge**: a trusted host capability used by an adapter
   when an installed external program, such as PlantUML or Typst, must run.
   It is not an ordinary safe plugin and requires explicit command-line
@@ -60,19 +66,144 @@ and one checked result.
   occupies its own Markdown block.
 - **Materialization**: whether rendered output is embedded in HTML or
   published as a generated resource.
+- **Result shape**: the semantic replacement that a renderer profile may
+  return: an embedded HTML, SVG, or MathML fragment; a generated image; or a
+  generated linked resource.
 - **Named renderer source**: a page-owned checked file or source bundle that
   an adapter may consume instead of an inline directive body.
 
 ## Ownership and conflicts
 
-For renderer adapters, a request selects exactly one adapter and generated
-resources are normal output claims with existing collision diagnostics.
-Adapters have no incidental ordering relationship.
+For renderer adapters, a request selects exactly one configured renderer
+profile. A profile exists when its named configuration exists; there is no
+separate enable or disable state. A request for a missing profile is a checked
+error. Generated resources are normal output claims with existing collision
+diagnostics. Profiles have no incidental ordering relationship.
 
 No generic conflict or ordering policy is accepted for unimplemented plugin
 kinds. If a future kind is justified, its design must define checked ownership
 and overlap behavior before an API exists. Heine will not resolve conflicts by
 last-write-wins behavior.
+
+## Renderer-profile configuration
+
+The root `heine.toml` registers external renderer profiles below
+`[renderers.<name>]`. A profile name is the simple identifier used in a
+Markdown `render` request. The table's presence registers the profile. Heine
+does not provide a second enable switch, executable discovery, installation,
+package registry, or fallback after ordinary operating-system program
+resolution.
+
+A selected kit never contributes profiles at runtime. Its reference site's
+`site/heine.toml` may declare profiles for the Markdown that the reference site
+contains. Copying that file makes them ordinary root-owned site policy. A later
+kit update therefore cannot add, replace, or execute a renderer profile in an
+existing site.
+
+Each profile declares its protocol, program, positive timeout, stable cache
+identity, accepted input forms, result shape, and one or both placement
+variants. A placement variant contains the fixed argument vector for that form.
+Its presence declares that the profile supports the corresponding Markdown
+placement:
+
+```toml
+[renderers.plantuml]
+protocol = "stream"
+program = "java"
+timeout_seconds = 20
+cache_identity = "plantuml-1.2025.7"
+inputs = ["body", "file"]
+result = "svg"
+materializations = ["embedded", "resource"]
+default_output = "resource"
+
+[renderers.plantuml.block]
+arguments = ["-jar", "/opt/plantuml.jar", "--svg", "-pipe"]
+
+[renderers.katex]
+protocol = "stream"
+program = "katex"
+timeout_seconds = 10
+cache_identity = "katex-0.16.27"
+inputs = ["body", "file"]
+result = "html"
+
+[renderers.katex.inline]
+arguments = ["--format", "htmlAndMathml"]
+
+[renderers.katex.block]
+arguments = ["--display-mode", "--format", "htmlAndMathml"]
+
+[renderers.typst-report]
+protocol = "workspace"
+program = "typst"
+timeout_seconds = 30
+cache_identity = "typst-0.15.0"
+inputs = ["body", "file", "bundle"]
+input_extension = "typ"
+result = "link"
+media_type = "application/pdf"
+extension = "pdf"
+
+[renderers.typst-report.block]
+arguments = ["compile", "{input_file}", "{output_file}"]
+```
+
+`inputs` is a non-empty set drawn from `"body"`, `"file"`, and `"bundle"`.
+A stream profile may accept only `"body"` and `"file"`; a workspace profile
+may accept all three. A workspace profile that accepts `"body"` declares the
+safe, unprefixed `input_extension` used for its materialized input file. A
+workspace profile that does not accept `"body"` must not declare
+`input_extension`. A request that supplies an unsupported input form is a
+checked error at the request.
+
+`result` is one of `"html"`, `"svg"`, `"mathml"`, `"image"`, or `"link"`.
+An `image` or `link` result declares its output `media_type` and file
+`extension`; `svg` has the fixed `image/svg+xml` type and `svg` extension.
+Only `svg` may declare `materializations`; its values are the supported subset
+of `"embedded"` and `"resource"`. An SVG profile with both values must declare
+`default_output`; it must not declare one when only one value is supported.
+HTML and MathML always embed. Image and link results always publish one
+resource. A link profile may therefore produce a PDF without making PDF a
+special configuration category.
+
+The profile owns all tool-specific switches. For example, the KaTeX variants
+above fix display mode without exposing a Markdown option that could alter the
+process invocation. A site that needs a distinct Mermaid theme, Pandoc input
+format, or Typst export mode declares another profile with its own fixed
+arguments. This keeps the profile registry unbounded without becoming a
+Markdown-to-command interpolation language.
+
+The `cache_identity` value is an explicit cache declaration. Heine includes it
+in the cache key, but does not probe, discover, or verify the installed
+program's version. When a local renderer changes, the site owner updates
+`cache_identity` to invalidate cached results intentionally. A profile may use
+an absolute program path or a program name resolved by the operating system
+when the permitted build runs; Heine never searches for alternatives.
+
+A profile is checked when Heine reads configuration. Its executable is started
+only when a request selects it and the caller has opted in to external
+renderers. An absent executable, unsuccessful process, timeout, or invalid
+result is then a checked build failure at the selected request. An unused,
+valid profile does not require its program to be installed.
+
+The common modes of the first representative tools fit this contract:
+
+| Tool        | Usual protocol and placement      | Result shape                      |
+|-------------|-----------------------------------|-----------------------------------|
+| PlantUML    | Stream, block                     | SVG, embedded or image resource   |
+| Mermaid CLI | Workspace, block                  | SVG or image resource             |
+| Typst       | Workspace, block                  | SVG, HTML fragment, or linked PDF |
+| KaTeX       | Stream, inline and block variants | HTML or MathML fragment           |
+| Pandoc      | Stream or workspace, block        | HTML fragment or linked resource  |
+
+The table does not reserve these names or make them built in. A profile may
+use any name and a supported program may have other modes. Modes that produce
+several primary artifacts remain outside the first result contract.
+
+KaTeX profiles use explicit `render` requests. They do not change the existing
+`markdown.math` modes or introduce another implicit math parser. A later
+integration with ordinary TeX delimiters needs its own concrete design.
 
 ## Markdown renderer requests
 
@@ -90,7 +221,7 @@ does not select an adapter.
 An inline request has a header and a body delimited by one or more backticks:
 
 ```markdown
-The integral is :render[typst output="embedded"]`integral_{0}^{1} x^2 dif x`.
+The integral is :render[katex]`integral_{0}^{1} x^2 dif x`.
 ```
 
 The header begins with an adapter name, followed by optional named options.
@@ -99,7 +230,7 @@ line. A longer backtick run admits shorter runs inside the body, following
 Markdown's code-span convention:
 
 ````markdown
-:render[typst output="embedded"]``some source with ` inside``
+:render[katex]``some source with ` inside``
 ````
 
 ### Block directive
@@ -141,8 +272,13 @@ The syntactic form determines placement:
 | Inline role     | Inline    |
 | Block directive | Block     |
 
-An adapter declares the placements it supports. A PlantUML adapter will
-normally support blocks only. A Typst math adapter may support both.
+A renderer profile declares the placements it supports. A PlantUML profile
+will normally support blocks only. A KaTeX profile may support both.
+
+An inline-capable profile promises to return phrasing content for that
+placement. Heine does not repair trusted renderer markup that would be invalid
+inside the surrounding prose. A Pandoc HTML profile will therefore normally be
+block-only, while KaTeX is a natural inline-and-block profile.
 
 ### Header grammar and options
 
@@ -152,27 +288,41 @@ The header has this shape:
 adapter-name (space option-name "=" TOML-scalar)*
 ```
 
-Adapter and option names are simple identifiers. Option values use TOML scalar
+Renderer and option names are simple identifiers. Option values use TOML scalar
 literals, allowing strings, booleans, and numbers without inventing another
-value grammar. A malformed header, duplicate option, or unsupported option is
-a checked error at the header span.
+value grammar. The first version recognizes only `source`, `output`, `alt`,
+and `label`. Tool-specific switches stay fixed in the named renderer profile;
+an author selects a separately configured profile when a different tool mode
+is needed. A malformed header, duplicate option, or unsupported option is a
+checked error at the header span.
+
+`source` and `label` are non-empty strings. `source` names one declared
+renderer input and is valid only in a block request. `alt` is a string and may
+be empty when an image is intentionally decorative. `output` is a string with
+one of the values below. Image resources, including a resource-materialized
+SVG, require `alt`; linked resources require `label`.
 
 `output` is the common materialization option:
 
-| Value        | Meaning                                                                                             |
-|--------------|-----------------------------------------------------------------------------------------------------|
-| `"embedded"` | The adapter returns an HTML or SVG replacement directly embedded in the rendered page.              |
-| `"resource"` | The adapter returns one or more generated resources and a semantic replacement that refers to them. |
+| Value        | Meaning                                                                                  |
+|--------------|------------------------------------------------------------------------------------------|
+| `"embedded"` | The profile returns an HTML, SVG, or MathML fragment directly in the rendered page.      |
+| `"resource"` | The profile returns one generated resource and a semantic replacement that refers to it. |
 
-An adapter declares supported output values and may declare a documented
-default. Other named options belong to that adapter's checked schema. For an
-image-like replacement, an adapter may require page-authored accessibility
-text such as `alt="Request and response sequence"`; it is content, not
-template interface text.
+A profile declares supported output values and may declare a documented
+default. HTML and MathML default to `"embedded"`; image and link results
+default to `"resource"`; an SVG profile with both materializations declares
+`default_output`. An image resource requires page-authored accessibility text
+such as `alt="Request and response sequence"`. A linked resource requires
+page-authored visible text such as
+`label="Download the architecture report (PDF)"`. Both values are content,
+not template interface text.
 
 Placement and materialization are independent. A PlantUML diagram can be a
 block in both cases: either an embedded `<svg>` or a generated SVG resource
-represented by an image or link.
+represented by an image. An HTML or MathML fragment supports only
+`output="embedded"`. A PDF is a linked resource with media type
+`application/pdf`, so it supports only `output="resource"`.
 
 Ordinary code fences retain their normal meaning. This remains a highlighted
 source block, even if a PlantUML adapter is enabled:
@@ -216,7 +366,7 @@ beneath its root.
 A request names its source instead of supplying a body:
 
 ```markdown
-:::render[typst source="report" output="resource"]
+:::render[typst-report source="report" output="resource"]
 :::
 ```
 
@@ -225,34 +375,85 @@ sources are deferred until a concrete use case makes their syntax worthwhile.
 
 ## Renderer results and output ownership
 
-An adapter never returns a project path or output path. It returns typed facts:
+A renderer result never contains a project path or output path. It contains
+typed facts:
 
-- replacement kind, such as embedded fragment, image, link, or download;
-- generated-resource bytes and media type, when requested;
-- optional adapter-owned metadata needed to render that replacement.
+- one result shape: an embedded HTML, SVG, or MathML fragment; an image
+  resource; or a linked resource;
+- generated-resource bytes, media type, and extension, when requested.
+
+An embedded fragment is trusted final markup. Heine does not sanitize it or
+send it through Markdown or Tera a second time. An image resource has an
+`image/*` media type and renders as an image with the request's required
+alternative text. A linked resource may use any declared media type. PDF is
+the common document case, but the same shape can link to an EPUB, DOCX, CSV,
+archive, audio file, or video file without inventing a new renderer-result
+kind. Heine does not initially render generated audio or video with native
+players: captions, transcripts, posters, controls, and fallback content need a
+separate concrete design.
+
+Heine checks the result shape before rendering it. Every returned result must
+contain non-empty bytes. HTML fragments must be UTF-8. SVG and MathML
+fragments must be UTF-8 XML whose document element is respectively `svg` or
+`math`. An image profile declares a syntactically valid `image/*` media type;
+a link profile declares a syntactically valid media type. Every declared file
+extension is an unprefixed safe filename extension. These checks identify a
+wrong result category or malformed bridge configuration; they do not sanitize
+trusted HTML or inspect arbitrary resource formats.
+
+For embedded SVG and MathML, Heine parses the XML and emits only its document
+element. It drops an XML declaration and doctype rather than inserting a whole
+XML document into HTML. For resource materialization, Heine publishes the
+validated bytes unchanged. Heine does not rewrite element IDs, URL references,
+CSS, scripts, or HTML markup. An embedded profile must therefore produce a
+fragment that is safe for its declared placement and does not conflict with
+the surrounding page. A resource profile is the appropriate choice when a
+renderer cannot make that promise.
+
+The first implementation accepts one primary generated resource per request.
+Tools can produce several files in some modes, for example a multi-page Typst
+SVG export, a PlantUML input containing several diagrams, or a Pandoc
+conversion with extracted media. Those modes fail as unsupported until a later
+resource-set contract can define their page replacement and ownership.
 
 Heine allocates safe deterministic output paths for generated resources, checks
 them with every other output claim, and builds base-path-aware URLs. The
 adapter cannot overwrite a page, copied asset, deployment file, license text,
-or another generated resource. Embedded output is final trusted HTML or SVG;
-Heine does not send it through Markdown or Tera a second time.
+or another generated resource.
+
+A generated renderer resource is not a copied asset. It has no adjacent
+licensing sidecar and is outside the current `[licensing].required` coverage
+contract, which applies to copied assets only. A future policy for generated
+resource licensing needs a separate provenance design: relevant facts may come
+from the authored renderer source, the renderer, bundled fonts, or other tool
+inputs. Heine does not infer those facts.
 
 The host must retain the originating page, content file, directive span, and
-adapter identity for every derived resource. Any output collision therefore
-names both the generated request and the conflicting authored claim.
+renderer-profile name for every derived resource. Any output collision
+therefore names both the generated request and the conflicting authored claim.
 
 ## External renderer bridges
 
-Some adapters can run wholly in process. PlantUML, Typst, Graphviz, and many
-other renderers normally require external programs. That is a distinct
-trust boundary: a child process runs with the operating-system authority of
-the user who starts Heine. A temporary workspace limits the inputs Heine
-provides, but is not a sandbox against a malicious executable.
+The first implementation runs configured external renderer profiles. PlantUML,
+Typst, KaTeX, Pandoc, Mermaid, Graphviz, and many other renderers require
+external programs. That is a distinct trust boundary: a child process runs
+with the operating-system authority of the user who starts Heine. A temporary
+workspace limits the inputs Heine provides, but is not a sandbox against a
+malicious executable. A future in-process renderer needs its own concrete
+design or should become a native Heine feature.
 
 Heine must therefore require an explicit command-line opt-in before it starts
 an external bridge, conceptually `--allow-external-renderers`. A site
 configuration alone must never execute a command from an unfamiliar checkout.
 The opt-in applies to `heine` and `heine serve` separately.
+
+When a selected renderer request needs an external profile and that permission
+is absent, the build fails at the request before it reads a renderer cache or
+starts a process. A cached result is an optimization after permission has been
+granted, not an alternate way to build a site that requires an external
+renderer. This makes a fresh checkout and a workspace with old cached output
+follow the same permission rule. Configured profiles that no request selects
+remain harmless and need neither permission nor an installed program.
 
 An external bridge is not a generic hook. It may run only for a checked
 renderer request and returns only the typed result described above. Uploading,
@@ -261,13 +462,13 @@ pre-build or post-build commands remain outside Heine.
 
 ### Process protocols
 
-The host supports two adapter-declared protocols.
+The host supports two profile-declared protocols.
 
 #### Stream protocol
 
-Heine writes the checked source bytes to standard input and reads one declared
+Heine writes the checked source bytes to standard input and reads one typed
 result from standard output. Standard error is reserved for diagnostics. This
-suits tools that can act as filters.
+suits tools that can act as filters, including PlantUML, KaTeX, and Pandoc.
 
 #### Workspace protocol
 
@@ -280,16 +481,28 @@ work/
 ```
 
 It copies the checked named file or source bundle below `input/`, preserving
-relative paths, and materializes an inline body as an adapter-defined input
-file. It invokes the configured program with `work/` as its current directory.
-Only files below `output/` can become adapter results.
+relative paths, and materializes an inline body as `input/input.<extension>`.
+The profile supplies that extension. It invokes the configured program with
+`work/` as its current directory. The host allocates one primary output file
+below `output/`; only that file can become the result.
 
 The implementation uses a cross-platform temporary-directory facility, such
 as Rust's `tempfile` crate, and native `OsString` process arguments. It must
 not build shell command strings. Program and argument vector entries stay
-separate, and only complete argument placeholders such as `{input}`,
-`{output}`, and `{work}` are substituted. This preserves paths containing
-spaces or non-ASCII text on Windows, Linux, and macOS.
+separate. A workspace variant may use only these complete argument
+placeholders:
+
+| Placeholder     | Value                                                              |
+|-----------------|--------------------------------------------------------------------|
+| `{input_file}`  | The checked named file, bundle entry, or materialized inline body. |
+| `{input_dir}`   | The root of the checked input file or source bundle.               |
+| `{output_file}` | The host-allocated primary result file.                            |
+| `{work_dir}`    | The request-local working directory.                               |
+
+Placeholders never expand inside another argument. A workspace variant uses
+`{output_file}` exactly once and may use every other placeholder at most once.
+This preserves paths containing spaces or non-ASCII text on Windows, Linux,
+and macOS without creating a command-templating language.
 
 An external bridge may invoke a user-authored executable shell script or
 batch-file wrapper when the user has granted external-renderer permission.
@@ -300,10 +513,12 @@ may invoke an executable script directly. Heine itself does not add an
 implicit shell layer.
 
 The host captures bounded standard error, checks the exit status, and reads and
-checks declared output files before it cleans the workspace. A cleanup failure
-after successful result capture does not invalidate that complete result. Heine
-reports the retained workspace path for recovery, which accommodates temporary
-file locks on Windows without turning them into a false rendering failure.
+checks the primary output file before it cleans the workspace. Extra files
+below `output/` are a checked error, not incidental publication. A cleanup
+failure after successful result capture does not invalidate that complete
+result. Heine reports the retained workspace path for recovery, which
+accommodates temporary file locks on Windows without turning them into a false
+rendering failure.
 
 ### Execution limits and workspace retention
 
@@ -321,29 +536,29 @@ and any retained workspace path without claiming to have contained those
 children.
 
 The host creates a session-owned renderer-workspace parent below the operating
-system temporary directory. Each serialized adapter uses a fixed number
-of reusable workspace slots below that parent. A successfully cleaned slot is
-reused. A slot that remains locked is unavailable until cleanup succeeds. If
-all slots for an adapter are unavailable, Heine fails the next request with the
-affected paths instead of creating unbounded temporary directories. At process
-startup, it makes a best-effort sweep of stale, clearly Heine-owned workspace
-parents.
+system temporary directory. Each serialized renderer profile uses a fixed
+number of reusable workspace slots below that parent. A successfully cleaned
+slot is reused. A slot that remains locked is unavailable until cleanup
+succeeds. If all slots for a profile are unavailable, Heine fails the next
+request with the affected paths instead of creating unbounded temporary
+directories. At process startup, it makes a best-effort sweep of stale,
+clearly Heine-owned workspace parents.
 
 ## Caching, watching, and failure behavior
 
 The cache key for a renderer result includes:
 
-- adapter identity and version;
-- normalized adapter configuration and directive options;
-- placement and materialization;
-- inline body bytes, or every checked relative path and file byte sequence in
-  a named source bundle; and
-- a declared external-tool version when a bridge uses one.
+- renderer-profile name, `cache_identity`, and normalized configuration;
+- the selected placement variant and normalized directive options;
+- materialization;
+- inline body bytes; named-file bytes; or every checked relative path and file
+  byte sequence in a named source bundle.
 
-An external bridge whose tool version cannot be declared must opt out of
-persistent caching. Heine can make publication deterministic for returned
-bytes, but cannot promise reproducibility for an arbitrary external program
-whose environment may influence output.
+The explicit `cache_identity` represents the selected renderer version or
+other cache-relevant tool identity. Heine can make publication deterministic
+for returned bytes, but cannot promise reproducibility for an arbitrary
+external program whose environment may influence output. The site owner
+changes `cache_identity` after changing that program.
 
 Hashing every bundle file favors correctness over speed: file
 metadata alone is not a reliable cache identity across filesystems, copies, or
@@ -353,12 +568,20 @@ cache hash and does not retain bundle contents merely to compute that key.
 Renderer inputs participate in full builds, development-server watching, and
 future dependency-aware incremental builds. Renderer execution is serialized
 with the synchronous build pipeline. A renderer failure is a build failure at
-the relevant directive, source declaration, or input source span; it includes
-the adapter identity, exit status where relevant, and bounded standard
+the relevant directive, source declaration, or input source span. It includes
+the renderer profile name, exit status where relevant, and bounded standard
 error. A failed build leaves the previous complete output available.
 
-Quick builds must not claim completeness for renderer-source or renderer-
-configuration changes until their dependency behavior is designed explicitly.
+Renderer-source, renderer-profile, and renderer-configuration changes require
+a full build to update relationships and remove superseded generated output.
+Quick builds may re-render an already-resolved request whose present source
+changes, but they must not claim completeness for those structural changes.
+
+`--refresh-renderers` bypasses reusable renderer-cache entries and invokes
+every selected renderer again. It requires `--allow-external-renderers` when a
+selected profile is external. Normal cached builds remain suitable for local
+iteration. A refreshed full build verifies the actual configured tools and is
+the required release and kit-reference-site test path.
 
 ## Rejected alternatives
 
@@ -368,6 +591,24 @@ They can prepare inputs or process deployment artifacts outside Heine, but
 they cannot retain a checked relationship between one Markdown construct and
 one generated result. Inside Heine, they would also bypass output ownership and
 make a configuration file an implicit arbitrary-code execution mechanism.
+
+### Publishing an arbitrary renderer output directory
+
+One Markdown request needs one semantic replacement in the rendered page. An
+unstructured output directory does not say whether its files form a gallery, a
+download, a standalone document, or an HTML application with auxiliary
+resources. The first bridge therefore accepts one primary generated resource.
+A later resource-set result may be justified, but it must define that
+replacement, relative-resource behavior, output ownership, and collision
+diagnostics before it publishes several files.
+
+### Rewriting embedded renderer markup
+
+Rewriting SVG IDs, URL references, CSS, scripts, or arbitrary HTML would make
+Heine responsible for tool-specific markup semantics and can silently change a
+renderer result. Parsing XML only to remove the document wrapper has a narrow,
+defined purpose. A profile that needs stronger isolation publishes a resource
+instead of embedded markup.
 
 ### Reusing ordinary language fences
 
@@ -404,24 +645,35 @@ confine an untrusted program across supported platforms.
 
 An implementation must include focused and fixture-site coverage for:
 
+- profile registration and configuration: absent profiles, malformed profiles,
+  profile names, no separate enable state, fixed placement variants, result
+  shapes, input forms, media types, extensions, cache identities, and unused
+  profiles whose unavailable programs are not invoked;
 - inline and block request parsing, literal escaping, longer delimiters, and
   code-span and code-fence suppression;
-- header, option, placement, output-mode, body, nesting, and adapter-capability
-  diagnostics with source spans;
+- header, standard options, placement, output-mode, required `alt` and
+  `label`, body, nesting, and profile-capability diagnostics with source spans;
 - single-adapter selection and generated-resource claims rejecting output
   collisions rather than applying last-write-wins behavior;
 - ordinary code-fence highlighting remaining unchanged;
 - checked named file and source-bundle discovery, path containment, symbolic
   links, overlapping declarations, and non-publication;
-- embedded and generated-resource results, output collisions, base paths,
-  locale routes, integrity interactions, and atomic publication;
+- trusted embedded HTML, SVG, and MathML fragments; image and linked-resource
+  results; result-shape validation; XML declaration and doctype removal for
+  embedded XML; unchanged resource bytes; one-primary-resource enforcement;
+  output collisions; base paths; locale routes; integrity interactions; and
+  atomic publication;
+- generated-resource licensing remaining outside copied-asset coverage;
 - stream and workspace bridge execution, argument boundaries, paths containing
-  spaces and non-ASCII text, output escape attempts, output capture, and
-  bounded diagnostic text, timeouts, and direct-child termination attempts;
+  spaces and non-ASCII text, complete-placeholder substitution, output escape
+  attempts, extra outputs, output capture, and bounded diagnostic text,
+  timeouts, and direct-child termination attempts;
 - explicit external-renderer permission for normal and development-server
-  builds;
+  builds, including a configured renderer that cannot run until a request
+  selects it, selected requests that fail before cache lookup without
+  permission, and unused profiles that need neither permission nor a program;
 - cache-key behavior, streamed bundle hashing, source-bundle watcher behavior,
   locked workspace-slot exhaustion, stale-workspace cleanup, failed renderers,
-  and previous-output preservation;
+  refreshed builds, and previous-output preservation;
 - public documentation, reference, tutorial, glossary, and a
   starter-site example.
