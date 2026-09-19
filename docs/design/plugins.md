@@ -176,10 +176,12 @@ Markdown-to-command interpolation language.
 
 The `cache_identity` value is an explicit cache declaration. Heine includes it
 in the cache key, but does not probe, discover, or verify the installed
-program's version. When a local renderer changes, the site owner updates
-`cache_identity` to invalidate cached results intentionally. A profile may use
-an absolute program path or a program name resolved by the operating system
-when the permitted build runs; Heine never searches for alternatives.
+program's version. Arbitrary tools do not provide one reliable version or
+environment contract that Heine could check. When a local renderer changes,
+the site owner updates `cache_identity` to invalidate cached results
+intentionally. A profile may use an absolute program path or a program name
+resolved by the operating system when the permitted build runs; Heine never
+searches for alternatives.
 
 A profile is checked when Heine reads configuration. Its executable is started
 only when a request selects it and the caller has opted in to external
@@ -189,17 +191,19 @@ valid profile does not require its program to be installed.
 
 The common modes of the first representative tools fit this contract:
 
-| Tool        | Usual protocol and placement      | Result shape                      |
-|-------------|-----------------------------------|-----------------------------------|
-| PlantUML    | Stream, block                     | SVG, embedded or image resource   |
-| Mermaid CLI | Workspace, block                  | SVG or image resource             |
-| Typst       | Workspace, block                  | SVG, HTML fragment, or linked PDF |
-| KaTeX       | Stream, inline and block variants | HTML or MathML fragment           |
-| Pandoc      | Stream or workspace, block        | HTML fragment or linked resource  |
+| Tool        | Usual protocol and placement      | Result shape                         |
+|-------------|-----------------------------------|--------------------------------------|
+| PlantUML    | Stream, block                     | SVG, embedded or image resource      |
+| Mermaid CLI | Workspace, block                  | SVG or image resource                |
+| Typst       | Workspace, block                  | SVG, HTML fragment, or linked PDF    |
+| KaTeX       | Stream, inline and block variants | HTML or MathML fragment              |
+| Pandoc      | Stream or workspace, block        | One HTML fragment or linked resource |
 
 The table does not reserve these names or make them built in. A profile may
-use any name and a supported program may have other modes. Modes that produce
-several primary artifacts remain outside the first result contract.
+use any name and a supported program may have other modes. A Pandoc conversion
+that extracts images alongside an HTML result is not a single-output mode and
+therefore remains outside the first result contract. Modes that produce
+several primary artifacts remain outside it as well.
 
 KaTeX profiles use explicit `render` requests. They do not change the existing
 `markdown.math` modes or introduce another implicit math parser. A later
@@ -557,8 +561,10 @@ The cache key for a renderer result includes:
 The explicit `cache_identity` represents the selected renderer version or
 other cache-relevant tool identity. Heine can make publication deterministic
 for returned bytes, but cannot promise reproducibility for an arbitrary
-external program whose environment may influence output. The site owner
-changes `cache_identity` after changing that program.
+external program whose environment may influence output. The site owner must
+change `cache_identity` after changing that program. This responsibility is
+intentional: generic version probing or executable fingerprints would not
+reliably account for each tool's dependencies and environment.
 
 Hashing every bundle file favors correctness over speed: file
 metadata alone is not a reliable cache identity across filesystems, copies, or
