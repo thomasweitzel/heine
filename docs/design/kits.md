@@ -184,7 +184,7 @@ substitutes prior output.
 ```toml
 name = "paper"
 version = "1.0.0"
-heine = ">=0.7.0, <0.8.0"
+heine = ">=0.8.0, <0.9.0"
 message_prefix = "paper-"
 
 [public]
@@ -213,6 +213,11 @@ The diagnostic explains that the site needs a kit release compatible with the
 running Heine version, or a Heine release compatible with the installed kit; it
 does not suggest changing a compatibility declaration without establishing
 that the kit actually supports the resulting version.
+
+This check verifies a kit's declared compatibility with the running Heine
+version. It cannot prove that the kit works with every Heine release in its
+declared range; the kit author establishes that broader promise through
+testing and release discipline.
 
 The site's optional `[kit].version` value is a separate semantic-version
 requirement. Heine checks it against the installed kit's `version`. If the
@@ -513,9 +518,12 @@ not a build-time switch that Heine claims will preserve a site.
 
 Implementation must include focused and fixture-site coverage for:
 
-- selection, missing-kit, name, manifest, kit-version, Heine-compatibility,
-  extra-schema, reference-site self-selection, and symlink errors with
-  authored spans;
+- selection, missing-kit, name, manifest, site-kit version and
+  Heine-kit compatibility requirements, extra-schema, reference-site
+  self-selection, and symlink errors with authored spans;
+- malformed semantic versions and requirements in both `heine.toml` and
+  `kit.toml`, plus rejection of an incompatible kit before Heine reads any of
+  its runtime resources;
 - materializing a kit reference site into a root beside its kit and building
   it successfully;
 - root-only template selection, public namespaced kit-template extension, and
