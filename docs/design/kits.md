@@ -136,6 +136,12 @@ root, it becomes that project's ordinary `heine.toml`; the copied site, rather
 than the kit runtime layer, owns every setting outside the checked
 `[kit.extra]` overlay.
 
+This includes external renderer profiles. A reference site may contain
+Markdown `render` requests and declare the profiles they select in its copied
+`heine.toml`. The site owner then owns those commands and may adapt them for
+their system. A selected kit's runtime resources never add, replace, or run a
+profile in an existing root configuration.
+
 Heine does not initially provide a package resolver, an installer, or a
 `heine new` command. Copying remains visible. A later convenience
 command may automate this procedure without changing its semantics.
@@ -164,6 +170,12 @@ assumed site structure, configuration, or reference example, its author
 updates the snapshot in the same change. Heine cannot compare an authoring
 root with `site/`: a normal consumer root is expected to diverge from its
 starting point.
+
+When a reference site exercises an external renderer, its kit test installs
+that renderer and grants the corresponding explicit Heine command-line
+permission with `--allow-external-renderers --refresh-renderers`. A missing or
+failing renderer is a test failure. Heine never skips the request or
+substitutes prior output.
 
 ## Manifest and kit settings
 
