@@ -22,8 +22,8 @@ maps the implemented features to their guides and reference material.
 
 Heine does not bundle a frontend toolchain or deployment integration. Use
 ordinary tools for CSS and JavaScript processing, media transformation,
-deployment, audits, and external services. Kits, renderer adapters, and RSS
-are not implemented yet.
+deployment, audits, and external services. Kits are implemented; renderer
+adapters and RSS are not.
 
 ## First site
 

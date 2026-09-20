@@ -7,46 +7,46 @@ asset = "assets/images/flags/english.svg"
 asset = "assets/images/flags/german.svg"
 
 [[navigation]]
-message = "nav-blog"
+message = "starter-nav-blog"
 page = "blog/index"
 
 [[navigation]]
-message = "nav-tags"
+message = "starter-nav-tags"
 taxonomy = "tags"
 
 [[navigation]]
-message = "nav-reading"
+message = "starter-nav-reading"
 page = "lesen/index"
 
 [[navigation]]
-message = "nav-heine"
+message = "starter-nav-heine"
 page = "heine/index"
 
 [[navigation]]
-message = "nav-series"
+message = "starter-nav-series"
 series = true
 
 [[navigation]]
-message = "nav-search"
+message = "starter-nav-search"
 page = "search/index"
 icon = "assets/images/search.svg"
 
 [[footer.links]]
-message = "footer-about"
+message = "starter-footer-about"
 page = "about/index"
 
 [[footer.links]]
-message = "footer-terms"
+message = "starter-footer-terms"
 page = "legal/terms/index"
 
 [[footer.links]]
-message = "footer-privacy"
+message = "starter-footer-privacy"
 page = "legal/privacy/index"
 
 [[footer.links]]
-message = "footer-imprint"
+message = "starter-footer-imprint"
 page = "legal/imprint/index"
 
 [[footer.links]]
-message = "attributions"
+message = "starter-attributions"
 page = "legal/licenses/index"

@@ -11,46 +11,18 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
     tera.register_function(
         "asset",
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
-            arguments::only("asset", &kwargs, &["id"])?;
-            let locale = asset_runtime.locale(state)?;
-            let asset = asset_runtime
-                .assets()
-                .with_locale(locale)
-                .resolve(kwargs.must_get::<&str>("id")?)
-                .map_err(|error| tera::Error::message(error.to_string()))?;
-            let root = asset_runtime.root(state)?;
-            let mut result = tera::Map::new();
-            result.insert("url".into(), asset.url().into());
-            if let Some(url) = asset.absolute_url() {
-                result.insert("absolute_url".into(), url.into());
-            }
-            result.insert(
-                "relative_url".into(),
-                format!("{root}{}", asset.path().url_path().as_str()).into(),
-            );
-            result.insert(
-                "integrity".into(),
-                asset.integrity().map(str::to_owned).into(),
-            );
-            let (width, height) = asset.dimensions().unzip();
-            result.insert("width".into(), width.into());
-            result.insert("height".into(), height.into());
-            result.insert(
-                "licensing".into(),
-                asset
-                    .licensing_view(
-                        &root,
-                        asset_runtime.assets().base_path(),
-                        asset_runtime.assets().canonical_urls(),
-                    )
-                    .map(|value| tera::Value::try_from_serializable(&value))
-                    .transpose()
-                    .map_err(|_| {
-                        tera::Error::message("Heine asset licensing view is not serializable")
-                    })?
-                    .into(),
-            );
-            Ok(result.into())
+            asset_value(&asset_runtime, kwargs, state, false)
+        },
+    );
+
+    // Kit sources rewrite their own `asset()` calls to this same-length
+    // internal name before Tera parses them. Root sources cannot spell it,
+    // and their ordinary `asset()` calls reject private kit assets.
+    let kit_asset_runtime = runtime.clone();
+    tera.register_function(
+        "__a__",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            asset_value(&kit_asset_runtime, kwargs, state, true)
         },
     );
 
@@ -445,6 +417,55 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             Ok(result.into())
         },
     );
+}
+
+fn asset_value(
+    runtime: &TemplateRuntime,
+    kwargs: tera::Kwargs,
+    state: &tera::State,
+    include_private_assets: bool,
+) -> tera::TeraResult<tera::Value> {
+    arguments::only("asset", &kwargs, &["id"])?;
+    let locale = runtime.locale(state)?;
+    let assets = runtime.assets().with_locale(locale);
+    let id = kwargs.must_get::<&str>("id")?;
+    let asset = if include_private_assets {
+        assets.resolve_for_kit(id)
+    } else {
+        assets.resolve(id)
+    }
+    .map_err(|error| tera::Error::message(error.to_string()))?;
+    let root = runtime.root(state)?;
+    let mut result = tera::Map::new();
+    result.insert("url".into(), asset.url().into());
+    if let Some(url) = asset.absolute_url() {
+        result.insert("absolute_url".into(), url.into());
+    }
+    result.insert(
+        "relative_url".into(),
+        format!("{root}{}", asset.path().url_path().as_str()).into(),
+    );
+    result.insert(
+        "integrity".into(),
+        asset.integrity().map(str::to_owned).into(),
+    );
+    let (width, height) = asset.dimensions().unzip();
+    result.insert("width".into(), width.into());
+    result.insert("height".into(), height.into());
+    result.insert(
+        "licensing".into(),
+        asset
+            .licensing_view(
+                &root,
+                runtime.assets().base_path(),
+                runtime.assets().canonical_urls(),
+            )
+            .map(|value| tera::Value::try_from_serializable(&value))
+            .transpose()
+            .map_err(|_| tera::Error::message("Heine asset licensing view is not serializable"))?
+            .into(),
+    );
+    Ok(result.into())
 }
 
 fn neighbor_value(

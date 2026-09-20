@@ -1,0 +1,40 @@
+name = "starter"
+version = "0.1.0"
+heine = ">=0.8.0, <0.9.0"
+message_prefix = "starter-"
+
+[public]
+templates = [
+  "base.tera",
+  "document.tera",
+  "guide.tera",
+  "home.tera",
+  "licenses.tera",
+  "post.tera",
+  "reading.tera",
+  "search.tera",
+  "section-index.tera",
+  "series-index.tera",
+  "series.tera",
+  "taxonomy-index.tera",
+  "taxonomy-term.tera",
+]
+assets = [
+  "assets/css/styles.v2.css",
+  "assets/favicon.svg",
+  "assets/fonts/STIXTwoMath-Regular.woff2",
+  "assets/images/flags/english.svg",
+  "assets/images/flags/german.svg",
+  "assets/images/search.svg",
+  "assets/js/search.js",
+]
+components = [
+  "starter.arrow",
+  "starter.draft_marker",
+  "starter.language_link",
+  "starter.meta_description",
+  "starter.page_label",
+  "starter.page_list_item",
+  "starter.page_title",
+  "starter.pagination",
+]

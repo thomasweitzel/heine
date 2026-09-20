@@ -43,6 +43,8 @@ mod drafts;
 mod feed;
 #[path = "fixture_site/i18n.rs"]
 mod i18n;
+#[path = "fixture_site/kits.rs"]
+mod kits;
 #[path = "fixture_site/licensing.rs"]
 mod licensing;
 #[path = "fixture_site/markdown.rs"]

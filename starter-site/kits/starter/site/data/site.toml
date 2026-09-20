@@ -1,0 +1,52 @@
+name = "Heine Starter Site"
+
+[language_flags.en]
+asset = "assets/images/flags/english.svg"
+
+[language_flags.de]
+asset = "assets/images/flags/german.svg"
+
+[[navigation]]
+message = "starter-nav-blog"
+page = "blog/index"
+
+[[navigation]]
+message = "starter-nav-tags"
+taxonomy = "tags"
+
+[[navigation]]
+message = "starter-nav-reading"
+page = "lesen/index"
+
+[[navigation]]
+message = "starter-nav-heine"
+page = "heine/index"
+
+[[navigation]]
+message = "starter-nav-series"
+series = true
+
+[[navigation]]
+message = "starter-nav-search"
+page = "search/index"
+icon = "assets/images/search.svg"
+
+[[footer.links]]
+message = "starter-footer-about"
+page = "about/index"
+
+[[footer.links]]
+message = "starter-footer-terms"
+page = "legal/terms/index"
+
+[[footer.links]]
+message = "starter-footer-privacy"
+page = "legal/privacy/index"
+
+[[footer.links]]
+message = "starter-footer-imprint"
+page = "legal/imprint/index"
+
+[[footer.links]]
+message = "starter-attributions"
+page = "legal/licenses/index"

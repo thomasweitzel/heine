@@ -1,25 +1,29 @@
 [package]
 name = "heine"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.88"
 description = "A small, checked static-site generator"
+repository = "https://github.com/thomasweitzel/heine/"
+homepage = "https://heine.rs/"
 readme = "README.md"
 license = "EUPL-1.2"
 keywords = ["static-site-generator", "ssg", "markdown", "website"]
 categories = ["command-line-utilities", "web-programming"]
 
 [dependencies]
-clap = { version = "4.6.6", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive"] }
 miette = { version = "7.6.0", features = ["fancy"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+semver = "1.0.28"
 thiserror = "2.0.20"
-toml = "1.1.5"
-tera = { version = "2.3.0", features = ["glob_fs"] }
+toml = "1.1.6"
+toml_edit = "0.25.15"
+tera = { version = "2.4.0", features = ["glob_fs"] }
 walkdir = "2.5.0"
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
-html5ever = "0.39.0"
+html5ever = "0.40.1"
 pulldown-latex = "0.8.0"
 giallo = { version = "0.5.2", features = ["dump"] }
 image = { version = "0.25.10", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
@@ -36,13 +40,13 @@ fluent-bundle = "0.16.0"
 fluent-syntax = "0.12.0"
 unic-langid = "0.9.6"
 unicode-normalization = "0.1.25"
-unicode-segmentation = "1.12.0"
+unicode-segmentation = "1.13.3"
 icu_datetime = { version = "2.3.0", features = ["compiled_data"] }
 icu_calendar = "2.3.0"
 icu_locale = "2.3.1"
 icu_collator = { version = "2.3.1", features = ["compiled_data"] }
 spdx = "0.13.5"
-jiff = { version = "0.2.35", features = ["tzdb-bundle-always"] }
+jiff = { version = "0.2.37", features = ["tzdb-bundle-always"] }
 url = "2.5.8"
 
 [dev-dependencies]

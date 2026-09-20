@@ -1,0 +1,7 @@
+title = "Datenschutz"
+description = "Eine beispielhafte Datenschutzerklärung für eine statische Heine-Starter-Site."
+published = 2026-08-30T09:30:00
+translationid = "privacy"
+
+[content]
+main = "main.md"

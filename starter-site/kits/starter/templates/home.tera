@@ -1,0 +1,31 @@
+{% extends "kit/starter/base.tera" %}
+{% block content %}
+{{ page.content.main }}
+<div class="sections">
+  {% for dir in page.subdirs %}
+    {% set index = dir ~ "/index" %}
+    {% if page_exists(id=index) %}
+      {% set section = page(id=index) %}
+      {% if section.extra.home %}
+        <a class="section" href="{{ section.url }}">
+          <div class="section-title">
+            {{ <starter.draft_marker draft={section.draft} label={t(id="starter-draft-marker")} /> }}
+            <h2>{{ section.title }}</h2>
+          </div>
+          {% if section.summary %}
+            <p>{{ section.summary }}</p>
+          {% endif %}
+          {% if section.extra.count_message %}
+            {% if section.extra.collection %}
+              {% set entries = collection(name=section.extra.collection) %}
+              <p>{{ t(id=section.extra.count_message, count=entries.count) }}</p>
+            {% else %}
+              <p>{{ t(id=section.extra.count_message, count=siblings(id=index) | length) }}</p>
+            {% endif %}
+          {% endif %}
+        </a>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}

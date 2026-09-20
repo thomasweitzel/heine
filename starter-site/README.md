@@ -4,6 +4,19 @@ This directory is a complete multilingual example rather than a required
 project layout. Build it from this directory with `heine`, or from the
 repository root with `cargo run -- --root starter-site`.
 
+## Starter kit
+
+The example selects its bundled `starter` kit through `[kit]` in
+`heine.toml`. The kit owns the shared layout, interface messages, stylesheet,
+font, flags, search icon, and search script. This root keeps its content,
+site data, deployment files, legal declarations, and adapter templates. Each
+adapter explicitly extends one public `kit/starter/…` template.
+
+`kits/starter/site/` is the kit's copyable reference-site snapshot. It shows
+the root inputs a new site receives after installing the kit. It is not a
+second runtime input tree: Heine ignores it while building this starter site.
+See the [kit guide](../docs/kits.md) for the package and customization model.
+
 ## Color-scheme image pairs
 
 The English Heinrich Heine guide uses a native Markdown `picture` block for

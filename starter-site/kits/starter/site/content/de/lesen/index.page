@@ -1,0 +1,15 @@
+template = "section-index.tera"
+title = "Lektüre"
+description = "Eine Lektüre von Heinrich Heines Nachtgedanken, über Mutter, Heimat und Ferne."
+summary = "Eine Lektüre von Heinrich Heines Nachtgedanken."
+
+[content]
+main = "index.md"
+
+[pagination]
+collection = "readings"
+per_page = 10
+
+[extra]
+parent = "index"
+home = true

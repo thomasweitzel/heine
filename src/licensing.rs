@@ -177,7 +177,26 @@ pub(crate) struct Catalog {
 }
 
 impl Catalog {
-    pub(crate) fn load(root: &Path) -> Result<Self, Error> {
+    pub(crate) fn load(
+        root: &Path,
+        selected_kit: Option<&crate::kit::Selected>,
+    ) -> Result<Self, Error> {
+        let mut catalog = Self {
+            root: root.into(),
+            ..Self::default()
+        };
+        if let Some(selected_kit) = selected_kit {
+            catalog.load_texts(selected_kit.paths().licenses())?;
+        }
+        catalog.load_texts(root)?;
+        catalog.paths = catalog.entries.keys().cloned().collect();
+        Ok(catalog)
+    }
+
+    /// Each layer uses the same logical LICENSES namespace. Loading the root
+    /// after the selected kit gives a site owner the documented correction
+    /// path without inventing a separate legal-output domain.
+    fn load_texts(&mut self, root: &Path) -> Result<(), Error> {
         match fs::symlink_metadata(root) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 return Err(Error::Symlink { path: root.into() });
@@ -187,10 +206,7 @@ impl Catalog {
             }
             Ok(_) => {}
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Ok(Self {
-                    root: root.into(),
-                    ..Self::default()
-                });
+                return Ok(());
             }
             Err(source) => {
                 return Err(Error::Inspect {
@@ -199,8 +215,6 @@ impl Catalog {
                 });
             }
         }
-        let mut entries = BTreeMap::new();
-        let mut texts = BTreeSet::new();
         for entry in WalkDir::new(root).sort_by_file_name() {
             let entry = entry.map_err(|source| Error::Walk {
                 path: root.into(),
@@ -224,10 +238,13 @@ impl Catalog {
                     path: entry.path().into(),
                 });
             }
-            let relative = entry
-                .path()
-                .strip_prefix(root)
-                .expect("walk entries remain under their root");
+            let relative =
+                entry
+                    .path()
+                    .strip_prefix(root)
+                    .map_err(|_| Error::InvalidLicenseFile {
+                        path: entry.path().into(),
+                    })?;
             if relative.components().count() != 1
                 || !source_path::has_safe_components(relative)
                 || !valid_license_filename(relative)
@@ -236,35 +253,56 @@ impl Catalog {
                     path: entry.path().into(),
                 });
             }
-            let name = relative
-                .file_stem()
-                .and_then(|name| name.to_str())
-                .expect("validated UTF-8 file name")
-                .to_owned();
-            texts.insert(name);
+            let Some(name) = relative.file_stem().and_then(|name| name.to_str()) else {
+                return Err(Error::InvalidLicenseFile {
+                    path: entry.path().into(),
+                });
+            };
+            let name = name.to_owned();
+            self.texts.insert(name);
             let output = license_output_path(entry.path(), relative)?;
-            entries.insert(output, entry.path().into());
+            self.entries.insert(output, entry.path().into());
         }
-        let paths = entries.keys().cloned().collect();
-        Ok(Self {
-            entries,
-            paths,
-            texts,
-            root: root.into(),
-        })
+        Ok(())
     }
 
     pub(crate) fn attach_to_assets(
         &self,
         assets: &mut AssetCatalog,
         content_root: &Path,
+        kit_assets: Option<&crate::asset::KitAssets>,
         config: &LicensingConfig,
         diagnostics: &source_diagnostic::DiagnosticPaths,
     ) -> Result<(), Error> {
         let mut declarations = BTreeMap::new();
-        for entry in WalkDir::new(content_root).sort_by_file_name() {
+        self.attach_sidecars(assets, content_root, false, &mut declarations, diagnostics)?;
+        if let Some(kit_assets) = kit_assets {
+            self.attach_sidecars(
+                assets,
+                kit_assets.root(),
+                true,
+                &mut declarations,
+                diagnostics,
+            )?;
+        }
+        self.attach_groups(assets, config, &mut declarations, diagnostics)?;
+        if config.coverage() == LicensingCoverage::Required {
+            self.require_coverage(assets, diagnostics)?;
+        }
+        Ok(())
+    }
+
+    fn attach_sidecars(
+        &self,
+        assets: &mut AssetCatalog,
+        root: &Path,
+        ignore_masked_assets: bool,
+        declarations: &mut BTreeMap<OutputPath, DeclarationOrigin>,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Result<(), Error> {
+        for entry in WalkDir::new(root).sort_by_file_name() {
             let entry = entry.map_err(|source| Error::Walk {
-                path: content_root.into(),
+                path: root.into(),
                 source,
             })?;
             if entry.file_type().is_symlink() {
@@ -283,6 +321,9 @@ impl Catalog {
             let source = read_sidecar(entry.path())?;
             let sibling = entry.path().with_extension("");
             if !assets.contains_source(&sibling) {
+                if ignore_masked_assets && sibling.is_file() {
+                    continue;
+                }
                 return Err(Box::new(SidecarDiagnostic::OrphanSidecar {
                     path: diagnostics.display_path(entry.path()),
                     source_code: diagnostics.named_source(entry.path(), source.clone(), "text"),
@@ -308,10 +349,6 @@ impl Catalog {
                     span: declaration_span,
                 },
             );
-        }
-        self.attach_groups(assets, config, &mut declarations, diagnostics)?;
-        if config.coverage() == LicensingCoverage::Required {
-            self.require_coverage(assets, diagnostics)?;
         }
         Ok(())
     }

@@ -17,14 +17,7 @@ fn builds_the_documented_starter_site() {
     let root = temporary.path();
 
     copy_file(&source.join("heine.toml"), &root.join("heine.toml"));
-    for directory in [
-        "content",
-        "data",
-        "deploy",
-        "LICENSES",
-        "locales",
-        "templates",
-    ] {
+    for directory in ["content", "data", "deploy", "LICENSES", "templates", "kits"] {
         copy_tree(&source.join(directory), &root.join(directory));
     }
 
@@ -612,6 +605,24 @@ fn builds_the_documented_starter_site() {
     ))
     .expect("preview search index");
     assert!(search.contains("\"draft\":true"), "{search}");
+}
+
+#[test]
+fn starter_kit_reference_site_materializes_as_an_ordinary_site() {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("starter-site");
+    let kit = source.join("kits/starter");
+    let temporary = TestDirectory::new();
+    let root = temporary.path();
+
+    copy_tree(&kit.join("site"), root);
+    copy_tree(&kit, &root.join("kits/starter"));
+
+    build_at(root, BuildMode::Full).expect("starter kit reference site builds");
+
+    let output = root.join("public/my-project");
+    assert!(output.join("index.html").is_file());
+    assert!(output.join("assets/css/styles.v2.css").is_file());
+    assert!(output.join("LICENSES/OFL-1.1.txt").is_file());
 }
 
 fn generated_file_with_extension(directory: &Path, extension: &str) -> std::path::PathBuf {

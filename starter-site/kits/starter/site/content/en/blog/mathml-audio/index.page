@@ -1,0 +1,14 @@
+title = "Math, Markdown, and Media"
+description = "A Heine starter post demonstrating MathML, audio, syntax highlighting, right-to-left text, and common Markdown forms."
+published = 2026-08-14T09:30:00
+summary = "A practical look at MathML, local audio, and readable Markdown."
+content.main = "main.md"
+extra.parent = "blog/index"
+
+[toc]
+content = "main"
+min_level = 2
+max_level = 2
+
+[taxonomies]
+tags = ["MathML", "Rust"]

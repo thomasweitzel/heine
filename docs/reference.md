@@ -34,6 +34,9 @@ fields use the following defaults.
 
 | Field                                             | Type                 | Default                               | Allowed values and constraints                                                                                                                                        | Effect                                                                                            |
 |---------------------------------------------------|----------------------|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
+| `kit.name`                                        | string               | absent                                | Required when `[kit]` exists; simple identifier naming an installed `kits/<name>/` directory whose manifest has the same name                                         | Selects one kit                                                                                   |
+| `kit.version`                                     | string               | absent                                | Optional semantic-version requirement satisfied by the selected manifest's `version`                                                                                | Prevents an unintended installed kit release                                                      |
+| `kit.extra`                                       | TOML table           | empty table                           | Keys, value types, and nested shape must be declared by the selected kit's `[extra]` defaults; tables merge, scalar values and arrays replace                       | Root-owned presentation settings exposed as `kit.extra`                                          |
 | `site.base_path`                                  | string               | `"/"`                                 | ASCII absolute URL directory path; starts and ends with `/`; uppercase percent escapes only; no encoded separators or dot segments                                    | Prefix for base-path-aware `url` values, including `asset()`, `page()`, and taxonomy links        |
 | `site.origin`                                     | string               | absent                                | Absolute `http` or `https` origin only: host and optional port, without credentials, query, fragment, or deployment path                                              | Required by sitemaps, Atom feeds, and templates that directly render `site.url` or `absolute_url` |
 | `site.time_zone`                                  | string               | absent                                | IANA time-zone name such as `"Europe/Berlin"`; resolved from Heine's bundled database                                                                                 | Resolves authored `published` and `updated` local times deterministically                         |
@@ -87,6 +90,13 @@ empty. Page IDs are the final deterministic tie-breaker. Published orders
 require every member to declare `published`; title orders use the collection locale's ICU
 collation and require titles, and weight orders require numeric weights on
 every member.
+
+`[kit]` selects at most one installed kit. Heine checks the selected
+directory, manifest name, optional site version requirement, the manifest's
+compatible Heine-version requirement, and its required self-selecting
+`site/heine.toml` before loading kit runtime resources. A kit's `[extra]`
+defaults define the complete allowed root overlay. See [Kits](kits.md) for the
+installation, adapter, and ownership model.
 
 Taxonomies turn one configured collection into locale-local generated index
 and term-listing pages. Their terms are literal display and route components;
@@ -430,6 +440,7 @@ they are scoped to the locale currently being rendered unless noted otherwise.
 
 | Value               | Fields and meaning                                                                                                                                                                                                                                                                                                                                                                                                          |
 |---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `kit`               | `null` without a selected kit. Otherwise `extra` holds the kit manifest defaults overlaid by checked root `[kit.extra]` settings. Kit templates and root adapters can read this value; it does not expose the manifest or filesystem paths. |
 | `site`              | `url` is present only when `site.origin` is configured. It is the canonical site root formed from the origin and base path, including the trailing slash. Templates never receive the raw origin. See [absolute URLs](absolute-urls.md).                                                                                                                                                                                    |
 | `locale`            | `code` is the configured BCP-47 locale; `direction` is its configured `"ltr"` or `"rtl"` value. Use both on the document element.                                                                                                                                                                                                                                                                                           |
 | `page`              | An authored page's `id`, `path`, `filename`, `dir`, `subdirs`, `content`, `markdown`, `title`, `description`, `summary`, `authors`, `published`, `updated`, `extra`, `directory`, `taxonomies`, `series`, `toc`, `footnotes`, `draft`, `weight`, `translations`, and `absolute_url`; `null` for generated templates. `path` and `filename` are absent without rendering. `absolute_url` is present only with `site.origin`. |
@@ -466,6 +477,13 @@ Template inheritance and components use Tera2's own syntax; the
 component. Heine does not provide a configuration or plugin hook for
 registering site-defined Rust filters or functions. The function and filter
 tables below are the complete Heine additions to a template environment.
+
+With a selected kit, ordinary template names still resolve only below root
+`templates/`. A kit original uses `kit/<name>/…`; a root template can name it
+only when the kit declares that original public. Kit templates cannot name root
+templates. Root templates may invoke only manifest-declared public kit
+components, and root components cannot occupy the selected kit's component
+namespace. See [Kits](kits.md).
 
 | Function               | Use                                                                                                   | Result                                                                                                                                                                                                                                                                                                                                                                                                                    |
 |------------------------|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

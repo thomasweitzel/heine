@@ -1,0 +1,54 @@
+{% component starter.pagination(pager, label: string) %}
+  {% if pager.page_count > 1 %}
+    <nav class="page-navigation pagination" aria-label="{{ label }}">
+      {% for item in pager.navigation %}
+        {% if item.kind == "gap" %}
+          <span aria-hidden="true">…</span>
+        {% elif item.current %}
+          <span aria-current="page">{{ item.page_number }}</span>
+        {% else %}
+          <a href="{{ item.relative_url }}">{{ item.page_number }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+  {% endif %}
+{% endcomponent starter.pagination %}
+
+{% component starter.meta_description(value: string) %}
+  <meta name="description" content="{{ value }}">
+{% endcomponent starter.meta_description %}
+
+{% component starter.language_link(locale: string, target, flag, label: string) %}
+  <a href="{{ target.url }}" hreflang="{{ locale }}" aria-label="{{ label }}">
+    <img src="{{ flag.url }}"{% if flag.width %} width="{{ flag.width }}" height="{{ flag.height }}"{% endif %} alt="">
+  </a>
+{% endcomponent starter.language_link %}
+
+{% component starter.draft_marker(draft: bool, label: string) %}{% if draft %}<span class="draft-marker">{{ label }}</span>{% endif %}{% endcomponent starter.draft_marker %}
+
+{% component starter.page_title(draft: bool, label: string, title: string) %}{% if draft %}<span class="page-title">{{ <starter.draft_marker draft={draft} label={label} /> }}<span class="page-title-text">{{ title }}</span></span>{% else %}{{ title }}{% endif %}{% endcomponent starter.page_title %}
+
+{% component starter.page_label(draft: bool, label: string, title: string) %}{% if draft %}<span class="page-label">{{ <starter.draft_marker draft={draft} label={label} /> }}<span class="page-label-text">{{ title }}</span></span>{% else %}{{ title }}{% endif %}{% endcomponent starter.page_label %}
+
+{% component starter.page_list_item(entry, draft_label: string, reading_facts: string) %}
+  <li class="page-list-item">
+    <div class="page-list-heading">
+      {{ <starter.draft_marker draft={entry.draft} label={draft_label} /> }}
+      <a href="{{ entry.relative_url }}"><span class="page-list-title">{{ entry.title or entry.filename }}</span></a>
+    </div>
+    {% if entry.summary %}<span class="page-list-summary">{{ entry.summary }}</span>{% endif %}
+    {% if reading_facts %}<span class="page-list-summary">{{ reading_facts }}</span>{% endif %}
+  </li>
+{% endcomponent starter.page_list_item %}
+
+{% component starter.arrow(direction: string) %}
+  <svg class="navigation-arrow" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    {% if direction == "up" %}
+      <path d="M12 19V5M6 11l6-6 6 6"/>
+    {% elif direction == "previous" %}
+      <path d="M19 12H5M11 18l-6-6 6-6"/>
+    {% elif direction == "next" %}
+      <path d="M5 12h14M13 6l6 6-6 6"/>
+    {% endif %}
+  </svg>
+{% endcomponent starter.arrow %}

@@ -77,7 +77,14 @@ fn reports_a_missing_templates_directory() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("templates are missing");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("templates"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("could not walk template directory templates"),
+        "{diagnostic}"
+    );
+    assert!(
+        !diagnostic.contains(&fixture.path().display().to_string()),
+        "{diagnostic}"
+    );
     assert!(diagnostic.contains("could not walk"), "{diagnostic}");
 }
 

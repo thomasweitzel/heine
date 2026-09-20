@@ -6,17 +6,12 @@ mod content;
 mod localization;
 mod resources;
 mod runtime;
+mod sources;
 
 use std::{
     collections::BTreeMap,
-    fs,
     path::{Path, PathBuf},
 };
-
-use miette::Diagnostic;
-use serde::Serialize;
-use thiserror::Error;
-use walkdir::WalkDir;
 
 use crate::{
     asset::AssetLinks,
@@ -29,6 +24,25 @@ use crate::{
     },
     source_path::LogicalPath,
 };
+use miette::Diagnostic;
+use serde::Serialize;
+use thiserror::Error;
+
+/// `walkdir::Error` renders the physical path it inspected. Template
+/// discovery has already established a project-owned display path, so retain
+/// the operating-system detail without reintroducing an absolute path through
+/// the diagnostic source chain.
+#[derive(Debug, Error)]
+#[error("{message}")]
+pub(super) struct WalkFailure {
+    message: String,
+}
+
+impl WalkFailure {
+    pub(super) fn new(message: String) -> Self {
+        Self { message }
+    }
+}
 
 /// The current page augmented with taxonomy links whose relative URLs depend
 /// on the output file currently being rendered.
@@ -58,6 +72,15 @@ impl TemplateName {
     pub(crate) fn as_str(&self) -> &str {
         self.0.as_str()
     }
+
+    /// Root-authored selectors never address kit originals. Kit references are
+    /// valid only inside template source, where the loader checks visibility.
+    fn is_kit_namespace(&self) -> bool {
+        matches!(
+            self.0.as_path().components().next(),
+            Some(std::path::Component::Normal(component)) if component == "kit"
+        )
+    }
 }
 
 impl std::fmt::Display for TemplateName {
@@ -78,12 +101,16 @@ pub(crate) enum Error {
     Walk {
         path: PathBuf,
         #[source]
-        source: walkdir::Error,
+        source: WalkFailure,
     },
     #[error("template path {path} must use UTF-8 components and must not contain backslashes")]
     NonUtf8Path { path: PathBuf },
     #[error("template path {path} is a symbolic link")]
     TemplateSymlink { path: PathBuf },
+    #[error("root template {path} is inside the reserved kit namespace")]
+    ReservedKitNamespace { path: PathBuf },
+    #[error("internal selected kit manifest source was not attached")]
+    MissingKitManifestSource,
     #[error(transparent)]
     #[diagnostic(transparent)]
     NormalizationCollision(#[from] Box<crate::source_path::NormalizationCollision>),
@@ -156,6 +183,8 @@ pub(crate) struct TemplateIndexes {
 #[derive(Serialize)]
 pub(crate) struct RenderContext<'a> {
     pub(crate) site: SiteView,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) kit: Option<&'a KitView>,
     pub(crate) locale: LocaleView,
     pub(crate) page: Option<RenderedPage<'a>>,
     pub(crate) taxonomy: Option<crate::site::TaxonomyView>,
@@ -166,6 +195,21 @@ pub(crate) struct RenderContext<'a> {
     pub(crate) root: &'a str,
     #[serde(rename = "__heine_runtime")]
     pub(crate) runtime: RuntimeContext<'a>,
+}
+
+/// Kit-owned defaults after root configuration has supplied checked overrides.
+/// The view is absent for ordinary sites so templates can make kit use explicit.
+#[derive(Serialize)]
+pub(crate) struct KitView {
+    pub(crate) extra: serde_json::Value,
+}
+
+impl From<&crate::kit::Selected> for KitView {
+    fn from(kit: &crate::kit::Selected) -> Self {
+        Self {
+            extra: kit.extra().clone(),
+        }
+    }
 }
 
 /// The checked site-wide URL fact exposed to templates. The raw origin stays
@@ -262,6 +306,8 @@ pub(crate) struct TemplateDiagnostic {
     label: String,
     #[label("{label}")]
     span: miette::SourceSpan,
+    #[help]
+    help: Option<String>,
 }
 
 pub(crate) struct TemplateEngine {
@@ -274,6 +320,7 @@ pub(crate) struct TemplateEngine {
 impl TemplateEngine {
     pub(crate) fn load(
         templates: &Path,
+        selected_kit: Option<&crate::kit::Selected>,
         resources: TemplateResources,
         markdown_renderer: crate::markdown::Renderer,
         diagnostics: &crate::source_diagnostic::DiagnosticPaths,
@@ -284,68 +331,23 @@ impl TemplateEngine {
         resources::register(&mut tera, &runtime);
         content::register(&mut tera, &runtime, markdown_renderer);
         localization::register(&mut tera, &runtime);
-        let entries = WalkDir::new(templates)
-            .sort_by_file_name()
-            .into_iter()
-            .map(|entry| {
-                entry.map_err(|source| Error::Walk {
-                    path: templates.into(),
-                    source,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let paths = entries
-            .into_iter()
-            .map(|entry| {
-                if entry.file_type().is_symlink() {
-                    Err(Error::TemplateSymlink {
-                        path: entry.path().into(),
-                    })
-                } else {
-                    Ok(entry)
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter(|entry| entry.file_type().is_file())
-            .map(|entry| {
-                let path = entry.path().to_path_buf();
-                let name = path
-                    .strip_prefix(templates)
-                    .expect("walked templates remain below their root");
-                if !crate::source_path::has_safe_components(name) {
-                    return Err(Error::NonUtf8Path { path });
-                }
-                let name = LogicalPath::from_path(name)
-                    .ok_or_else(|| Error::NonUtf8Path { path: path.clone() })?;
-                let name = TemplateName(name);
-                Ok((path, name))
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        if let Some(collision) = crate::source_path::normalization_collision(
-            paths
-                .iter()
-                .map(|(path, name)| (name.0.as_path().into(), path.clone())),
-        ) {
-            return Err(Error::NormalizationCollision(Box::new(collision)));
-        }
-        let sources = paths
-            .into_iter()
-            .map(|(path, name)| {
-                fs::read_to_string(&path)
-                    .map(|source| (name, diagnostics.named_source(&path, source, "Tera")))
-                    .map_err(|source| Error::Read { path, source })
-            })
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let raw_templates = sources
-            .iter()
-            .map(|(name, source)| (name.as_str(), source.inner().as_str()));
+        let catalog = sources::Catalog::load(templates, selected_kit, diagnostics)?;
+        let template_directory = diagnostics.display_path(templates);
+        let raw_templates = catalog.tera_sources();
         tera.add_raw_templates(raw_templates).map_err(|source| {
-            Error::from_tera("parse", templates, &sources, source, None, false)
+            Error::from_tera(
+                "parse",
+                &template_directory,
+                catalog.sources(),
+                source,
+                None,
+                false,
+            )
         })?;
+        catalog.validate_components(selected_kit)?;
         Ok(Self {
             tera,
-            sources,
+            sources: catalog.into_sources(),
             runtime,
             canonical_urls_configured,
         })
@@ -424,7 +426,7 @@ impl TemplateEngine {
     }
 
     pub(crate) fn contains(&self, template: &TemplateName) -> bool {
-        self.tera.contains_template(template.as_str())
+        !template.is_kit_namespace() && self.tera.contains_template(template.as_str())
     }
 }
 
@@ -456,6 +458,7 @@ impl Error {
                 },
             ),
             span: (0, 0).into(),
+            help: None,
         }))
     }
 
@@ -550,6 +553,7 @@ impl Error {
             source_code: source_code.clone(),
             label,
             span: (range.start, range.len()).into(),
+            help: None,
         }))
     }
 
@@ -572,6 +576,7 @@ impl Error {
             source_code: source_code.clone(),
             label: "referenced parent template here".into(),
             span: parent_reference_span(source_code.inner(), reference),
+            help: None,
         })))
     }
 }

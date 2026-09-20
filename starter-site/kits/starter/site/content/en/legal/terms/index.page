@@ -1,0 +1,7 @@
+title = "Terms"
+description = "Example terms for the non-commercial Heine starter site."
+published = 2026-08-30T09:30:00
+translationid = "terms"
+
+[content]
+main = "main.md"

@@ -13,7 +13,7 @@ parent = "index"
 home = true
 collection = "posts"
 feed = "posts"
-count_message = "blog-post-summary"
+count_message = "starter-blog-post-summary"
 
 [pagination]
 collection = "posts"

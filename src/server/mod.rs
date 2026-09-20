@@ -190,10 +190,10 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
     } else {
         rebuild
     };
-    let initial = PublishedSite::from_build(
-        build_at_with_publication(&root, build)?,
-        generation_from_start_time(SystemTime::now()),
-    );
+    let initial_build = build_at_with_publication(&root, build)?;
+    let kit_paths = initial_build.kit_paths.clone();
+    let initial =
+        PublishedSite::from_build(initial_build, generation_from_start_time(SystemTime::now()));
     let listener = bind_available(options).map_err(miette::Report::new)?;
     let address = listener
         .local_addr()
@@ -207,7 +207,7 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
         .enable_all()
         .build()
         .map_err(|source| miette::Report::new(Error::Runtime { source }))?;
-    runtime.block_on(run(listener, initial, watcher, rebuild))
+    runtime.block_on(run(listener, initial, watcher, rebuild, kit_paths))
 }
 
 async fn run(
@@ -215,6 +215,7 @@ async fn run(
     initial: PublishedSite,
     watcher: watch::PendingWatcher,
     rebuild: BuildOptions,
+    kit_paths: Option<crate::kit::Paths>,
 ) -> miette::Result<()> {
     let address = listener
         .local_addr()
@@ -226,7 +227,7 @@ async fn run(
         .map_err(|source| miette::Report::new(Error::RuntimeListener { address, source }))?;
     let (published, receiver) = state_watch::channel(initial);
     let _watcher = watcher
-        .start(published, rebuild)
+        .start(published, rebuild, kit_paths)
         .map_err(miette::Report::new)?;
     let state = ServerState {
         published: receiver,
@@ -336,6 +337,7 @@ mod tests {
             BuildPublication {
                 base_path: "/guide/".try_into().expect("valid base path"),
                 output_root: PathBuf::from("public/guide"),
+                kit_paths: None,
             },
             4,
         );

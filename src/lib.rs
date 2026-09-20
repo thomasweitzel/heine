@@ -8,6 +8,7 @@ mod config;
 mod content;
 mod data;
 mod deploy;
+mod kit;
 mod licensing;
 mod locale;
 mod localization;
@@ -41,6 +42,7 @@ pub use site::BuildMode;
 pub(crate) struct BuildPublication {
     pub(crate) base_path: BasePath,
     pub(crate) output_root: PathBuf,
+    pub(crate) kit_paths: Option<kit::Paths>,
 }
 
 /// Options that control one site build.
@@ -107,16 +109,29 @@ pub(crate) fn build_at_with_publication(
     let paths = ProjectPaths::new(root);
     let diagnostics = source_diagnostic::DiagnosticPaths::new(paths.root());
     let config = SiteConfig::load(paths.config(), &diagnostics).map_err(miette::Report::new)?;
+    let selected_kit = config
+        .kit()
+        .map(|selection| kit::Selected::resolve(paths.root(), selection, &diagnostics))
+        .transpose()
+        .map_err(miette::Report::new)?;
+    let kit_assets = selected_kit
+        .as_ref()
+        .map(asset::KitAssets::load)
+        .transpose()
+        .map_err(miette::Report::new)?;
     let markdown = markdown::Renderer::new(config.markdown().clone())
         .map_err(|error| miette::Report::new(*error))?;
     let (data, locale_data) =
         data::SiteData::load_localized(paths.data(), config.i18n().locales(), &diagnostics)
             .map_err(miette::Report::new)?;
     let deployment = deploy::Catalog::load(paths.deploy()).map_err(miette::Report::new)?;
-    let licenses = licensing::Catalog::load(paths.licenses()).map_err(miette::Report::new)?;
+    let licenses = licensing::Catalog::load(paths.licenses(), selected_kit.as_ref())
+        .map_err(miette::Report::new)?;
     let site = Site::load(site::LoadInputs {
         content_root: paths.content(),
         locales_root: paths.locales(),
+        selected_kit: selected_kit.as_ref(),
+        kit_assets: kit_assets.as_ref(),
         diagnostics: &diagnostics,
         data,
         locale_data,
@@ -141,11 +156,13 @@ pub(crate) fn build_at_with_publication(
     let publication = BuildPublication {
         base_path: config.site().base_path().to_owned(),
         output_root: output.clone(),
+        kit_paths: selected_kit.as_ref().map(|kit| kit.paths().clone()),
     };
     let options = SiteBuildOptions::new(build.mode, config);
     let rendered = site
         .render(
             paths.templates(),
+            selected_kit.as_ref(),
             &output,
             &options,
             &markdown,

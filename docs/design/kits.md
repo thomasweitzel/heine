@@ -2,13 +2,13 @@
 
 ## Status
 
-This is an accepted implementation design for a future Heine feature. Kits are
-not implemented yet, so this document is not part of the current user-facing
-contract.
+Kits are implemented. The [kit guide](../kits.md) and
+[reference](../reference.md) define the current user-facing contract; this
+record explains the design decisions behind it.
 
 ## Decision
 
-Heine will provide **kits**, not supposedly interchangeable themes. A kit is a
+Heine provides **kits**, not supposedly interchangeable themes. A kit is a
 complete site design with two separate purposes:
 
 - its runtime presentation resources supply templates, assets, and kit UI
@@ -184,7 +184,7 @@ substitutes prior output.
 ```toml
 name = "paper"
 version = "1.0.0"
-heine = ">=0.7.0, <0.8.0"
+heine = ">=0.8.0, <0.9.0"
 message_prefix = "paper-"
 
 [public]
@@ -213,6 +213,11 @@ The diagnostic explains that the site needs a kit release compatible with the
 running Heine version, or a Heine release compatible with the installed kit; it
 does not suggest changing a compatibility declaration without establishing
 that the kit actually supports the resulting version.
+
+This check verifies a kit's declared compatibility with the running Heine
+version. It cannot prove that the kit works with every Heine release in its
+declared range; the kit author establishes that broader promise through
+testing and release discipline.
 
 The site's optional `[kit].version` value is a separate semantic-version
 requirement. Heine checks it against the installed kit's `version`. If the
@@ -325,8 +330,8 @@ If that root adapter is removed, its ordinary template selection fails at the
 authored page or directory setting. It never falls back to a kit template. A
 root template may name only a public kit original through the namespace. Kit
 templates name their own originals, including private ones, through the same
-namespace in `extends`, `include`, and import references, so root resources
-cannot silently alter kit-internal composition. Kit templates cannot name root
+namespace in `extends` and `include` references, so root resources cannot
+silently alter kit-internal composition. Kit templates cannot name root
 templates. The `kit/` template namespace is globally reserved, including for a
 site that currently selects no kit, and root templates cannot define resources
 beneath it. Kit components must use the kit-name namespace, for example
@@ -422,10 +427,13 @@ a page's structural rendering entry point must never silently change source.
 
 ## Source discovery, output, and development server
 
+- Before runtime loading, Heine checks that the selected kit has a regular
+  `site/` directory and that `site/heine.toml` selects its containing kit. It
+  reads no other reference-site input at that point.
 - Heine ignores every kit `site/` directory during source discovery, rendering,
   and watching.
-- It reads only the selected kit's manifest, templates, assets, locales, and
-  attached license inputs.
+- Apart from that package-completeness check, it reads only the selected kit's
+  manifest, templates, assets, locales, and attached license inputs.
 - Those runtime kit roots reject symbolic links and obey the existing UTF-8,
   portable-path, collision, output-ownership, integrity, and attribution
   rules.
@@ -513,9 +521,12 @@ not a build-time switch that Heine claims will preserve a site.
 
 Implementation must include focused and fixture-site coverage for:
 
-- selection, missing-kit, name, manifest, kit-version, Heine-compatibility,
-  extra-schema, reference-site self-selection, and symlink errors with
-  authored spans;
+- selection, missing-kit, name, manifest, site-kit version and
+  Heine-kit compatibility requirements, extra-schema, reference-site
+  self-selection, and symlink errors with authored spans;
+- malformed semantic versions and requirements in both `heine.toml` and
+  `kit.toml`, plus rejection of an incompatible kit before Heine reads any of
+  its runtime resources;
 - materializing a kit reference site into a root beside its kit and building
   it successfully;
 - root-only template selection, public namespaced kit-template extension, and

@@ -1,0 +1,11 @@
+[pages]
+template = "guide.tera"
+collections = ["documentation"]
+
+[pages.toc]
+content = "main"
+min_level = 2
+max_level = 3
+
+[pages.footnotes]
+content = "main"

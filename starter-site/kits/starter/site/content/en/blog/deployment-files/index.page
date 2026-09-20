@@ -1,0 +1,11 @@
+title = "Deployment Files, Kept Separate"
+description = "How deployment files stay separate from Heine pages and copied assets."
+published = 2026-08-16T09:30:00
+updated = 2026-08-17T10:15:00
+summary = "An introduction to the example site's deployment files."
+translationid = "third-post"
+content.main = "main.md"
+extra.parent = "blog/index"
+
+[taxonomies]
+tags = ["Static sites"]

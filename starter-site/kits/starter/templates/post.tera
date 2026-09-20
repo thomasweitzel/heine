@@ -1,0 +1,72 @@
+{% extends "kit/starter/base.tera" %}
+
+{% block page_navigation %}
+<nav class="page-local-navigation" aria-label="{{ t(id="starter-page-navigation") }}">
+  {% if page.extra.parent %}
+    {% set index = page(id=page.extra.parent) %}
+  {% else %}
+    {% set index_id = page.dir ~ "/index" %}
+    {% set index = page(id=index_id) %}
+  {% endif %}
+  <a href="{{ index.relative_url }}">{{ <starter.arrow direction="up" /> }}<span>{{ <starter.page_label draft={index.draft} label={t(id="starter-draft-marker")} title={index.title} /> }}</span></a>
+  {% set neighbors = collection_neighbors(name="posts") %}
+  {% if neighbors.before %}
+    <a href="{{ neighbors.before.relative_url }}">{{ <starter.arrow direction="previous" /> }}<span>{{ <starter.page_label draft={neighbors.before.draft} label={t(id="starter-draft-marker")} title={neighbors.before.title} /> }}</span></a>
+  {% endif %}
+  {% if neighbors.after %}
+    <a href="{{ neighbors.after.relative_url }}"><span>{{ <starter.page_label draft={neighbors.after.draft} label={t(id="starter-draft-marker")} title={neighbors.after.title} /> }}</span>{{ <starter.arrow direction="next" /> }}</a>
+  {% endif %}
+</nav>
+{% endblock %}
+
+{% block content %}
+<h1>{{ <starter.page_title draft={page.draft} label={t(id="starter-draft-marker")} title={page.title} /> }}</h1>
+{% set published = format_date(value=page.published, style="long") %}
+<dl class="post-meta">
+  {% if page.authors %}
+    <div class="post-meta-author">
+      <dt>{{ t(id="starter-post-byline") }}</dt>
+      <dd>{{ page.authors | join(sep=", ") }}</dd>
+    </div>
+  {% endif %}
+  <div class="post-meta-publication">
+    <dt class="visually-hidden">{{ t(id="starter-post-dates") }}</dt>
+    <dd>
+      <span>{{ t(id="starter-post-published") }} <time datetime="{{ page.published }}">{{ published }}</time></span>
+      {% if page.updated %}
+        {% set updated = format_date(value=page.updated, style="long") %}
+        <span>{{ t(id="starter-post-updated") }} <time datetime="{{ page.updated }}">{{ updated }}</time></span>
+      {% endif %}
+    </dd>
+  </div>
+  {% if page.markdown.main.reading_time %}
+    <div class="post-meta-facts">
+      <dt class="visually-hidden">{{ t(id="starter-post-reading-facts") }}</dt>
+      <dd>
+        <span>{{ t(id="starter-word-count", words=page.markdown.main.word_count) }}</span>
+        <span>{{ t(id="starter-reading-time", minutes=page.markdown.main.reading_time) }}</span>
+      </dd>
+    </div>
+  {% endif %}
+  {% if page.taxonomies.tags %}
+    <div class="post-meta-tags">
+      <dt>{{ t(id="starter-tags", count=page.taxonomies.tags | length) }}</dt>
+      <dd>
+        {% for tag in page.taxonomies.tags %}
+          <a href="{{ tag.relative_url }}">{{ tag.name }}</a>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </dd>
+    </div>
+  {% endif %}
+</dl>
+{% if page.extra.featured_image %}
+  {% set image = asset(id=page.extra.featured_image.id) %}
+  <figure class="featured-image">
+    <img src="{{ image.url }}"{% if image.width %} width="{{ image.width }}" height="{{ image.height }}"{% endif %} alt="{{ page.extra.featured_image.alt }}">
+  </figure>
+{% endif %}
+{% include "kit/starter/table-of-contents.tera" %}
+<div class="prose">
+  {{ markdown(content="main") }}
+</div>
+{% endblock %}
