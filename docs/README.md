@@ -77,6 +77,7 @@ features and planned work.
 - [Absolute URLs](design/absolute-urls.md)
 - [Copied-asset licensing coverage](design/asset-licensing-coverage.md)
 - [Draft publication](design/drafts.md)
+- [Kits](design/kits.md)
 - [Markdown facts](design/markdown-facts.md)
 - [Multilingual sitemap alternates](design/multilingual-sitemap-alternates.md)
 - [Margin footnotes](design/margin-footnotes.md)
