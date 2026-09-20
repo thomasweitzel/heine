@@ -182,7 +182,7 @@ impl TokenSink for HtmlSearchTextSink {
                             && let Some(alt) = tag
                                 .attrs
                                 .iter()
-                                .find(|attribute| attribute.name.local.as_ref() == "alt")
+                                .find(|attribute| attribute.name.local.as_str() == "alt")
                         {
                             append_text(&mut state.text, &alt.value);
                         }

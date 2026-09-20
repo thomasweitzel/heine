@@ -1,11 +1,1 @@
-{% extends "base.tera" %}
-
-{% block content %}
-<article class="guide-article">
-  <h1>{{ <ui.page_title draft={page.draft} label={t(id="draft-marker")} title={page.title} /> }}</h1>
-  {% include "table-of-contents.tera" %}
-  <div class="prose">
-    {{ markdown(content="main") }}
-  </div>
-</article>
-{% endblock %}
+{% extends "kit/starter/guide.tera" %}

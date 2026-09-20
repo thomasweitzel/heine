@@ -1,0 +1,10 @@
+title = "Blog"
+description = "Notes about building a small static-site generator."
+
+[pages]
+template = "post.tera"
+collections = ["posts"]
+authors = ["Heinrich Heine"]
+
+[pages.metadata]
+required = ["title", "published"]

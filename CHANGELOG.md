@@ -33,6 +33,13 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Checked kits.** A site may select one local kit with a manifest-declared
+  public template, asset, component, message, and presentation-settings
+  surface. Kits include copyable reference sites, while the consuming root
+  retains content and configuration ownership. This makes a complete design
+  reusable without treating unrelated site structures as interchangeable
+  themes.
+
 - **Multilingual sitemap alternates.** Sites may opt into
   `sitemap.hreflang = true` to emit checked, locale-sorted XHTML alternate
   sets for explicit, sitemap-included `translationid` counterparts. This keeps

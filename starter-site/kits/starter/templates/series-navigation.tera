@@ -1,0 +1,21 @@
+{% if page.series %}
+  {% for membership in page.series %}
+    <nav class="series-navigation" aria-label="{{ t(id="starter-series-navigation") }}: {{ membership.title }}">
+      <div class="series-navigation-details">
+        <p><span>{{ t(id="starter-series-label") }}</span> <a href="{{ membership.relative_url }}"><strong>{{ membership.title }}</strong></a></p>
+        <p>{{ <starter.page_label draft={page.draft} label={t(id="starter-draft-marker")} title={page.title} /> }}</p>
+        <p>{{ t(id="starter-series-position", number=membership.number, total=membership.total) }}</p>
+      </div>
+      {% if membership.previous or membership.next %}
+        <div class="series-navigation-links">
+          {% if membership.previous %}
+            <a class="series-navigation-previous" href="{{ membership.previous.relative_url }}">{{ <starter.arrow direction="previous" /> }}<span>{{ <starter.page_label draft={membership.previous.draft} label={t(id="starter-draft-marker")} title={membership.previous.title} /> }}</span></a>
+          {% endif %}
+          {% if membership.next %}
+            <a class="series-navigation-next" href="{{ membership.next.relative_url }}"><span>{{ <starter.page_label draft={membership.next.draft} label={t(id="starter-draft-marker")} title={membership.next.title} /> }}</span>{{ <starter.arrow direction="next" /> }}</a>
+          {% endif %}
+        </div>
+      {% endif %}
+    </nav>
+  {% endfor %}
+{% endif %}

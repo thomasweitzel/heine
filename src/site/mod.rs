@@ -44,7 +44,7 @@ use crate::{
     markdown::{self, Renderer as MarkdownRenderer},
     output::{GeneratedFile, OutputClaim, OutputPath, OutputPlan},
     template::{
-        LocaleView, RenderContext, RuntimeContext, TemplateEngine, TemplateIndexes,
+        KitView, LocaleView, RenderContext, RuntimeContext, TemplateEngine, TemplateIndexes,
         TemplateRelationships, TemplateResources,
     },
 };
@@ -100,6 +100,8 @@ pub(crate) struct BuildOptions {
 pub(crate) struct LoadInputs<'a> {
     pub(crate) content_root: &'a Path,
     pub(crate) locales_root: &'a Path,
+    pub(crate) selected_kit: Option<&'a crate::kit::Selected>,
+    pub(crate) kit_assets: Option<&'a crate::asset::KitAssets>,
     pub(crate) diagnostics: &'a crate::source_diagnostic::DiagnosticPaths,
     pub(crate) data: SiteData,
     pub(crate) locale_data: BTreeMap<Locale, SiteData>,
@@ -279,6 +281,8 @@ impl Site {
         let LoadInputs {
             content_root,
             locales_root,
+            selected_kit,
+            kit_assets,
             diagnostics,
             data,
             locale_data,
@@ -319,6 +323,7 @@ impl Site {
         }
         let localization = std::sync::Arc::new(Localization::load(
             locales_root,
+            selected_kit,
             i18n.locales(),
             i18n.default_locale().clone(),
             diagnostics,
@@ -394,13 +399,20 @@ impl Site {
                             root: &locales.shared_root,
                             entries: &locales.shared_entries,
                         }),
+                        kit: kit_assets,
                     },
                 )
             })
             .collect::<BTreeMap<_, _>>();
         let mut assets = AssetCatalog::discover_locales(&asset_sources)?;
         licenses
-            .attach_to_assets(&mut assets, content_root, licensing, diagnostics)
+            .attach_to_assets(
+                &mut assets,
+                content_root,
+                kit_assets,
+                licensing,
+                diagnostics,
+            )
             .map_err(Box::new)?;
         let assets = std::sync::Arc::new(assets);
         if let Some(latest_asset_input) = assets.latest_input() {
@@ -593,6 +605,7 @@ impl Site {
     pub(crate) fn render(
         &self,
         templates: &Path,
+        selected_kit: Option<&crate::kit::Selected>,
         existing_output: &Path,
         options: &BuildOptions,
         markdown_renderer: &MarkdownRenderer,
@@ -636,9 +649,15 @@ impl Site {
                 .tables()
                 .map(|tables| tables.scroll_message().to_owned()),
         );
-        let engine =
-            TemplateEngine::load(templates, resources, markdown_renderer.clone(), diagnostics)?;
+        let engine = TemplateEngine::load(
+            templates,
+            selected_kit,
+            resources,
+            markdown_renderer.clone(),
+            diagnostics,
+        )?;
         self.validate_templates(&engine)?;
+        let kit = selected_kit.map(KitView::from);
         let mut rendered = Vec::new();
         for task in &self.tasks {
             if !needs_render(task, existing_output, options.mode())? {
@@ -700,6 +719,7 @@ impl Site {
                 &task.template,
                 RenderContext {
                     site: crate::template::SiteView::from_canonical_urls(canonical_urls.as_ref()),
+                    kit: kit.as_ref(),
                     locale: LocaleView {
                         code: task.locale.to_string(),
                         direction: self.i18n.direction(&task.locale).as_str().into(),
@@ -755,6 +775,7 @@ impl Site {
                 &task.template,
                 RenderContext {
                     site: crate::template::SiteView::from_canonical_urls(canonical_urls.as_ref()),
+                    kit: kit.as_ref(),
                     locale: LocaleView {
                         code: task.locale.to_string(),
                         direction: self.i18n.direction(&task.locale).as_str().into(),
@@ -821,6 +842,7 @@ impl Site {
                 &task.template,
                 RenderContext {
                     site: crate::template::SiteView::from_canonical_urls(canonical_urls.as_ref()),
+                    kit: kit.as_ref(),
                     locale: LocaleView {
                         code: task.locale.to_string(),
                         direction: self.i18n.direction(&task.locale).as_str().into(),
@@ -955,10 +977,7 @@ fn validate_template_reference(
         template: template.to_string(),
         source_code,
         span,
-        help: format!(
-            "add {:?} under templates/, or correct this reference",
-            template
-        ),
+        help: format!("add {template} under templates/, or correct this reference"),
     })
     .into())
 }

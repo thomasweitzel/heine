@@ -89,10 +89,20 @@ impl PendingWatcher {
         self,
         published: watch::Sender<PublishedSite>,
         build: BuildOptions,
+        kit_paths: Option<crate::kit::Paths>,
     ) -> Result<SourceWatcher, Error> {
         let thread = thread::Builder::new()
             .name("heine-source-watcher".into())
-            .spawn(move || watch_loop(self.root, self.watcher, self.receiver, published, build))
+            .spawn(move || {
+                watch_loop(
+                    self.root,
+                    self.watcher,
+                    self.receiver,
+                    published,
+                    build,
+                    kit_paths,
+                )
+            })
             .map_err(|source| Error::Thread { source })?;
         Ok(SourceWatcher { _thread: thread })
     }
@@ -104,11 +114,12 @@ fn watch_loop(
     receiver: Receiver<notify::Result<Event>>,
     published: watch::Sender<PublishedSite>,
     build: BuildOptions,
+    mut kit_paths: Option<crate::kit::Paths>,
 ) {
     let mut generation = published.borrow().generation;
     while let Ok(event) = receiver.recv() {
         let mut changed_paths = match event {
-            Ok(event) => changed_source_paths(&root, &event),
+            Ok(event) => changed_source_paths(&root, &event, kit_paths.as_ref()),
             Err(error) => {
                 report_observation_error(&root, error);
                 SourceChanges::default()
@@ -119,7 +130,9 @@ fn watch_loop(
         }
         while let Ok(event) = receiver.recv_timeout(DEBOUNCE) {
             match event {
-                Ok(event) => changed_paths.extend(changed_source_paths(&root, &event)),
+                Ok(event) => {
+                    changed_paths.extend(changed_source_paths(&root, &event, kit_paths.as_ref()))
+                }
                 Err(error) => report_observation_error(&root, error),
             }
         }
@@ -130,6 +143,7 @@ fn watch_loop(
         match build_at_with_publication(&root, build) {
             Ok(build) => {
                 generation = next_generation(generation);
+                kit_paths = build.kit_paths.clone();
                 let _ = published.send(PublishedSite::from_build(build, generation));
                 println!("{}", rebuild_message(Timestamp::now(), &changed_paths));
             }
@@ -138,7 +152,11 @@ fn watch_loop(
     }
 }
 
-fn changed_source_paths(root: &Path, event: &Event) -> SourceChanges {
+fn changed_source_paths(
+    root: &Path,
+    event: &Event,
+    selected_kit: Option<&crate::kit::Paths>,
+) -> SourceChanges {
     let Some(change) = SourceChange::from_event_kind(&event.kind) else {
         return SourceChanges::default();
     };
@@ -146,7 +164,9 @@ fn changed_source_paths(root: &Path, event: &Event) -> SourceChanges {
     event
         .paths
         .iter()
-        .filter(|path| paths.is_build_input(path))
+        .filter(|path| {
+            paths.is_build_input(path) || selected_kit.is_some_and(|kit| kit.is_runtime_input(path))
+        })
         .map(|path| path.strip_prefix(root).unwrap_or(path).to_path_buf())
         .fold(SourceChanges::default(), |mut changes, path| {
             changes.record(path, change);
@@ -314,9 +334,9 @@ mod tests {
         )))
         .add_path(root.join("content/index.page"));
 
-        assert!(changed_source_paths(root, &read).is_empty());
+        assert!(changed_source_paths(root, &read, None).is_empty());
         assert!(
-            changed_source_paths(root, &write)
+            changed_source_paths(root, &write, None)
                 .events
                 .contains_key(Path::new("content/index.page"))
         );
@@ -331,9 +351,51 @@ mod tests {
         .add_path(root.join("deploy/.htaccess"))
         .add_path(root.join("LICENSES/MIT.txt"));
 
-        let changes = changed_source_paths(root, &write);
+        let changes = changed_source_paths(root, &write, None);
         assert!(changes.events.contains_key(Path::new("deploy/.htaccess")));
         assert!(changes.events.contains_key(Path::new("LICENSES/MIT.txt")));
+    }
+
+    #[test]
+    fn watches_selected_kit_runtime_inputs_but_not_snapshots_or_other_kits() {
+        let root = Path::new("/site");
+        let name = crate::kit::KitName::parse("paper".into()).expect("valid kit name");
+        let kit = crate::kit::Paths::below_site_root(root, &name);
+        let write = Event::new(EventKind::Modify(notify::event::ModifyKind::Data(
+            notify::event::DataChange::Content,
+        )))
+        .add_path(root.join("kits/paper/kit.toml"))
+        .add_path(root.join("kits/paper/templates/base.tera"))
+        .add_path(root.join("kits/paper/site/content/en/index.page"))
+        .add_path(root.join("kits/paper/README.md"))
+        .add_path(root.join("kits/other/templates/base.tera"));
+
+        let changes = changed_source_paths(root, &write, Some(&kit));
+        assert!(
+            changes
+                .events
+                .contains_key(Path::new("kits/paper/kit.toml"))
+        );
+        assert!(
+            changes
+                .events
+                .contains_key(Path::new("kits/paper/templates/base.tera"))
+        );
+        assert!(
+            !changes
+                .events
+                .contains_key(Path::new("kits/paper/site/content/en/index.page"))
+        );
+        assert!(
+            !changes
+                .events
+                .contains_key(Path::new("kits/paper/README.md"))
+        );
+        assert!(
+            !changes
+                .events
+                .contains_key(Path::new("kits/other/templates/base.tera"))
+        );
     }
 
     #[test]

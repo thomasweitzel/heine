@@ -382,7 +382,7 @@ pub(crate) struct SourceError {
     source_code: NamedSource<String>,
     #[label("{label}")]
     span: SourceSpan,
-    label: &'static str,
+    label: String,
     #[help]
     help: String,
 }
@@ -528,13 +528,13 @@ pub(crate) fn validate_source_with_links(
             let (kind, label, help, span) = match &error {
             RenderError::Math { span, .. } => (
                 "math",
-                "invalid TeX here",
+                "invalid TeX here".into(),
                 "correct the TeX expression or set markdown.math = \"off\"".into(),
                 span.clone(),
             ),
-            RenderError::Asset { span, .. } => (
+            RenderError::Asset { span, message, .. } => (
                 "asset reference",
-                "invalid asset reference here",
+                format!("invalid asset reference here: {message}"),
                 "use an existing asset ID relative to content/, without a leading '/', or '.' or '..' path segments".into(),
                 span.clone(),
             ),
@@ -545,37 +545,37 @@ pub(crate) fn validate_source_with_links(
                 ..
             } => (
                 "page reference",
-                "draft page referenced here",
+                "draft page referenced here".into(),
                 format!(
                     "{message}; remove this reference until the page is published, or use heine serve --drafts when the draft is intended to render in a local preview"
                 ),
                 span.clone(),
             ),
             RenderError::Page { span, .. } => (
-                "page reference", "invalid page reference here",
+                "page reference", "invalid page reference here".into(),
                 "use page:<id> for the current locale or page:<locale>:<id> for an explicitly configured locale".into(), span.clone(),
             ),
             RenderError::Highlight { span, .. } => (
                 "code fence",
-                "invalid language here",
+                "invalid language here".into(),
                 "use a bundled Giallo language name, omit the fence language, or set markdown.highlighting.missing_language = \"plain\"".into(),
                 span.clone(),
             ),
             RenderError::MarginFootnote { span, .. } => (
                 "margin footnotes",
-                "margin-footnote rendering is inconsistent here",
+                "margin-footnote rendering is inconsistent here".into(),
                 "rebuild the site after correcting the selected Markdown source".into(),
                 span.clone(),
             ),
             RenderError::Footnote { span, .. } => (
                 "footnote",
-                "reference without a matching definition",
+                "reference without a matching definition".into(),
                 "add one [^label]: definition, or remove this reference".into(),
                 span.clone(),
             ),
             RenderError::Picture(error) => (
                 "picture",
-                error.label(),
+                error.label().into(),
                 error.help().into(),
                 error.span(),
             ),

@@ -20,6 +20,7 @@ mod time_zone;
 
 use crate::{
     author::AuthorName,
+    kit,
     locale::{Locale, TextDirection},
     output::{OutputClaim, OutputPath},
     project, source_path,
@@ -49,6 +50,7 @@ pub(crate) struct SiteConfig {
     sitemap: Option<SitemapConfig>,
     feeds: FeedsConfig,
     search: SearchConfig,
+    kit: Option<kit::Selection>,
 }
 
 impl SiteConfig {
@@ -82,6 +84,13 @@ impl SiteConfig {
                 message,
                 source_code: diagnostics.named_source(path, source.clone(), "TOML"),
                 span,
+            }))
+        })?;
+        config.attach_kit_extra(&source).map_err(|error| {
+            Error::Invalid(Box::new(ConfigDiagnostic {
+                message: error.message,
+                source_code: diagnostics.named_source(path, source.clone(), "TOML"),
+                span: error.span,
             }))
         })?;
         config.attach_source(path, &source, diagnostics);
@@ -138,6 +147,10 @@ impl SiteConfig {
 
     pub(crate) fn search(&self) -> &SearchConfig {
         &self.search
+    }
+
+    pub(crate) fn kit(&self) -> Option<&kit::Selection> {
+        self.kit.as_ref()
     }
 }
 
@@ -1014,6 +1027,16 @@ struct RawSiteConfig {
     feeds: BTreeMap<toml::Spanned<String>, RawFeedDefinition>,
     #[serde(default)]
     search: BTreeMap<toml::Spanned<String>, RawSearchDefinition>,
+    kit: Option<RawKitSelection>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawKitSelection {
+    name: toml::Spanned<String>,
+    version: Option<toml::Spanned<String>>,
+    #[serde(default, rename = "extra")]
+    _extra: Option<toml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1277,6 +1300,21 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             });
         }
         let reading_time = parse_reading_time(raw.reading_time, &locales)?;
+        let kit = raw
+            .kit
+            .map(|raw| {
+                let RawKitSelection {
+                    name,
+                    version,
+                    _extra: _,
+                } = raw;
+                kit::Selection::parse(name, version)
+            })
+            .transpose()
+            .map_err(|error| ConfigValueError {
+                span: error.span,
+                message: error.message,
+            })?;
         let base_path_span = raw.site.base_path.span();
         let base_path = raw
             .site
@@ -1830,6 +1868,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             search: SearchConfig {
                 definitions: search,
             },
+            kit,
         })
     }
 }
@@ -1897,6 +1936,18 @@ fn parse_reading_time(
 }
 
 impl SiteConfig {
+    fn attach_kit_extra(&mut self, source: &str) -> Result<(), ConfigValueError> {
+        let Some(kit) = &mut self.kit else {
+            return Ok(());
+        };
+        let extra = kit::parse_selection_extra(source).map_err(|error| ConfigValueError {
+            span: error.span,
+            message: error.message,
+        })?;
+        kit.set_extra(extra);
+        Ok(())
+    }
+
     fn attach_source(
         &mut self,
         path: &Path,
@@ -1935,6 +1986,9 @@ impl SiteConfig {
         }
         if let Some(sitemap) = &mut self.sitemap {
             sitemap.source = Some(collection_source);
+        }
+        if let Some(kit) = &mut self.kit {
+            kit.attach_source(diagnostics.named_source(path, source, "TOML"));
         }
     }
 }

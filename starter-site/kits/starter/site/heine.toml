@@ -1,0 +1,120 @@
+[i18n]
+default_locale = "en"
+
+[i18n.locales.en]
+direction = "ltr"
+
+[i18n.locales.de]
+direction = "ltr"
+
+[kit]
+name = "starter"
+version = "^0.1"
+
+[site]
+base_path = "/my-project/"
+origin = "https://example.org"
+time_zone = "Europe/Berlin"
+
+[sitemap]
+hreflang = true
+
+[build]
+output_dir = "public/my-project"
+
+[assets]
+integrity = "sha384"
+
+[licensing]
+required = true
+
+[reading_time.words_per_minute]
+en = 236
+de = 260
+
+[[licensing.groups]]
+assets = [
+  "assets/css/styles.v2.css",
+  "assets/favicon.svg",
+  "assets/images/flags/english.svg",
+  "assets/images/flags/german.svg",
+  "assets/images/search.svg",
+  "assets/js/search.js",
+  "blog/mathml-audio/audio/heine-introduction.mp3",
+]
+SPDX-FileCopyrightText = "2026 Thomas Weitzel"
+SPDX-License-Identifier = "LicenseRef-Public-Domain"
+SPDX-FileComment = "Created for the Heine starter site and dedicated to the public domain by its author."
+
+[collections.posts]
+order = "published-desc"
+
+[collections.documentation]
+order = "title-asc"
+
+[collections.readings]
+order = "weight-asc"
+
+[series]
+path = "series"
+index_template = "series-index.tera"
+listing_template = "series.tera"
+index_title_key = "starter-series-index-title"
+index_description_key = "starter-series-index-description"
+per_page = 10
+
+[series.definitions.heinrich-heine]
+title_key = "starter-series-heinrich-heine-title"
+description_key = "starter-series-heinrich-heine-description"
+
+[search.site]
+collections = ["posts", "documentation"]
+path = "search/site.json"
+
+[feeds.posts]
+collection = "posts"
+path = "atom.xml"
+title_key = "starter-feed-posts-title"
+subtitle_key = "starter-feed-posts-subtitle"
+limit = 20
+empty_updated = 2026-08-01T09:30:00
+empty_authors = ["Heinrich Heine"]
+
+[taxonomies.tags]
+collection = "posts"
+path = "tags"
+index_template = "taxonomy-index.tera"
+term_template = "taxonomy-term.tera"
+per_page = 10
+
+[taxonomies.authors]
+collection = "readings"
+path = "authors"
+index_template = "taxonomy-index.tera"
+term_template = "taxonomy-term.tera"
+per_page = 10
+
+[taxonomies.tags.counterparts.rust]
+en = "Rust"
+de = "Rust"
+
+[taxonomies.tags.counterparts.static-sites]
+en = "Static sites"
+de = "Statische Seiten"
+
+[markdown]
+extensions = ["tables", "strikethrough", "task_lists", "footnotes"]
+math = "mathml"
+
+[markdown.tables]
+scroll_message = "starter-table-scroll"
+
+[markdown.margin_footnotes]
+marker_message = "starter-footnote-marker"
+
+[markdown.highlighting]
+stylesheet = "css/highlighting.css"
+
+[markdown.highlighting.theme]
+light = "github-light-default"
+dark = "ayu-dark"

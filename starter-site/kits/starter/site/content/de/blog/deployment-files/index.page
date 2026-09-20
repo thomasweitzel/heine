@@ -1,0 +1,11 @@
+title = "Bereitstellungsdateien, sauber getrennt"
+description = "Wie Bereitstellungsdateien von Heine-Seiten und kopierten Assets getrennt bleiben."
+published = 2026-08-16T09:30:00
+updated = 2026-08-17T10:15:00
+summary = "Eine Einführung in die Bereitstellungsdateien der Beispielseite."
+translationid = "third-post"
+content.main = "main.md"
+extra.parent = "blog/index"
+
+[taxonomies]
+tags = ["Statische Seiten"]

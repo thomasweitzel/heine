@@ -7,8 +7,6 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Next
 
-- **Kits:** one selected, checked presentation layer with root-owned site
-  structure and narrow, declared overrides. See the [design](design/kits.md).
 - **Release hygiene:** establish a repeatable local release procedure before
   publishing. It checks the required formatting, Clippy, and test commands,
   the packaged crate contents, and the optimized release binary. CI may later
@@ -20,6 +18,11 @@ and a cohesive starter-site example where one fits naturally.
   the only planned plugin boundary. See the [design](design/plugins.md).
 
 ## Later
+
+- **Kit distribution:** publish a small, curated kit catalogue only after kit
+  authors have a practical way to version, test, and maintain their own
+  repositories. Heine's checked kit contract does not require a central
+  registry or package resolver.
 
 - **Calendar archives:** add a narrow generated-resource consumer of one
   resolved collection when a concrete site establishes its bucket and route

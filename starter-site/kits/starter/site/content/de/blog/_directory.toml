@@ -1,0 +1,10 @@
+title = "Blog"
+description = "Notizen über die Entwicklung eines kleinen Static-Site-Generators."
+
+[pages]
+template = "post.tera"
+collections = ["posts"]
+authors = ["Heinrich Heine"]
+
+[pages.metadata]
+required = ["title", "published"]

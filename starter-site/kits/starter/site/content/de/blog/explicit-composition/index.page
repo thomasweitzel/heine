@@ -1,0 +1,10 @@
+title = "Inhalte explizit zusammensetzen"
+description = "Wie Heine Seitenmetadaten, Inhalte und Templates klar trennt und unabhängig prüft."
+published = 2026-08-15T09:30:00
+summary = "Eine kurze Notiz über explizite Inhaltszusammenstellung."
+translationid = "second-post"
+content.main = "main.md"
+extra.parent = "blog/index"
+
+[taxonomies]
+tags = ["Rust"]

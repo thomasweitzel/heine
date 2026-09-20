@@ -1,0 +1,32 @@
+{% extends "kit/starter/base.tera" %}
+
+{% block title %}{{ taxonomy.term.name }}{% endblock %}
+
+{% block head_description %}
+  {% set description_key = "starter-" ~ taxonomy.name ~ "-term-description" %}
+  {{ <starter.meta_description value={t(id=description_key, term=taxonomy.term.name)} /> }}
+{% endblock %}
+
+{% block language_navigation %}
+  {% if taxonomy.term.counterparts %}
+    <nav class="language-navigation" aria-label="{{ t(id="starter-language") }}">
+    {% for target_locale, target in taxonomy.term.counterparts %}
+      {% set language_message = "starter-language-" ~ target_locale %}
+      {% set flag = asset(id=data.site.language_flags[target_locale].asset) %}
+      {{ <starter.language_link locale={target_locale} target={target} flag={flag} label={t(id=language_message)} /> }}
+    {% endfor %}
+    </nav>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<h1>{{ t(id="starter-" ~ taxonomy.name, count=1) }}: {{ taxonomy.term.name }}</h1>
+<ul class="page-list">
+{% for post in pagination.pages %}
+  {% set reading_facts = "" %}
+  {% if post.markdown.main.reading_time %}{% set reading_facts = t(id="starter-reading-facts", words=post.markdown.main.word_count, minutes=post.markdown.main.reading_time) %}{% endif %}
+  {{ <starter.page_list_item entry={post} draft_label={t(id="starter-draft-marker")} reading_facts={reading_facts} /> }}
+{% endfor %}
+</ul>
+{{ <starter.pagination pager={pagination} label={t(id="starter-pagination-label")} /> }}
+{% endblock %}

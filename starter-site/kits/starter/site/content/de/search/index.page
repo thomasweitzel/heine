@@ -1,0 +1,4 @@
+template = "search.tera"
+title = "Suche"
+description = "Durchsuche die deutschsprachigen Beiträge dieser Heine-Starter-Site."
+translationid = "search"

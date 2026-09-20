@@ -2,13 +2,13 @@
 
 ## Status
 
-This is an accepted implementation design for a future Heine feature. Kits are
-not implemented yet, so this document is not part of the current user-facing
-contract.
+Kits are implemented. The [kit guide](../kits.md) and
+[reference](../reference.md) define the current user-facing contract; this
+record explains the design decisions behind it.
 
 ## Decision
 
-Heine will provide **kits**, not supposedly interchangeable themes. A kit is a
+Heine provides **kits**, not supposedly interchangeable themes. A kit is a
 complete site design with two separate purposes:
 
 - its runtime presentation resources supply templates, assets, and kit UI
@@ -330,8 +330,8 @@ If that root adapter is removed, its ordinary template selection fails at the
 authored page or directory setting. It never falls back to a kit template. A
 root template may name only a public kit original through the namespace. Kit
 templates name their own originals, including private ones, through the same
-namespace in `extends`, `include`, and import references, so root resources
-cannot silently alter kit-internal composition. Kit templates cannot name root
+namespace in `extends` and `include` references, so root resources cannot
+silently alter kit-internal composition. Kit templates cannot name root
 templates. The `kit/` template namespace is globally reserved, including for a
 site that currently selects no kit, and root templates cannot define resources
 beneath it. Kit components must use the kit-name namespace, for example
@@ -427,10 +427,13 @@ a page's structural rendering entry point must never silently change source.
 
 ## Source discovery, output, and development server
 
+- Before runtime loading, Heine checks that the selected kit has a regular
+  `site/` directory and that `site/heine.toml` selects its containing kit. It
+  reads no other reference-site input at that point.
 - Heine ignores every kit `site/` directory during source discovery, rendering,
   and watching.
-- It reads only the selected kit's manifest, templates, assets, locales, and
-  attached license inputs.
+- Apart from that package-completeness check, it reads only the selected kit's
+  manifest, templates, assets, locales, and attached license inputs.
 - Those runtime kit roots reject symbolic links and obey the existing UTF-8,
   portable-path, collision, output-ownership, integrity, and attribution
   rules.

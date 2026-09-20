@@ -45,6 +45,8 @@ required prerequisite for the guides.
 
 ## Author and present pages
 
+- [Kits](kits.md): install one checked presentation package and adapt its
+  public templates from the site root.
 - [Declared content](declared-content.md): choose ordinary Markdown, named
   prose segments, structured data, or several page inputs.
 - [Table of contents](table-of-contents.md): page-owned Markdown heading
@@ -84,7 +86,6 @@ features and planned work.
 
 ### Planned work
 
-- [Kits](design/kits.md)
 - [Plugins and renderer adapters](design/plugins.md)
 
 ## Reference material

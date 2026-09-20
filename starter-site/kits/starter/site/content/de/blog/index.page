@@ -1,0 +1,23 @@
+template = "section-index.tera"
+title = "Blog"
+description = "Notizen über den Aufbau und die Nutzung eines kleinen, klar gegliederten Static-Site-Generators."
+published = 2026-08-01T09:30:00
+summary = """
+Ein Beispiel-Blog mit lokalisierten Beiträgen.
+"""
+translationid = "blog"
+collections = []
+
+[extra]
+parent = "index"
+home = true
+collection = "posts"
+feed = "posts"
+count_message = "starter-blog-post-summary"
+
+[pagination]
+collection = "posts"
+per_page = 2
+
+[content]
+main = "index.md"

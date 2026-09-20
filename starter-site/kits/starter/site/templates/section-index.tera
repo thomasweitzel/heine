@@ -1,0 +1,1 @@
+{% extends "kit/starter/section-index.tera" %}

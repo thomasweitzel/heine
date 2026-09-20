@@ -9,11 +9,11 @@ use std::{
 };
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use miette::Diagnostic;
+use miette::{Diagnostic, NamedSource, SourceSpan};
 use serde::Serialize;
 use sha2::Digest;
 use thiserror::Error;
-use walkdir::DirEntry;
+use walkdir::{DirEntry, WalkDir};
 
 use crate::{
     config::{BasePath, CanonicalUrls, IntegrityAlgorithm},
@@ -30,6 +30,21 @@ pub(crate) enum Error {
         #[source]
         source: io::Error,
     },
+    #[error("could not walk kit asset directory {path}")]
+    KitWalk {
+        path: PathBuf,
+        #[source]
+        source: walkdir::Error,
+    },
+    #[error("kit asset directory {path} is missing or is not a directory")]
+    MissingKitDirectory { path: PathBuf },
+    #[error("selected kit manifest source was unavailable while validating its assets")]
+    MissingKitManifestSource,
+    #[error("kit asset path {path} is a symbolic link")]
+    KitSymlink { path: PathBuf },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Kit(#[from] Box<KitAssetDiagnostic>),
     #[error("asset {path} is outside content root {root}")]
     OutsideContent { path: PathBuf, root: PathBuf },
     #[error("asset path {path} must use UTF-8 components and must not contain backslashes")]
@@ -60,6 +75,17 @@ pub(crate) enum Error {
     ExistingLicensing { path: PathBuf },
 }
 
+#[derive(Debug, Diagnostic, Error)]
+#[error("invalid public kit asset declaration: {message}")]
+#[diagnostic(code(heine::kit::asset))]
+pub(crate) struct KitAssetDiagnostic {
+    message: String,
+    #[source_code]
+    source_code: NamedSource<String>,
+    #[label("declared public asset here")]
+    span: SourceSpan,
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum ResolveError {
     #[error(
@@ -68,6 +94,8 @@ pub(crate) enum ResolveError {
     InvalidId,
     #[error("asset {id:?} was not found")]
     NotFound { id: PathBuf },
+    #[error("asset {id:?} is private to its kit; only kit templates can address it")]
+    PrivateKitAsset { id: String },
 }
 
 /// A locale source tree plus its optional shared-asset fallback.
@@ -77,6 +105,7 @@ pub(crate) struct AssetSources<'a> {
     pub(crate) content_inputs: &'a BTreeSet<PathBuf>,
     pub(crate) output_prefix: &'a Path,
     pub(crate) shared: Option<SharedAssets<'a>>,
+    pub(crate) kit: Option<&'a KitAssets>,
 }
 
 pub(crate) struct SharedAssets<'a> {
@@ -84,11 +113,21 @@ pub(crate) struct SharedAssets<'a> {
     pub(crate) entries: &'a [DirEntry],
 }
 
+/// Selected kit assets prepared for the same locale-aware inventory used by
+/// root assets. The manifest determines which physical paths become public.
+pub(crate) struct KitAssets {
+    root: PathBuf,
+    entries: Vec<DirEntry>,
+    name: crate::kit::KitName,
+    public: BTreeMap<PathBuf, LogicalPath>,
+}
+
 #[derive(Debug, Clone)]
 struct AssetEntry {
     source: PathBuf,
     dimensions: Option<(u32, u32)>,
     licensing: Option<Arc<AssetLicensing>>,
+    layer: AssetLayer,
 }
 
 /// Licensing metadata attached to one copied asset after its REUSE sidecar is
@@ -147,6 +186,155 @@ impl AssetId {
     }
 }
 
+impl KitAssets {
+    pub(crate) fn load(selected: &crate::kit::Selected) -> Result<Self, Error> {
+        let root = selected.paths().assets();
+        let metadata = match fs::symlink_metadata(root) {
+            Ok(metadata) => metadata,
+            Err(source) if source.kind() == io::ErrorKind::NotFound => {
+                return Err(Error::MissingKitDirectory { path: root.into() });
+            }
+            Err(source) => {
+                return Err(Error::Io {
+                    path: root.into(),
+                    source,
+                });
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(Error::KitSymlink { path: root.into() });
+        }
+        if !metadata.is_dir() {
+            return Err(Error::MissingKitDirectory { path: root.into() });
+        }
+
+        let entries = WalkDir::new(root)
+            .sort_by_file_name()
+            .into_iter()
+            .map(|entry| {
+                entry.map_err(|source| Error::KitWalk {
+                    path: root.into(),
+                    source,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        for entry in &entries {
+            if entry.file_type().is_symlink() {
+                return Err(Error::KitSymlink {
+                    path: entry.path().into(),
+                });
+            }
+        }
+
+        let files = entries
+            .iter()
+            .filter(|entry| {
+                entry.file_type().is_file()
+                    && entry
+                        .path()
+                        .extension()
+                        .is_none_or(|extension| extension != "license")
+            })
+            .map(|entry| {
+                let relative = relative_path(root, entry.path())?;
+                if !source_path::has_safe_components(&relative) {
+                    return Err(Error::NonUtf8Path {
+                        path: entry.path().into(),
+                    });
+                }
+                Ok(relative)
+            })
+            .collect::<Result<BTreeSet<_>, Error>>()?;
+
+        let source_code = selected
+            .manifest()
+            .source()
+            .cloned()
+            .ok_or(Error::MissingKitManifestSource)?;
+        let mut public = BTreeMap::new();
+        for declaration in selected.manifest().public().assets() {
+            let physical = declaration
+                .value()
+                .as_path()
+                .strip_prefix("assets")
+                .map_err(|_| {
+                    public_asset_error(
+                        declaration,
+                        source_code.clone(),
+                        "public asset paths must begin with \"assets/\"",
+                    )
+                })?
+                .to_path_buf();
+            if !files.contains(&physical) {
+                return Err(public_asset_error(
+                    declaration,
+                    source_code.clone(),
+                    format!(
+                        "declared asset {:?} does not exist below the kit assets directory",
+                        declaration.value()
+                    ),
+                ));
+            }
+            public.insert(physical, declaration.value().clone());
+        }
+
+        Ok(Self {
+            root: root.into(),
+            entries,
+            name: selected.manifest().name().clone(),
+            public,
+        })
+    }
+
+    fn entries(&self) -> &[DirEntry] {
+        &self.entries
+    }
+
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    fn asset_id(&self, relative: &Path) -> Result<(AssetId, AssetLayer), Error> {
+        if let Some(public) = self.public.get(relative) {
+            return AssetId::from_path(public.as_path())
+                .map(|id| (id, AssetLayer::KitPublic))
+                .ok_or_else(|| Error::NonUtf8Path {
+                    path: self.root.join(relative),
+                });
+        }
+        let private = Path::new("kit")
+            .join(self.name.as_str())
+            .join("assets")
+            .join(relative);
+        AssetId::from_path(&private)
+            .map(|id| (id, AssetLayer::KitPrivate))
+            .ok_or_else(|| Error::NonUtf8Path {
+                path: self.root.join(relative),
+            })
+    }
+}
+
+fn public_asset_error(
+    declaration: &crate::kit::Declaration<LogicalPath>,
+    source_code: NamedSource<String>,
+    message: impl Into<String>,
+) -> Error {
+    Box::new(KitAssetDiagnostic {
+        message: message.into(),
+        source_code,
+        span: declaration.span(),
+    })
+    .into()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum AssetLayer {
+    KitPrivate,
+    KitPublic,
+    RootShared,
+    RootLocale,
+}
+
 /// Validated inventory of copied assets. Logical IDs resolve per locale;
 /// output paths remain global for the output domain.
 #[derive(Debug, Clone)]
@@ -176,6 +364,7 @@ impl AssetCatalog {
                 content_inputs,
                 output_prefix: Path::new(""),
                 shared: None,
+                kit: None,
             },
         )]);
         Self::discover_locales(&sources)
@@ -201,6 +390,28 @@ impl AssetCatalog {
 
     fn add_locale(&mut self, locale: &Locale, sources: &AssetSources<'_>) -> Result<(), Error> {
         let mut ids = BTreeMap::new();
+        if let Some(kit) = sources.kit {
+            for entry in kit.entries() {
+                if !entry.file_type().is_file()
+                    || entry
+                        .path()
+                        .extension()
+                        .is_some_and(|extension| extension == "license")
+                {
+                    continue;
+                }
+                let relative = relative_path(kit.root(), entry.path())?;
+                let (id, layer) = kit.asset_id(&relative)?;
+                let output = OutputPath::try_new(id.as_path().into()).map_err(|message| {
+                    Error::InvalidOutputPath {
+                        asset_path: entry.path().into(),
+                        output: id.as_path().into(),
+                        message,
+                    }
+                })?;
+                self.add_entry(locale, &mut ids, id, output, entry.path(), layer)?;
+            }
+        }
         if let Some(shared) = &sources.shared {
             for entry in shared.entries {
                 if entry.file_type().is_file()
@@ -224,7 +435,14 @@ impl AssetCatalog {
                             message,
                         }
                     })?;
-                    self.add_entry(locale, &mut ids, id.clone(), output, entry.path())?;
+                    self.add_entry(
+                        locale,
+                        &mut ids,
+                        id.clone(),
+                        output,
+                        entry.path(),
+                        AssetLayer::RootShared,
+                    )?;
                 }
             }
         }
@@ -260,7 +478,14 @@ impl AssetCatalog {
                     message,
                 }
             })?;
-            self.add_entry(locale, &mut ids, id.clone(), output, entry.path())?;
+            self.add_entry(
+                locale,
+                &mut ids,
+                id.clone(),
+                output,
+                entry.path(),
+                AssetLayer::RootLocale,
+            )?;
         }
         self.locale_entries.insert(locale.clone(), ids);
         Ok(())
@@ -273,6 +498,7 @@ impl AssetCatalog {
         id: AssetId,
         output: OutputPath,
         source: &Path,
+        layer: AssetLayer,
     ) -> Result<(), Error> {
         if !source_path::has_safe_components(id.as_path())
             || !source_path::has_safe_components(output.as_path())
@@ -280,6 +506,31 @@ impl AssetCatalog {
             return Err(Error::NonUtf8Path {
                 path: source.into(),
             });
+        }
+        process_versioned(locale, &id, &mut self.versions);
+        if let Some(existing) = self.entries.get(&output) {
+            // Shared and kit assets participate in every locale inventory. A
+            // source already recorded for this output needs only this locale's
+            // logical lookup entry, not another metadata read or image decode.
+            if existing.source == source {
+                ids.insert(id, output);
+                return Ok(());
+            }
+            if existing.layer == AssetLayer::KitPrivate
+                || layer == AssetLayer::KitPrivate
+                || (existing.layer != AssetLayer::KitPublic && layer != AssetLayer::KitPublic)
+            {
+                return Err(Error::OutputCollision {
+                    output: output.as_path().into(),
+                    first: existing.source.clone(),
+                    second: source.into(),
+                });
+            }
+            if existing.layer > layer {
+                ids.insert(id, output);
+                return Ok(());
+            }
+            self.source_outputs.remove(&existing.source);
         }
         let modified = fs::metadata(source)
             .and_then(|metadata| metadata.modified())
@@ -291,7 +542,6 @@ impl AssetCatalog {
             self.latest_input
                 .map_or(modified, |latest| latest.max(modified)),
         );
-        process_versioned(locale, &id, &mut self.versions);
         let dimensions = is_decodable_image(id.as_path())
             .then(|| {
                 image::ImageReader::open(source)
@@ -300,24 +550,15 @@ impl AssetCatalog {
                     .ok()
             })
             .flatten();
-        if let Some(existing) = self.entries.get(&output) {
-            if existing.source != source {
-                return Err(Error::OutputCollision {
-                    output: output.as_path().into(),
-                    first: existing.source.clone(),
-                    second: source.into(),
-                });
-            }
-        } else {
-            self.entries.insert(
-                output.clone(),
-                AssetEntry {
-                    source: source.into(),
-                    dimensions,
-                    licensing: None,
-                },
-            );
-        }
+        self.entries.insert(
+            output.clone(),
+            AssetEntry {
+                source: source.into(),
+                dimensions,
+                licensing: None,
+                layer,
+            },
+        );
         match self.source_outputs.entry(source.into()) {
             std::collections::btree_map::Entry::Vacant(entry) => {
                 entry.insert(output.clone());
@@ -503,6 +744,12 @@ impl AssetCatalog {
         self.entries.get(output).and_then(|entry| entry.dimensions)
     }
 
+    fn is_private_kit_asset(&self, output: &OutputPath) -> bool {
+        self.entries
+            .get(output)
+            .is_some_and(|entry| entry.layer == AssetLayer::KitPrivate)
+    }
+
     fn licensing(&self, output: &OutputPath) -> Option<&Arc<AssetLicensing>> {
         self.entries
             .get(output)
@@ -590,8 +837,26 @@ impl AssetLinks {
         }
     }
 
+    /// Resolves the public asset surface shared by Markdown and root
+    /// templates. Private kit assets retain output identities, but only the
+    /// kit's rewritten `asset()` calls may use the wider resolver below.
     pub(crate) fn resolve(&self, id: &str) -> Result<AssetLink, ResolveError> {
+        self.resolve_with_private_assets(id, false)
+    }
+
+    pub(crate) fn resolve_for_kit(&self, id: &str) -> Result<AssetLink, ResolveError> {
+        self.resolve_with_private_assets(id, true)
+    }
+
+    fn resolve_with_private_assets(
+        &self,
+        id: &str,
+        include_private_assets: bool,
+    ) -> Result<AssetLink, ResolveError> {
         let asset = self.catalog.resolve_id(&self.locale, id)?;
+        if !include_private_assets && self.catalog.is_private_kit_asset(&asset.output) {
+            return Err(ResolveError::PrivateKitAsset { id: id.into() });
+        }
         Ok(AssetLink {
             url: self.base_path.join(&asset.output.url_path()),
             absolute_url: self

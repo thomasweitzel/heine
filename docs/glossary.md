@@ -125,6 +125,15 @@ A file named `<asset filename>.license` beside a copied asset. It declares
 REUSE-style SPDX copyright and licensing facts for that asset; it is not itself
 published as an asset.
 
+### Kit
+
+One optional presentation package selected through `[kit]`. Its runtime
+templates, assets, prefixed Fluent messages, license texts, and declared public
+components join an ordinary site without taking ownership of the site's
+content, configuration, data, or deployment files. Each kit contains a
+copyable reference site that shows the root structure it expects. See
+[Kits](kits.md).
+
 ### Licensing group
 
 One explicit `[[licensing.groups]]` declaration in `heine.toml`. It assigns
