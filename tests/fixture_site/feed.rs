@@ -75,6 +75,48 @@ fn generates_locale_local_atom_feeds_with_checked_template_links() {
 }
 
 #[test]
+fn feed_limits_keep_the_newest_entries_and_order_equal_dates_by_page_id() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\norigin = 'https://example.org'\ntime_zone = 'Europe/Berlin'\n\n[collections.posts]\norder = 'id-asc'\n\n[feeds.posts]\ncollection = 'posts'\npath = 'atom.xml'\ntitle_key = 'feed-title'\nlimit = 2\nempty_updated = 2026-08-01T09:00:00\nempty_authors = ['Site Author']\n",
+    );
+    fixture.write("locales/en/site.ftl", "feed-title = Posts\n");
+    fixture.write(
+        "content/en/_directory.toml",
+        "[pages]\ntemplate = 'page.tera'\nauthors = ['Site Author']\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "content/en/older.page",
+        "title = 'Older'\nsummary = 'Older summary'\npublished = 2026-08-14T09:30:00\n",
+    );
+    fixture.write(
+        "content/en/beta.page",
+        "title = 'Beta'\nsummary = 'Beta summary'\npublished = 2026-08-15T09:30:00\n",
+    );
+    fixture.write(
+        "content/en/alpha.page",
+        "title = 'Alpha'\nsummary = 'Alpha summary'\npublished = 2026-08-15T09:30:00\n",
+    );
+    fixture.write("templates/page.tera", "page");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    let feed = fs::read_to_string(fixture.path().join("public/atom.xml")).expect("feed output");
+    let alpha = feed
+        .find("<title type=\"text\">Alpha</title>")
+        .expect("alpha entry");
+    let beta = feed
+        .find("<title type=\"text\">Beta</title>")
+        .expect("beta entry");
+    assert!(alpha < beta, "equal dates retain page-ID order: {feed}");
+    assert!(
+        !feed.contains("Older"),
+        "feed limit excludes the older entry: {feed}"
+    );
+}
+
+#[test]
 fn empty_feed_requires_its_explicit_atom_fallbacks() {
     let fixture = Fixture::new();
     fixture.write(

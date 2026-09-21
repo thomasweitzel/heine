@@ -338,7 +338,6 @@ impl Site {
             time_zone: site_settings.time_zone(),
             sitemap_enabled: sitemap_config.is_some(),
             markdown: markdown_renderer.config(),
-            reading_time,
             localization: &localization,
             publication,
         })?;
@@ -360,6 +359,16 @@ impl Site {
             }
         }
         let collections = collection::resolve(&pages, &collection_config)?;
+        let search_selections = search::Selections::resolve(&collections, &search_config);
+        for (locale, locale_pages) in &mut pages {
+            for page in locale_pages.values_mut() {
+                page.analyze_markdown(
+                    markdown_renderer.config(),
+                    reading_time.words_per_minute(locale),
+                    search_selections.contains(locale, &page.id),
+                );
+            }
+        }
         let collection_neighbors = std::sync::Arc::new(collection::resolve_neighbors(&collections));
         pagination::expand(&pages, &collections, &mut tasks);
         index::resolve_translations(&mut pages).map_err(Error::DuplicateTranslation)?;
@@ -460,12 +469,11 @@ impl Site {
         })
         .map_err(|error| Error::Feed(Box::new(error)))?;
         let search = search::Catalog::resolve(search::Inputs {
-            pages: &pages,
-            collections: &collections,
+            pages: &mut pages,
+            selections: &search_selections,
             config: &search_config,
             prefixes: &prefixes,
             base_path: site_settings.base_path(),
-            markdown: markdown_renderer.config(),
             taxonomies: &taxonomy_config,
         })
         .map_err(|error| Error::Search(Box::new(error)))?;
@@ -498,7 +506,7 @@ impl Site {
                             )
                         },
                     ),
-                    task.page_source.as_ref().clone(),
+                    task.page_source.clone(),
                     task.output_span,
                 )
             })
@@ -507,7 +515,7 @@ impl Site {
             OutputClaim::authored(
                 task.output_path.clone(),
                 format!("taxonomy {}", task.taxonomy.name),
-                task.output_source.as_ref().clone(),
+                task.output_source.clone(),
                 task.output_span,
             )
         }));
@@ -658,7 +666,22 @@ impl Site {
         )?;
         self.validate_templates(&engine)?;
         let kit = selected_kit.map(KitView::from);
-        let mut rendered = Vec::new();
+        // Every known render task produces at most one file. Reserve the
+        // structural outputs too; optional generated resources grow this only
+        // by a small, bounded amount.
+        let generated_capacity = usize::from(markdown_renderer.stylesheet().is_some())
+            + self
+                .sitemap
+                .as_ref()
+                .map_or(0, sitemap::Sitemap::output_count)
+            + self.feeds.output_count()
+            + self.search.output_count();
+        let mut rendered = Vec::with_capacity(
+            self.tasks.len()
+                + self.taxonomy_tasks.len()
+                + self.series.tasks().len()
+                + generated_capacity,
+        );
         for task in &self.tasks {
             if !needs_render(task, existing_output, options.mode())? {
                 continue;
@@ -957,7 +980,7 @@ fn self_series_claims(series: &series::Catalog) -> Vec<OutputClaim> {
                 task.series_id
                     .as_ref()
                     .map_or_else(|| "Series index".into(), |id| format!("Series {id}")),
-                task.output_source.as_ref().clone(),
+                task.output_source.clone(),
                 task.output_span,
             )
         })

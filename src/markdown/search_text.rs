@@ -1,4 +1,4 @@
-//! Source-level Markdown text extraction for search indexes.
+//! Shared source-text handling for Markdown analysis.
 //!
 //! Search deliberately owns a plain-text contract independent of rendered
 //! HTML, including a small HTML tokenizer for trusted raw Markdown fragments.
@@ -11,12 +11,7 @@ use html5ever::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
     },
 };
-use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde::Serialize;
-
-use crate::config::MarkdownConfig;
-
-use super::options;
 
 /// One source-ordered searchable region, optionally beginning at a generated
 /// heading fragment.
@@ -26,108 +21,13 @@ pub(crate) struct SearchTextSection {
     pub(crate) text: String,
 }
 
-/// Extracts source-level search sections without depending on rendered
-/// templates. Each Markdown heading begins a new section; a supplied fragment
-/// names that section's rendered heading when the page configured a ToC for
-/// this input.
-pub(crate) fn search_sections(
-    input: &str,
-    config: &MarkdownConfig,
-    fragments: Option<&[String]>,
-) -> Vec<SearchTextSection> {
-    let mut sections = Vec::new();
-    let mut section = SectionBuilder::default();
-    let mut fragments = fragments.unwrap_or_default().iter();
-    let mut footnote_definition_depth = 0usize;
-    let mut picture_paragraph = None;
-    for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
-        if let Some(picture_span) = picture_paragraph.take() {
-            if matches!(event, Event::End(TagEnd::Paragraph)) {
-                if let Some(text) = super::picture::search_text(&input[picture_span]) {
-                    append_text(&mut section.text, &text);
-                    append_boundary(&mut section.text);
-                }
-            } else {
-                picture_paragraph = Some(picture_span);
-            }
-            continue;
-        }
-        if matches!(event, Event::Start(Tag::Paragraph))
-            && super::picture::starts_directive(&input[span.clone()])
-        {
-            picture_paragraph = Some(span);
-            continue;
-        }
-        match event {
-            Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
-            Event::End(TagEnd::FootnoteDefinition) => {
-                footnote_definition_depth -= 1;
-                append_boundary(&mut section.text);
-            }
-            Event::Start(Tag::Heading { .. }) if footnote_definition_depth == 0 => {
-                section.finish_into(&mut sections);
-                section.fragment = fragments.next().cloned();
-            }
-            Event::Text(text)
-            | Event::Code(text)
-            | Event::InlineMath(text)
-            | Event::DisplayMath(text) => section.text.push_str(&text),
-            Event::SoftBreak | Event::HardBreak => section.text.push('\n'),
-            Event::Html(html) | Event::InlineHtml(html) => {
-                let text = raw_html_text(&html);
-                append_text(&mut section.text, &text);
-            }
-            Event::End(end) if markdown_block_end(end) => append_boundary(&mut section.text),
-            _ => {}
-        }
-    }
-    section.finish_into(&mut sections);
-    sections
-}
-
-#[derive(Default)]
-struct SectionBuilder {
-    fragment: Option<String>,
-    text: String,
-}
-
-impl SectionBuilder {
-    fn finish_into(&mut self, sections: &mut Vec<SearchTextSection>) {
-        let text = std::mem::take(&mut self.text).trim().to_owned();
-        let fragment = self.fragment.take();
-        if !text.is_empty() {
-            sections.push(SearchTextSection { fragment, text });
-        }
-    }
-}
-
-fn markdown_block_end(end: TagEnd) -> bool {
-    matches!(
-        end,
-        TagEnd::Paragraph
-            | TagEnd::Heading(_)
-            | TagEnd::BlockQuote(_)
-            | TagEnd::CodeBlock
-            | TagEnd::List(_)
-            | TagEnd::Item
-            | TagEnd::FootnoteDefinition
-            | TagEnd::DefinitionList
-            | TagEnd::DefinitionListTitle
-            | TagEnd::DefinitionListDefinition
-            | TagEnd::Table
-            | TagEnd::TableHead
-            | TagEnd::TableRow
-            | TagEnd::TableCell
-    )
-}
-
-fn append_text(output: &mut String, text: &str) {
+pub(super) fn append_text(output: &mut String, text: &str) {
     if !text.is_empty() {
         output.push_str(text);
     }
 }
 
-fn append_boundary(output: &mut String) {
+pub(super) fn append_boundary(output: &mut String) {
     if !output.ends_with("\n\n") {
         if output.ends_with('\n') {
             output.push('\n');
@@ -271,6 +171,15 @@ fn is_html_block_element(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::MarkdownConfig;
+
+    fn search_sections(
+        input: &str,
+        config: &MarkdownConfig,
+        fragments: Option<&[String]>,
+    ) -> Vec<SearchTextSection> {
+        super::super::analysis::analyze(input, config, None, fragments, true).search_sections
+    }
 
     #[test]
     fn keeps_semantic_markdown_and_raw_html_text() {

@@ -53,4 +53,19 @@ impl Highlighter {
         }
         .render(&highlighted, &RenderOptions::default()))
     }
+
+    /// Resolve the fence language without constructing highlighted HTML during
+    /// the source-validation pass. Rendering still highlights the complete
+    /// block later when a template selects the Markdown input.
+    pub(super) fn validate(&self, language: &str) -> Result<(), giallo::Error> {
+        let options = HighlightOptions::new(
+            language,
+            ThemeVariant::Dual {
+                light: &self.light_theme,
+                dark: &self.dark_theme,
+            },
+        )
+        .fallback_to_plain(self.missing_language == MissingLanguage::Plain);
+        self.registry.highlight("", &options).map(|_| ())
+    }
 }

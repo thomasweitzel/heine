@@ -30,6 +30,51 @@ use super::{PageId, collection::ResolvedCollection, page::Page};
 /// Consumers use this to reject a document shape they do not understand.
 const SEARCH_DOCUMENT_FORMAT: u8 = 3;
 
+/// Locale-local page membership for every configured search index. It is
+/// resolved once from collections so Markdown analysis and JSON generation
+/// agree on the exact published document set.
+pub(super) struct Selections {
+    locales: BTreeMap<Locale, BTreeMap<SearchName, BTreeSet<PageId>>>,
+}
+
+impl Selections {
+    pub(super) fn resolve(
+        collections: &BTreeMap<Locale, BTreeMap<crate::config::CollectionName, ResolvedCollection>>,
+        config: &SearchConfig,
+    ) -> Self {
+        Self {
+            locales: collections
+                .keys()
+                .map(|locale| {
+                    (
+                        locale.clone(),
+                        config
+                            .definitions()
+                            .iter()
+                            .map(|(name, definition)| {
+                                (
+                                    name.clone(),
+                                    selected_ids_for(definition, collections, locale),
+                                )
+                            })
+                            .collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    pub(super) fn contains(&self, locale: &Locale, page: &PageId) -> bool {
+        self.locales[locale]
+            .values()
+            .any(|pages| pages.contains(page))
+    }
+
+    fn for_locale(&self, locale: &Locale) -> &BTreeMap<SearchName, BTreeSet<PageId>> {
+        &self.locales[locale]
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Catalog {
     locales: BTreeMap<Locale, BTreeMap<String, Index>>,
@@ -102,17 +147,7 @@ impl Catalog {
         }
         let mut locales = BTreeMap::new();
         for (locale, pages) in inputs.pages {
-            let selections = inputs
-                .config
-                .definitions()
-                .iter()
-                .map(|(name, definition)| {
-                    (
-                        name.clone(),
-                        selected_ids_for(definition, inputs.collections, locale),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>();
+            let selections = inputs.selections.for_locale(locale);
             let selected = selections
                 .values()
                 .flat_map(|ids| ids.iter().cloned())
@@ -123,9 +158,10 @@ impl Catalog {
                     (
                         id.clone(),
                         document(
-                            &pages[id],
+                            pages
+                                .get_mut(id)
+                                .expect("selected search pages remain in the resolved catalog"),
                             inputs.base_path,
-                            inputs.markdown,
                             inputs.taxonomies,
                         ),
                     )
@@ -170,6 +206,10 @@ impl Catalog {
             .collect()
     }
 
+    pub(crate) fn output_count(&self) -> usize {
+        self.locales.values().map(BTreeMap::len).sum()
+    }
+
     pub(crate) fn generated(&self, plan: &OutputPlan) -> Vec<GeneratedFile> {
         self.locales
             .values()
@@ -210,13 +250,11 @@ impl Catalog {
 }
 
 pub(super) struct Inputs<'a> {
-    pub(super) pages: &'a BTreeMap<Locale, BTreeMap<PageId, Page>>,
-    pub(super) collections:
-        &'a BTreeMap<Locale, BTreeMap<crate::config::CollectionName, ResolvedCollection>>,
+    pub(super) pages: &'a mut BTreeMap<Locale, BTreeMap<PageId, Page>>,
+    pub(super) selections: &'a Selections,
     pub(super) config: &'a SearchConfig,
     pub(super) prefixes: &'a BTreeMap<Locale, PathBuf>,
     pub(super) base_path: &'a BasePath,
-    pub(super) markdown: &'a crate::config::MarkdownConfig,
     pub(super) taxonomies: &'a TaxonomiesConfig,
 }
 
@@ -232,12 +270,7 @@ fn selected_ids_for(
         .collect()
 }
 
-fn document(
-    page: &Page,
-    base_path: &BasePath,
-    markdown_config: &crate::config::MarkdownConfig,
-    taxonomy_config: &TaxonomiesConfig,
-) -> Document {
+fn document(page: &mut Page, base_path: &BasePath, taxonomy_config: &TaxonomiesConfig) -> Document {
     Document {
         id: page.id.to_string(),
         url: page
@@ -270,24 +303,15 @@ fn document(
                 (name.to_string(), terms)
             })
             .collect(),
-        sections: source_sections(page, markdown_config),
+        sections: source_sections(page),
     }
 }
 
-fn source_sections(
-    page: &Page,
-    markdown_config: &crate::config::MarkdownConfig,
-) -> Vec<markdown::SearchTextSection> {
-    page.markdown_sources
-        .iter()
-        .flat_map(|(name, source)| {
-            let fragments = page
-                .toc
-                .as_ref()
-                .filter(|toc| toc.content() == name)
-                .map(crate::markdown::TocPlan::anchors);
-            markdown::search_sections(&source.source, markdown_config, fragments)
-        })
+fn source_sections(page: &mut Page) -> Vec<markdown::SearchTextSection> {
+    std::mem::take(&mut page.markdown_search_sections)
+        .unwrap_or_default()
+        .into_values()
+        .flatten()
         .collect()
 }
 
@@ -342,10 +366,5 @@ fn output_claim(name: &SearchName, definition: &SearchDefinition, path: OutputPa
     let (source, span) = definition
         .path_origin()
         .expect("search configuration sources are attached before resolution");
-    OutputClaim::authored(
-        path,
-        format!("search index {name}"),
-        source.as_ref().clone(),
-        span,
-    )
+    OutputClaim::authored(path, format!("search index {name}"), source.clone(), span)
 }

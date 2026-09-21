@@ -187,9 +187,9 @@ fn output_path(base: &std::path::Path, is_index: bool, segment: &str, number: us
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct View {
+pub(crate) struct View<'a> {
     collection: String,
-    pages: Vec<ListingPage>,
+    pages: Vec<ListingPage<'a>>,
     item_count: usize,
     per_page: usize,
     first_item_number: usize,
@@ -217,9 +217,9 @@ pub(crate) struct Link {
 /// `PageView` retains its own canonical address, but a generated listing owns
 /// the base-path and relative links appropriate to the listing output.
 #[derive(Debug, Serialize)]
-struct ListingPage {
+struct ListingPage<'a> {
     #[serde(flatten)]
-    page: PageView,
+    page: &'a PageView,
     url: String,
     relative_url: String,
 }
@@ -232,14 +232,14 @@ pub(crate) enum NavigationItem {
 }
 
 impl Pager {
-    pub(crate) fn view(
+    pub(crate) fn view<'a>(
         &self,
-        catalog: &PageCatalog,
+        catalog: &'a PageCatalog,
         locale: &Locale,
         base_path: &BasePath,
         canonical_urls: Option<&CanonicalUrls>,
         root: &str,
-    ) -> View {
+    ) -> View<'a> {
         let pages = self
             .page_ids
             .iter()
@@ -251,7 +251,7 @@ impl Pager {
                     .output_path(locale, id)
                     .expect("collection members are validated as rendered pages");
                 ListingPage {
-                    page: page.clone(),
+                    page,
                     url: base_path.join(&path.url_path()),
                     relative_url: format!("{root}{}", path.url_path().as_str()),
                 }

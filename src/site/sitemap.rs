@@ -39,6 +39,10 @@ pub(crate) enum Error {
 }
 
 impl Sitemap {
+    pub(super) fn output_count(&self) -> usize {
+        self.files.len()
+    }
+
     pub(super) fn new(
         config: &SitemapConfig,
         urls: &CanonicalUrls,
