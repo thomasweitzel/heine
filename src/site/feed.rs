@@ -1,6 +1,11 @@
 //! Collection-derived Atom 1.0 feeds and their template lookup catalog.
 
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BinaryHeap},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
@@ -149,18 +154,25 @@ impl Catalog {
                     )?;
                 }
                 let collection = &inputs.collections[locale][definition.collection()];
-                let mut entries = collection
-                    .page_ids()
-                    .iter()
-                    .map(|id| entry(name, definition, id, &locale_pages[id], urls))
-                    .collect::<Result<Vec<_>, _>>()?;
-                entries.sort_by(|left, right| {
-                    right
-                        .published
-                        .cmp(&left.published)
-                        .then(left.page.cmp(&right.page))
-                });
-                entries.truncate(definition.limit());
+                let mut selected =
+                    BinaryHeap::with_capacity(collection.page_ids().len().min(definition.limit()));
+                for id in collection.page_ids() {
+                    selected.push(RankedEntry(entry(
+                        name,
+                        definition,
+                        id,
+                        &locale_pages[id],
+                        urls,
+                    )?));
+                    if selected.len() > definition.limit() {
+                        selected.pop();
+                    }
+                }
+                let mut entries = selected
+                    .into_iter()
+                    .map(|entry| entry.0)
+                    .collect::<Vec<_>>();
+                entries.sort_by(entry_order);
                 let (updated, empty_authors) = if let Some(updated) =
                     entries.iter().map(|entry| entry.updated.timestamp()).max()
                 {
@@ -214,6 +226,10 @@ impl Catalog {
             .values()
             .flat_map(|feeds| feeds.values().map(|feed| feed.claim.clone()))
             .collect()
+    }
+
+    pub(crate) fn output_count(&self) -> usize {
+        self.locales.values().map(BTreeMap::len).sum()
     }
 
     pub(crate) fn generated(&self, plan: &OutputPlan) -> Vec<GeneratedFile> {
@@ -276,6 +292,43 @@ struct Entry {
     published: PublicationTime,
     updated: PublicationTime,
     url: String,
+}
+
+/// A max-heap keeps the least recent retained entry at its head. Feed limits
+/// are normally small, so resolution retains only entries that can reach the
+/// published document instead of materializing an entire large collection.
+#[derive(Debug)]
+struct RankedEntry(Entry);
+
+impl Ord for RankedEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .0
+            .published
+            .cmp(&self.0.published)
+            .then(self.0.page.cmp(&other.0.page))
+    }
+}
+
+impl PartialOrd for RankedEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for RankedEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.published == other.0.published && self.0.page == other.0.page
+    }
+}
+
+impl Eq for RankedEntry {}
+
+fn entry_order(left: &Entry, right: &Entry) -> Ordering {
+    right
+        .published
+        .cmp(&left.published)
+        .then(left.page.cmp(&right.page))
 }
 
 fn entry(
@@ -475,12 +528,7 @@ fn output_claim(name: &FeedName, definition: &FeedDefinition, path: OutputPath) 
     let (source, span) = definition
         .path_origin()
         .expect("feed configuration sources are attached before resolution");
-    OutputClaim::authored(
-        path,
-        format!("Atom feed {name}"),
-        source.as_ref().clone(),
-        span,
-    )
+    OutputClaim::authored(path, format!("Atom feed {name}"), source.clone(), span)
 }
 
 fn atom(

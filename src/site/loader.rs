@@ -16,8 +16,8 @@ use walkdir::{DirEntry, WalkDir};
 use crate::{
     author::AuthorName,
     config::{
-        CollectionName, CollectionsConfig, EditorialTimeZone, ReadingTimeConfig, SeriesConfig,
-        SeriesName, TaxonomiesConfig, TaxonomyName,
+        CollectionName, CollectionsConfig, EditorialTimeZone, SeriesConfig, SeriesName,
+        TaxonomiesConfig, TaxonomyName,
     },
     content,
     locale::Locale,
@@ -443,7 +443,6 @@ pub(super) struct PageLoadContext<'a> {
     pub(super) time_zone: Option<&'a EditorialTimeZone>,
     pub(super) sitemap_enabled: bool,
     pub(super) markdown: &'a crate::config::MarkdownConfig,
-    pub(super) reading_time: &'a ReadingTimeConfig,
 }
 
 /// Keeps Markdown-owned interface messages source-aware through locale
@@ -912,7 +911,6 @@ pub(super) fn load_page(
     let mut content = BTreeMap::new();
     let mut content_inputs = BTreeSet::new();
     let mut markdown_sources = BTreeMap::new();
-    let mut markdown_facts = BTreeMap::new();
     let mut markdown_names = BTreeSet::new();
     for (name, file) in raw.content {
         let file_span: SourceSpan = file.span().into();
@@ -948,14 +946,6 @@ pub(super) fn load_page(
             })?;
         if let Some(source) = loaded.markdown_source {
             markdown_names.insert(name.clone());
-            markdown_facts.insert(
-                name.clone(),
-                crate::markdown::facts(
-                    &source.source,
-                    context.markdown,
-                    context.reading_time.words_per_minute(context.locale),
-                ),
-            );
             markdown_sources.insert(name.clone(), source);
         }
         content.insert(name, loaded.value);
@@ -1142,7 +1132,8 @@ pub(super) fn load_page(
         content,
         markdown_content: markdown_names,
         markdown_sources,
-        markdown_facts,
+        markdown_facts: BTreeMap::new(),
+        markdown_search_sections: None,
         toc,
         footnotes,
         draft,

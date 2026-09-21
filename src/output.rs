@@ -12,6 +12,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
@@ -35,7 +36,7 @@ impl OutputClaim {
     pub(crate) fn authored(
         path: OutputPath,
         description: impl Into<String>,
-        source_code: NamedSource<String>,
+        source_code: Arc<NamedSource<String>>,
         span: SourceSpan,
     ) -> Self {
         Self {
@@ -59,7 +60,7 @@ impl OutputClaim {
 enum OutputOrigin {
     Authored {
         description: String,
-        source_code: NamedSource<String>,
+        source_code: Arc<NamedSource<String>>,
         span: SourceSpan,
     },
     File {
@@ -138,7 +139,7 @@ pub(crate) enum OutputClaimError {
     Reserved {
         path: PathBuf,
         #[source_code]
-        source_code: NamedSource<String>,
+        source_code: Arc<NamedSource<String>>,
         #[label("output declared here")]
         span: SourceSpan,
     },
@@ -153,7 +154,7 @@ pub(crate) enum OutputClaimError {
         path: PathBuf,
         description: String,
         #[source_code]
-        source_code: NamedSource<String>,
+        source_code: Arc<NamedSource<String>>,
         #[label("this output is also declared here")]
         span: SourceSpan,
         #[related]
@@ -175,7 +176,7 @@ pub(crate) enum ClaimOrigin {
         description: String,
         path: PathBuf,
         #[source_code]
-        source_code: NamedSource<String>,
+        source_code: Arc<NamedSource<String>>,
         #[label("first output declaration")]
         span: SourceSpan,
     },
@@ -579,19 +580,28 @@ mod tests {
             OutputClaim::authored(
                 OutputPath::try_new("articles".into()).expect("valid output path"),
                 "first page",
-                NamedSource::new("first.page", "template = 'page.tera'".to_owned()),
+                Arc::new(NamedSource::new(
+                    "first.page",
+                    "template = 'page.tera'".to_owned(),
+                )),
                 (0, 1).into(),
             ),
             OutputClaim::authored(
                 OutputPath::try_new("articles.about".into()).expect("valid output path"),
                 "intervening page",
-                NamedSource::new("about.page", "template = 'page.tera'".to_owned()),
+                Arc::new(NamedSource::new(
+                    "about.page",
+                    "template = 'page.tera'".to_owned(),
+                )),
                 (0, 1).into(),
             ),
             OutputClaim::authored(
                 OutputPath::try_new("articles/index.html".into()).expect("valid output path"),
                 "second page",
-                NamedSource::new("second.page", "template = 'page.tera'".to_owned()),
+                Arc::new(NamedSource::new(
+                    "second.page",
+                    "template = 'page.tera'".to_owned(),
+                )),
                 (0, 1).into(),
             ),
         ];
@@ -605,13 +615,19 @@ mod tests {
             OutputClaim::authored(
                 OutputPath::try_new("Blog/Index.html".into()).expect("valid output path"),
                 "first page",
-                NamedSource::new("first.page", "template = 'page.tera'".to_owned()),
+                Arc::new(NamedSource::new(
+                    "first.page",
+                    "template = 'page.tera'".to_owned(),
+                )),
                 (0, 1).into(),
             ),
             OutputClaim::authored(
                 OutputPath::try_new("blog/index.html".into()).expect("valid output path"),
                 "second page",
-                NamedSource::new("second.page", "template = 'page.tera'".to_owned()),
+                Arc::new(NamedSource::new(
+                    "second.page",
+                    "template = 'page.tera'".to_owned(),
+                )),
                 (0, 1).into(),
             ),
         ];
@@ -645,13 +661,19 @@ mod tests {
             OutputClaim::authored(
                 OutputPath::try_new("café.html".into()).expect("valid output path"),
                 "first page",
-                NamedSource::new("café.page", "template = 'page.tera'".to_owned()),
+                Arc::new(NamedSource::new(
+                    "café.page",
+                    "template = 'page.tera'".to_owned(),
+                )),
                 (0, 1).into(),
             ),
             OutputClaim::authored(
                 OutputPath::try_new("cafe\u{301}.html".into()).expect("valid output path"),
                 "second page",
-                NamedSource::new("café.page", "template = 'page.tera'".to_owned()),
+                Arc::new(NamedSource::new(
+                    "café.page",
+                    "template = 'page.tera'".to_owned(),
+                )),
                 (0, 1).into(),
             ),
         ];

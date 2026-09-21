@@ -27,16 +27,16 @@ use crate::{
     site::PageLinks,
 };
 
-mod facts;
+mod analysis;
 mod highlighting;
 pub(crate) mod margin_footnotes;
 mod picture;
 mod search_text;
-pub(crate) use facts::{MarkdownFacts, facts};
+pub(crate) use analysis::{MarkdownFacts, analyze};
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
+pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
-pub(crate) use search_text::{SearchTextSection, search_sections};
 
 // This prefix cannot be produced by the heading-fragment algorithm, which
 // keeps generated heading and footnote identifiers in separate namespaces.
@@ -522,9 +522,7 @@ pub(crate) fn validate_source_with_links(
     ) {
         return Ok(());
     }
-    render_with_links(input, renderer, assets, pages, None)
-        .map(|_| ())
-        .map_err(|error| {
+    validate_transformations(input, renderer, assets, pages).map_err(|error| {
             let (kind, label, help, span) = match &error {
             RenderError::Math { span, .. } => (
                 "math",
@@ -594,6 +592,75 @@ pub(crate) fn validate_source_with_links(
                 help,
             })
         })
+}
+
+/// Exercises source-sensitive transformations without producing the HTML that
+/// template rendering will create later. This keeps diagnostics attached to
+/// authored Markdown while avoiding a discarded render for every input.
+fn validate_transformations(
+    input: &str,
+    renderer: &Renderer,
+    assets: Option<&AssetLinks>,
+    pages: Option<&PageLinks>,
+) -> Result<(), RenderError> {
+    if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config()) {
+        return Err(RenderError::Footnote { label, span });
+    }
+    let links = TransformLinks {
+        math: renderer.config().math(),
+        assets,
+        pages,
+    };
+    let events = Parser::new_ext(input, options(renderer.config())).into_offset_iter();
+    if input.contains(":::picture") {
+        let events = picture::transform(input, events.collect(), assets)?;
+        for (event, span) in events {
+            validate_event(event, span, renderer, links)?;
+        }
+    } else {
+        for (event, span) in events {
+            validate_event(event, span, renderer, links)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_event(
+    event: Event<'_>,
+    span: Range<usize>,
+    renderer: &Renderer,
+    links: TransformLinks<'_>,
+) -> Result<(), RenderError> {
+    match event {
+        Event::InlineMath(tex) if links.math == MathMode::Mathml => {
+            validate_math(&tex, "inline", span)?;
+        }
+        Event::DisplayMath(tex) if links.math == MathMode::Mathml => {
+            validate_math(&tex, "display", span)?;
+        }
+        Event::Start(Tag::Link { dest_url, .. }) => {
+            resolve_link_destination(&dest_url, span, links.assets, links.pages)?;
+        }
+        Event::Start(Tag::Image { dest_url, .. }) => {
+            resolve_image_destination(&dest_url, span, links.assets)?;
+        }
+        Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => {
+            let language = info.split_ascii_whitespace().next().unwrap_or_default();
+            if !language.is_empty()
+                && let Some(highlighter) = renderer.highlighter.as_deref()
+            {
+                highlighter
+                    .validate(language)
+                    .map_err(|error| RenderError::Highlight {
+                        language: language.into(),
+                        message: error.to_string(),
+                        span,
+                    })?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 /// Markdown only needs an early pass when it can report a problem against the
@@ -1078,6 +1145,18 @@ fn render_math(
         span,
     })?;
     Ok(output)
+}
+
+fn validate_math(tex: &str, kind: &'static str, span: Range<usize>) -> Result<(), RenderError> {
+    let storage = Storage::new();
+    LatexParser::new(tex, &storage)
+        .try_for_each(|event| event.map(|_| ()))
+        .map_err(|error| RenderError::Math {
+            kind,
+            tex: tex.into(),
+            message: error.to_string(),
+            span,
+        })
 }
 
 #[cfg(test)]

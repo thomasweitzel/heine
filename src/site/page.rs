@@ -2,6 +2,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    num::NonZeroU64,
     path::PathBuf,
     sync::Arc,
     time::SystemTime,
@@ -14,7 +15,7 @@ use serde_json::Value;
 
 use crate::{
     author::AuthorName,
-    config::{CollectionName, SeriesName, TaxonomyName},
+    config::{CollectionName, MarkdownConfig, SeriesName, TaxonomyName},
     content::MarkdownSource,
     markdown::{MarginFootnotePlan, TocPlan},
     output::{OutputPath, UrlPath},
@@ -351,6 +352,11 @@ pub(super) struct Page {
     /// generated-resource consumers such as search, not for template rendering.
     pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
     pub(super) markdown_facts: BTreeMap<String, crate::markdown::MarkdownFacts>,
+    /// Search owns these transient sections while it constructs its generated
+    /// documents. Pages outside every configured search index never allocate
+    /// or retain them.
+    pub(super) markdown_search_sections:
+        Option<BTreeMap<String, Vec<crate::markdown::SearchTextSection>>>,
     pub(super) toc: Option<TocPlan>,
     pub(super) footnotes: Option<MarginFootnotePlan>,
     pub(super) draft: bool,
@@ -472,6 +478,40 @@ pub(super) struct PageLink {
 }
 
 impl Page {
+    /// Derives template facts for every Markdown input and, only when search
+    /// selected this page, the source sections needed for its JSON document.
+    /// Collection resolution precedes this work because membership determines
+    /// which pages a search index actually publishes.
+    pub(super) fn analyze_markdown(
+        &mut self,
+        config: &MarkdownConfig,
+        words_per_minute: Option<NonZeroU64>,
+        collect_search_sections: bool,
+    ) {
+        let mut facts = BTreeMap::new();
+        let mut search_sections = collect_search_sections.then(BTreeMap::new);
+        for (name, source) in &self.markdown_sources {
+            let fragments = self
+                .toc
+                .as_ref()
+                .filter(|toc| toc.content() == name)
+                .map(TocPlan::anchors);
+            let analysis = crate::markdown::analyze(
+                &source.source,
+                config,
+                words_per_minute,
+                fragments,
+                collect_search_sections,
+            );
+            facts.insert(name.clone(), analysis.facts);
+            if let Some(search_sections) = &mut search_sections {
+                search_sections.insert(name.clone(), analysis.search_sections);
+            }
+        }
+        self.markdown_facts = facts;
+        self.markdown_search_sections = search_sections;
+    }
+
     /// Drops loading-only state after all site relationships are resolved.
     /// The resulting value is the sole page representation retained while
     /// templates render.

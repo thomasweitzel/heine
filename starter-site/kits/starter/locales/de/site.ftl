@@ -99,7 +99,7 @@ starter-footer-about = Über Heine
 starter-footer-terms = Nutzungsbedingungen
 starter-footer-privacy = Datenschutz
 starter-footer-imprint = Impressum
-starter-attributions = Namensnennungen
+starter-attributions = Lizenzhinweise
 starter-attributions-introduction = Diese Seite listet kopierte Dateien mit ihren angegebenen Lizenzinformationen auf.
 starter-license-texts = Lizenztexte
 # Behalte das <a>-Element bei und übersetze seinen sichtbaren Text.

@@ -13,5 +13,5 @@ anschließend die Post beantworten müsste.
 ## Inhalte und Links
 
 Die Starter-Site dient der Demonstration von Heine. Angaben zu Assets Dritter
-stehen unter [Namensnennungen](page:legal/licenses/index). Für externe Links
+stehen unter [Lizenzhinweise](page:legal/licenses/index). Für externe Links
 bleiben deren jeweilige Betreiber verantwortlich.

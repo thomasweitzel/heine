@@ -189,7 +189,7 @@ pub(crate) struct RenderContext<'a> {
     pub(crate) page: Option<RenderedPage<'a>>,
     pub(crate) taxonomy: Option<crate::site::TaxonomyView>,
     pub(crate) series: Option<crate::site::SeriesView>,
-    pub(crate) pagination: Option<crate::site::PaginationView>,
+    pub(crate) pagination: Option<crate::site::PaginationView<'a>>,
     pub(crate) data: &'a serde_json::Value,
     pub(crate) locale_data: &'a serde_json::Value,
     pub(crate) root: &'a str,

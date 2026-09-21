@@ -744,9 +744,9 @@ impl SitemapConfig {
     }
 
     pub(crate) fn output_claim(&self, path: OutputPath) -> Option<OutputClaim> {
-        self.source.as_ref().map(|source| {
-            OutputClaim::authored(path, "sitemap", source.as_ref().clone(), self.span)
-        })
+        self.source
+            .as_ref()
+            .map(|source| OutputClaim::authored(path, "sitemap", source.clone(), self.span))
     }
 }
 
@@ -956,7 +956,7 @@ impl HighlightingConfig {
             OutputClaim::authored(
                 self.stylesheet.clone(),
                 "syntax-highlighting stylesheet",
-                source_code.clone(),
+                Arc::new(source_code.clone()),
                 self.stylesheet_span,
             )
         })
