@@ -16,7 +16,7 @@ zu Seiten anderer Betreiber; für deren Inhalte bleiben diese verantwortlich.
 ## Weiterverwendung
 
 Die Lizenzangaben kopierter Assets stehen auf der Seite
-[Namensnennungen](page:legal/licenses/index). Andere Inhalte werden nicht
+[Lizenzhinweise](page:legal/licenses/index). Andere Inhalte werden nicht
 allein dadurch zu einer Lizenz, dass sie angenehm kopierbar sind.
 
 Die ebenfalls beispielhafte Erklärung zur Datenverarbeitung steht unter
