@@ -16,9 +16,10 @@ where it is authored instead of becoming a browser 404.
 ## Status
 
 Heine is pre-release and is not published to crates.io yet. The
-[Download page](https://heine.rs/download/) provides a Linux x86-64 musl
-executable and a complete starter site. The [documentation overview](docs/README.md)
-maps the implemented features to their guides and reference material.
+[Download page](https://heine.rs/download/) provides Linux x86-64 executables
+for musl and glibc systems, plus a complete starter site. The
+[documentation overview](docs/README.md) maps the implemented features to
+their guides and reference material.
 
 Heine does not bundle a frontend toolchain or deployment integration. Use
 ordinary tools for CSS and JavaScript processing, media transformation,
