@@ -119,7 +119,11 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
                     crate::source_path::LogicalPath::from_path(&relative.with_extension(""))
                         .expect("discovered page IDs remain logical"),
                 );
-                locale_drafts.insert(id, source.to_path_buf());
+                // This path crosses the loading boundary only to explain a
+                // later authored page reference. Keep the diagnostic name
+                // here, rather than leaking the loader's physical path from
+                // the resolved link catalog.
+                locale_drafts.insert(id, diagnostics.display_path(source));
                 locale_inputs.extend(probe.content_inputs().iter().cloned());
                 draft_uses_margin_footnotes |=
                     loader::draft_uses_margin_footnotes(&probe, &relative, &descriptors);

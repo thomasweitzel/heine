@@ -147,6 +147,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Draft-reference diagnostic paths.** Errors for a published template or
+  Markdown page reference to an excluded draft now name the project-relative
+  draft source, rather than the machine-specific absolute path. This keeps
+  authored relationship diagnostics portable and focused on the site source.
+
 - **Literal fenced footnotes.** Fenced code examples containing `[^label]` no
   longer trigger an ordinary-footnote missing-definition diagnostic. This keeps
   documented Markdown source literal while retaining checked references in

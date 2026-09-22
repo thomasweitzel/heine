@@ -55,6 +55,11 @@ fn ordinary_page_links_to_drafts_are_checked_against_the_published_catalog() {
         .expect_err("published pages cannot resolve an excluded draft");
     let report = format!("{error:?}");
     assert!(report.contains("declares `draft = true`"), "{report}");
+    assert!(report.contains("content/en/draft.page"), "{report}");
+    assert!(
+        !report.contains(&fixture.path().display().to_string()),
+        "{report}"
+    );
 
     build_at_with_options(
         fixture.path(),
@@ -144,8 +149,14 @@ fn markdown_links_to_excluded_drafts_explain_the_publication_boundary() {
         .expect_err("published Markdown cannot link to an excluded draft");
     let report = format!("{error:?}");
     assert!(report.contains("declares `draft = true`"), "{report}");
+    assert!(report.contains("content/en/draft.page"), "{report}");
+    assert!(
+        !report.contains(&fixture.path().display().to_string()),
+        "{report}"
+    );
     assert!(report.contains("draft page referenced here"), "{report}");
-    assert!(report.contains("heine serve --drafts"), "{report}");
+    assert!(report.contains("heine serve"), "{report}");
+    assert!(report.contains("--drafts"), "{report}");
 
     build_at_with_options(
         fixture.path(),
