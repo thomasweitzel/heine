@@ -226,7 +226,7 @@ fn plan_inner(
                     let reference_index = references.len();
                     references.push((label, range, block_start));
                     let Some(block) = blocks.get_mut(&block_start) else {
-                        return Err(PlanError::UnsupportedPlacement { span: span.clone() });
+                        return Err(PlanError::UnsupportedPlacement { span });
                     };
                     block.references.push(reference_index);
                 }

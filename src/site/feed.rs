@@ -528,7 +528,7 @@ fn output_claim(name: &FeedName, definition: &FeedDefinition, path: OutputPath) 
     let (source, span) = definition
         .path_origin()
         .expect("feed configuration sources are attached before resolution");
-    OutputClaim::authored(path, format!("Atom feed {name}"), source.clone(), span)
+    OutputClaim::authored(path, format!("Atom feed {name}"), source, span)
 }
 
 fn atom(

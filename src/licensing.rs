@@ -493,7 +493,7 @@ impl Catalog {
                             "licensing group names {path}, which is not a copied asset",
                             path = output.as_path().display()
                         ),
-                        source_code: source_code.clone(),
+                        source_code,
                         span: member.span(),
                         label: "this group member does not resolve to a copied asset".into(),
                         help: "use the literal published output_path of a current copied asset"
@@ -508,7 +508,7 @@ impl Catalog {
                             "copied asset {path} has more than one licensing declaration",
                             path = output.as_path().display()
                         ),
-                        source_code: source_code.clone(),
+                        source_code,
                         span: member.span(),
                         label: "another declaration already applies to this copied asset".into(),
                         help: "remove this member from the group, or remove the other declaration"

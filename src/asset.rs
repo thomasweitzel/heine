@@ -268,7 +268,7 @@ impl KitAssets {
             if !files.contains(&physical) {
                 return Err(public_asset_error(
                     declaration,
-                    source_code.clone(),
+                    source_code,
                     format!(
                         "declared asset {:?} does not exist below the kit assets directory",
                         declaration.value()

@@ -366,5 +366,5 @@ fn output_claim(name: &SearchName, definition: &SearchDefinition, path: OutputPa
     let (source, span) = definition
         .path_origin()
         .expect("search configuration sources are attached before resolution");
-    OutputClaim::authored(path, format!("search index {name}"), source.clone(), span)
+    OutputClaim::authored(path, format!("search index {name}"), source, span)
 }

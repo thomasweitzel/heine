@@ -14,11 +14,13 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::{
+    asset::AssetLinks,
     author::AuthorName,
-    config::{CollectionName, MarkdownConfig, SeriesName, TaxonomyName},
+    config::{CollectionName, SeriesName, TaxonomyName},
     content::MarkdownSource,
-    markdown::{MarginFootnotePlan, TocPlan},
+    markdown::{MarginFootnotePlan, Renderer as MarkdownRenderer, SourceAnalysisInputs, TocPlan},
     output::{OutputPath, UrlPath},
+    site::PageLinks,
     source_path::LogicalPath,
     template::TemplateName,
 };
@@ -484,10 +486,12 @@ impl Page {
     /// which pages a search index actually publishes.
     pub(super) fn analyze_markdown(
         &mut self,
-        config: &MarkdownConfig,
+        renderer: &MarkdownRenderer,
+        assets: &AssetLinks,
+        pages: &PageLinks,
         words_per_minute: Option<NonZeroU64>,
         collect_search_sections: bool,
-    ) {
+    ) -> Result<(), Box<crate::markdown::SourceError>> {
         let mut facts = BTreeMap::new();
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
         for (name, source) in &self.markdown_sources {
@@ -496,13 +500,16 @@ impl Page {
                 .as_ref()
                 .filter(|toc| toc.content() == name)
                 .map(TocPlan::anchors);
-            let analysis = crate::markdown::analyze(
-                &source.source,
-                config,
+            let analysis = crate::markdown::analyze_source_with_links(SourceAnalysisInputs {
+                display_path: &source.display_path,
+                input: &source.source,
+                renderer,
+                assets,
+                pages,
                 words_per_minute,
                 fragments,
                 collect_search_sections,
-            );
+            })?;
             facts.insert(name.clone(), analysis.facts);
             if let Some(search_sections) = &mut search_sections {
                 search_sections.insert(name.clone(), analysis.search_sections);
@@ -510,6 +517,7 @@ impl Page {
         }
         self.markdown_facts = facts;
         self.markdown_search_sections = search_sections;
+        Ok(())
     }
 
     /// Drops loading-only state after all site relationships are resolved.
