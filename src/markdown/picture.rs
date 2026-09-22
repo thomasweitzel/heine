@@ -82,7 +82,7 @@ pub(super) fn transform(
 
         let source = &input[span.clone()];
         match parse(source, span.start, assets).map_err(RenderError::Picture)? {
-            Some(html) => output.push((Event::Html(html.into()), span)),
+            Some(picture) => output.push((Event::Html(picture.html().into()), span)),
             None => output.extend(
                 paragraph
                     .into_iter()
@@ -94,23 +94,28 @@ pub(super) fn transform(
     Ok(output)
 }
 
-/// Returns the source-level textual contributions of a parsed picture
-/// paragraph. Validation has already rejected malformed directives before
-/// search catalogs are built.
-pub(super) fn search_text(source: &str) -> Option<String> {
+/// Parses and validates one picture paragraph without constructing its HTML.
+/// Build-time source analysis uses this so validation cannot allocate rendered
+/// markup that only the later template render would consume.
+pub(super) fn validate_and_search_text(
+    source: &str,
+    offset: usize,
+    assets: Option<&AssetLinks>,
+) -> Result<Option<String>, Error> {
+    parse(source, offset, assets).map(|picture| picture.map(Picture::search_text))
+}
+
+/// Provides facts-only callers with the authored text of a syntactically valid
+/// picture directive. Resolved site sources use the checked parser; this
+/// fallback keeps the standalone facts API independent of asset lookup.
+pub(super) fn source_text(source: &str) -> Option<String> {
     let (body, _) = body(source)?;
     toml::from_str::<RawPicture>(body).ok().map(|raw| {
-        let mut text = raw.alt.into_inner();
-        if let Some(caption) = raw.caption {
-            let caption = caption.into_inner();
-            if !caption.is_empty() {
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-                text.push_str(&caption);
-            }
+        PictureText {
+            alt: raw.alt.into_inner(),
+            caption: raw.caption.map(toml::Spanned::into_inner),
         }
-        text
+        .into_text()
     })
 }
 
@@ -127,7 +132,7 @@ fn parse(
     source: &str,
     offset: usize,
     assets: Option<&AssetLinks>,
-) -> Result<Option<String>, Error> {
+) -> Result<Option<Picture>, Error> {
     if !starts_directive(source) {
         return Ok(None);
     }
@@ -192,31 +197,79 @@ fn parse(
         dark.dimensions(),
         offset + body_offset,
     )?;
-    let mut html = String::new();
-    if raw.caption.is_some() {
-        html.push_str("<figure>\n");
+    Ok(Some(Picture {
+        alt: raw.alt.into_inner(),
+        light,
+        dark,
+        caption: raw.caption.map(toml::Spanned::into_inner),
+        dimensions,
+    }))
+}
+
+struct Picture {
+    alt: String,
+    light: crate::asset::AssetLink,
+    dark: crate::asset::AssetLink,
+    caption: Option<String>,
+    dimensions: Option<(u32, u32)>,
+}
+
+impl Picture {
+    fn html(self) -> String {
+        let mut html = String::new();
+        if self.caption.is_some() {
+            html.push_str("<figure>\n");
+        }
+        html.push_str("<picture>");
+        html.push_str("<source media=\"(prefers-color-scheme: dark)\" srcset=\"");
+        push_html_attribute(self.dark.url(), &mut html);
+        html.push_str("\">");
+        html.push_str("<img src=\"");
+        push_html_attribute(self.light.url(), &mut html);
+        html.push('"');
+        if let Some((width, height)) = self.dimensions {
+            html.push_str(&format!(" width=\"{width}\" height=\"{height}\""));
+        }
+        html.push_str(" alt=\"");
+        push_html_attribute(&self.alt, &mut html);
+        html.push_str("\">");
+        html.push_str("</picture>");
+        if let Some(caption) = &self.caption {
+            html.push_str("\n<figcaption>");
+            push_html_text(caption, &mut html);
+            html.push_str("</figcaption>\n</figure>");
+        }
+        html.push('\n');
+        html
     }
-    html.push_str("<picture>");
-    html.push_str("<source media=\"(prefers-color-scheme: dark)\" srcset=\"");
-    push_html_attribute(dark.url(), &mut html);
-    html.push_str("\">");
-    html.push_str("<img src=\"");
-    push_html_attribute(light.url(), &mut html);
-    html.push('"');
-    if let Some((width, height)) = dimensions {
-        html.push_str(&format!(" width=\"{width}\" height=\"{height}\""));
+
+    fn search_text(self) -> String {
+        PictureText {
+            alt: self.alt,
+            caption: self.caption,
+        }
+        .into_text()
     }
-    html.push_str(" alt=\"");
-    push_html_attribute(raw.alt.get_ref(), &mut html);
-    html.push_str("\">");
-    html.push_str("</picture>");
-    if let Some(caption) = &raw.caption {
-        html.push_str("\n<figcaption>");
-        push_html_text(caption.get_ref(), &mut html);
-        html.push_str("</figcaption>\n</figure>");
+}
+
+struct PictureText {
+    alt: String,
+    caption: Option<String>,
+}
+
+impl PictureText {
+    fn into_text(self) -> String {
+        let mut text = self.alt;
+        if let Some(caption) = self.caption
+            && !caption.is_empty()
+        {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str(&caption);
+        }
+        text
     }
-    html.push('\n');
-    Ok(Some(html))
 }
 
 fn resolve(

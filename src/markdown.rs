@@ -11,7 +11,7 @@ use std::{
 };
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd, html};
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use pulldown_latex::{
     Parser as LatexParser, Storage,
     config::{DisplayMode, RenderConfig},
@@ -31,10 +31,14 @@ mod analysis;
 mod highlighting;
 pub(crate) mod margin_footnotes;
 mod picture;
+mod render;
 mod search_text;
-pub(crate) use analysis::{MarkdownFacts, analyze};
+pub(crate) use analysis::MarkdownFacts;
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
+#[cfg(test)]
+pub(crate) use render::render;
+pub(crate) use render::{render_with_links, render_with_links_anchors};
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
 
@@ -119,6 +123,34 @@ impl UnresolvedFootnoteReferenceScanner {
         }
         references
     }
+}
+
+/// Advances the shared unresolved-footnote scanner for one parsed event.
+///
+/// Callers retain their own block context because rendering and source
+/// analysis consume different event streams. The reference grammar itself
+/// must remain identical in both paths.
+pub(super) fn scan_unresolved_footnote_event(
+    scanner: &mut UnresolvedFootnoteReferenceScanner,
+    event: &Event<'_>,
+    span: &Range<usize>,
+    input: &str,
+    in_code_block: bool,
+) -> Option<(String, Range<usize>)> {
+    match event {
+        Event::Start(Tag::CodeBlock(_)) | Event::End(TagEnd::CodeBlock) => scanner.clear(),
+        Event::Text(_) if !in_code_block => {
+            if is_escaped_markdown_character(input, span.start) {
+                scanner.escape_next();
+            }
+            return scanner
+                .push(&input[span.clone()], span.start)
+                .into_iter()
+                .next();
+        }
+        _ => scanner.clear(),
+    }
+    None
 }
 
 pub(crate) fn is_escaped_markdown_character(input: &str, offset: usize) -> bool {
@@ -387,86 +419,6 @@ pub(crate) struct SourceError {
     help: String,
 }
 
-/// Renders Markdown according to the validated site configuration.
-#[cfg(test)]
-pub(crate) fn render(
-    input: &str,
-    renderer: &Renderer,
-    assets: Option<&AssetLinks>,
-) -> Result<String, RenderError> {
-    render_with_links(input, renderer, assets, None, None)
-}
-
-pub(crate) fn render_with_links(
-    input: &str,
-    renderer: &Renderer,
-    assets: Option<&AssetLinks>,
-    pages: Option<&PageLinks>,
-    table_scroll_label: Option<&str>,
-) -> Result<String, RenderError> {
-    render_with_links_anchors(input, renderer, assets, pages, None, table_scroll_label)
-}
-
-pub(crate) fn render_with_links_anchors(
-    input: &str,
-    renderer: &Renderer,
-    assets: Option<&AssetLinks>,
-    pages: Option<&PageLinks>,
-    anchors: Option<&[String]>,
-    table_scroll_label: Option<&str>,
-) -> Result<String, RenderError> {
-    if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config()) {
-        return Err(RenderError::Footnote { label, span });
-    }
-    let mut anchors = anchors.unwrap_or_default().iter();
-    let task_lists_enabled = renderer
-        .config()
-        .extensions()
-        .contains(&MarkdownExtension::TaskLists);
-    let task_labels = if task_lists_enabled {
-        task_labels(input, renderer.config())
-    } else {
-        Vec::new()
-    };
-    let mut task_labels = task_labels.iter();
-    let mut ordinary_footnotes = OrdinaryFootnotes::default();
-    let links = TransformLinks {
-        math: renderer.config().math(),
-        assets,
-        pages,
-    };
-    let events = Parser::new_ext(input, options(renderer.config()))
-        .into_offset_iter()
-        .collect();
-    let events = picture::transform(input, events, assets)?;
-    let mut footnote_definition_depth = 0usize;
-    let mut transformed_events = Vec::with_capacity(events.len());
-    for (event, span) in events {
-        let transformed = transform_event(
-            (event.clone(), span.clone()),
-            links,
-            &mut anchors,
-            &mut task_labels,
-            footnote_definition_depth == 0,
-            Some(&mut ordinary_footnotes),
-        )?;
-        match event {
-            Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
-            Event::End(TagEnd::FootnoteDefinition) => footnote_definition_depth -= 1,
-            _ => {}
-        }
-        transformed_events.push((transformed, span));
-    }
-    let events = highlight_code_blocks(transformed_events, renderer.highlighter.as_deref())?;
-    let events = match table_scroll_label {
-        Some(label) => wrap_tables(events, label),
-        None => events,
-    };
-    let mut output = String::new();
-    html::push_html(&mut output, events.into_iter().map(|(event, _)| event));
-    Ok(output)
-}
-
 /// Keeps parsed tables semantic while giving site CSS one scrollable owner.
 ///
 /// Changing a table's own `display` can remove its table semantics for assistive
@@ -501,148 +453,131 @@ pub(super) fn wrap_tables(
     wrapped
 }
 
-/// Validates Markdown transformations while a content-file source is still
-/// available. Rendering remains template-driven, preserving the established
-/// `markdown` filter contract.
-pub(crate) fn validate_source_with_links(
-    display_path: &Path,
-    input: &str,
-    renderer: &Renderer,
-    assets: Option<&AssetLinks>,
-    pages: Option<&PageLinks>,
-) -> Result<(), Box<SourceError>> {
-    if !requires_source_validation(
-        renderer.config().math(),
-        assets.is_some() || pages.is_some(),
-        renderer.highlighter.is_some(),
-        renderer
-            .config()
-            .extensions()
-            .contains(&MarkdownExtension::Footnotes),
-    ) {
-        return Ok(());
-    }
-    validate_transformations(input, renderer, assets, pages).map_err(|error| {
-            let (kind, label, help, span) = match &error {
-            RenderError::Math { span, .. } => (
-                "math",
-                "invalid TeX here".into(),
-                "correct the TeX expression or set markdown.math = \"off\"".into(),
-                span.clone(),
-            ),
-            RenderError::Asset { span, message, .. } => (
-                "asset reference",
-                format!("invalid asset reference here: {message}"),
-                "use an existing asset ID relative to content/, without a leading '/', or '.' or '..' path segments".into(),
-                span.clone(),
-            ),
-            RenderError::Page {
-                span,
-                message,
-                reason: PageReferenceFailure::ExcludedDraft,
-                ..
-            } => (
-                "page reference",
-                "draft page referenced here".into(),
-                format!(
-                    "{message}; remove this reference until the page is published, or use heine serve --drafts when the draft is intended to render in a local preview"
-                ),
-                span.clone(),
-            ),
-            RenderError::Page { span, .. } => (
-                "page reference", "invalid page reference here".into(),
-                "use page:<id> for the current locale or page:<locale>:<id> for an explicitly configured locale".into(), span.clone(),
-            ),
-            RenderError::Highlight { span, .. } => (
-                "code fence",
-                "invalid language here".into(),
-                "use a bundled Giallo language name, omit the fence language, or set markdown.highlighting.missing_language = \"plain\"".into(),
-                span.clone(),
-            ),
-            RenderError::MarginFootnote { span, .. } => (
-                "margin footnotes",
-                "margin-footnote rendering is inconsistent here".into(),
-                "rebuild the site after correcting the selected Markdown source".into(),
-                span.clone(),
-            ),
-            RenderError::Footnote { span, .. } => (
-                "footnote",
-                "reference without a matching definition".into(),
-                "add one [^label]: definition, or remove this reference".into(),
-                span.clone(),
-            ),
-            RenderError::Picture(error) => (
-                "picture",
-                error.label().into(),
-                error.help().into(),
-                error.span(),
-            ),
-            };
-            Box::new(SourceError {
-                path: display_path.into(),
-                kind,
-                message: error.to_string(),
-                source_code: crate::source_diagnostic::named_source_at_display_path(
-                    display_path,
-                    input,
-                    "Markdown",
-                ),
-                span: span.into(),
-                label,
-                help,
-            })
-        })
+/// The complete source-aware context for one declared Markdown input.
+///
+/// Template filters use a separate rendering API because their text has no
+/// stable authored source span or page-level fact contract.
+pub(crate) struct SourceAnalysisInputs<'a> {
+    pub(crate) display_path: &'a Path,
+    pub(crate) input: &'a str,
+    pub(crate) renderer: &'a Renderer,
+    pub(crate) assets: &'a AssetLinks,
+    pub(crate) pages: &'a PageLinks,
+    pub(crate) words_per_minute: Option<std::num::NonZeroU64>,
+    pub(crate) fragments: Option<&'a [String]>,
+    pub(crate) collect_search_sections: bool,
 }
 
-/// Exercises source-sensitive transformations without producing the HTML that
-/// template rendering will create later. This keeps diagnostics attached to
-/// authored Markdown while avoiding a discarded render for every input.
-fn validate_transformations(
-    input: &str,
-    renderer: &Renderer,
-    assets: Option<&AssetLinks>,
-    pages: Option<&PageLinks>,
-) -> Result<(), RenderError> {
-    if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config()) {
-        return Err(RenderError::Footnote { label, span });
-    }
-    let links = TransformLinks {
-        math: renderer.config().math(),
-        assets,
-        pages,
+/// Derives page facts and validates checked transformations while the original
+/// content-file source remains available. Rendering stays template-driven, so
+/// this build-time pass never creates HTML that the caller discards.
+pub(crate) fn analyze_source_with_links(
+    inputs: SourceAnalysisInputs<'_>,
+) -> Result<analysis::MarkdownAnalysis, Box<SourceError>> {
+    analysis::analyze_and_validate(
+        inputs.input,
+        inputs.renderer,
+        inputs.assets,
+        inputs.pages,
+        inputs.words_per_minute,
+        inputs.fragments,
+        inputs.collect_search_sections,
+    )
+    .map_err(|error| Box::new(source_error(inputs.display_path, inputs.input, error)))
+}
+
+fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceError {
+    let (kind, label, help, span) = match &error {
+        RenderError::Math { span, .. } => (
+            "math",
+            "invalid TeX here".into(),
+            "correct the TeX expression or set markdown.math = \"off\"".into(),
+            span.clone(),
+        ),
+        RenderError::Asset { span, message, .. } => (
+            "asset reference",
+            format!("invalid asset reference here: {message}"),
+            "use an existing asset ID relative to content/, without a leading '/', or '.' or '..' path segments".into(),
+            span.clone(),
+        ),
+        RenderError::Page {
+            span,
+            message,
+            reason: PageReferenceFailure::ExcludedDraft,
+            ..
+        } => (
+            "page reference",
+            "draft page referenced here".into(),
+            format!(
+                "{message}; remove this reference until the page is published, or use heine serve --drafts when the draft is intended to render in a local preview"
+            ),
+            span.clone(),
+        ),
+        RenderError::Page { span, .. } => (
+            "page reference",
+            "invalid page reference here".into(),
+            "use page:<id> for the current locale or page:<locale>:<id> for an explicitly configured locale".into(),
+            span.clone(),
+        ),
+        RenderError::Highlight { span, .. } => (
+            "code fence",
+            "invalid language here".into(),
+            "use a bundled Giallo language name, omit the fence language, or set markdown.highlighting.missing_language = \"plain\"".into(),
+            span.clone(),
+        ),
+        RenderError::MarginFootnote { span, .. } => (
+            "margin footnotes",
+            "margin-footnote rendering is inconsistent here".into(),
+            "rebuild the site after correcting the selected Markdown source".into(),
+            span.clone(),
+        ),
+        RenderError::Footnote { span, .. } => (
+            "footnote",
+            "reference without a matching definition".into(),
+            "add one [^label]: definition, or remove this reference".into(),
+            span.clone(),
+        ),
+        RenderError::Picture(error) => (
+            "picture",
+            error.label().into(),
+            error.help().into(),
+            error.span(),
+        ),
     };
-    let events = Parser::new_ext(input, options(renderer.config())).into_offset_iter();
-    if input.contains(":::picture") {
-        let events = picture::transform(input, events.collect(), assets)?;
-        for (event, span) in events {
-            validate_event(event, span, renderer, links)?;
-        }
-    } else {
-        for (event, span) in events {
-            validate_event(event, span, renderer, links)?;
-        }
+    SourceError {
+        path: display_path.into(),
+        kind,
+        message: error.to_string(),
+        source_code: crate::source_diagnostic::named_source_at_display_path(
+            display_path,
+            input,
+            "Markdown",
+        ),
+        span: span.into(),
+        label,
+        help,
     }
-    Ok(())
 }
 
-fn validate_event(
-    event: Event<'_>,
+/// Validates one parsed event that needs the resolved site relationship model.
+pub(super) fn validate_event(
+    event: &Event<'_>,
     span: Range<usize>,
     renderer: &Renderer,
     links: TransformLinks<'_>,
 ) -> Result<(), RenderError> {
     match event {
         Event::InlineMath(tex) if links.math == MathMode::Mathml => {
-            validate_math(&tex, "inline", span)?;
+            validate_math(tex, "inline", span)?;
         }
         Event::DisplayMath(tex) if links.math == MathMode::Mathml => {
-            validate_math(&tex, "display", span)?;
+            validate_math(tex, "display", span)?;
         }
         Event::Start(Tag::Link { dest_url, .. }) => {
-            resolve_link_destination(&dest_url, span, links.assets, links.pages)?;
+            resolve_link_destination(dest_url, span, links.assets, links.pages)?;
         }
         Event::Start(Tag::Image { dest_url, .. }) => {
-            resolve_image_destination(&dest_url, span, links.assets)?;
+            resolve_image_destination(dest_url, span, links.assets)?;
         }
         Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => {
             let language = info.split_ascii_whitespace().next().unwrap_or_default();
@@ -661,19 +596,6 @@ fn validate_event(
         _ => {}
     }
     Ok(())
-}
-
-/// Markdown only needs an early pass when it can report a problem against the
-/// authored source. Ordinary and client-rendered TeX are rendered later by the
-/// template; MathML, checked links, highlighting, and footnotes need
-/// source-aware errors.
-fn requires_source_validation(
-    math: MathMode,
-    has_assets: bool,
-    has_highlighter: bool,
-    has_footnotes: bool,
-) -> bool {
-    math == MathMode::Mathml || has_assets || has_highlighter || has_footnotes
 }
 
 fn unresolved_footnote_reference(
@@ -702,26 +624,36 @@ fn unresolved_footnote_reference(
         }
         match event {
             Event::Start(Tag::CodeBlock(_)) => {
-                scanner.clear();
+                let _ = scan_unresolved_footnote_event(
+                    &mut scanner,
+                    &event,
+                    &span,
+                    input,
+                    in_code_block,
+                );
                 in_code_block = true;
             }
             Event::End(TagEnd::CodeBlock) => {
-                scanner.clear();
+                let _ = scan_unresolved_footnote_event(
+                    &mut scanner,
+                    &event,
+                    &span,
+                    input,
+                    in_code_block,
+                );
                 in_code_block = false;
             }
-            Event::Text(_) if !in_code_block => {
-                if is_escaped_markdown_character(input, span.start) {
-                    scanner.escape_next();
-                }
-                if let Some(reference) = scanner
-                    .push(&input[span.clone()], span.start)
-                    .into_iter()
-                    .next()
-                {
+            _ => {
+                if let Some(reference) = scan_unresolved_footnote_event(
+                    &mut scanner,
+                    &event,
+                    &span,
+                    input,
+                    in_code_block,
+                ) {
                     return Some(reference);
                 }
             }
-            _ => scanner.clear(),
         }
     }
     None
@@ -1194,46 +1126,6 @@ mod tests {
 
         assert!(rendered.contains(":::picture"), "{rendered}");
         assert!(rendered.contains("asset:images/light.png"), "{rendered}");
-    }
-
-    #[test]
-    fn validates_sources_only_for_source_aware_transformations() {
-        assert!(!requires_source_validation(
-            MathMode::Off,
-            false,
-            false,
-            false
-        ));
-        assert!(!requires_source_validation(
-            MathMode::Tex,
-            false,
-            false,
-            false
-        ));
-        assert!(requires_source_validation(
-            MathMode::Mathml,
-            false,
-            false,
-            false
-        ));
-        assert!(requires_source_validation(
-            MathMode::Off,
-            true,
-            false,
-            false
-        ));
-        assert!(requires_source_validation(
-            MathMode::Off,
-            false,
-            true,
-            false
-        ));
-        assert!(requires_source_validation(
-            MathMode::Off,
-            false,
-            false,
-            true
-        ));
     }
 
     #[test]

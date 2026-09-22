@@ -75,7 +75,7 @@ impl SiteConfig {
             Error::Invalid(Box::new(ConfigDiagnostic {
                 message: error.message().to_owned(),
                 source_code: diagnostics.named_source(path, source.clone(), "TOML"),
-                span: span.clone().into(),
+                span: span.into(),
             }))
         })?;
         let mut config: Self = raw.try_into().map_err(|error: ConfigValueError| {
@@ -1273,7 +1273,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             })?;
             if locale.to_string() != value {
                 return Err(ConfigValueError {
-                    span: value_span.clone().into(),
+                    span: value_span.into(),
                     message: format!(
                         "i18n.locales key {value:?} must use canonical BCP-47 spelling {:?}",
                         locale.to_string()
@@ -1289,7 +1289,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
         }
         if locales.is_empty() {
             return Err(ConfigValueError {
-                span: default_locale_span.clone().into(),
+                span: default_locale_span.into(),
                 message: "i18n.locales must declare at least one locale table".into(),
             });
         }

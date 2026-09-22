@@ -9,11 +9,17 @@ use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde::Serialize;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::config::MarkdownConfig;
+use crate::{
+    asset::AssetLinks,
+    config::{MarkdownConfig, MarkdownExtension},
+    site::PageLinks,
+};
 
 use super::{
-    SearchTextSection, options, picture,
+    RenderError, Renderer, SearchTextSection, TransformLinks, UnresolvedFootnoteReferenceScanner,
+    options, picture, scan_unresolved_footnote_event,
     search_text::{append_boundary, append_text, raw_html_text},
+    validate_event,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -31,6 +37,7 @@ pub(crate) struct MarkdownAnalysis {
     pub(crate) search_sections: Vec<SearchTextSection>,
 }
 
+#[cfg(test)]
 pub(crate) fn analyze(
     input: &str,
     config: &MarkdownConfig,
@@ -38,37 +45,102 @@ pub(crate) fn analyze(
     fragments: Option<&[String]>,
     collect_search_sections: bool,
 ) -> MarkdownAnalysis {
+    analyze_inner(
+        input,
+        config,
+        words_per_minute,
+        fragments,
+        collect_search_sections,
+        None,
+    )
+    .expect("analysis without checked relationships cannot fail")
+}
+
+/// Derives source facts and validates checked Markdown transformations in one
+/// parser walk. Rendering remains separate because template output has its own
+/// lifetime and may render an input more than once.
+pub(super) fn analyze_and_validate(
+    input: &str,
+    renderer: &Renderer,
+    assets: &AssetLinks,
+    pages: &PageLinks,
+    words_per_minute: Option<NonZeroU64>,
+    fragments: Option<&[String]>,
+    collect_search_sections: bool,
+) -> Result<MarkdownAnalysis, RenderError> {
+    analyze_inner(
+        input,
+        renderer.config(),
+        words_per_minute,
+        fragments,
+        collect_search_sections,
+        Some(Validation {
+            renderer,
+            links: TransformLinks {
+                math: renderer.config().math(),
+                assets: Some(assets),
+                pages: Some(pages),
+            },
+        }),
+    )
+}
+
+#[derive(Clone, Copy)]
+struct Validation<'a> {
+    renderer: &'a Renderer,
+    links: TransformLinks<'a>,
+}
+
+fn analyze_inner(
+    input: &str,
+    config: &MarkdownConfig,
+    words_per_minute: Option<NonZeroU64>,
+    fragments: Option<&[String]>,
+    collect_search_sections: bool,
+    validation: Option<Validation<'_>>,
+) -> Result<MarkdownAnalysis, RenderError> {
     let mut text = CountedText::default();
     let mut sections = Vec::new();
     let mut section = SectionBuilder::default();
     let mut fragments = fragments.unwrap_or_default().iter();
     let mut code_block_depth = 0usize;
-    let mut picture_paragraph = None;
     let mut footnote_definition_depth = 0usize;
+    let mut unresolved_footnotes = validation
+        .filter(|_| config.extensions().contains(&MarkdownExtension::Footnotes))
+        .map(|_| UnresolvedFootnoteReferenceScanner::default());
+    let mut events = Parser::new_ext(input, options(config)).into_offset_iter();
 
-    for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
-        if let Some(picture_span) = picture_paragraph.take() {
-            if matches!(event, Event::End(TagEnd::Paragraph)) {
-                if let Some(picture_text) = picture::search_text(&input[picture_span]) {
-                    text.push(&picture_text);
-                    if collect_search_sections {
-                        append_text(&mut section.text, &picture_text);
-                    }
-                }
-                text.boundary();
-                if collect_search_sections {
-                    append_boundary(&mut section.text);
-                }
-            } else {
-                picture_paragraph = Some(picture_span);
-            }
-            continue;
-        }
+    while let Some((event, span)) = events.next() {
         if matches!(event, Event::Start(Tag::Paragraph))
             && picture::starts_directive(&input[span.clone()])
         {
-            picture_paragraph = Some(span);
+            consume_picture_paragraph(&mut events);
+            let picture_text = match validation {
+                Some(validation) => picture::validate_and_search_text(
+                    &input[span.clone()],
+                    span.start,
+                    validation.links.assets,
+                )
+                .map_err(RenderError::Picture)?,
+                None => picture::source_text(&input[span.clone()]),
+            };
+            if let Some(picture_text) = picture_text {
+                text.push(&picture_text);
+                if collect_search_sections {
+                    append_text(&mut section.text, &picture_text);
+                }
+            }
+            text.boundary();
+            if collect_search_sections {
+                append_boundary(&mut section.text);
+            }
+            if let Some(scanner) = &mut unresolved_footnotes {
+                scanner.clear();
+            }
             continue;
+        }
+        if let Some(validation) = validation {
+            validate_event(&event, span.clone(), validation.renderer, validation.links)?;
         }
         let raw_html = match &event {
             Event::Html(value) | Event::InlineHtml(value) => Some(raw_html_text(value)),
@@ -95,9 +167,16 @@ pub(crate) fn analyze(
         }
 
         if !collect_search_sections {
+            scan_unresolved_footnotes(
+                &event,
+                &span,
+                input,
+                &mut unresolved_footnotes,
+                code_block_depth > 0,
+            )?;
             continue;
         }
-        match event {
+        match &event {
             Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
             Event::End(TagEnd::FootnoteDefinition) => {
                 footnote_definition_depth -= 1;
@@ -110,16 +189,23 @@ pub(crate) fn analyze(
             Event::Text(value)
             | Event::Code(value)
             | Event::InlineMath(value)
-            | Event::DisplayMath(value) => section.text.push_str(&value),
+            | Event::DisplayMath(value) => section.text.push_str(value),
             Event::SoftBreak | Event::HardBreak => section.text.push('\n'),
             Event::Html(_) | Event::InlineHtml(_) => {
                 if let Some(raw_html) = raw_html.as_deref() {
                     append_text(&mut section.text, raw_html);
                 }
             }
-            Event::End(end) if is_search_block_end(end) => append_boundary(&mut section.text),
+            Event::End(end) if is_search_block_end(*end) => append_boundary(&mut section.text),
             _ => {}
         }
+        scan_unresolved_footnotes(
+            &event,
+            &span,
+            input,
+            &mut unresolved_footnotes,
+            code_block_depth > 0,
+        )?;
     }
 
     if collect_search_sections {
@@ -127,13 +213,41 @@ pub(crate) fn analyze(
     }
     let word_count = text.value.unicode_words().count() as u64;
     let reading_time = words_per_minute.map(|rate| word_count.div_ceil(rate.get()));
-    MarkdownAnalysis {
+    Ok(MarkdownAnalysis {
         facts: MarkdownFacts {
             word_count,
             reading_time,
         },
         search_sections: sections,
+    })
+}
+
+fn consume_picture_paragraph<'a>(
+    events: &mut impl Iterator<Item = (Event<'a>, std::ops::Range<usize>)>,
+) {
+    for (event, _) in events {
+        if matches!(event, Event::End(TagEnd::Paragraph)) {
+            break;
+        }
     }
+}
+
+fn scan_unresolved_footnotes(
+    event: &Event<'_>,
+    span: &std::ops::Range<usize>,
+    input: &str,
+    scanner: &mut Option<UnresolvedFootnoteReferenceScanner>,
+    in_code_block: bool,
+) -> Result<(), RenderError> {
+    let Some(scanner) = scanner else {
+        return Ok(());
+    };
+    if let Some((label, span)) =
+        scan_unresolved_footnote_event(scanner, event, span, input, in_code_block)
+    {
+        return Err(RenderError::Footnote { label, span });
+    }
+    Ok(())
 }
 
 #[derive(Default)]
