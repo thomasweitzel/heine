@@ -17,6 +17,13 @@ the root inputs a new site receives after installing the kit. It is not a
 second runtime input tree: Heine ignores it while building this starter site.
 See the [kit guide](../docs/kits.md) for the package and customization model.
 
+## Custom 404 page
+
+The site renders a default-locale `404.html` page and a German counterpart.
+Configure the host to use the default-locale page for missing paths. Heine
+produces the document, but the host controls the HTTP response for a missing
+request.
+
 ## Color-scheme image pairs
 
 The English Heinrich Heine guide uses a native Markdown `picture` block for

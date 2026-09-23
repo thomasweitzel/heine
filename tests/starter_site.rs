@@ -44,6 +44,27 @@ fn builds_the_documented_starter_site() {
         ),
         "{sitemap}"
     );
+    assert!(!sitemap.contains("/404.html"), "{sitemap}");
+    let not_found = fs::read_to_string(output.join("404.html")).expect("English 404 page");
+    assert!(not_found.contains("<h1>Page not found</h1>"), "{not_found}");
+    assert!(
+        not_found.contains("href=\"/my-project/index.html\">Return to the home page</a>"),
+        "{not_found}"
+    );
+    assert!(
+        not_found
+            .contains("href=\"/my-project/de/404.html\" hreflang=\"de\" aria-label=\"German\""),
+        "{not_found}"
+    );
+    let german_not_found = fs::read_to_string(output.join("de/404.html")).expect("German 404 page");
+    assert!(
+        german_not_found.contains("<h1>Seite nicht gefunden</h1>"),
+        "{german_not_found}"
+    );
+    assert!(
+        german_not_found.contains("href=\"/my-project/de/index.html\">Zur Startseite</a>"),
+        "{german_not_found}"
+    );
     let index = fs::read_to_string(output.join("index.html")).expect("home page");
     assert!(
         index.contains("<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\" dir=\"ltr\">"),
@@ -621,6 +642,8 @@ fn starter_kit_reference_site_materializes_as_an_ordinary_site() {
 
     let output = root.join("public/my-project");
     assert!(output.join("index.html").is_file());
+    assert!(output.join("404.html").is_file());
+    assert!(output.join("de/404.html").is_file());
     assert!(output.join("assets/css/styles.v2.css").is_file());
     assert!(output.join("LICENSES/OFL-1.1.txt").is_file());
 }
