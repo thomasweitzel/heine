@@ -153,20 +153,13 @@ jobs:
               cargo build --release --locked --target x86_64-unknown-linux-gnu
               executable=target/x86_64-unknown-linux-gnu/release/heine
               "$executable" --help
-              readelf --version-info "$executable" > \
-                target/x86_64-unknown-linux-gnu/release/glibc-version-info.txt
+              requirement="$(readelf --version-info "$executable" \
+                | grep --only-matching "GLIBC_[0-9.]*" \
+                | sort --version-sort | tail --lines 1)"
+              test -n "$requirement"
+              printf "%s\n" "$requirement" > \
+                target/x86_64-unknown-linux-gnu/release/glibc-requirement.txt
             '
-
-      - name: Record the GNU C library requirement
-        run: |
-          set -euo pipefail
-
-          version_info=target/x86_64-unknown-linux-gnu/release/glibc-version-info.txt
-          requirement="$(grep --only-matching 'GLIBC_[0-9.]*' "$version_info" \
-            | sort --version-sort | tail --lines 1)"
-          test -n "$requirement"
-          printf '%s\n' "$requirement" > \
-            target/x86_64-unknown-linux-gnu/release/glibc-requirement.txt
 
       - name: Upload the GNU executable and its observed requirement
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
