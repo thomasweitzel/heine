@@ -54,10 +54,13 @@ origin and contents; they do not replace platform code signing.
 
 Before a change is considered complete, run:
 
+These commands use Rustup to select Heine's supported compiler. Install it once
+with `rustup toolchain install 1.88.0`.
+
 ```bash
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features
+cargo +1.88.0 fmt --check
+cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
+cargo +1.88.0 test --all-targets --all-features
 ```
 
 Record a user-visible change in `CHANGELOG.md` under `Unreleased` as part of
