@@ -1,0 +1,466 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Signed tag or reviewed Git reference to build.
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+# Individual jobs receive narrower permissions where publication needs them.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.repository }}-${{ inputs.source_ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+      github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.source_ref || github.ref }}
+
+      - name: Install the supported Rust toolchain
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal \
+            --component clippy --component rustfmt
+
+      - name: Identify checked source
+        id: source
+        env:
+          SOURCE_REF: ${{ inputs.source_ref || github.ref }}
+        run: |
+          set -euo pipefail
+
+          version="$(cargo +1.88.0 metadata --locked --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "heine") | .version')"
+          test -n "$version"
+
+          case "$SOURCE_REF" in
+            v*) test "v$version" = "$SOURCE_REF" ;;
+            refs/tags/v*) test "v$version" = "${SOURCE_REF#refs/tags/}" ;;
+          esac
+
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check formatting
+        run: cargo +1.88.0 fmt --check
+
+      - name: Run Clippy
+        run: cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo +1.88.0 test --all-targets --all-features
+
+      - name: Check the crate package
+        run: |
+          cargo +1.88.0 package --locked
+          cargo +1.88.0 package --list
+
+      - name: Build and check the starter site
+        run: |
+          cargo +1.88.0 run --release --locked -- --help
+          cargo +1.88.0 run --release --locked -- --root starter-site
+
+  linux-musl:
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.quality.outputs.commit }}
+
+      - name: Install the musl linker and Rust target
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends musl-tools
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup target add --toolchain 1.88.0 x86_64-unknown-linux-musl
+
+      - name: Build and run the musl executable
+        run: |
+          set -euo pipefail
+
+          cargo +1.88.0 build --release --locked \
+            --target x86_64-unknown-linux-musl
+          executable=target/x86_64-unknown-linux-musl/release/heine
+          "$executable" --help
+
+          if readelf --program-headers "$executable" | grep --quiet 'INTERP'; then
+            echo "error: the musl executable has a dynamic interpreter" >&2
+            exit 1
+          fi
+
+      - name: Upload the musl executable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: raw-linux-musl
+          path: target/x86_64-unknown-linux-musl/release/heine
+          if-no-files-found: error
+          retention-days: 1
+
+  linux-gnu:
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.quality.outputs.commit }}
+
+      - name: Build and inspect inside the Ubuntu 22.04 baseline
+        run: |
+          set -euo pipefail
+
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            ubuntu@sha256:281c5745f657873d78e5531fc5ba8575f46ab7769b94550ac99543f122679986 \
+            bash -euo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install --yes --no-install-recommends \
+                binutils build-essential ca-certificates curl pkg-config
+              curl --proto "=https" --tlsv1.2 --fail --location --silent \
+                --show-error --output rustup-init \
+                https://static.rust-lang.org/rustup/archive/1.29.1/x86_64-unknown-linux-gnu/rustup-init
+              printf "%s  %s\n" \
+                dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71 \
+                rustup-init | sha256sum --check
+              chmod +x rustup-init
+              ./rustup-init -y --profile minimal --default-toolchain 1.88.0
+              . "$HOME/.cargo/env"
+              cargo build --release --locked --target x86_64-unknown-linux-gnu
+              executable=target/x86_64-unknown-linux-gnu/release/heine
+              "$executable" --help
+              readelf --version-info "$executable" > \
+                target/x86_64-unknown-linux-gnu/release/glibc-version-info.txt
+            '
+
+      - name: Record the GNU C library requirement
+        run: |
+          set -euo pipefail
+
+          version_info=target/x86_64-unknown-linux-gnu/release/glibc-version-info.txt
+          requirement="$(grep --only-matching 'GLIBC_[0-9.]*' "$version_info" \
+            | sort --version-sort | tail --lines 1)"
+          test -n "$requirement"
+          printf '%s\n' "$requirement" > \
+            target/x86_64-unknown-linux-gnu/release/glibc-requirement.txt
+
+      - name: Upload the GNU executable and its observed requirement
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: raw-linux-gnu
+          path: |
+            target/x86_64-unknown-linux-gnu/release/heine
+            target/x86_64-unknown-linux-gnu/release/glibc-requirement.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  windows:
+    needs: quality
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.quality.outputs.commit }}
+
+      - name: Install the supported Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.88.0 --profile minimal
+
+      - name: Build and run the Windows executable
+        shell: bash
+        run: |
+          cargo +1.88.0 build --release --locked \
+            --target x86_64-pc-windows-msvc
+          target/x86_64-pc-windows-msvc/release/heine.exe --help
+
+      - name: Upload the Windows executable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: raw-windows
+          path: target/x86_64-pc-windows-msvc/release/heine.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  macos:
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: raw-macos-aarch64
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - artifact: raw-macos-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.quality.outputs.commit }}
+
+      - name: Install the supported Rust toolchain
+        run: rustup toolchain install 1.88.0 --profile minimal
+
+      - name: Build and run the macOS executable
+        run: |
+          cargo +1.88.0 build --release --locked --target "${{ matrix.target }}"
+          "target/${{ matrix.target }}/release/heine" --help
+
+      - name: Upload the macOS executable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/${{ matrix.target }}/release/heine
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble:
+    needs: [quality, linux-musl, linux-gnu, windows, macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      glibc_requirement: ${{ steps.glibc.outputs.requirement }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.quality.outputs.commit }}
+
+      - name: Install archive tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends rsync unzip zip
+
+      - name: Download native executables
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-linux-musl
+          path: raw/linux-musl
+
+      - name: Download the GNU executable
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-linux-gnu
+          path: raw/linux-gnu
+
+      - name: Download the Windows executable
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-windows
+          path: raw/windows
+
+      - name: Download the Apple-silicon executable
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-macos-aarch64
+          path: raw/macos-aarch64
+
+      - name: Download the Intel macOS executable
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: raw-macos-x86_64
+          path: raw/macos-x86_64
+
+      - name: Package and verify the release artifacts
+        env:
+          VERSION: ${{ needs.quality.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          mkdir dist stage
+          install --mode 0755 raw/linux-musl/heine stage/heine
+          tar --directory stage --create --gzip --file \
+            "dist/heine-$VERSION-x86_64-unknown-linux-musl.tar.gz" heine
+
+          install --mode 0755 raw/linux-gnu/heine stage/heine
+          tar --directory stage --create --gzip --file \
+            "dist/heine-$VERSION-x86_64-unknown-linux-gnu.tar.gz" heine
+
+          zip --junk-paths "dist/heine-$VERSION-x86_64-pc-windows-msvc.zip" \
+            raw/windows/heine.exe
+
+          install --mode 0755 raw/macos-aarch64/heine stage/heine
+          tar --directory stage --create --gzip --file \
+            "dist/heine-$VERSION-aarch64-apple-darwin.tar.gz" heine
+
+          install --mode 0755 raw/macos-x86_64/heine stage/heine
+          tar --directory stage --create --gzip --file \
+            "dist/heine-$VERSION-x86_64-apple-darwin.tar.gz" heine
+
+          mkdir -p stage/starter-site
+          rsync --archive \
+            --exclude '/.gitignore' \
+            --exclude '/public/' \
+            --exclude '/scripts/' \
+            starter-site/ stage/starter-site/
+          test -f stage/starter-site/heine.toml
+          (
+            cd stage
+            zip --recurse-paths \
+              "../dist/heine-$VERSION-starter-site.zip" starter-site
+          )
+
+          for archive in \
+            "dist/heine-$VERSION-x86_64-unknown-linux-musl.tar.gz" \
+            "dist/heine-$VERSION-x86_64-unknown-linux-gnu.tar.gz" \
+            "dist/heine-$VERSION-aarch64-apple-darwin.tar.gz" \
+            "dist/heine-$VERSION-x86_64-apple-darwin.tar.gz"; do
+            test "$(tar --list --file "$archive" | wc --lines)" -eq 1
+            test "$(tar --list --file "$archive")" = heine
+          done
+          test "$(unzip -Z1 "dist/heine-$VERSION-x86_64-pc-windows-msvc.zip")" = heine.exe
+          if unzip -Z1 "dist/heine-$VERSION-starter-site.zip" \
+            | grep --quiet --extended-regexp '^starter-site/(\.gitignore|public/|scripts/)'; then
+            echo "error: the starter-site archive contains excluded files" >&2
+            exit 1
+          fi
+
+          (
+            cd dist
+            sha256sum \
+              "heine-$VERSION-x86_64-unknown-linux-musl.tar.gz" \
+              "heine-$VERSION-x86_64-unknown-linux-gnu.tar.gz" \
+              "heine-$VERSION-x86_64-pc-windows-msvc.zip" \
+              "heine-$VERSION-aarch64-apple-darwin.tar.gz" \
+              "heine-$VERSION-x86_64-apple-darwin.tar.gz" \
+              "heine-$VERSION-starter-site.zip" > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
+      - name: Expose the observed GNU C library requirement
+        id: glibc
+        run: |
+          requirement="$(cat raw/linux-gnu/glibc-requirement.txt)"
+          printf 'requirement=%s\n' "$requirement" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the complete release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  attest:
+    if: >-
+      ${{ github.event_name == 'push' &&
+      github.event.repository.private == false }}
+    needs: assemble
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Download the release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist
+          path: dist
+
+      - name: Attest release files
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+
+  publish:
+    if: >-
+      ${{ github.event_name == 'push' &&
+      github.event.repository.private == false &&
+      needs.attest.result == 'success' }}
+    needs: [quality, assemble, attest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-dist
+          path: dist
+
+      - name: Verify the remote release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ needs.quality.outputs.commit }}
+          VERSION: ${{ needs.quality.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          tag_object_type="$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" \
+            --jq '.object.type')"
+          test "$tag_object_type" = tag
+          tag_object="$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" \
+            --jq '.object.sha')"
+          tag_commit="$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" \
+            --jq '.object.sha')"
+          test "$tag_commit" = "$SOURCE_COMMIT"
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GLIBC_REQUIREMENT: ${{ needs.assemble.outputs.glibc_requirement }}
+          SOURCE_COMMIT: ${{ needs.quality.outputs.commit }}
+          VERSION: ${{ needs.quality.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          ## Release facts
+
+          - Source: \`v$VERSION\` at \`$SOURCE_COMMIT\`.
+          - GNU/Linux archive: built in the pinned Ubuntu 22.04 LTS baseline;
+            observed requirement: \`$GLIBC_REQUIREMENT\`.
+          - Windows and macOS archives are unsigned direct downloads.
+
+          ## Verify a download
+
+          \`\`\`bash
+          sha256sum --ignore-missing --check SHA256SUMS
+          gh attestation verify heine-$VERSION-x86_64-unknown-linux-musl.tar.gz \\
+            --repo thomasweitzel/heine \\
+            --signer-workflow thomasweitzel/heine/.github/workflows/release.yml \\
+            --source-ref refs/tags/v$VERSION
+          \`\`\`
+          EOF
+
+          gh release create "v$VERSION" dist/* \
+            --title "Heine $VERSION" \
+            --verify-tag \
+            --notes "$(cat "$RUNNER_TEMP/release-notes.md")" \
+            --generate-notes
