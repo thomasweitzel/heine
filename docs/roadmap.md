@@ -7,12 +7,6 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Next
 
-- **Release hygiene:** establish a repeatable local release procedure before
-  publishing. It checks the required formatting, Clippy, and test commands,
-  the packaged crate contents, and the optimized release binary. CI may later
-  reproduce the same checks, but it is not a prerequisite for the first
-  release. Decide a dependency policy for advisories, source provenance,
-  duplicate versions, and acceptable licenses before automating those checks.
 - **Renderer adapters:** explicit Markdown constructs that a trusted external
   renderer turns into checked generated resources and replacements. This is
   the only planned plugin boundary. See the [design](design/plugins.md).
