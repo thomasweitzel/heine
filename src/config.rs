@@ -1256,8 +1256,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             return Err(ConfigValueError {
                 span: default_locale_span.into(),
                 message: format!(
-                    "i18n.default_locale must use canonical BCP-47 spelling {:?}",
-                    default_locale
+                    "i18n.default_locale must use canonical BCP-47 spelling {default_locale:?}"
                 ),
             });
         }
@@ -1895,8 +1894,7 @@ fn parse_reading_time(
             return Err(ConfigValueError {
                 span: locale_span,
                 message: format!(
-                    "reading_time.words_per_minute key {value:?} must use canonical BCP-47 spelling {:?}",
-                    parsed
+                    "reading_time.words_per_minute key {value:?} must use canonical BCP-47 spelling {parsed:?}"
                 ),
             });
         }

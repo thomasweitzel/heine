@@ -103,10 +103,10 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         let mut locale_inputs = BTreeSet::new();
         for entry in &entries {
             if !entry.file_type().is_file()
-                || !entry
+                || entry
                     .path()
                     .extension()
-                    .is_some_and(|extension| extension == "page")
+                    .is_none_or(|extension| extension != "page")
             {
                 continue;
             }

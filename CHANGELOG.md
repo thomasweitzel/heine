@@ -147,6 +147,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Rust 1.88 release checks.** The declared minimum supported Rust toolchain
+  now passes the same lint gate used by release builds. Local quality commands
+  explicitly select Rust 1.88.0, so contributors run the supported-toolchain
+  gate before publication.
+
 - **Draft-reference diagnostic paths.** Errors for a published template or
   Markdown page reference to an excluded draft now name the project-relative
   draft source, rather than the machine-specific absolute path. This keeps

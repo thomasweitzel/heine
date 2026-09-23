@@ -154,8 +154,11 @@ contract.
 
 Run the full local quality check before contributing changes:
 
+These commands use Rustup to select Heine's supported compiler. Install it once
+with `rustup toolchain install 1.88.0`.
+
 ```bash
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features
+cargo +1.88.0 fmt --check
+cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
+cargo +1.88.0 test --all-targets --all-features
 ```
