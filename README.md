@@ -13,18 +13,16 @@ rendered pages, copied assets, locale-aware content, generated routes, and
 generated resources. A missing internal page or copied asset therefore fails
 where it is authored instead of becoming a browser 404.
 
-## Status
+## Documentation and downloads
 
-Heine is pre-release and is not published to crates.io yet. The
-[Download page](https://heine.rs/download/) provides Linux x86-64 executables
-for musl and glibc systems, plus a complete starter site. The
+See the [Download page](https://heine.rs/download/) for release artifacts and
+the complete starter site. The
 [documentation overview](docs/README.md) maps the implemented features to
 their guides and reference material.
 
 Heine does not bundle a frontend toolchain or deployment integration. Use
 ordinary tools for CSS and JavaScript processing, media transformation,
-deployment, audits, and external services. Kits are implemented; renderer
-adapters and RSS are not.
+deployment, audits, and external services.
 
 ## First site
 
