@@ -1,0 +1,8 @@
+template = "document.tera"
+title = "Seite nicht gefunden"
+description = "Die angeforderte Seite ist nicht verfügbar."
+translationid = "not-found"
+sitemap = false
+
+[content]
+main = "404.md"
