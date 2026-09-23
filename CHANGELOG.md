@@ -147,6 +147,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **GNU release rehearsal.** The Ubuntu 22.04 GNU builder now records its
+  observed glibc requirement inside the container that owns the build output.
+  This lets the following artifact upload read the result without a
+  cross-container filesystem-permission failure.
+
 - **Rust 1.88 release checks.** The declared minimum supported Rust toolchain
   now passes the same lint gate used by release builds. Local quality commands
   explicitly select Rust 1.88.0, so contributors run the supported-toolchain
