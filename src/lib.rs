@@ -140,6 +140,8 @@ pub(crate) fn build_at_with_publication(
         config.markdown().clone(),
         config.renderers().clone(),
         build.allow_external_renderers,
+        paths.root().join(".heine/cache/renderers/v1"),
+        build.refresh_renderers,
     )
     .map_err(|error| miette::Report::new(*error))?;
     let (data, locale_data) =

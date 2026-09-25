@@ -6,7 +6,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     ops::Range,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -194,6 +194,8 @@ pub(crate) struct Renderer {
     highlighter: Option<Arc<Highlighter>>,
     renderer_profiles: RendererProfiles,
     allow_external_renderers: bool,
+    renderer_cache_root: PathBuf,
+    refresh_renderers: bool,
 }
 
 /// The one source-backed heading model shared by the template view and
@@ -322,13 +324,21 @@ fn fragment_base(text: &str) -> String {
 impl Renderer {
     #[cfg(test)]
     pub(crate) fn new(config: MarkdownConfig) -> Result<Self, Box<InitializationError>> {
-        Self::with_renderer_profiles(config, RendererProfiles::default(), false)
+        Self::with_renderer_profiles(
+            config,
+            RendererProfiles::default(),
+            false,
+            PathBuf::from(".heine/cache/renderers/v1"),
+            false,
+        )
     }
 
     pub(crate) fn with_renderer_profiles(
         config: MarkdownConfig,
         renderer_profiles: RendererProfiles,
         allow_external_renderers: bool,
+        renderer_cache_root: PathBuf,
+        refresh_renderers: bool,
     ) -> Result<Self, Box<InitializationError>> {
         let highlighter = config.highlighting().map(|highlighting| {
             Highlighter::new(highlighting).map(Arc::new).map_err(|source| {
@@ -351,11 +361,21 @@ impl Renderer {
             highlighter,
             renderer_profiles,
             allow_external_renderers,
+            renderer_cache_root,
+            refresh_renderers,
         })
     }
 
     pub(crate) fn config(&self) -> &MarkdownConfig {
         &self.config
+    }
+
+    pub(crate) fn renderer_cache_root(&self) -> &Path {
+        &self.renderer_cache_root
+    }
+
+    pub(crate) fn refresh_renderers(&self) -> bool {
+        self.refresh_renderers
     }
 
     pub(crate) fn renderer_profiles(&self) -> &RendererProfiles {

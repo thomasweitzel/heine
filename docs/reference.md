@@ -19,9 +19,13 @@ A site root contains `heine.toml`, `content/`, and `templates/`; `data/`, `deplo
 | `heine`       | `--root <path>`    | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
 | `heine`       | `--quick`          | off                        | flag               | Updates managed output for changed page, declared content, inherited descriptor, data, Fluent resources, present copied assets and sidecars, deployment files, and license texts; it remains incomplete |
 | `heine`       | `--clean-output`   | off                        | flag               | Adopts unmanaged output; conflicts with `--quick`                                                                                                                                                       |
+| `heine`       | `--allow-external-renderers` | off              | flag               | Permits selected checked stream renderer requests to start their configured program                                                                                                                     |
+| `heine`       | `--refresh-renderers` | off                    | flag               | Re-runs permitted renderer requests instead of reusing their cached results                                                                                                                            |
 | `heine serve` | `--root <path>`    | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
 | `heine serve` | `--clean-output`   | off                        | flag               | Adopts unmanaged output before its initial build                                                                                                                                                        |
 | `heine serve` | `--drafts`         | off                        | flag               | Includes otherwise unpublished `draft = true` pages in this local preview                                                                                                                               |
+| `heine serve` | `--allow-external-renderers` | off              | flag               | Permits selected checked stream renderer requests to start their configured program                                                                                                                     |
+| `heine serve` | `--refresh-renderers` | off                    | flag               | Re-runs permitted renderer requests instead of reusing their cached results                                                                                                                            |
 | `heine serve` | `--host <address>` | `127.0.0.1`                | IP address         | Interface on which to listen                                                                                                                                                                            |
 | `heine serve` | `--port <number>`  | `1111`                     | `1024`-`65535`     | First port to try; then the next free port                                                                                                                                                              |
 
@@ -83,6 +87,14 @@ fields use the following defaults.
 | `markdown.highlighting.missing_language`          | string               | `"error"`                             | `"error"`, `"plain"`                                                                                                                                                  | Unknown fenced-language policy                                                                    |
 | `markdown.highlighting.theme.light`               | string               | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                                  | Light syntax palette                                                                              |
 | `markdown.highlighting.theme.dark`                | string               | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                                  | Dark syntax palette                                                                               |
+| `renderers.<name>.protocol`                       | string               | required                              | `"stream"` for the implemented slice; `<name>` is a simple identifier                                                                                              | Selects the external-renderer protocol                                                          |
+| `renderers.<name>.program`                        | string               | required                              | Non-empty program path or operating-system-resolved program name                                                                                                      | Program started only for a permitted selected request                                            |
+| `renderers.<name>.timeout_seconds`                | integer              | required                              | Positive                                                                                                                                                               | Direct-child timeout                                                                             |
+| `renderers.<name>.cache_identity`                 | string               | required                              | Non-empty stable site-owner version or environment identity                                                                                                           | Deliberate renderer-cache invalidation input                                                    |
+| `renderers.<name>.inputs`                         | array of strings     | required                              | Non-empty unique subset of `"body"` and `"file"` for a stream profile                                                                                             | Permitted request input forms                                                                    |
+| `renderers.<name>.result`                         | string               | required                              | `"html"`, `"mathml"`, or `"svg"`; SVG also needs `materializations = ["embedded"]`                                                                             | Checked embedded result shape                                                                    |
+| `renderers.<name>.inline.arguments`               | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                            | Enables inline requests                                                                          |
+| `renderers.<name>.block.arguments`                | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                            | Enables block requests                                                                           |
 
 Collection definitions establish relationships only; they do not write output.
 Every configured collection exists in every locale, including when it is
@@ -387,6 +399,66 @@ The following boundaries are part of the current contract:
 `markdown.math` and `markdown.highlighting` add the optional math and
 syntax-highlighting behavior described in the [`heine.toml`](#heinetoml)
 table. They do not add a general client-side JavaScript or CSS pipeline.
+
+## Renderer adapters
+
+A [renderer profile](glossary.md#renderer-profile) lives in the root
+`heine.toml` under `[renderers.<name>]`. It describes one trusted external
+program, its fixed arguments, a positive timeout, accepted input forms, and
+the expected result shape. A valid profile remains inert until authored
+Markdown selects it and the build includes `--allow-external-renderers`.
+Heine never discovers, installs, or version-checks that program.
+
+The currently implemented stream slice accepts `protocol = "stream"`, a
+non-empty input subset of `"body"` and `"file"`, result `"html"`, `"mathml"`,
+or embedded `"svg"`, and an `inline` or `block` fixed-argument variant.
+HTML must be UTF-8. MathML and SVG must be well-formed XML with `math` and
+`svg` document elements respectively; Heine strips XML declarations and
+doctypes before embedding. Image, link, resource-output, workspace, and
+bundle workflows are not available yet.
+
+```toml
+[renderers.katex]
+protocol = "stream"
+program = "katex"
+timeout_seconds = 10
+cache_identity = "katex-0.16.27"
+inputs = ["body"]
+result = "html"
+
+[renderers.katex.inline]
+arguments = ["--format", "htmlAndMathml"]
+```
+
+Use an inline request:
+
+```markdown
+:render[katex]`body`
+```
+
+Or use a block request:
+
+```markdown
+:::render[katex]
+x^2
+:::
+```
+
+A request may instead select a page-owned `[render.<name>] file = "…"`
+declaration when the profile accepts `"file"`; declared files are read as
+renderer input and are never published as copied assets. Stream programs read
+their input on standard input and write one replacement to standard output.
+Heine captures bounded standard-error text for a failed program and terminates
+the direct child when it exceeds `timeout_seconds`. It does not manage a
+renderer's descendant process tree.
+
+Heine stores successful results below `.heine/cache/renderers/v1/`, outside
+published output. The key includes the profile identity and effective fixed
+configuration, placement, requested output form, and input bytes. A profile's
+`cache_identity` is therefore the site owner's deliberate promise to update
+when the installed renderer or its meaningful environment changes.
+`--refresh-renderers` bypasses reads for one build and atomically replaces the
+matching entry after successful execution.
 
 ## `data/`
 

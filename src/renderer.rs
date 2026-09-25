@@ -2,13 +2,18 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io::Write,
+    fs,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use miette::SourceSpan;
+use quick_xml::{Reader, Writer, events::Event};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 use crate::source_path;
 
@@ -122,7 +127,6 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigEr
 // Execution consumes these values after source resolution has established the
 // request inventory. Keeping them here prevents configuration from being
 // reparsed or reconstructed at the process boundary.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct Profile {
     protocol: Protocol,
@@ -161,6 +165,26 @@ impl Profile {
 }
 
 pub(crate) fn run_stream(
+    cache_root: &Path,
+    refresh: bool,
+    profile_name: &str,
+    profile: &Profile,
+    placement: Placement,
+    output: Output,
+    input: &[u8],
+) -> Result<String, String> {
+    let cache_key = stream_cache_key(profile_name, profile, placement, output, input);
+    if !refresh {
+        if let Some(bytes) = read_cache(cache_root, &cache_key, profile.result())? {
+            return validate_embedded(profile.result(), bytes);
+        }
+    }
+    let result = validate_embedded(profile.result(), execute_stream(profile, placement, input)?)?;
+    write_cache(cache_root, &cache_key, profile.result(), result.as_bytes())?;
+    Ok(result)
+}
+
+fn execute_stream(
     profile: &Profile,
     placement: Placement,
     input: &[u8],
@@ -180,27 +204,269 @@ pub(crate) fn run_stream(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("could not start renderer: {error}"))?;
+    let mut stdout = child.stdout.take().expect("piped renderer stdout");
+    let mut stderr = child.stderr.take().expect("piped renderer stderr");
+    let stdout_reader = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stdout.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let stderr_reader = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stderr.read_to_end(&mut bytes).map(|_| bytes)
+    });
     child
         .stdin
         .take()
         .expect("piped renderer stdin")
         .write_all(input)
         .map_err(|error| format!("could not write renderer input: {error}"))?;
-    let output = child
-        .wait_with_output()
-        .map_err(|error| format!("could not wait for renderer: {error}"))?;
-    if output.status.success() {
-        Ok(output.stdout)
+    let deadline = Instant::now() + Duration::from_secs(profile.timeout_seconds);
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("could not wait for renderer: {error}"))?
+        {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "renderer exceeded its {}-second timeout",
+                profile.timeout_seconds
+            ));
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| "renderer stdout reader panicked".to_owned())
+        .and_then(|result| {
+            result.map_err(|error| format!("could not read renderer output: {error}"))
+        })?;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| "renderer stderr reader panicked".to_owned())
+        .and_then(|result| {
+            result.map_err(|error| format!("could not read renderer diagnostics: {error}"))
+        })?;
+    if status.success() {
+        Ok(stdout)
     } else {
         Err(format!(
             "renderer exited with {}; {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
+            status,
+            String::from_utf8_lossy(&stderr[..stderr.len().min(8192)])
         ))
     }
 }
 
-#[allow(dead_code)]
+fn stream_cache_key(
+    profile_name: &str,
+    profile: &Profile,
+    placement: Placement,
+    output: Output,
+    input: &[u8],
+) -> String {
+    let arguments = match placement {
+        Placement::Inline => profile.inline.as_ref(),
+        Placement::Block => profile.block.as_ref(),
+    };
+    let mut hasher = Sha256::new();
+    hasher.update(b"heine-renderer-stream-cache-v1\0");
+    for value in [
+        profile_name,
+        &profile.cache_identity,
+        &profile.program,
+        profile.input_extension.as_deref().unwrap_or(""),
+        match placement {
+            Placement::Inline => "inline",
+            Placement::Block => "block",
+        },
+        match output {
+            Output::Embedded => "embedded",
+            Output::Resource => "resource",
+        },
+    ] {
+        hasher.update(value.as_bytes());
+        hasher.update([0]);
+    }
+    hasher.update(format!("{:?}", profile.result).as_bytes());
+    hasher.update([0]);
+    for argument in arguments.into_iter().flat_map(|variant| &variant.arguments) {
+        hasher.update(argument.as_bytes());
+        hasher.update([0]);
+    }
+    hasher.update(input);
+    hex_digest(&hasher.finalize())
+}
+
+fn read_cache(
+    root: &Path,
+    key: &str,
+    result: &ResultCapabilities,
+) -> Result<Option<Vec<u8>>, String> {
+    let bytes_path = root.join(format!("{key}.bin"));
+    let digest_path = root.join(format!("{key}.sha256"));
+    let (bytes, digest) = match (fs::read(&bytes_path), fs::read_to_string(&digest_path)) {
+        (Ok(bytes), Ok(digest)) => (bytes, digest),
+        (Err(error), _) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        (_, Err(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        (Err(error), _) => return Err(format!("could not read renderer cache: {error}")),
+        (_, Err(error)) => return Err(format!("could not read renderer cache: {error}")),
+    };
+    let expected = format!(
+        "v1 {} {}",
+        cache_result_kind(result),
+        hex_digest(&Sha256::digest(&bytes))
+    );
+    if digest.trim() != expected {
+        return Ok(None);
+    }
+    Ok(Some(bytes))
+}
+
+fn write_cache(
+    root: &Path,
+    key: &str,
+    result: &ResultCapabilities,
+    bytes: &[u8],
+) -> Result<(), String> {
+    fs::create_dir_all(root)
+        .map_err(|error| format!("could not create renderer cache: {error}"))?;
+    let digest = format!(
+        "v1 {} {}\n",
+        cache_result_kind(result),
+        hex_digest(&Sha256::digest(bytes))
+    );
+    write_cache_file(&root.join(format!("{key}.bin")), bytes)?;
+    write_cache_file(&root.join(format!("{key}.sha256")), digest.as_bytes())
+}
+
+fn cache_result_kind(result: &ResultCapabilities) -> &'static str {
+    match result {
+        ResultCapabilities::Html => "html",
+        ResultCapabilities::Mathml => "mathml",
+        ResultCapabilities::Svg { .. } => "svg",
+        ResultCapabilities::Image => "image",
+        ResultCapabilities::Link => "link",
+    }
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn write_cache_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("could not name renderer cache entry: {error}"))?
+        .as_nanos();
+    let temporary = path.with_extension(format!("tmp-{}-{nonce}", std::process::id()));
+    fs::write(&temporary, bytes)
+        .map_err(|error| format!("could not write renderer cache: {error}"))?;
+    fs::rename(&temporary, path)
+        .map_err(|error| format!("could not publish renderer cache: {error}"))
+}
+
+pub(crate) fn validate_embedded(
+    result: &ResultCapabilities,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    match result {
+        ResultCapabilities::Html => String::from_utf8(bytes)
+            .map_err(|_| "HTML renderer returned non-UTF-8 embedded output".to_owned()),
+        ResultCapabilities::Mathml => validate_xml_fragment(bytes, b"math", "MathML"),
+        ResultCapabilities::Svg { .. } => validate_xml_fragment(bytes, b"svg", "SVG"),
+        ResultCapabilities::Image | ResultCapabilities::Link => {
+            Err("selected renderer result cannot be embedded".to_owned())
+        }
+    }
+    .and_then(|result| {
+        (!result.trim().is_empty())
+            .then_some(result)
+            .ok_or_else(|| "renderer returned empty embedded output".to_owned())
+    })
+}
+
+fn validate_xml_fragment(
+    bytes: Vec<u8>,
+    expected_root: &[u8],
+    kind: &str,
+) -> Result<String, String> {
+    let mut reader = Reader::from_reader(bytes.as_slice());
+    let mut writer = Writer::new(Vec::new());
+    let mut buffer = Vec::new();
+    let mut depth = 0usize;
+    let mut root_seen = false;
+    loop {
+        match reader.read_event_into(&mut buffer) {
+            Ok(Event::Decl(_) | Event::DocType(_)) => {}
+            Ok(Event::Start(event)) => {
+                if !root_seen {
+                    if event.name().as_ref() != expected_root {
+                        return Err(format!(
+                            "renderer returned {kind} with a different document element"
+                        ));
+                    }
+                    root_seen = true;
+                } else if depth == 0 {
+                    return Err(format!(
+                        "renderer returned more than one {kind} document element"
+                    ));
+                }
+                depth += 1;
+                writer
+                    .write_event(Event::Start(event.into_owned()))
+                    .map_err(|error| error.to_string())?;
+            }
+            Ok(Event::Empty(event)) => {
+                if !root_seen {
+                    if event.name().as_ref() != expected_root {
+                        return Err(format!(
+                            "renderer returned {kind} with a different document element"
+                        ));
+                    }
+                    root_seen = true;
+                } else if depth == 0 {
+                    return Err(format!(
+                        "renderer returned more than one {kind} document element"
+                    ));
+                }
+                writer
+                    .write_event(Event::Empty(event.into_owned()))
+                    .map_err(|error| error.to_string())?;
+            }
+            Ok(Event::End(event)) => {
+                if depth == 0 {
+                    return Err(format!("renderer returned malformed {kind}"));
+                }
+                depth -= 1;
+                writer
+                    .write_event(Event::End(event.into_owned()))
+                    .map_err(|error| error.to_string())?;
+            }
+            Ok(Event::Eof) => break,
+            Ok(event) => {
+                if root_seen
+                    || !matches!(event, Event::Text(ref text) if text.iter().all(|byte| byte.is_ascii_whitespace()))
+                {
+                    writer
+                        .write_event(event.into_owned())
+                        .map_err(|error| error.to_string())?;
+                }
+            }
+            Err(error) => return Err(format!("renderer returned malformed {kind}: {error}")),
+        }
+        buffer.clear();
+    }
+    if !root_seen || depth != 0 {
+        return Err(format!("renderer returned malformed {kind}"));
+    }
+    String::from_utf8(writer.into_inner())
+        .map_err(|_| format!("renderer returned non-UTF-8 {kind}"))
+}
+
 #[derive(Debug, Clone)]
 struct Variant {
     arguments: Vec<String>,
@@ -288,7 +554,8 @@ pub(crate) enum Output {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ResultCapabilities {
-    Embedded,
+    Html,
+    Mathml,
     Svg {
         materializations: BTreeSet<Output>,
         default_output: Output,
@@ -300,7 +567,7 @@ pub(crate) enum ResultCapabilities {
 impl ResultCapabilities {
     pub(crate) fn output(&self, requested: Option<Output>) -> Option<Output> {
         match self {
-            Self::Embedded => match requested {
+            Self::Html | Self::Mathml => match requested {
                 None | Some(Output::Embedded) => Some(Output::Embedded),
                 Some(Output::Resource) => None,
             },
@@ -484,10 +751,10 @@ fn validate_result(
     let result_span = raw_result.span().into();
     match raw_result.into_inner() {
         ResultKind::Html => {
-            reject_result_options(name, &options, "html").map(|()| ResultCapabilities::Embedded)
+            reject_result_options(name, &options, "html").map(|()| ResultCapabilities::Html)
         }
         ResultKind::Mathml => {
-            reject_result_options(name, &options, "mathml").map(|()| ResultCapabilities::Embedded)
+            reject_result_options(name, &options, "mathml").map(|()| ResultCapabilities::Mathml)
         }
         ResultKind::Svg => validate_svg_result(name, result_span, options),
         ResultKind::Image => validate_resource_result(name, result_span, options, true),

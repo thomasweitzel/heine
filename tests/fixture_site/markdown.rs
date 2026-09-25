@@ -1,5 +1,26 @@
 use super::*;
 
+fn stream_copy_profile(name: &str, inputs: &str, result: &str) -> String {
+    let (program, arguments) = if cfg!(windows) {
+        ("cmd", "[\"/C\", \"more\"]")
+    } else {
+        ("cat", "[]")
+    };
+    format!(
+        r#"
+[renderers.{name}]
+protocol = "stream"
+program = "{program}"
+timeout_seconds = 10
+cache_identity = "copy-1"
+inputs = {inputs}
+result = "{result}"
+[renderers.{name}.block]
+arguments = {arguments}
+"#,
+    )
+}
+
 #[test]
 fn renderer_requests_resolve_profiles_before_markdown_renders() {
     let fixture = Fixture::new();
@@ -55,21 +76,140 @@ arguments = ["--format", "htmlAndMathml"]
 }
 
 #[test]
-fn renderer_requests_resolve_declared_files_without_publishing_them() {
+fn permitted_stream_renderers_embed_checked_html_and_reuse_cached_results() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("copy", "[\"body\"]", "html"),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "before\n\n:::render[copy]\n<span>cached result</span>\n:::\n\nafter\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let options = heine::BuildOptions::new(BuildMode::Full).allow_external_renderers();
+    heine::build_at_with_options(fixture.path(), options).expect("permitted renderer builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<span>cached result</span>"), "{output}");
+
+    let cache = fixture.path().join(".heine/cache/renderers/v1");
+    let entries = fs::read_dir(&cache).expect("renderer cache").count();
+    assert_eq!(entries, 2, "one cached result and its integrity record");
+    let entry = fs::read_dir(&cache)
+        .expect("renderer cache")
+        .find_map(|entry| {
+            let entry = entry.expect("cache entry");
+            (entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "sha256"))
+            .then_some(entry.path())
+        })
+        .expect("typed cache record");
+    assert!(
+        fs::read_to_string(entry)
+            .expect("typed cache record")
+            .starts_with("v1 html "),
+        "cache records its result type"
+    );
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full)
+            .allow_external_renderers()
+            .refresh_renderers(),
+    )
+    .expect("refresh bypasses and replaces cached renderer result");
+    assert_eq!(
+        fs::read_dir(&cache).expect("renderer cache").count(),
+        2,
+        "refresh replaces the same cache entry"
+    );
+}
+
+#[test]
+fn stream_renderer_rejects_an_invalid_typed_embedded_result() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+            "result = \"svg\"\n",
+            "result = \"svg\"\nmaterializations = [\"embedded\"]\n",
+            1,
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram]\n<p>not SVG</p>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("typed SVG result is checked");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("different document element"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+}
+
+#[cfg(unix)]
+#[test]
+fn stream_renderer_times_out_at_the_request() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
         r#"
-[renderers.diagram]
+[renderers.wait]
 protocol = "stream"
-program = "diagram"
-timeout_seconds = 10
-cache_identity = "diagram-1"
-inputs = ["file"]
+program = "sh"
+timeout_seconds = 1
+cache_identity = "wait-1"
+inputs = ["body"]
 result = "html"
-[renderers.diagram.block]
-arguments = []
+[renderers.wait.block]
+arguments = ["-c", "sleep 3"]
 "#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", ":::render[wait]\nignored\n:::\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("slow direct child times out");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("exceeded its 1-second timeout"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+}
+
+#[test]
+fn renderer_requests_resolve_declared_files_without_publishing_them() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("diagram", "[\"file\"]", "html"),
     );
     fixture.write(
         "content/en/index.page",
@@ -79,7 +219,7 @@ arguments = []
         "content/en/index.md",
         ":::render[diagram source=\"architecture\"]\n:::\n",
     );
-    fixture.write("content/assets/architecture.txt", "diagram source\n");
+    fixture.write("content/assets/architecture.txt", "<p>diagram source</p>\n");
     fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
 
     let permission = build_at(fixture.path(), BuildMode::Full)
@@ -92,12 +232,9 @@ arguments = []
         fixture.path(),
         heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
     )
-    .expect("declared renderer file resolves after permission");
-    assert!(fixture.path().join("public/index.html").is_file());
-    assert!(
-        !fixture.path().join("public/architecture.txt").exists(),
-        "renderer inputs are private rather than copied assets"
-    );
+    .expect("declared file streams to the permitted renderer");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<p>diagram source</p>"), "{output}");
 
     fixture.write(
         "content/en/index.md",

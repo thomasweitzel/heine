@@ -2,12 +2,13 @@
 
 ## Status
 
-This is the accepted design for Heine's first future extension boundary,
-Markdown-aware renderer adapters and configured external renderer profiles. It
-is not implemented and is not part of the current public contract. Other
-extension kinds remain undecided until a separate concrete use case requires
-them. Package discovery, installation, and distribution are likewise
-undecided.
+This is the accepted design for Heine's first extension boundary,
+Markdown-aware renderer adapters and configured external renderer profiles.
+The stream-protocol embedded-result slice is implemented. Workspace renderers,
+generated resources, watcher integration, and cache cleanup remain future
+work. Other extension kinds remain undecided until a separate concrete use
+case requires them. Package discovery, installation, and distribution are
+likewise undecided.
 
 ## Decision
 

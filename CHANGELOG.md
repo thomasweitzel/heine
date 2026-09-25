@@ -33,6 +33,14 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Stream renderer adapters.** Root-owned renderer profiles can now turn
+  explicit Markdown requests into checked embedded HTML, SVG, or MathML by
+  running a configured stream program only with
+  `--allow-external-renderers`. Successful results use an integrity-checked
+  local cache, and `--refresh-renderers` deliberately re-runs them.
+  **Migration:** no existing Markdown changes; configure a profile and pass
+  the explicit permission flag for each build that may execute it.
+
 - **Checked kits.** A site may select one local kit with a manifest-declared
   public template, asset, component, message, and presentation-settings
   surface. Kits include copyable reference sites, while the consuming root

@@ -7,9 +7,10 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Next
 
-- **Renderer adapters:** explicit Markdown constructs that a trusted external
-  renderer turns into checked generated resources and replacements. This is
-  the only planned plugin boundary. See the [design](design/plugins.md).
+- **Renderer adapters:** complete workspace renderers and generated-resource
+  outputs for the existing trusted external-renderer boundary. Stream
+  renderers already provide checked embedded replacements. See the
+  [design](design/plugins.md).
 
 ## Later
 

@@ -173,6 +173,19 @@ Unicode `word_count` and optional locale-policy `reading_time`. Facts appear in
 `page.markdown.<name>` without changing the renderable `page.content.<name>`
 value. See [word counts and reading time](markdown-facts.md).
 
+### Renderer profile
+
+A root-owned `[renderers.<name>]` configuration that fixes one external
+renderer program, protocol, inputs, result shape, timeout, and cache identity.
+It has no effect until a Markdown renderer request selects it in a build that
+explicitly permits external renderers. See [renderer adapters](reference.md#renderer-adapters).
+
+### Renderer request
+
+An explicit Markdown `render` construct that selects one renderer profile and
+provides either a body or a declared page-owned renderer file. The implemented
+stream slice replaces the construct with checked embedded HTML, SVG, or MathML.
+
 ### Deployment file
 
 A regular file below optional `deploy/`. Heine copies it unchanged to the

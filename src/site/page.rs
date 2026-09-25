@@ -2,6 +2,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fs,
     num::NonZeroU64,
     path::PathBuf,
     sync::Arc,
@@ -558,17 +559,59 @@ impl Page {
             }
             let mut transformed = source.source.clone();
             for request in analysis.renderer_requests.iter().rev() {
-                let crate::markdown::ResolvedInput::Body = &request.input else {
-                    continue;
-                };
+                if request.output != crate::renderer::Output::Embedded {
+                    return Err(Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        &source.source,
+                        crate::markdown::RenderError::RendererProcess {
+                            message: "resource renderer output is not available until generated-resource support is implemented".into(),
+                            span: request.span.clone(),
+                        },
+                    )));
+                }
                 let profile = renderer
                     .renderer_profiles()
                     .get(&request.profile)
                     .expect("resolved renderer profile");
-                let bytes = crate::renderer::run_stream(
+                let input = match &request.input {
+                    crate::markdown::ResolvedInput::Body => {
+                        source.source[request.body_span.clone()].as_bytes().to_vec()
+                    }
+                    crate::markdown::ResolvedInput::Source(name) => {
+                        let declared = &self.renderer_sources[name];
+                        if declared.input() != crate::renderer::NamedInput::File {
+                            return Err(Box::new(crate::markdown::source_error(
+                                &source.display_path,
+                                &source.source,
+                                crate::markdown::RenderError::RendererProcess {
+                                    message: "stream renderers cannot consume source bundles"
+                                        .into(),
+                                    span: request.span.clone(),
+                                },
+                            )));
+                        }
+                        fs::read(declared.entry()).map_err(|error| {
+                            Box::new(crate::markdown::source_error(
+                                &source.display_path,
+                                &source.source,
+                                crate::markdown::RenderError::RendererProcess {
+                                    message: format!(
+                                        "could not read renderer source {name:?}: {error}"
+                                    ),
+                                    span: request.span.clone(),
+                                },
+                            ))
+                        })?
+                    }
+                };
+                let replacement = crate::renderer::run_stream(
+                    renderer.renderer_cache_root(),
+                    renderer.refresh_renderers(),
+                    &request.profile,
                     profile,
                     request.placement,
-                    source.source[request.body_span.clone()].as_bytes(),
+                    request.output,
+                    &input,
                 )
                 .map_err(|message| {
                     Box::new(crate::markdown::source_error(
@@ -580,26 +623,6 @@ impl Page {
                         },
                     ))
                 })?;
-                let replacement = String::from_utf8(bytes).map_err(|_| {
-                    Box::new(crate::markdown::source_error(
-                        &source.display_path,
-                        &source.source,
-                        crate::markdown::RenderError::RendererProcess {
-                            message: "renderer returned non-UTF-8 embedded output".into(),
-                            span: request.span.clone(),
-                        },
-                    ))
-                })?;
-                if replacement.is_empty() {
-                    return Err(Box::new(crate::markdown::source_error(
-                        &source.display_path,
-                        &source.source,
-                        crate::markdown::RenderError::RendererProcess {
-                            message: "renderer returned empty embedded output".into(),
-                            span: request.span.clone(),
-                        },
-                    )));
-                }
                 transformed.replace_range(request.span.clone(), &replacement);
             }
             rendered_content.insert(name.clone(), transformed);
