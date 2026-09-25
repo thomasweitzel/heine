@@ -375,7 +375,7 @@ impl Site {
                     AssetSources {
                         root,
                         entries: &locales.entries[locale],
-                        content_inputs: &locales.content_inputs[locale],
+                        content_inputs: &locales.content_inputs,
                         output_prefix: &prefixes[locale],
                         shared: (!locales.shared_entries.is_empty()).then_some(SharedAssets {
                             root: &locales.shared_root,

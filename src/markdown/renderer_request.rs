@@ -6,7 +6,7 @@
 
 use std::{collections::BTreeMap, ops::Range};
 
-use crate::renderer::{Output, Placement, Profiles};
+use crate::renderer::{NamedInput, Output, Placement, Profiles, Source};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Request {
@@ -73,14 +73,22 @@ pub(super) fn parse(input: &str) -> Result<Vec<Request>, Error> {
 /// Resolves parsed source requests against the configured renderer profiles.
 /// Execution deliberately happens later, after every request has this stable
 /// source-level contract.
-pub(super) fn validate(requests: &[Request], profiles: &Profiles) -> Result<(), Error> {
+pub(super) fn validate(
+    requests: &[Request],
+    profiles: &Profiles,
+    sources: &BTreeMap<String, Source>,
+) -> Result<(), Error> {
     for request in requests {
-        validate_request(request, profiles)?;
+        validate_request(request, profiles, sources)?;
     }
     Ok(())
 }
 
-fn validate_request(request: &Request, profiles: &Profiles) -> Result<(), Error> {
+fn validate_request(
+    request: &Request,
+    profiles: &Profiles,
+    sources: &BTreeMap<String, Source>,
+) -> Result<(), Error> {
     let profile = profiles.get(&request.profile).ok_or_else(|| Error {
         message: format!("renderer profile {:?} is not configured", request.profile),
         span: request.header_span.clone(),
@@ -114,17 +122,29 @@ fn validate_request(request: &Request, profiles: &Profiles) -> Result<(), Error>
                 "a renderer request must use either source or a body, not both",
             ));
         }
-        Some(_) if !profile.accepts_named_source() => {
-            return Err(option_error(
-                request,
-                "source",
-                format!(
-                    "renderer profile {:?} does not accept named sources",
-                    request.profile
-                ),
-            ));
+        Some(source) => {
+            let Some(input) = sources.get(source).map(Source::input) else {
+                return Err(option_error(
+                    request,
+                    "source",
+                    format!("renderer source {source:?} is not declared on this page"),
+                ));
+            };
+            if !profile.accepts_named_source(input) {
+                return Err(option_error(
+                    request,
+                    "source",
+                    format!(
+                        "renderer profile {:?} does not accept the declared {} source {source:?}",
+                        request.profile,
+                        match input {
+                            NamedInput::File => "file",
+                            NamedInput::Bundle => "bundle",
+                        }
+                    ),
+                ));
+            }
         }
-        Some(_) => {}
         None if !profile.accepts_body() => {
             return Err(Error {
                 message: format!(
@@ -580,6 +600,10 @@ fn header_error(message: &str, start: usize, length: usize) -> Error {
 mod tests {
     use super::*;
 
+    fn no_sources() -> BTreeMap<String, Source> {
+        BTreeMap::new()
+    }
+
     fn profiles(source: &str) -> Profiles {
         match crate::renderer::parse(toml::from_str(source).expect("profile TOML")) {
             Ok(profiles) => profiles,
@@ -645,11 +669,12 @@ arguments = ["--format", "htmlAndMathml"]
         let profiles = katex_profiles();
         let request = parse(":render[katex]`x^2`").expect("valid request");
 
-        validate(&request, &profiles).expect("inline HTML request is supported");
+        validate(&request, &profiles, &no_sources()).expect("inline HTML request is supported");
 
         let error = validate(
             &parse(":::render[katex]\nx^2\n:::\n").expect("well-formed block request"),
             &profiles,
+            &no_sources(),
         )
         .expect_err("KaTeX profile has no block variant");
         assert!(error.message.contains("does not support block"));
@@ -657,6 +682,7 @@ arguments = ["--format", "htmlAndMathml"]
         let error = validate(
             &parse(":render[katex output=\"resource\"]`x^2`").expect("well-formed request"),
             &profiles,
+            &no_sources(),
         )
         .expect_err("HTML cannot become a resource");
         assert!(error.message.contains("cannot produce"));
@@ -682,6 +708,7 @@ arguments = []
         let error = validate(
             &parse(":::render[diagram]\nA -> B\n:::\n").expect("well-formed request"),
             &profiles,
+            &no_sources(),
         )
         .expect_err("image resources require alternative text");
         assert_eq!(
@@ -691,7 +718,7 @@ arguments = []
 
         let request = parse(":::render[diagram alt=\"diagram\"]\nA -> B\n:::\n")
             .expect("well-formed request");
-        validate(&request, &profiles).expect("image alternative text is present");
+        validate(&request, &profiles, &no_sources()).expect("image alternative text is present");
     }
 
     #[test]
@@ -700,6 +727,7 @@ arguments = []
         let error = validate(
             &parse(":render[missing]`x`").expect("well-formed request"),
             &profiles,
+            &no_sources(),
         )
         .expect_err("profile is unknown");
         assert!(error.message.contains("is not configured"));
@@ -707,6 +735,7 @@ arguments = []
         let error = validate(
             &parse(":render[katex alt=\"equation\"]`x`").expect("well-formed request"),
             &profiles,
+            &no_sources(),
         )
         .expect_err("HTML output does not use alternative text");
         assert!(error.message.contains("alt is valid only"));

@@ -59,27 +59,33 @@ pub(crate) fn analyze(
 /// Derives source facts and validates checked Markdown transformations in one
 /// parser walk. Rendering remains separate because template output has its own
 /// lifetime and may render an input more than once.
+pub(super) struct ValidationInputs<'a> {
+    pub(super) renderer: &'a Renderer,
+    pub(super) assets: &'a AssetLinks,
+    pub(super) pages: &'a PageLinks,
+    pub(super) renderer_sources: &'a std::collections::BTreeMap<String, crate::renderer::Source>,
+}
+
 pub(super) fn analyze_and_validate(
     input: &str,
-    renderer: &Renderer,
-    assets: &AssetLinks,
-    pages: &PageLinks,
+    validation: ValidationInputs<'_>,
     words_per_minute: Option<NonZeroU64>,
     fragments: Option<&[String]>,
     collect_search_sections: bool,
 ) -> Result<MarkdownAnalysis, RenderError> {
     analyze_inner(
         input,
-        renderer.config(),
+        validation.renderer.config(),
         words_per_minute,
         fragments,
         collect_search_sections,
         Some(Validation {
-            renderer,
+            renderer: validation.renderer,
+            renderer_sources: validation.renderer_sources,
             links: TransformLinks {
-                math: renderer.config().math(),
-                assets: Some(assets),
-                pages: Some(pages),
+                math: validation.renderer.config().math(),
+                assets: Some(validation.assets),
+                pages: Some(validation.pages),
             },
         }),
     )
@@ -88,6 +94,7 @@ pub(super) fn analyze_and_validate(
 #[derive(Clone, Copy)]
 struct Validation<'a> {
     renderer: &'a Renderer,
+    renderer_sources: &'a std::collections::BTreeMap<String, crate::renderer::Source>,
     links: TransformLinks<'a>,
 }
 
@@ -101,7 +108,11 @@ fn analyze_inner(
 ) -> Result<MarkdownAnalysis, RenderError> {
     let renderer_requests = renderer_request::parse(input)?;
     if let Some(validation) = validation {
-        renderer_request::validate(&renderer_requests, validation.renderer.renderer_profiles())?;
+        renderer_request::validate(
+            &renderer_requests,
+            validation.renderer.renderer_profiles(),
+            validation.renderer_sources,
+        )?;
     }
     let mut text = CountedText::default();
     let mut sections = Vec::new();

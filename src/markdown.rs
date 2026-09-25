@@ -484,6 +484,7 @@ pub(crate) struct SourceAnalysisInputs<'a> {
     pub(crate) words_per_minute: Option<std::num::NonZeroU64>,
     pub(crate) fragments: Option<&'a [String]>,
     pub(crate) collect_search_sections: bool,
+    pub(crate) renderer_sources: &'a BTreeMap<String, crate::renderer::Source>,
 }
 
 /// Derives page facts and validates checked transformations while the original
@@ -494,9 +495,12 @@ pub(crate) fn analyze_source_with_links(
 ) -> Result<analysis::MarkdownAnalysis, Box<SourceError>> {
     analysis::analyze_and_validate(
         inputs.input,
-        inputs.renderer,
-        inputs.assets,
-        inputs.pages,
+        analysis::ValidationInputs {
+            renderer: inputs.renderer,
+            assets: inputs.assets,
+            pages: inputs.pages,
+            renderer_sources: inputs.renderer_sources,
+        },
         inputs.words_per_minute,
         inputs.fragments,
         inputs.collect_search_sections,

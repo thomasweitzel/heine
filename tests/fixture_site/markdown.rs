@@ -55,6 +55,92 @@ arguments = ["--format", "htmlAndMathml"]
 }
 
 #[test]
+fn renderer_requests_resolve_declared_files_without_publishing_them() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.diagram]
+protocol = "stream"
+program = "diagram"
+timeout_seconds = 10
+cache_identity = "diagram-1"
+inputs = ["file"]
+result = "html"
+[renderers.diagram.block]
+arguments = []
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[render.architecture]\nfile = '../assets/architecture.txt'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram source=\"architecture\"]\n:::\n",
+    );
+    fixture.write("content/assets/architecture.txt", "diagram source\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("declared renderer file resolves");
+    assert!(fixture.path().join("public/index.html").is_file());
+    assert!(
+        !fixture.path().join("public/architecture.txt").exists(),
+        "renderer inputs are private rather than copied assets"
+    );
+
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram source=\"missing\"]\n:::\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown source fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("renderer source \"missing\" is not declared on this page"),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[render.report]\nroot = 'report'\nentry = 'main.txt'\n",
+    );
+    fixture.write("content/en/report/main.txt", "bundle entry\n");
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram source=\"report\"]\n:::\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsupported bundle fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("does not accept the declared bundle source \"report\""),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn renderer_source_declarations_check_bundle_boundaries() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "[render.report]\nroot = 'report'\nentry = '../outside.typ'\n",
+    );
+    fixture.write("content/en/report/outside.typ", "report");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("bundle entry escapes");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:3"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("escapes the content directory"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn source_aware_markdown_exposes_a_toc_and_matching_heading_ids() {
     let fixture = Fixture::new();
     fixture.write(

@@ -147,6 +147,8 @@ pub(super) struct RawPage {
     #[serde(default)]
     pub(super) content: BTreeMap<String, toml::Spanned<String>>,
     #[serde(default)]
+    pub(super) render: BTreeMap<toml::Spanned<String>, RawRendererSource>,
+    #[serde(default)]
     pub(super) taxonomies: BTreeMap<toml::Spanned<String>, Vec<toml::Spanned<String>>>,
     pub(super) collections: Option<Vec<toml::Spanned<String>>>,
     #[serde(default)]
@@ -155,6 +157,14 @@ pub(super) struct RawPage {
     pub(super) pagination: Option<RawPagination>,
     #[serde(default = "default_suffix")]
     pub(super) suffix: toml::Spanned<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawRendererSource {
+    pub(super) file: Option<toml::Spanned<String>>,
+    pub(super) root: Option<toml::Spanned<String>>,
+    pub(super) entry: Option<toml::Spanned<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -353,6 +363,7 @@ pub(super) struct Page {
     /// Original declared Markdown inputs are retained for source-derived
     /// generated-resource consumers such as search, not for template rendering.
     pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
+    pub(super) renderer_sources: BTreeMap<String, crate::renderer::Source>,
     pub(super) markdown_facts: BTreeMap<String, crate::markdown::MarkdownFacts>,
     /// Search owns these transient sections while it constructs its generated
     /// documents. Pages outside every configured search index never allocate
@@ -531,6 +542,7 @@ impl Page {
                 words_per_minute,
                 fragments,
                 collect_search_sections,
+                renderer_sources: &self.renderer_sources,
             })?;
             facts.insert(name.clone(), analysis.facts);
             if let Some(search_sections) = &mut search_sections {

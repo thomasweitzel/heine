@@ -1,6 +1,9 @@
 //! Validation for site-owned renderer-profile configuration.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
 use miette::SourceSpan;
 use serde::Deserialize;
@@ -127,12 +130,57 @@ impl Profile {
         self.inputs.contains(&Input::Body)
     }
 
-    pub(crate) fn accepts_named_source(&self) -> bool {
-        self.inputs.contains(&Input::File) || self.inputs.contains(&Input::Bundle)
+    pub(crate) fn accepts_named_source(&self, source: NamedInput) -> bool {
+        self.inputs.contains(&match source {
+            NamedInput::File => Input::File,
+            NamedInput::Bundle => Input::Bundle,
+        })
     }
 
     pub(crate) fn result(&self) -> &ResultCapabilities {
         &self.result
+    }
+}
+
+/// The checked form of a page-owned renderer input. Its filesystem inventory
+/// remains with the page loader; Markdown only needs this stable capability
+/// when it resolves a named request against its selected profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NamedInput {
+    File,
+    Bundle,
+}
+
+/// One page-owned renderer input after discovery has fixed its complete
+/// filesystem boundary. Later execution receives this checked inventory rather
+/// than a raw authored path.
+#[derive(Debug, Clone)]
+pub(crate) struct Source {
+    input: NamedInput,
+    files: Vec<PathBuf>,
+}
+
+impl Source {
+    pub(crate) fn file(path: PathBuf) -> Self {
+        Self {
+            input: NamedInput::File,
+            files: vec![path],
+        }
+    }
+
+    pub(crate) fn bundle(_root: PathBuf, _entry: PathBuf, files: Vec<PathBuf>) -> Self {
+        Self {
+            input: NamedInput::Bundle,
+            files,
+        }
+    }
+
+    pub(crate) fn input(&self) -> NamedInput {
+        self.input
+    }
+
+    pub(crate) fn files(&self) -> &[PathBuf] {
+        &self.files
     }
 }
 
