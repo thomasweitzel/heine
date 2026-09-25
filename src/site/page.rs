@@ -528,6 +528,7 @@ impl Page {
     ) -> Result<(), Box<crate::markdown::SourceError>> {
         let mut facts = BTreeMap::new();
         let mut renderer_requests = BTreeMap::new();
+        let mut rendered_content = BTreeMap::new();
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
         for (name, source) in &self.markdown_sources {
             let fragments = self
@@ -555,6 +556,53 @@ impl Page {
                     },
                 )));
             }
+            let mut transformed = source.source.clone();
+            for request in analysis.renderer_requests.iter().rev() {
+                let crate::markdown::ResolvedInput::Body = &request.input else {
+                    continue;
+                };
+                let profile = renderer
+                    .renderer_profiles()
+                    .get(&request.profile)
+                    .expect("resolved renderer profile");
+                let bytes = crate::renderer::run_stream(
+                    profile,
+                    request.placement,
+                    source.source[request.body_span.clone()].as_bytes(),
+                )
+                .map_err(|message| {
+                    Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        &source.source,
+                        crate::markdown::RenderError::RendererProcess {
+                            message,
+                            span: request.span.clone(),
+                        },
+                    ))
+                })?;
+                let replacement = String::from_utf8(bytes).map_err(|_| {
+                    Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        &source.source,
+                        crate::markdown::RenderError::RendererProcess {
+                            message: "renderer returned non-UTF-8 embedded output".into(),
+                            span: request.span.clone(),
+                        },
+                    ))
+                })?;
+                if replacement.is_empty() {
+                    return Err(Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        &source.source,
+                        crate::markdown::RenderError::RendererProcess {
+                            message: "renderer returned empty embedded output".into(),
+                            span: request.span.clone(),
+                        },
+                    )));
+                }
+                transformed.replace_range(request.span.clone(), &replacement);
+            }
+            rendered_content.insert(name.clone(), transformed);
             facts.insert(name.clone(), analysis.facts);
             renderer_requests.insert(name.clone(), analysis.renderer_requests);
             if let Some(search_sections) = &mut search_sections {
@@ -563,6 +611,9 @@ impl Page {
         }
         self.markdown_facts = facts;
         self.renderer_requests = renderer_requests;
+        for (name, content) in rendered_content {
+            self.content.insert(name, Value::String(content));
+        }
         self.markdown_search_sections = search_sections;
         Ok(())
     }

@@ -2,7 +2,9 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    io::Write,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 use miette::SourceSpan;
@@ -155,6 +157,46 @@ impl Profile {
 
     pub(crate) fn result(&self) -> &ResultCapabilities {
         &self.result
+    }
+}
+
+pub(crate) fn run_stream(
+    profile: &Profile,
+    placement: Placement,
+    input: &[u8],
+) -> Result<Vec<u8>, String> {
+    if profile.protocol != Protocol::Stream {
+        return Err("selected profile does not use the stream protocol".into());
+    }
+    let arguments = match placement {
+        Placement::Inline => profile.inline.as_ref(),
+        Placement::Block => profile.block.as_ref(),
+    }
+    .ok_or_else(|| "selected profile does not support this placement".to_owned())?;
+    let mut child = Command::new(&profile.program)
+        .args(&arguments.arguments)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("could not start renderer: {error}"))?;
+    child
+        .stdin
+        .take()
+        .expect("piped renderer stdin")
+        .write_all(input)
+        .map_err(|error| format!("could not write renderer input: {error}"))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("could not wait for renderer: {error}"))?;
+    if output.status.success() {
+        Ok(output.stdout)
+    } else {
+        Err(format!(
+            "renderer exited with {}; {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ))
     }
 }
 

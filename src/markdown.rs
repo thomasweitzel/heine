@@ -41,7 +41,7 @@ pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 #[cfg(test)]
 pub(crate) use render::render;
 pub(crate) use render::{render_with_links, render_with_links_anchors};
-pub(crate) use renderer_request::ResolvedRequest;
+pub(crate) use renderer_request::{ResolvedInput, ResolvedRequest};
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
 
@@ -423,6 +423,8 @@ pub(crate) enum RenderError {
     RendererRequest(#[from] renderer_request::Error),
     #[error("external renderer permission is required")]
     RendererPermission { span: Range<usize> },
+    #[error("renderer failed: {message}")]
+    RendererProcess { message: String, span: Range<usize> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -587,6 +589,12 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
             "external renderer permission is required here".into(),
             "rerun with --allow-external-renderers after reviewing the selected renderer profile"
                 .into(),
+            span.clone(),
+        ),
+        RenderError::RendererProcess { message, span } => (
+            "renderer request",
+            message.clone(),
+            "inspect the configured renderer profile and its diagnostic output".into(),
             span.clone(),
         ),
     };
