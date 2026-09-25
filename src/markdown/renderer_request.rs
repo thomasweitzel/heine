@@ -10,6 +10,7 @@ use crate::renderer::{NamedInput, Output, Placement, Profiles, Source};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Request {
+    start: usize,
     pub(super) placement: Placement,
     pub(super) profile: String,
     pub(super) header_span: Range<usize>,
@@ -26,6 +27,7 @@ pub(super) struct Request {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedRequest {
+    pub(crate) span: Range<usize>,
     pub(crate) placement: Placement,
     pub(crate) profile: String,
     pub(crate) body_span: Range<usize>,
@@ -121,6 +123,7 @@ fn resolved_request(request: &Request, profiles: &Profiles) -> Result<ResolvedRe
         .output(output_option(request)?)
         .expect("request validation resolves a supported output form");
     Ok(ResolvedRequest {
+        span: request.start..request.end,
         placement: request.placement,
         profile: request.profile.clone(),
         body_span: request.body_span.clone(),
@@ -382,6 +385,7 @@ fn parse_block(input: &str, start: usize, line_end: usize) -> Result<Option<Requ
                 cursor - 1
             };
             return Ok(Some(Request {
+                start,
                 placement: Placement::Block,
                 profile,
                 header_span,
@@ -457,6 +461,7 @@ fn parse_inline_line(
                 parse_header(&line[header_start..header_end], start + header_start)?;
             let body_span = start + body_start..start + body_start + body_length;
             requests.push(Request {
+                start: start + cursor,
                 placement: Placement::Inline,
                 profile,
                 header_span,

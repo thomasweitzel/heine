@@ -139,6 +139,7 @@ pub(crate) fn build_at_with_publication(
     let markdown = markdown::Renderer::with_renderer_profiles(
         config.markdown().clone(),
         config.renderers().clone(),
+        build.allow_external_renderers,
     )
     .map_err(|error| miette::Report::new(*error))?;
     let (data, locale_data) =

@@ -82,7 +82,17 @@ arguments = []
     fixture.write("content/assets/architecture.txt", "diagram source\n");
     fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
 
-    build_at(fixture.path(), BuildMode::Full).expect("declared renderer file resolves");
+    let permission = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("selected renderer requires explicit permission");
+    assert!(
+        format!("{permission:?}").contains("external renderer permission is required"),
+        "{permission:?}"
+    );
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("declared renderer file resolves after permission");
     assert!(fixture.path().join("public/index.html").is_file());
     assert!(
         !fixture.path().join("public/architecture.txt").exists(),

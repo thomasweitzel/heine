@@ -546,6 +546,15 @@ impl Page {
                 collect_search_sections,
                 renderer_sources: &self.renderer_sources,
             })?;
+            if !analysis.renderer_requests.is_empty() && !renderer.allows_external_renderers() {
+                return Err(Box::new(crate::markdown::source_error(
+                    &source.display_path,
+                    &source.source,
+                    crate::markdown::RenderError::RendererPermission {
+                        span: analysis.renderer_requests[0].span.clone(),
+                    },
+                )));
+            }
             facts.insert(name.clone(), analysis.facts);
             renderer_requests.insert(name.clone(), analysis.renderer_requests);
             if let Some(search_sections) = &mut search_sections {

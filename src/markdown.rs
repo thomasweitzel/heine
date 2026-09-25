@@ -193,6 +193,7 @@ pub(crate) struct Renderer {
     config: MarkdownConfig,
     highlighter: Option<Arc<Highlighter>>,
     renderer_profiles: RendererProfiles,
+    allow_external_renderers: bool,
 }
 
 /// The one source-backed heading model shared by the template view and
@@ -321,12 +322,13 @@ fn fragment_base(text: &str) -> String {
 impl Renderer {
     #[cfg(test)]
     pub(crate) fn new(config: MarkdownConfig) -> Result<Self, Box<InitializationError>> {
-        Self::with_renderer_profiles(config, RendererProfiles::default())
+        Self::with_renderer_profiles(config, RendererProfiles::default(), false)
     }
 
     pub(crate) fn with_renderer_profiles(
         config: MarkdownConfig,
         renderer_profiles: RendererProfiles,
+        allow_external_renderers: bool,
     ) -> Result<Self, Box<InitializationError>> {
         let highlighter = config.highlighting().map(|highlighting| {
             Highlighter::new(highlighting).map(Arc::new).map_err(|source| {
@@ -348,6 +350,7 @@ impl Renderer {
             config,
             highlighter,
             renderer_profiles,
+            allow_external_renderers,
         })
     }
 
@@ -357,6 +360,10 @@ impl Renderer {
 
     pub(crate) fn renderer_profiles(&self) -> &RendererProfiles {
         &self.renderer_profiles
+    }
+
+    pub(crate) fn allows_external_renderers(&self) -> bool {
+        self.allow_external_renderers
     }
 
     pub(crate) fn stylesheet(&self) -> Option<String> {
@@ -379,7 +386,7 @@ impl Renderer {
 }
 
 #[derive(Debug, Error)]
-pub(super) enum RenderError {
+pub(crate) enum RenderError {
     #[error("could not render {kind} TeX {tex:?}: {message}")]
     Math {
         kind: &'static str,
@@ -414,6 +421,8 @@ pub(super) enum RenderError {
     Picture(#[from] picture::Error),
     #[error("{0}")]
     RendererRequest(#[from] renderer_request::Error),
+    #[error("external renderer permission is required")]
+    RendererPermission { span: Range<usize> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -509,7 +518,7 @@ pub(crate) fn analyze_source_with_links(
     .map_err(|error| Box::new(source_error(inputs.display_path, inputs.input, error)))
 }
 
-fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceError {
+pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceError {
     let (kind, label, help, span) = match &error {
         RenderError::Math { span, .. } => (
             "math",
@@ -572,6 +581,13 @@ fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceE
             "use a renderer name and TOML scalar options in the documented render syntax"
                 .into(),
             error.span.clone(),
+        ),
+        RenderError::RendererPermission { span } => (
+            "renderer request",
+            "external renderer permission is required here".into(),
+            "rerun with --allow-external-renderers after reviewing the selected renderer profile"
+                .into(),
+            span.clone(),
         ),
     };
     SourceError {
