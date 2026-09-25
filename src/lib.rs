@@ -15,6 +15,7 @@ mod localization;
 mod markdown;
 mod output;
 mod project;
+mod renderer;
 mod server;
 mod site;
 mod source_diagnostic;

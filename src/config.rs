@@ -23,7 +23,7 @@ use crate::{
     kit,
     locale::{Locale, TextDirection},
     output::{OutputClaim, OutputPath},
-    project, source_path,
+    project, renderer, source_path,
     template::TemplateName,
 };
 pub(crate) use base_path::{BasePath, valid_url_segment};
@@ -1027,6 +1027,8 @@ struct RawSiteConfig {
     feeds: BTreeMap<toml::Spanned<String>, RawFeedDefinition>,
     #[serde(default)]
     search: BTreeMap<toml::Spanned<String>, RawSearchDefinition>,
+    #[serde(default)]
+    renderers: BTreeMap<toml::Spanned<String>, renderer::RawProfile>,
     kit: Option<RawKitSelection>,
 }
 
@@ -1299,6 +1301,10 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             });
         }
         let reading_time = parse_reading_time(raw.reading_time, &locales)?;
+        renderer::validate(raw.renderers).map_err(|error| ConfigValueError {
+            span: error.span,
+            message: error.message,
+        })?;
         let kit = raw
             .kit
             .map(|raw| {
@@ -2263,6 +2269,94 @@ mod tests {
                 .expect_err("noncanonical locale is invalid")
                 .to_string()
                 .contains("canonical BCP-47")
+        );
+    }
+
+    #[test]
+    fn renderer_profiles_accept_a_checked_stream_configuration() {
+        let raw: RawSiteConfig = toml::from_str(
+            r#"
+[i18n]
+default_locale = "en"
+[i18n.locales.en]
+direction = "ltr"
+
+[renderers.katex]
+protocol = "stream"
+program = "katex"
+timeout_seconds = 10
+cache_identity = "katex-0.16.27"
+inputs = ["body", "file"]
+result = "html"
+[renderers.katex.inline]
+arguments = ["--format", "htmlAndMathml"]
+"#,
+        )
+        .expect("renderer configuration parses as TOML");
+
+        SiteConfig::try_from(raw).expect("renderer configuration is valid");
+    }
+
+    #[test]
+    fn renderer_workspace_profiles_require_an_output_placeholder() {
+        let raw: RawSiteConfig = toml::from_str(
+            r#"
+[i18n]
+default_locale = "en"
+[i18n.locales.en]
+direction = "ltr"
+
+[renderers.report]
+protocol = "workspace"
+program = "typst"
+timeout_seconds = 30
+cache_identity = "typst-0.15.0"
+inputs = ["file"]
+result = "link"
+media_type = "application/pdf"
+extension = "pdf"
+[renderers.report.block]
+arguments = ["compile", "{input_file}"]
+"#,
+        )
+        .expect("renderer configuration parses as TOML");
+
+        assert!(
+            SiteConfig::try_from(raw)
+                .expect_err("workspace output placeholder is required")
+                .to_string()
+                .contains("{output_file} exactly once")
+        );
+    }
+
+    #[test]
+    fn renderer_svg_profiles_require_a_default_for_two_materializations() {
+        let raw: RawSiteConfig = toml::from_str(
+            r#"
+[i18n]
+default_locale = "en"
+[i18n.locales.en]
+direction = "ltr"
+
+[renderers.diagram]
+protocol = "stream"
+program = "plantuml"
+timeout_seconds = 20
+cache_identity = "plantuml-1.2025.7"
+inputs = ["body"]
+result = "svg"
+materializations = ["embedded", "resource"]
+[renderers.diagram.block]
+arguments = ["--svg"]
+"#,
+        )
+        .expect("renderer configuration parses as TOML");
+
+        assert!(
+            SiteConfig::try_from(raw)
+                .expect_err("two SVG materializations need a default")
+                .to_string()
+                .contains("must declare default_output")
         );
     }
 }

@@ -676,6 +676,7 @@ dependencies = [
  "image",
  "jiff",
  "miette",
+ "mime",
  "mime_guess",
  "notify",
  "percent-encoding",

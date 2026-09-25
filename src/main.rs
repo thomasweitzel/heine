@@ -16,6 +16,14 @@ struct Cli {
     #[arg(long, conflicts_with = "quick")]
     clean_output: bool,
 
+    /// Permit selected renderer profiles to start configured external programs.
+    #[arg(long)]
+    allow_external_renderers: bool,
+
+    /// Ignore renderer-cache hits and refresh selected renderer results.
+    #[arg(long)]
+    refresh_renderers: bool,
+
     /// Site root; defaults to the nearest ancestor with heine.toml, content/, and templates/.
     #[arg(long)]
     root: Option<PathBuf>,
@@ -40,6 +48,14 @@ struct ServeArgs {
     /// Include draft pages in this local preview.
     #[arg(long)]
     drafts: bool,
+
+    /// Permit selected renderer profiles to start configured external programs.
+    #[arg(long)]
+    allow_external_renderers: bool,
+
+    /// Ignore renderer-cache hits and refresh selected renderer results.
+    #[arg(long)]
+    refresh_renderers: bool,
 
     /// IP address to bind; defaults to the local machine only.
     #[arg(long, default_value = "127.0.0.1")]
@@ -104,4 +120,36 @@ fn main() -> miette::Result<()> {
         heine::BuildOptions::new(mode)
     };
     heine::build_at_with_options(&root, options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renderer_flags_parse_for_builds() {
+        let cli =
+            Cli::try_parse_from(["heine", "--allow-external-renderers", "--refresh-renderers"])
+                .expect("renderer build options parse");
+
+        assert!(cli.allow_external_renderers);
+        assert!(cli.refresh_renderers);
+    }
+
+    #[test]
+    fn renderer_flags_parse_for_the_development_server() {
+        let cli = Cli::try_parse_from([
+            "heine",
+            "serve",
+            "--allow-external-renderers",
+            "--refresh-renderers",
+        ])
+        .expect("renderer server options parse");
+        let Some(Command::Serve(args)) = cli.command else {
+            panic!("expected serve command");
+        };
+
+        assert!(args.allow_external_renderers);
+        assert!(args.refresh_renderers);
+    }
 }
