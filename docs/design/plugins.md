@@ -367,6 +367,13 @@ inside `content/`, reject symbolic links, and not overlap another declared
 renderer source or a copied asset. A bundle's entry must be a regular file
 beneath its root.
 
+A bundle comprises every regular non-symbolic-link file below its declared
+root. Heine walks those files in deterministic relative-path order and uses
+the same inventory for workspace copying, watching, and cache hashing. It
+does not apply `.gitignore`, VCS, or other implicit ignore rules: omitting a
+file that can affect a renderer would make its result stale. An author who has
+large unrelated inputs therefore chooses a narrower bundle root.
+
 A request names its source instead of supplying a body:
 
 ```markdown
@@ -414,6 +421,12 @@ fragment that is safe for its declared placement and does not conflict with
 the surrounding page. A resource profile is the appropriate choice when a
 renderer cannot make that promise.
 
+The XML transformation uses an event-based parser and writer, never textual
+replacement. It preserves element structure, text, CDATA, comments, processing
+instructions, and namespace declarations while omitting only declaration and
+doctype events. This keeps declaration removal from changing unrelated XML
+content.
+
 The first implementation accepts one primary generated resource per request.
 Tools can produce several files in some modes, for example a multi-page Typst
 SVG export, a PlantUML input containing several diagrams, or a Pandoc
@@ -425,6 +438,30 @@ them with every other output claim, and builds base-path-aware URLs. The
 adapter cannot overwrite a page, copied asset, deployment file, license text,
 or another generated resource.
 
+Generated renderer resources publish below the root-level
+`heine-renderers/` namespace. Heine reserves that namespace for this result
+kind: pages, copied assets, deployment files, license texts, and configured
+generated resources cannot claim paths below it. It remains separate from
+`__heine/`, which the development server owns and never publishes as site
+output. A renderer resource uses its validated returned bytes to derive a
+base-path-aware path of this form:
+
+```text
+heine-renderers/sha256-<full-output-digest>.<declared-extension>
+```
+
+The full SHA-256 digest identifies the returned bytes, not the renderer cache
+key. A refreshed renderer that returns different bytes therefore receives a
+new public URL even when its declared input and cache key did not change.
+Requests with the same returned bytes and extension share one generated output
+file. Heine retains every originating request for that shared file.
+
+A full build stages only the current resolved renderer-resource inventory, then
+atomically replaces the managed output tree. When a refreshed renderer returns
+different bytes, the superseded digest file therefore disappears with the
+previous output tree; public renderer resources need no separate garbage
+collector.
+
 A generated renderer resource is not a copied asset. It has no adjacent
 licensing sidecar and is outside the current `[licensing].required` coverage
 contract, which applies to copied assets only. A future policy for generated
@@ -432,9 +469,10 @@ resource licensing needs a separate provenance design: relevant facts may come
 from the authored renderer source, the renderer, bundled fonts, or other tool
 inputs. Heine does not infer those facts.
 
-The host must retain the originating page, content file, directive span, and
-renderer-profile name for every derived resource. Any output collision
-therefore names both the generated request and the conflicting authored claim.
+The host retains the originating page, content file, directive span, and
+renderer-profile name for every derived resource. An attempted authored claim
+inside `heine-renderers/` therefore identifies its source, while diagnostics
+for a renderer failure can identify every affected request.
 
 ## External renderer bridges
 
@@ -599,6 +637,12 @@ content-addressed entries: they cannot affect a request unless its exact prior
 key recurs. Cache cleanup, if later justified, is separate from renderer
 correctness.
 
+Renderer cache entries live below the site root at
+`.heine/cache/renderers/v1/`. This is private, disposable Heine working state,
+not published output or authored content. The host writes entries atomically.
+Heine does not modify a site's `.gitignore`; documentation recommends ignoring
+the `.heine/` directory.
+
 Renderer inputs participate in full builds, development-server watching, and
 future dependency-aware incremental builds. Renderer execution is serialized
 with the synchronous build pipeline. A renderer failure is a build failure at
@@ -609,7 +653,9 @@ error. A failed build leaves the previous complete output available.
 Renderer-source, renderer-profile, and renderer-configuration changes require
 a full build to update relationships and remove superseded generated output.
 Quick builds may re-render an already-resolved request whose present source
-changes, but they must not claim completeness for those structural changes.
+changes, but they must not claim completeness for those structural changes. A
+quick build may also retain an unreferenced superseded renderer resource until
+the next full build, just as it retains other stale managed output.
 
 `--refresh-renderers` requires `--allow-external-renderers` when a selected
 profile is external. Normal cached builds remain suitable for local iteration.
@@ -692,10 +738,11 @@ An implementation must include focused and fixture-site coverage for:
 - checked named file and source-bundle discovery, path containment, symbolic
   links, overlapping declarations, and non-publication;
 - trusted embedded HTML, SVG, and MathML fragments; image and linked-resource
-  results; result-shape validation; XML declaration and doctype removal for
-  embedded XML; unchanged resource bytes; one-primary-resource enforcement;
-  output collisions; base paths; locale routes; integrity interactions; and
-  atomic publication;
+  results; result-shape validation; event-based XML declaration and doctype
+  removal that preserves CDATA and processing instructions for embedded XML;
+  unchanged resource bytes; one-primary-resource enforcement; output
+  collisions; base paths; locale routes; integrity interactions; and atomic
+  publication;
 - generated-resource licensing remaining outside copied-asset coverage;
 - stream and workspace bridge execution, argument boundaries, paths containing
   spaces and non-ASCII text, complete-placeholder substitution, output escape
