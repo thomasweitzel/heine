@@ -33,6 +33,8 @@ pub struct ServeOptions {
     port: u16,
     clean_output: bool,
     drafts: bool,
+    allow_external_renderers: bool,
+    refresh_renderers: bool,
 }
 
 impl Default for ServeOptions {
@@ -42,6 +44,8 @@ impl Default for ServeOptions {
             port: 1111,
             clean_output: false,
             drafts: false,
+            allow_external_renderers: false,
+            refresh_renderers: false,
         }
     }
 }
@@ -65,6 +69,8 @@ impl ServeOptions {
             port,
             clean_output: false,
             drafts: false,
+            allow_external_renderers: false,
+            refresh_renderers: false,
         })
     }
 
@@ -86,6 +92,16 @@ impl ServeOptions {
     /// Includes draft pages in this local development-server preview.
     pub fn with_drafts(mut self) -> Self {
         self.drafts = true;
+        self
+    }
+
+    pub fn allow_external_renderers(mut self) -> Self {
+        self.allow_external_renderers = true;
+        self
+    }
+
+    pub fn refresh_renderers(mut self) -> Self {
+        self.refresh_renderers = true;
         self
     }
 
@@ -184,6 +200,16 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
         BuildOptions::new(BuildMode::Full).preview_drafts()
     } else {
         BuildOptions::new(BuildMode::Full)
+    };
+    let rebuild = if options.allow_external_renderers {
+        rebuild.allow_external_renderers()
+    } else {
+        rebuild
+    };
+    let rebuild = if options.refresh_renderers {
+        rebuild.refresh_renderers()
+    } else {
+        rebuild
     };
     let build = if options.clean_output {
         rebuild.clean_output()

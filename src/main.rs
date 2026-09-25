@@ -107,6 +107,16 @@ fn main() -> miette::Result<()> {
         } else {
             options
         };
+        let options = if args.allow_external_renderers {
+            options.allow_external_renderers()
+        } else {
+            options
+        };
+        let options = if args.refresh_renderers {
+            options.refresh_renderers()
+        } else {
+            options
+        };
         return heine::serve_at(&root, options);
     }
     let mode = if cli.quick {
@@ -118,6 +128,16 @@ fn main() -> miette::Result<()> {
         heine::BuildOptions::new(mode).clean_output()
     } else {
         heine::BuildOptions::new(mode)
+    };
+    let options = if cli.allow_external_renderers {
+        options.allow_external_renderers()
+    } else {
+        options
+    };
+    let options = if cli.refresh_renderers {
+        options.refresh_renderers()
+    } else {
+        options
     };
     heine::build_at_with_options(&root, options)
 }

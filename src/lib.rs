@@ -55,6 +55,8 @@ pub struct BuildOptions {
     mode: BuildMode,
     clean_output: bool,
     publication: PublicationMode,
+    allow_external_renderers: bool,
+    refresh_renderers: bool,
 }
 
 impl BuildOptions {
@@ -63,6 +65,8 @@ impl BuildOptions {
             mode,
             clean_output: false,
             publication: PublicationMode::Published,
+            allow_external_renderers: false,
+            refresh_renderers: false,
         }
     }
 
@@ -76,6 +80,18 @@ impl BuildOptions {
     /// The command-line interface exposes this only as `heine serve --drafts`.
     pub fn preview_drafts(mut self) -> Self {
         self.publication = PublicationMode::PreviewDrafts;
+        self
+    }
+
+    /// Permits selected renderer requests to start their configured program.
+    pub fn allow_external_renderers(mut self) -> Self {
+        self.allow_external_renderers = true;
+        self
+    }
+
+    /// Bypasses reusable renderer results for this build.
+    pub fn refresh_renderers(mut self) -> Self {
+        self.refresh_renderers = true;
         self
     }
 }
