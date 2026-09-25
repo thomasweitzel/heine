@@ -127,14 +127,16 @@ The authored `page` remains the listing page for every pager. Use
 ## Navigation window
 
 `[pagination.navigation].window` defaults to `1` and accepts values from `1`
-through `5`. It preserves that many adjacent links beside the first page,
-current page, and last page. Overlapping ranges merge before gaps are added.
+through `3`. The first and last page always remain visible. The window preserves
+that many adjacent links on each side of the current page. Overlapping ranges
+merge before gaps are added.
 
 For pager 101 of 1,202:
 
 ```text
-window = 1:  1 2 … 100 101 102 … 1201 1202
-window = 2:  1 2 3 … 99 100 101 102 103 … 1200 1201 1202
+window = 1:  1 … 100 101 102 … 1202
+window = 2:  1 … 99 100 101 102 103 … 1202
+window = 3:  1 … 98 99 100 101 102 103 104 … 1202
 ```
 
 Listings with no omitted ranges show every pager once: two pagers always yield

@@ -109,7 +109,7 @@ pub(crate) struct Pager {
     pub(super) page_count: usize,
     pub(super) item_count: usize,
     pub(super) per_page: usize,
-    pub(super) navigation_window: usize,
+    pub(super) navigation_window: NavigationWindow,
     pub(super) paths: Arc<Vec<OutputPath>>,
 }
 
@@ -402,11 +402,33 @@ pub(super) struct Pagination {
     pub(super) collection: CollectionName,
     pub(super) per_page: usize,
     pub(super) segment: PaginationSegment,
-    pub(super) navigation_window: usize,
+    pub(super) navigation_window: NavigationWindow,
     /// The authored value responsible for generated pager routes. A default
     /// segment has no source range, so it falls back to the collection value
     /// that declares the pagination relationship.
     pub(super) route_span: SourceSpan,
+}
+
+/// A compact pager retains fixed first and last anchors plus a bounded number
+/// of neighbors around its current page. Keeping the bound here prevents
+/// generated-resource consumers from drifting into different navigation rules.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct NavigationWindow(usize);
+
+impl NavigationWindow {
+    pub(super) const DEFAULT: Self = Self(1);
+
+    pub(super) fn parse(value: usize) -> Result<Self, &'static str> {
+        if (1..=3).contains(&value) {
+            Ok(Self(value))
+        } else {
+            Err("pagination.navigation.window must be an integer from 1 through 3")
+        }
+    }
+
+    pub(super) fn neighbors(self) -> usize {
+        self.0
+    }
 }
 
 /// A generated pager route component that is simultaneously a canonical URL

@@ -27,9 +27,9 @@ use crate::{
         Error,
         metadata::{Requirement, key_span, parse_metadata},
         page::{
-            DirectoryView, LoadedPage, Metadata, OutputSuffix, Page, PageId, Pagination,
-            PaginationSegment, RawMetadata, RawPage, SeriesMembership, SiblingWeight, Task,
-            TaxonomyMembership, TaxonomyTermMembership, TranslationId,
+            DirectoryView, LoadedPage, Metadata, NavigationWindow, OutputSuffix, Page, PageId,
+            Pagination, PaginationSegment, RawMetadata, RawPage, SeriesMembership, SiblingWeight,
+            Task, TaxonomyMembership, TaxonomyTermMembership, TranslationId,
         },
     },
     source_path,
@@ -765,15 +765,8 @@ fn pagination_for(
     let segment = PaginationSegment::parse(raw.segment.into_inner())
         .map_err(|message| invalid(path, source, segment_span, message))?;
     let window_span: SourceSpan = raw.navigation.window.span().into();
-    let navigation_window = raw.navigation.window.into_inner();
-    if !(1..=5).contains(&navigation_window) {
-        return Err(invalid(
-            path,
-            source,
-            window_span,
-            "pagination.navigation.window must be an integer from 1 through 5",
-        ));
-    }
+    let navigation_window = NavigationWindow::parse(raw.navigation.window.into_inner())
+        .map_err(|message| invalid(path, source, window_span, message))?;
     Ok(Some(Pagination {
         collection,
         per_page,

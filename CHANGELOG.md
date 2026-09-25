@@ -110,6 +110,13 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Changed
 
+- **Compact pager windows.** `pagination.navigation.window` now retains only
+  the first and last page plus the configured number of adjacent pages on each
+  side of the current page. Values range from `1` through `3`, which keeps the
+  generated navigation compact and gives `window` one purpose.
+  **Migration:** change values `4` or `5` to `3` or less; update templates or
+  snapshots that expected neighboring links beside the first or last page.
+
 - **Search result fragments.** Search-document format `3` replaces each
   document's single `text` string with ordered `sections`, each carrying text
   and an existing table-of-contents fragment when one applies. This lets a

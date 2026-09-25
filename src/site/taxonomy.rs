@@ -21,7 +21,7 @@ use crate::{
 use super::{
     collation,
     collection::ResolvedCollection,
-    page::{Page, PageId, Pager, TaxonomyTermMembership},
+    page::{NavigationWindow, Page, PageId, Pager, TaxonomyTermMembership},
 };
 
 /// A resolved locale-local taxonomy. Its term members remain page IDs so page
@@ -742,7 +742,7 @@ fn term_tasks(
                 page_count,
                 item_count: term.members.len(),
                 per_page: taxonomy.per_page,
-                navigation_window: 1,
+                navigation_window: NavigationWindow::DEFAULT,
                 paths: paths.clone(),
             })),
             term_paths: resources.term_paths.clone(),

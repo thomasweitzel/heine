@@ -82,10 +82,8 @@
   }
 
   function navigationPages(current, total) {
-    const pages = new Set();
-    for (let page = 1; page <= Math.min(total, windowSize + 1); page += 1) pages.add(page);
+    const pages = new Set([1, total]);
     for (let page = Math.max(1, current - windowSize); page <= Math.min(total, current + windowSize); page += 1) pages.add(page);
-    for (let page = Math.max(1, total - windowSize); page <= total; page += 1) pages.add(page);
     return [...pages].sort((left, right) => left - right);
   }
 
