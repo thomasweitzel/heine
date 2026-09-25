@@ -99,7 +99,10 @@ fn analyze_inner(
     collect_search_sections: bool,
     validation: Option<Validation<'_>>,
 ) -> Result<MarkdownAnalysis, RenderError> {
-    renderer_request::parse(input)?;
+    let renderer_requests = renderer_request::parse(input)?;
+    if let Some(validation) = validation {
+        renderer_request::validate(&renderer_requests, validation.renderer.renderer_profiles())?;
+    }
     let mut text = CountedText::default();
     let mut sections = Vec::new();
     let mut section = SectionBuilder::default();

@@ -24,6 +24,7 @@ use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 use crate::{
     asset::AssetLinks,
     config::{MarkdownConfig, MarkdownExtension, MathMode},
+    renderer::Profiles as RendererProfiles,
     site::PageLinks,
 };
 
@@ -190,6 +191,7 @@ pub(crate) enum InitializationError {
 pub(crate) struct Renderer {
     config: MarkdownConfig,
     highlighter: Option<Arc<Highlighter>>,
+    renderer_profiles: RendererProfiles,
 }
 
 /// The one source-backed heading model shared by the template view and
@@ -316,7 +318,15 @@ fn fragment_base(text: &str) -> String {
 }
 
 impl Renderer {
+    #[cfg(test)]
     pub(crate) fn new(config: MarkdownConfig) -> Result<Self, Box<InitializationError>> {
+        Self::with_renderer_profiles(config, RendererProfiles::default())
+    }
+
+    pub(crate) fn with_renderer_profiles(
+        config: MarkdownConfig,
+        renderer_profiles: RendererProfiles,
+    ) -> Result<Self, Box<InitializationError>> {
         let highlighter = config.highlighting().map(|highlighting| {
             Highlighter::new(highlighting).map(Arc::new).map_err(|source| {
                 let Some(source_code) = highlighting.stylesheet_source().cloned() else {
@@ -336,11 +346,16 @@ impl Renderer {
         Ok(Self {
             config,
             highlighter,
+            renderer_profiles,
         })
     }
 
     pub(crate) fn config(&self) -> &MarkdownConfig {
         &self.config
+    }
+
+    pub(crate) fn renderer_profiles(&self) -> &RendererProfiles {
+        &self.renderer_profiles
     }
 
     pub(crate) fn stylesheet(&self) -> Option<String> {
@@ -548,7 +563,7 @@ fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceE
         ),
         RenderError::RendererRequest(error) => (
             "renderer request",
-            "invalid renderer request here".into(),
+            error.message.clone(),
             "use a renderer name and TOML scalar options in the documented render syntax"
                 .into(),
             error.span.clone(),

@@ -7,9 +7,21 @@ use serde::Deserialize;
 
 use crate::source_path;
 
-pub(crate) fn validate(
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Profiles {
+    profiles: BTreeMap<String, Profile>,
+}
+
+impl Profiles {
+    pub(crate) fn get(&self, name: &str) -> Option<&Profile> {
+        self.profiles.get(name)
+    }
+}
+
+pub(crate) fn parse(
     profiles: BTreeMap<toml::Spanned<String>, RawProfile>,
-) -> Result<(), ConfigError> {
+) -> Result<Profiles, ConfigError> {
+    let mut parsed = BTreeMap::new();
     for (raw_name, profile) in profiles {
         let span = raw_name.span().into();
         let name = raw_name.into_inner();
@@ -19,12 +31,12 @@ pub(crate) fn validate(
                 message: format!("renderer profile name {name:?} must be a simple identifier"),
             });
         }
-        validate_profile(&name, profile)?;
+        parsed.insert(name.clone(), validate_profile(&name, profile)?);
     }
-    Ok(())
+    Ok(Profiles { profiles: parsed })
 }
 
-fn validate_profile(name: &str, profile: RawProfile) -> Result<(), ConfigError> {
+fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigError> {
     let RawProfile {
         protocol,
         program,
@@ -63,7 +75,7 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<(), ConfigError> 
         });
     }
     validate_input_extension(name, protocol, &inputs, input_extension, inputs_span)?;
-    validate_result(
+    let result = validate_result(
         name,
         result,
         ResultOptions {
@@ -87,7 +99,94 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<(), ConfigError> 
             ),
         });
     }
-    Ok(())
+    Ok(Profile {
+        inputs,
+        result,
+        inline: inline.is_some(),
+        block: block.is_some(),
+    })
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Profile {
+    inputs: BTreeSet<Input>,
+    result: ResultCapabilities,
+    inline: bool,
+    block: bool,
+}
+
+impl Profile {
+    pub(crate) fn supports(&self, placement: Placement) -> bool {
+        match placement {
+            Placement::Inline => self.inline,
+            Placement::Block => self.block,
+        }
+    }
+
+    pub(crate) fn accepts_body(&self) -> bool {
+        self.inputs.contains(&Input::Body)
+    }
+
+    pub(crate) fn accepts_named_source(&self) -> bool {
+        self.inputs.contains(&Input::File) || self.inputs.contains(&Input::Bundle)
+    }
+
+    pub(crate) fn result(&self) -> &ResultCapabilities {
+        &self.result
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Placement {
+    Inline,
+    Block,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Output {
+    Embedded,
+    Resource,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ResultCapabilities {
+    Embedded,
+    Svg {
+        materializations: BTreeSet<Output>,
+        default_output: Output,
+    },
+    Image,
+    Link,
+}
+
+impl ResultCapabilities {
+    pub(crate) fn output(&self, requested: Option<Output>) -> Option<Output> {
+        match self {
+            Self::Embedded => match requested {
+                None | Some(Output::Embedded) => Some(Output::Embedded),
+                Some(Output::Resource) => None,
+            },
+            Self::Svg {
+                materializations,
+                default_output,
+            } => {
+                let output = requested.unwrap_or(*default_output);
+                materializations.contains(&output).then_some(output)
+            }
+            Self::Image | Self::Link => match requested {
+                None | Some(Output::Resource) => Some(Output::Resource),
+                Some(Output::Embedded) => None,
+            },
+        }
+    }
+
+    pub(crate) fn needs_alt(&self, output: Output) -> bool {
+        matches!(self, Self::Svg { .. } | Self::Image) && output == Output::Resource
+    }
+
+    pub(crate) fn needs_label(&self, output: Output) -> bool {
+        matches!(self, Self::Link) && output == Output::Resource
+    }
 }
 
 fn parse_inputs(
@@ -241,11 +340,15 @@ fn validate_result(
     name: &str,
     raw_result: toml::Spanned<ResultKind>,
     options: ResultOptions,
-) -> Result<(), ConfigError> {
+) -> Result<ResultCapabilities, ConfigError> {
     let result_span = raw_result.span().into();
     match raw_result.into_inner() {
-        ResultKind::Html => reject_result_options(name, &options, "html"),
-        ResultKind::Mathml => reject_result_options(name, &options, "mathml"),
+        ResultKind::Html => {
+            reject_result_options(name, &options, "html").map(|()| ResultCapabilities::Embedded)
+        }
+        ResultKind::Mathml => {
+            reject_result_options(name, &options, "mathml").map(|()| ResultCapabilities::Embedded)
+        }
         ResultKind::Svg => validate_svg_result(name, result_span, options),
         ResultKind::Image => validate_resource_result(name, result_span, options, true),
         ResultKind::Link => validate_resource_result(name, result_span, options, false),
@@ -270,7 +373,7 @@ fn validate_svg_result(
     name: &str,
     result_span: SourceSpan,
     options: ResultOptions,
-) -> Result<(), ConfigError> {
+) -> Result<ResultCapabilities, ConfigError> {
     let fixed_option_span = options
         .media_type
         .as_ref()
@@ -292,7 +395,7 @@ fn validate_svg_result(
     let mut materializations = BTreeSet::new();
     for value in raw.into_inner() {
         let span = value.span().into();
-        if !materializations.insert(value.into_inner()) {
+        if !materializations.insert(Output::from(value.into_inner())) {
             return Err(ConfigError {
                 span,
                 message: format!(
@@ -309,7 +412,7 @@ fn validate_svg_result(
     }
     let default = options
         .default_output
-        .map(|value| (value.span().into(), value.into_inner()));
+        .map(|value| (value.span().into(), Output::from(value.into_inner())));
     if materializations.len() == 2 && default.is_none() {
         return Err(ConfigError {
             span: materializations_span,
@@ -338,7 +441,10 @@ fn validate_svg_result(
             ),
         });
     }
-    Ok(())
+    Ok(ResultCapabilities::Svg {
+        default_output: default.map_or(Output::Embedded, |(_, output)| output),
+        materializations,
+    })
 }
 
 fn validate_resource_result(
@@ -346,7 +452,7 @@ fn validate_resource_result(
     result_span: SourceSpan,
     options: ResultOptions,
     image: bool,
-) -> Result<(), ConfigError> {
+) -> Result<ResultCapabilities, ConfigError> {
     let materialization_span = options
         .materializations
         .as_ref()
@@ -392,7 +498,12 @@ fn validate_resource_result(
     validate_extension(
         extension,
         &format!("resource renderer profile {name} extension"),
-    )
+    )?;
+    Ok(if image {
+        ResultCapabilities::Image
+    } else {
+        ResultCapabilities::Link
+    })
 }
 
 fn option_span(options: &ResultOptions) -> Option<SourceSpan> {
@@ -471,6 +582,15 @@ enum ResultKind {
 enum SvgMaterialization {
     Embedded,
     Resource,
+}
+
+impl From<SvgMaterialization> for Output {
+    fn from(value: SvgMaterialization) -> Self {
+        match value {
+            SvgMaterialization::Embedded => Self::Embedded,
+            SvgMaterialization::Resource => Self::Resource,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

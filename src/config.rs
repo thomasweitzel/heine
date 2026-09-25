@@ -50,6 +50,7 @@ pub(crate) struct SiteConfig {
     sitemap: Option<SitemapConfig>,
     feeds: FeedsConfig,
     search: SearchConfig,
+    renderers: renderer::Profiles,
     kit: Option<kit::Selection>,
 }
 
@@ -147,6 +148,10 @@ impl SiteConfig {
 
     pub(crate) fn search(&self) -> &SearchConfig {
         &self.search
+    }
+
+    pub(crate) fn renderers(&self) -> &renderer::Profiles {
+        &self.renderers
     }
 
     pub(crate) fn kit(&self) -> Option<&kit::Selection> {
@@ -1301,7 +1306,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             });
         }
         let reading_time = parse_reading_time(raw.reading_time, &locales)?;
-        renderer::validate(raw.renderers).map_err(|error| ConfigValueError {
+        let renderers = renderer::parse(raw.renderers).map_err(|error| ConfigValueError {
             span: error.span,
             message: error.message,
         })?;
@@ -1873,6 +1878,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             search: SearchConfig {
                 definitions: search,
             },
+            renderers,
             kit,
         })
     }

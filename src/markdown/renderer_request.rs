@@ -6,6 +6,8 @@
 
 use std::{collections::BTreeMap, ops::Range};
 
+use crate::renderer::{Output, Placement, Profiles};
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Request {
     pub(super) placement: Placement,
@@ -13,13 +15,13 @@ pub(super) struct Request {
     pub(super) header_span: Range<usize>,
     pub(super) body_span: Range<usize>,
     end: usize,
-    pub(super) options: BTreeMap<String, toml::Value>,
+    pub(super) options: BTreeMap<String, OptionValue>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Placement {
-    Inline,
-    Block,
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct OptionValue {
+    value: toml::Value,
+    span: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +68,192 @@ pub(super) fn parse(input: &str) -> Result<Vec<Request>, Error> {
         offset = next_line(input, line_end);
     }
     Ok(requests)
+}
+
+/// Resolves parsed source requests against the configured renderer profiles.
+/// Execution deliberately happens later, after every request has this stable
+/// source-level contract.
+pub(super) fn validate(requests: &[Request], profiles: &Profiles) -> Result<(), Error> {
+    for request in requests {
+        validate_request(request, profiles)?;
+    }
+    Ok(())
+}
+
+fn validate_request(request: &Request, profiles: &Profiles) -> Result<(), Error> {
+    let profile = profiles.get(&request.profile).ok_or_else(|| Error {
+        message: format!("renderer profile {:?} is not configured", request.profile),
+        span: request.header_span.clone(),
+    })?;
+    if !profile.supports(request.placement) {
+        return Err(Error {
+            message: format!(
+                "renderer profile {:?} does not support {} requests",
+                request.profile,
+                placement_name(request.placement),
+            ),
+            span: request.header_span.clone(),
+        });
+    }
+    validate_options(request)?;
+
+    let source = string_option(request, "source")?;
+    let body_is_empty = request.body_span.is_empty();
+    match source {
+        Some(_) if request.placement == Placement::Inline => {
+            return Err(option_error(
+                request,
+                "source",
+                "source is allowed only in a block renderer request",
+            ));
+        }
+        Some(_) if !body_is_empty => {
+            return Err(option_error(
+                request,
+                "source",
+                "a renderer request must use either source or a body, not both",
+            ));
+        }
+        Some(_) if !profile.accepts_named_source() => {
+            return Err(option_error(
+                request,
+                "source",
+                format!(
+                    "renderer profile {:?} does not accept named sources",
+                    request.profile
+                ),
+            ));
+        }
+        Some(_) => {}
+        None if !profile.accepts_body() => {
+            return Err(Error {
+                message: format!(
+                    "renderer profile {:?} does not accept a request body",
+                    request.profile
+                ),
+                span: request.body_span.clone(),
+            });
+        }
+        None => {}
+    }
+
+    let requested_output = output_option(request)?;
+    let output = profile.result().output(requested_output).ok_or_else(|| {
+        let span = request
+            .options
+            .get("output")
+            .map_or_else(|| request.header_span.clone(), |value| value.span.clone());
+        Error {
+            message: format!(
+                "renderer profile {:?} cannot produce the requested output form",
+                request.profile
+            ),
+            span,
+        }
+    })?;
+    validate_accessibility_options(request, output, profile.result())
+}
+
+fn validate_options(request: &Request) -> Result<(), Error> {
+    for (name, option) in &request.options {
+        if !matches!(name.as_str(), "source" | "output" | "alt" | "label") {
+            return Err(Error {
+                message: format!("renderer request option {name:?} is not supported"),
+                span: option.span.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn string_option<'a>(request: &'a Request, name: &str) -> Result<Option<&'a str>, Error> {
+    let Some(option) = request.options.get(name) else {
+        return Ok(None);
+    };
+    let Some(value) = option.value.as_str() else {
+        return Err(option_error(
+            request,
+            name,
+            format!("renderer request option {name:?} must be a string"),
+        ));
+    };
+    if (name == "source" || name == "label") && value.is_empty() {
+        return Err(option_error(
+            request,
+            name,
+            format!("renderer request option {name:?} must not be empty"),
+        ));
+    }
+    Ok(Some(value))
+}
+
+fn output_option(request: &Request) -> Result<Option<Output>, Error> {
+    let Some(value) = string_option(request, "output")? else {
+        return Ok(None);
+    };
+    match value {
+        "embedded" => Ok(Some(Output::Embedded)),
+        "resource" => Ok(Some(Output::Resource)),
+        _ => Err(option_error(
+            request,
+            "output",
+            "renderer request option \"output\" must be \"embedded\" or \"resource\"",
+        )),
+    }
+}
+
+fn validate_accessibility_options(
+    request: &Request,
+    output: Output,
+    result: &crate::renderer::ResultCapabilities,
+) -> Result<(), Error> {
+    let needs_alt = result.needs_alt(output);
+    let needs_label = result.needs_label(output);
+    if needs_alt && string_option(request, "alt")?.is_none() {
+        return Err(Error {
+            message: "an image renderer resource requires alt = \"...\"".into(),
+            span: request.header_span.clone(),
+        });
+    }
+    if needs_label && string_option(request, "label")?.is_none() {
+        return Err(Error {
+            message: "a linked renderer resource requires label = \"...\"".into(),
+            span: request.header_span.clone(),
+        });
+    }
+    if !needs_alt && request.options.contains_key("alt") {
+        return Err(option_error(
+            request,
+            "alt",
+            "alt is valid only for an image renderer resource",
+        ));
+    }
+    if !needs_label && request.options.contains_key("label") {
+        return Err(option_error(
+            request,
+            "label",
+            "label is valid only for a linked renderer resource",
+        ));
+    }
+    Ok(())
+}
+
+fn option_error(request: &Request, name: &str, message: impl Into<String>) -> Error {
+    let span = request
+        .options
+        .get(name)
+        .map_or_else(|| request.header_span.clone(), |value| value.span.clone());
+    Error {
+        message: message.into(),
+        span,
+    }
+}
+
+fn placement_name(placement: Placement) -> &'static str {
+    match placement {
+        Placement::Inline => "inline",
+        Placement::Block => "block",
+    }
 }
 
 fn next_line(input: &str, line_end: usize) -> usize {
@@ -251,7 +439,7 @@ fn escaped(line: &str, offset: usize) -> bool {
 fn parse_header(
     input: &str,
     offset: usize,
-) -> Result<(String, BTreeMap<String, toml::Value>), Error> {
+) -> Result<(String, BTreeMap<String, OptionValue>), Error> {
     let mut cursor = skip_spaces(input, 0);
     let profile_start = cursor;
     cursor = identifier_end(input, cursor);
@@ -305,7 +493,16 @@ fn parse_header(
                     value_text.len(),
                 )
             })?;
-        if options.insert(name.into(), value).is_some() {
+        if options
+            .insert(
+                name.into(),
+                OptionValue {
+                    value,
+                    span: offset + value_start..offset + cursor,
+                },
+            )
+            .is_some()
+        {
             return Err(header_error(
                 "renderer request must not repeat an option",
                 offset + name_start,
@@ -383,6 +580,29 @@ fn header_error(message: &str, start: usize, length: usize) -> Error {
 mod tests {
     use super::*;
 
+    fn profiles(source: &str) -> Profiles {
+        match crate::renderer::parse(toml::from_str(source).expect("profile TOML")) {
+            Ok(profiles) => profiles,
+            Err(error) => panic!("invalid renderer profiles: {}", error.message),
+        }
+    }
+
+    fn katex_profiles() -> Profiles {
+        profiles(
+            r#"
+[katex]
+protocol = "stream"
+program = "katex"
+timeout_seconds = 10
+cache_identity = "katex-0.16.27"
+inputs = ["body"]
+result = "html"
+[katex.inline]
+arguments = ["--format", "htmlAndMathml"]
+"#,
+        )
+    }
+
     #[test]
     fn parses_inline_and_block_requests_with_original_body_spans() {
         let source = ":render[katex]`x^2`\n\n:::render[plantuml output=\"resource\"]\nA -> B\n:::\n:render[katex alt=\"]\"]`y`\n";
@@ -393,7 +613,7 @@ mod tests {
         assert_eq!(&source[requests[0].body_span.clone()], "x^2");
         assert_eq!(requests[1].placement, Placement::Block);
         assert_eq!(&source[requests[1].body_span.clone()], "A -> B");
-        assert_eq!(requests[2].options["alt"].as_str(), Some("]"));
+        assert_eq!(requests[2].options["alt"].value.as_str(), Some("]"));
     }
 
     #[test]
@@ -418,5 +638,77 @@ mod tests {
 
         assert_eq!(requests.len(), 1);
         assert!(source[requests[0].body_span.clone()].is_empty());
+    }
+
+    #[test]
+    fn resolves_placement_and_output_against_the_selected_profile() {
+        let profiles = katex_profiles();
+        let request = parse(":render[katex]`x^2`").expect("valid request");
+
+        validate(&request, &profiles).expect("inline HTML request is supported");
+
+        let error = validate(
+            &parse(":::render[katex]\nx^2\n:::\n").expect("well-formed block request"),
+            &profiles,
+        )
+        .expect_err("KaTeX profile has no block variant");
+        assert!(error.message.contains("does not support block"));
+
+        let error = validate(
+            &parse(":render[katex output=\"resource\"]`x^2`").expect("well-formed request"),
+            &profiles,
+        )
+        .expect_err("HTML cannot become a resource");
+        assert!(error.message.contains("cannot produce"));
+    }
+
+    #[test]
+    fn requires_accessibility_text_for_renderer_resources() {
+        let profiles = profiles(
+            r#"
+[diagram]
+protocol = "stream"
+program = "diagram"
+timeout_seconds = 10
+cache_identity = "diagram-1"
+inputs = ["body"]
+result = "image"
+media_type = "image/svg+xml"
+extension = "svg"
+[diagram.block]
+arguments = []
+"#,
+        );
+        let error = validate(
+            &parse(":::render[diagram]\nA -> B\n:::\n").expect("well-formed request"),
+            &profiles,
+        )
+        .expect_err("image resources require alternative text");
+        assert_eq!(
+            error.message,
+            "an image renderer resource requires alt = \"...\""
+        );
+
+        let request = parse(":::render[diagram alt=\"diagram\"]\nA -> B\n:::\n")
+            .expect("well-formed request");
+        validate(&request, &profiles).expect("image alternative text is present");
+    }
+
+    #[test]
+    fn rejects_unknown_and_irrelevant_request_options() {
+        let profiles = katex_profiles();
+        let error = validate(
+            &parse(":render[missing]`x`").expect("well-formed request"),
+            &profiles,
+        )
+        .expect_err("profile is unknown");
+        assert!(error.message.contains("is not configured"));
+
+        let error = validate(
+            &parse(":render[katex alt=\"equation\"]`x`").expect("well-formed request"),
+            &profiles,
+        )
+        .expect_err("HTML output does not use alternative text");
+        assert!(error.message.contains("alt is valid only"));
     }
 }

@@ -120,8 +120,11 @@ pub(crate) fn build_at_with_publication(
         .map(asset::KitAssets::load)
         .transpose()
         .map_err(miette::Report::new)?;
-    let markdown = markdown::Renderer::new(config.markdown().clone())
-        .map_err(|error| miette::Report::new(*error))?;
+    let markdown = markdown::Renderer::with_renderer_profiles(
+        config.markdown().clone(),
+        config.renderers().clone(),
+    )
+    .map_err(|error| miette::Report::new(*error))?;
     let (data, locale_data) =
         data::SiteData::load_localized(paths.data(), config.i18n().locales(), &diagnostics)
             .map_err(miette::Report::new)?;

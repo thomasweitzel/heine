@@ -1,6 +1,60 @@
 use super::*;
 
 #[test]
+fn renderer_requests_resolve_profiles_before_markdown_renders() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[site]
+time_zone = "Europe/Berlin"
+
+[i18n]
+default_locale = "en"
+[i18n.locales.en]
+direction = "ltr"
+
+[renderers.katex]
+protocol = "stream"
+program = "katex"
+timeout_seconds = 10
+cache_identity = "katex-0.16.27"
+inputs = ["body"]
+result = "html"
+[renderers.katex.inline]
+arguments = ["--format", "htmlAndMathml"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", ":render[unknown]`x^2`\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown profile fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("renderer profile \"unknown\" is not configured"),
+        "{diagnostic}"
+    );
+    assert!(!diagnostic.contains(fixture.path().to_str().expect("UTF-8 fixture path")));
+
+    fixture.write(
+        "content/en/index.md",
+        ":render[katex output=\"resource\"]`x^2`\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid output fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("cannot produce the requested output form"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn source_aware_markdown_exposes_a_toc_and_matching_heading_ids() {
     let fixture = Fixture::new();
     fixture.write(
