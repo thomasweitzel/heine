@@ -446,6 +446,14 @@ workspace limits the inputs Heine provides, but is not a sandbox against a
 malicious executable. A future in-process renderer needs its own concrete
 design or should become a native Heine feature.
 
+A renderer profile is trusted in two distinct ways. Its program and any wrapper
+script have the process authority of the Heine invocation, which is broader
+than a template's authority. An embedded HTML, SVG, or MathML result has the
+same browser-output authority as trusted project templates: it can contribute
+arbitrary markup, including active content. Do not configure a renderer
+program, wrapper, or embedded-result profile that the site owner would not
+trust with those respective authorities.
+
 Heine must therefore require an explicit command-line opt-in before it starts
 an external bridge, conceptually `--allow-external-renderers`. A site
 configuration alone must never execute a command from an unfamiliar checkout.
@@ -508,6 +516,11 @@ Placeholders never expand inside another argument. A workspace variant uses
 This preserves paths containing spaces or non-ASCII text on Windows, Linux,
 and macOS without creating a command-templating language.
 
+This rule deliberately does not support dynamic joined arguments such as
+`--output={output_file}`. A renderer that requires that command shape needs a
+site-owned wrapper script. That wrapper remains an explicit external bridge
+and therefore runs only with external-renderer permission.
+
 An external bridge may invoke a user-authored executable shell script or
 batch-file wrapper when the user has granted external-renderer permission.
 Platform-specific wrappers are expected where a renderer itself is
@@ -555,8 +568,9 @@ The cache key for a renderer result includes:
 - renderer-profile name, `cache_identity`, and normalized configuration;
 - the selected placement variant and normalized directive options;
 - materialization;
-- inline body bytes; named-file bytes; or every checked relative path and file
-  byte sequence in a named source bundle.
+- the input form and its checked representation: inline body bytes; a named
+  file's content-relative path and bytes; or every checked relative path and
+  file byte sequence in a named source bundle.
 
 The explicit `cache_identity` represents the selected renderer version or
 other cache-relevant tool identity. Heine can make publication deterministic
@@ -571,6 +585,20 @@ metadata alone is not a reliable cache identity across filesystems, copies, or
 coarse timestamp resolutions. The implementation streams file bytes into the
 cache hash and does not retain bundle contents merely to compute that key.
 
+A cache entry stores the checked typed result and an integrity hash of its
+returned bytes. Heine verifies that hash before reusing an entry. A missing,
+partial, or corrupt entry is a cache miss, so the host runs the selected
+renderer after external-renderer permission has been granted. This integrity
+check detects cache corruption; it cannot establish that an external renderer
+would return different bytes for unchanged Heine-visible inputs.
+
+`--refresh-renderers` bypasses reusable entries for every selected request. It
+runs each selected renderer, validates its result, and writes the refreshed
+entry for that request's existing cache key. It does not need to delete older
+content-addressed entries: they cannot affect a request unless its exact prior
+key recurs. Cache cleanup, if later justified, is separate from renderer
+correctness.
+
 Renderer inputs participate in full builds, development-server watching, and
 future dependency-aware incremental builds. Renderer execution is serialized
 with the synchronous build pipeline. A renderer failure is a build failure at
@@ -583,11 +611,10 @@ a full build to update relationships and remove superseded generated output.
 Quick builds may re-render an already-resolved request whose present source
 changes, but they must not claim completeness for those structural changes.
 
-`--refresh-renderers` bypasses reusable renderer-cache entries and invokes
-every selected renderer again. It requires `--allow-external-renderers` when a
-selected profile is external. Normal cached builds remain suitable for local
-iteration. A refreshed full build verifies the actual configured tools and is
-the required release and kit-reference-site test path.
+`--refresh-renderers` requires `--allow-external-renderers` when a selected
+profile is external. Normal cached builds remain suitable for local iteration.
+A refreshed full build verifies the actual configured tools and is the required
+release and kit-reference-site test path.
 
 ## Rejected alternatives
 
