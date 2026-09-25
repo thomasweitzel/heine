@@ -364,6 +364,7 @@ pub(super) struct Page {
     /// generated-resource consumers such as search, not for template rendering.
     pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
     pub(super) renderer_sources: BTreeMap<String, crate::renderer::Source>,
+    pub(super) renderer_requests: BTreeMap<String, Vec<crate::markdown::ResolvedRequest>>,
     pub(super) markdown_facts: BTreeMap<String, crate::markdown::MarkdownFacts>,
     /// Search owns these transient sections while it constructs its generated
     /// documents. Pages outside every configured search index never allocate
@@ -526,6 +527,7 @@ impl Page {
         collect_search_sections: bool,
     ) -> Result<(), Box<crate::markdown::SourceError>> {
         let mut facts = BTreeMap::new();
+        let mut renderer_requests = BTreeMap::new();
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
         for (name, source) in &self.markdown_sources {
             let fragments = self
@@ -545,11 +547,13 @@ impl Page {
                 renderer_sources: &self.renderer_sources,
             })?;
             facts.insert(name.clone(), analysis.facts);
+            renderer_requests.insert(name.clone(), analysis.renderer_requests);
             if let Some(search_sections) = &mut search_sections {
                 search_sections.insert(name.clone(), analysis.search_sections);
             }
         }
         self.markdown_facts = facts;
+        self.renderer_requests = renderer_requests;
         self.markdown_search_sections = search_sections;
         Ok(())
     }

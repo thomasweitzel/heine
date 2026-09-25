@@ -41,6 +41,7 @@ pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 #[cfg(test)]
 pub(crate) use render::render;
 pub(crate) use render::{render_with_links, render_with_links_anchors};
+pub(crate) use renderer_request::ResolvedRequest;
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
 

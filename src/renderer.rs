@@ -2,7 +2,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use miette::SourceSpan;
@@ -55,13 +55,14 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigEr
         inline,
         block,
     } = profile;
-    validate_nonempty(program, &format!("renderer profile {name} program"))?;
-    validate_nonempty(
+    let program = validate_nonempty(program, &format!("renderer profile {name} program"))?;
+    let cache_identity = validate_nonempty(
         cache_identity,
         &format!("renderer profile {name} cache_identity"),
     )?;
     let timeout_span = timeout_seconds.span().into();
-    if timeout_seconds.into_inner() == 0 {
+    let timeout_seconds = timeout_seconds.into_inner();
+    if timeout_seconds == 0 {
         return Err(ConfigError {
             span: timeout_span,
             message: format!("renderer profile {name} timeout_seconds must be positive"),
@@ -77,7 +78,8 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigEr
             ),
         });
     }
-    validate_input_extension(name, protocol, &inputs, input_extension, inputs_span)?;
+    let input_extension =
+        validate_input_extension(name, protocol, &inputs, input_extension, inputs_span)?;
     let result = validate_result(
         name,
         result,
@@ -103,26 +105,40 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigEr
         });
     }
     Ok(Profile {
+        protocol,
+        program,
+        timeout_seconds,
+        cache_identity,
+        input_extension,
         inputs,
         result,
-        inline: inline.is_some(),
-        block: block.is_some(),
+        inline,
+        block,
     })
 }
 
+// Execution consumes these values after source resolution has established the
+// request inventory. Keeping them here prevents configuration from being
+// reparsed or reconstructed at the process boundary.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct Profile {
+    protocol: Protocol,
+    program: String,
+    timeout_seconds: u64,
+    cache_identity: String,
+    input_extension: Option<String>,
     inputs: BTreeSet<Input>,
     result: ResultCapabilities,
-    inline: bool,
-    block: bool,
+    inline: Option<Variant>,
+    block: Option<Variant>,
 }
 
 impl Profile {
     pub(crate) fn supports(&self, placement: Placement) -> bool {
         match placement {
-            Placement::Inline => self.inline,
-            Placement::Block => self.block,
+            Placement::Inline => self.inline.is_some(),
+            Placement::Block => self.block.is_some(),
         }
     }
 
@@ -142,6 +158,12 @@ impl Profile {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+struct Variant {
+    arguments: Vec<String>,
+}
+
 /// The checked form of a page-owned renderer input. Its filesystem inventory
 /// remains with the page loader; Markdown only needs this stable capability
 /// when it resolves a named request against its selected profile.
@@ -157,21 +179,35 @@ pub(crate) enum NamedInput {
 #[derive(Debug, Clone)]
 pub(crate) struct Source {
     input: NamedInput,
+    root: PathBuf,
+    entry: PathBuf,
     files: Vec<PathBuf>,
+    declaration_span: SourceSpan,
 }
 
 impl Source {
-    pub(crate) fn file(path: PathBuf) -> Self {
+    pub(crate) fn file(path: PathBuf, declaration_span: SourceSpan) -> Self {
         Self {
             input: NamedInput::File,
+            root: path.parent().map_or_else(PathBuf::new, Path::to_path_buf),
+            entry: path.clone(),
             files: vec![path],
+            declaration_span,
         }
     }
 
-    pub(crate) fn bundle(_root: PathBuf, _entry: PathBuf, files: Vec<PathBuf>) -> Self {
+    pub(crate) fn bundle(
+        root: PathBuf,
+        entry: PathBuf,
+        files: Vec<PathBuf>,
+        declaration_span: SourceSpan,
+    ) -> Self {
         Self {
             input: NamedInput::Bundle,
+            root,
+            entry,
             files,
+            declaration_span,
         }
     }
 
@@ -181,6 +217,18 @@ impl Source {
 
     pub(crate) fn files(&self) -> &[PathBuf] {
         &self.files
+    }
+
+    pub(crate) fn root(&self) -> &PathBuf {
+        &self.root
+    }
+
+    pub(crate) fn entry(&self) -> &PathBuf {
+        &self.entry
+    }
+
+    pub(crate) fn declaration_span(&self) -> SourceSpan {
+        self.declaration_span
     }
 }
 
@@ -267,10 +315,10 @@ fn validate_input_extension(
     inputs: &BTreeSet<Input>,
     value: Option<toml::Spanned<String>>,
     inputs_span: SourceSpan,
-) -> Result<(), ConfigError> {
+) -> Result<Option<String>, ConfigError> {
     match value {
         Some(value) if protocol == Protocol::Workspace && inputs.contains(&Input::Body) => {
-            validate_extension(value, &format!("renderer profile {name} input_extension"))
+            validate_extension(value, &format!("renderer profile {name} input_extension")).map(Some)
         }
         Some(value) => Err(ConfigError {
             span: value.span().into(),
@@ -286,7 +334,7 @@ fn validate_input_extension(
                 ),
             })
         }
-        None => Ok(()),
+        None => Ok(None),
     }
 }
 
@@ -296,12 +344,14 @@ fn validate_variant(
     protocol: Protocol,
     inputs: &BTreeSet<Input>,
     raw: RawVariant,
-) -> Result<(), ConfigError> {
+) -> Result<Variant, ConfigError> {
     let arguments_span = raw.arguments.span().into();
     let mut placeholders = BTreeMap::<&str, usize>::new();
+    let mut arguments = Vec::new();
     for argument in raw.arguments.into_inner() {
         let span = argument.span().into();
         let argument = argument.into_inner();
+        arguments.push(argument.clone());
         for placeholder in PLACEHOLDERS {
             if argument.contains(placeholder) && argument != placeholder {
                 return Err(ConfigError {
@@ -328,7 +378,7 @@ fn validate_variant(
                 ),
             });
         }
-        return Ok(());
+        return Ok(Variant { arguments });
     }
     if placeholders
         .get("{output_file}")
@@ -372,7 +422,7 @@ fn validate_variant(
             ),
         });
     }
-    Ok(())
+    Ok(Variant { arguments })
 }
 
 const PLACEHOLDERS: [&str; 4] = ["{input_file}", "{input_dir}", "{work_dir}", "{output_file}"];
@@ -574,7 +624,7 @@ fn option_span(options: &ResultOptions) -> Option<SourceSpan> {
         })
 }
 
-fn validate_nonempty(value: toml::Spanned<String>, field: &str) -> Result<(), ConfigError> {
+fn validate_nonempty(value: toml::Spanned<String>, field: &str) -> Result<String, ConfigError> {
     let span = value.span().into();
     let value = value.into_inner();
     if value.trim().is_empty() || value.contains('\0') {
@@ -583,15 +633,15 @@ fn validate_nonempty(value: toml::Spanned<String>, field: &str) -> Result<(), Co
             message: format!("{field} must not be empty"),
         })
     } else {
-        Ok(())
+        Ok(value)
     }
 }
 
-fn validate_extension(value: toml::Spanned<String>, field: &str) -> Result<(), ConfigError> {
+fn validate_extension(value: toml::Spanned<String>, field: &str) -> Result<String, ConfigError> {
     let span = value.span().into();
     let value = value.into_inner();
     if !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
-        Ok(())
+        Ok(value)
     } else {
         Err(ConfigError {
             span,

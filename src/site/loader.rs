@@ -323,6 +323,7 @@ pub(super) fn probe_page(
             &text,
         )?;
         for renderer_source in renderer_sources.values() {
+            debug_assert!(renderer_source.entry().starts_with(renderer_source.root()));
             content_inputs.extend(renderer_source.files().iter().cloned());
         }
     }
@@ -465,6 +466,7 @@ pub(super) fn load_page(
         &text,
     )?;
     for source in renderer_sources.values() {
+        debug_assert!(source.entry().starts_with(source.root()));
         for file in source.files() {
             latest = latest.max(content_modified(file).map_err(|error| {
                 invalid(
@@ -701,6 +703,7 @@ pub(super) fn load_page(
         markdown_content: markdown_names,
         markdown_sources,
         renderer_sources,
+        renderer_requests: BTreeMap::new(),
         markdown_facts: BTreeMap::new(),
         markdown_search_sections: None,
         toc,
@@ -1138,7 +1141,7 @@ fn renderer_sources_for(
                 let path = resolve_renderer_path(project_content_root, page_path, &reference)
                     .map_err(|message| invalid(diagnostic_path, source, span, message))?;
                 check_renderer_file(&path, diagnostic_path, source, span, &reference)?;
-                crate::renderer::Source::file(path)
+                crate::renderer::Source::file(path, span)
             }
             (None, Some(root), Some(entry)) => {
                 let root_span = root.span().into();
@@ -1201,7 +1204,7 @@ fn renderer_sources_for(
                         files.push(discovered.into_path());
                     }
                 }
-                crate::renderer::Source::bundle(root, entry_path, files)
+                crate::renderer::Source::bundle(root, entry_path, files, root_span)
             }
             _ => {
                 return Err(invalid(
@@ -1215,6 +1218,22 @@ fn renderer_sources_for(
             }
         };
         resolved.insert(name, renderer_source);
+    }
+    let mut owners = BTreeMap::new();
+    for (name, renderer_source) in &resolved {
+        for file in renderer_source.files() {
+            if let Some(first) = owners.insert(file, name) {
+                return Err(invalid(
+                    diagnostic_path,
+                    source,
+                    renderer_source.declaration_span(),
+                    format!(
+                        "renderer source {name:?} overlaps renderer source {first:?} at {}",
+                        file.display()
+                    ),
+                ));
+            }
+        }
     }
     Ok(resolved)
 }

@@ -35,6 +35,7 @@ pub(crate) struct MarkdownFacts {
 pub(crate) struct MarkdownAnalysis {
     pub(crate) facts: MarkdownFacts,
     pub(crate) search_sections: Vec<SearchTextSection>,
+    pub(crate) renderer_requests: Vec<renderer_request::ResolvedRequest>,
 }
 
 #[cfg(test)]
@@ -107,13 +108,16 @@ fn analyze_inner(
     validation: Option<Validation<'_>>,
 ) -> Result<MarkdownAnalysis, RenderError> {
     let renderer_requests = renderer_request::parse(input)?;
-    if let Some(validation) = validation {
-        renderer_request::validate(
-            &renderer_requests,
-            validation.renderer.renderer_profiles(),
-            validation.renderer_sources,
-        )?;
-    }
+    let resolved_renderer_requests = validation
+        .map(|validation| {
+            renderer_request::validate(
+                &renderer_requests,
+                validation.renderer.renderer_profiles(),
+                validation.renderer_sources,
+            )
+        })
+        .transpose()?
+        .unwrap_or_default();
     let mut text = CountedText::default();
     let mut sections = Vec::new();
     let mut section = SectionBuilder::default();
@@ -234,6 +238,7 @@ fn analyze_inner(
             reading_time,
         },
         search_sections: sections,
+        renderer_requests: resolved_renderer_requests,
     })
 }
 

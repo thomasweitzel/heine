@@ -117,6 +117,22 @@ arguments = []
         diagnostic.contains("does not accept the declared bundle source \"report\""),
         "{diagnostic}"
     );
+
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[render.first]\nfile = '../assets/architecture.txt'\n\n[render.second]\nfile = '../assets/architecture.txt'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("overlapping sources fail");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:8"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("renderer source \"second\"")
+            && diagnostic.contains("renderer source \"first\""),
+        "{diagnostic}"
+    );
 }
 
 #[test]

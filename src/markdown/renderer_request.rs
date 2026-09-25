@@ -18,6 +18,30 @@ pub(super) struct Request {
     pub(super) options: BTreeMap<String, OptionValue>,
 }
 
+/// A renderer request after its selected profile, input form, output mode,
+/// and authored accessibility text have been checked. Rendering owns this
+/// model rather than reparsing the directive when it eventually replaces it.
+// The execution stage consumes this complete source-level fact. It is retained
+// before that stage exists so request resolution has one stable owner.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedRequest {
+    pub(crate) placement: Placement,
+    pub(crate) profile: String,
+    pub(crate) body_span: Range<usize>,
+    pub(crate) output: Output,
+    pub(crate) input: ResolvedInput,
+    pub(crate) alt: Option<String>,
+    pub(crate) label: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) enum ResolvedInput {
+    Body,
+    Source(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct OptionValue {
     value: toml::Value,
@@ -77,11 +101,34 @@ pub(super) fn validate(
     requests: &[Request],
     profiles: &Profiles,
     sources: &BTreeMap<String, Source>,
-) -> Result<(), Error> {
+) -> Result<Vec<ResolvedRequest>, Error> {
     for request in requests {
         validate_request(request, profiles, sources)?;
     }
-    Ok(())
+    requests
+        .iter()
+        .map(|request| resolved_request(request, profiles))
+        .collect()
+}
+
+fn resolved_request(request: &Request, profiles: &Profiles) -> Result<ResolvedRequest, Error> {
+    let profile = profiles
+        .get(&request.profile)
+        .expect("request validation resolves the selected renderer profile");
+    let source = string_option(request, "source")?.map(str::to_owned);
+    let output = profile
+        .result()
+        .output(output_option(request)?)
+        .expect("request validation resolves a supported output form");
+    Ok(ResolvedRequest {
+        placement: request.placement,
+        profile: request.profile.clone(),
+        body_span: request.body_span.clone(),
+        output,
+        input: source.map_or(ResolvedInput::Body, ResolvedInput::Source),
+        alt: string_option(request, "alt")?.map(str::to_owned),
+        label: string_option(request, "label")?.map(str::to_owned),
+    })
 }
 
 fn validate_request(
