@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     RenderError, Renderer, SearchTextSection, TransformLinks, UnresolvedFootnoteReferenceScanner,
-    options, picture, scan_unresolved_footnote_event,
+    options, picture, renderer_request, scan_unresolved_footnote_event,
     search_text::{append_boundary, append_text, raw_html_text},
     validate_event,
 };
@@ -99,6 +99,7 @@ fn analyze_inner(
     collect_search_sections: bool,
     validation: Option<Validation<'_>>,
 ) -> Result<MarkdownAnalysis, RenderError> {
+    renderer_request::parse(input)?;
     let mut text = CountedText::default();
     let mut sections = Vec::new();
     let mut section = SectionBuilder::default();

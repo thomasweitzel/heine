@@ -32,6 +32,7 @@ mod highlighting;
 pub(crate) mod margin_footnotes;
 mod picture;
 mod render;
+mod renderer_request;
 mod search_text;
 pub(crate) use analysis::MarkdownFacts;
 use highlighting::Highlighter;
@@ -395,6 +396,8 @@ pub(super) enum RenderError {
     MarginFootnote { message: String, span: Range<usize> },
     #[error("{0}")]
     Picture(#[from] picture::Error),
+    #[error("{0}")]
+    RendererRequest(#[from] renderer_request::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -542,6 +545,13 @@ fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceE
             error.label().into(),
             error.help().into(),
             error.span(),
+        ),
+        RenderError::RendererRequest(error) => (
+            "renderer request",
+            "invalid renderer request here".into(),
+            "use a renderer name and TOML scalar options in the documented render syntax"
+                .into(),
+            error.span.clone(),
         ),
     };
     SourceError {
