@@ -4,11 +4,11 @@
 
 This is the accepted design for Heine's first extension boundary,
 Markdown-aware renderer adapters and configured external renderer profiles.
-The stream-protocol embedded-result slice is implemented. Workspace renderers,
-generated resources, watcher integration, and cache cleanup remain future
-work. Other extension kinds remain undecided until a separate concrete use
-case requires them. Package discovery, installation, and distribution are
-likewise undecided.
+The stream-protocol and workspace-backed embedded-result slices are
+implemented. Generated resources, workspace-result caching, watcher
+integration, and cache cleanup remain future work. Other extension kinds
+remain undecided until a separate concrete use case requires them. Package
+discovery, installation, and distribution are likewise undecided.
 
 ## Decision
 

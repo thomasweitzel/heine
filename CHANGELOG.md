@@ -33,6 +33,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Workspace renderer inputs.** Embedded renderer requests can now run a
+  configured workspace profile with a checked body, declared file, or declared
+  bundle staged into an isolated temporary layout. Heine expands only complete
+  workspace placeholders, accepts one checked primary output file, and removes
+  the workspace after execution.
+
 - **Stream renderer adapters.** Root-owned renderer profiles can now turn
   explicit Markdown requests into checked embedded HTML, SVG, or MathML by
   running a configured stream program only with

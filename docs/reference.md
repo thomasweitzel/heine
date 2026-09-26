@@ -87,11 +87,12 @@ fields use the following defaults.
 | `markdown.highlighting.missing_language`          | string               | `"error"`                             | `"error"`, `"plain"`                                                                                                                                                  | Unknown fenced-language policy                                                                    |
 | `markdown.highlighting.theme.light`               | string               | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                                  | Light syntax palette                                                                              |
 | `markdown.highlighting.theme.dark`                | string               | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                                  | Dark syntax palette                                                                               |
-| `renderers.<name>.protocol`                       | string               | required                              | `"stream"` for the implemented slice; `<name>` is a simple identifier                                                                                              | Selects the external-renderer protocol                                                          |
+| `renderers.<name>.protocol`                       | string               | required                              | `"stream"` or `"workspace"`; `<name>` is a simple identifier                                                                                                       | Selects the external-renderer protocol                                                          |
 | `renderers.<name>.program`                        | string               | required                              | Non-empty program path or operating-system-resolved program name                                                                                                      | Program started only for a permitted selected request                                            |
 | `renderers.<name>.timeout_seconds`                | integer              | required                              | Positive                                                                                                                                                               | Direct-child timeout                                                                             |
 | `renderers.<name>.cache_identity`                 | string               | required                              | Non-empty stable site-owner version or environment identity                                                                                                           | Deliberate renderer-cache invalidation input                                                    |
-| `renderers.<name>.inputs`                         | array of strings     | required                              | Non-empty unique subset of `"body"` and `"file"` for a stream profile                                                                                             | Permitted request input forms                                                                    |
+| `renderers.<name>.inputs`                         | array of strings     | required                              | Stream: unique subset of `"body"`, `"file"`; workspace: those plus `"bundle"`                                                                                    | Permitted request input forms                                                                    |
+| `renderers.<name>.input_extension`                | string               | workspace body required               | Unprefixed ASCII alphanumeric extension; otherwise absent                                                                                                             | Filename extension for a staged body input                                                       |
 | `renderers.<name>.result`                         | string               | required                              | `"html"`, `"mathml"`, or `"svg"`; SVG also needs `materializations = ["embedded"]`                                                                             | Checked embedded result shape                                                                    |
 | `renderers.<name>.inline.arguments`               | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                            | Enables inline requests                                                                          |
 | `renderers.<name>.block.arguments`                | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                            | Enables block requests                                                                           |
@@ -414,8 +415,17 @@ non-empty input subset of `"body"` and `"file"`, result `"html"`, `"mathml"`,
 or embedded `"svg"`, and an `inline` or `block` fixed-argument variant.
 HTML must be UTF-8. MathML and SVG must be well-formed XML with `math` and
 `svg` document elements respectively; Heine strips XML declarations and
-doctypes before embedding. Image, link, resource-output, workspace, and
-bundle workflows are not available yet.
+doctypes before embedding.
+
+A workspace profile may render the same embedded result shapes from a body,
+declared file, or declared bundle. Heine creates one temporary `input/`,
+`output/`, and `work/` layout per request, stages only the checked input,
+runs the program in `work/`, and accepts only its host-selected regular file
+at `{output_file}`. It expands `{input_file}`, `{input_dir}`, `{output_file}`
+and `{work_dir}` only when an argument is exactly that placeholder. Extra
+output files, missing or empty primary output, failed processes, and timeouts
+fail at the request. The temporary workspace is removed after execution.
+Image, link, and resource-output workflows are not available yet.
 
 ```toml
 [renderers.katex]

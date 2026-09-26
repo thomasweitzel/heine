@@ -204,6 +204,107 @@ arguments = ["-c", "sleep 3"]
     assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
 }
 
+#[cfg(unix)]
+#[test]
+fn workspace_renderer_stages_body_files_and_bundles_in_an_isolated_layout() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.workspace]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "workspace-copy-1"
+inputs = ["body", "file", "bundle"]
+input_extension = "txt"
+result = "html"
+[renderers.workspace.block]
+arguments = ["-c", "cat \"$1\" > \"$2\"", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[render.file]\nfile = '../assets/file.html'\n\n[render.bundle]\nroot = 'bundle'\nentry = 'main.html'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[workspace]\n<p>body</p>\n:::\n\n:::render[workspace source=\"file\"]\n:::\n\n:::render[workspace source=\"bundle\"]\n:::\n",
+    );
+    fixture.write("content/assets/file.html", "<p>file</p>\n");
+    fixture.write("content/en/bundle/main.html", "<p>bundle</p>\n");
+    fixture.write("content/en/bundle/imported.txt", "kept with bundle\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("workspace inputs render");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    for fragment in ["<p>body</p>", "<p>file</p>", "<p>bundle</p>"] {
+        assert!(output.contains(fragment), "{output}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn workspace_renderer_rejects_extra_output_files_and_times_out() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.workspace]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 1
+cache_identity = "workspace-check-1"
+inputs = ["body"]
+input_extension = "txt"
+result = "html"
+[renderers.workspace.block]
+arguments = ["-c", "cp \"$1\" \"$2\"; touch \"$(dirname \"$2\")/extra\"", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[workspace]\n<p>body</p>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("workspace extra output fails");
+    assert!(format!("{error:?}").contains("besides the primary output"));
+
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.workspace]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 1
+cache_identity = "workspace-timeout-1"
+inputs = ["body"]
+input_extension = "txt"
+result = "html"
+[renderers.workspace.block]
+arguments = ["-c", "sleep 3", "workspace", "{output_file}"]
+"#,
+    );
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("workspace timeout fails");
+    assert!(format!("{error:?}").contains("exceeded its 1-second timeout"));
+}
+
 #[test]
 fn renderer_requests_resolve_declared_files_without_publishing_them() {
     let fixture = Fixture::new();

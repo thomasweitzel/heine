@@ -14,6 +14,8 @@ use miette::SourceSpan;
 use quick_xml::{Reader, Writer, events::Event};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use tempfile::TempDir;
+use walkdir::WalkDir;
 
 use crate::source_path;
 
@@ -162,6 +164,193 @@ impl Profile {
     pub(crate) fn result(&self) -> &ResultCapabilities {
         &self.result
     }
+
+    pub(crate) fn uses_workspace(&self) -> bool {
+        self.protocol == Protocol::Workspace
+    }
+
+    fn workspace_variant(&self, placement: Placement) -> Result<&Variant, String> {
+        if self.protocol != Protocol::Workspace {
+            return Err("selected profile does not use the workspace protocol".into());
+        }
+        match placement {
+            Placement::Inline => self.inline.as_ref(),
+            Placement::Block => self.block.as_ref(),
+        }
+        .ok_or_else(|| "selected profile does not support this placement".to_owned())
+    }
+}
+
+/// A checked input staged into one renderer-owned workspace.
+pub(crate) enum WorkspaceInput<'a> {
+    Body(&'a [u8]),
+    Source(&'a Source),
+}
+
+/// Runs one workspace profile in an isolated temporary directory and returns
+/// only its declared primary result. The workspace itself is never visible to
+/// the renderer as a project path.
+pub(crate) fn run_workspace(
+    profile: &Profile,
+    placement: Placement,
+    input: WorkspaceInput<'_>,
+) -> Result<Vec<u8>, String> {
+    let variant = profile.workspace_variant(placement)?;
+    let workspace = tempfile::Builder::new()
+        .prefix("heine-renderer-")
+        .tempdir()
+        .map_err(|error| format!("could not create renderer workspace: {error}"))?;
+    let layout = WorkspaceLayout::create(&workspace, profile, input)?;
+    let arguments = expand_workspace_arguments(&variant.arguments, &layout);
+    execute_workspace_process(profile, &arguments, &layout)?;
+    validate_workspace_output(&layout)
+}
+
+struct WorkspaceLayout {
+    input_dir: PathBuf,
+    input_file: PathBuf,
+    output_dir: PathBuf,
+    output_file: PathBuf,
+    work_dir: PathBuf,
+}
+
+impl WorkspaceLayout {
+    fn create(
+        root: &TempDir,
+        profile: &Profile,
+        input: WorkspaceInput<'_>,
+    ) -> Result<Self, String> {
+        let input_dir = root.path().join("input");
+        let output_dir = root.path().join("output");
+        let work_dir = root.path().join("work");
+        for path in [&input_dir, &output_dir, &work_dir] {
+            fs::create_dir(path)
+                .map_err(|error| format!("could not create renderer workspace: {error}"))?;
+        }
+        let input_file = match input {
+            WorkspaceInput::Body(bytes) => {
+                let extension = profile.input_extension.as_deref().ok_or_else(|| {
+                    "workspace profile does not declare an input extension".to_owned()
+                })?;
+                let path = input_dir.join(format!("input.{extension}"));
+                fs::write(&path, bytes)
+                    .map_err(|error| format!("could not stage renderer body input: {error}"))?;
+                path
+            }
+            WorkspaceInput::Source(source) => {
+                for file in source.files() {
+                    let relative = file.strip_prefix(source.root()).map_err(|_| {
+                        "renderer source is outside its checked input root".to_owned()
+                    })?;
+                    let destination = input_dir.join(relative);
+                    let parent = destination.parent().expect("staged file has a parent");
+                    fs::create_dir_all(parent)
+                        .map_err(|error| format!("could not stage renderer source: {error}"))?;
+                    fs::copy(file, &destination)
+                        .map_err(|error| format!("could not stage renderer source: {error}"))?;
+                }
+                input_dir.join(source.entry().strip_prefix(source.root()).map_err(|_| {
+                    "renderer source entry is outside its checked input root".to_owned()
+                })?)
+            }
+        };
+        let output_file = output_dir.join("result");
+        Ok(Self {
+            input_dir,
+            input_file,
+            output_dir,
+            output_file,
+            work_dir,
+        })
+    }
+}
+
+fn expand_workspace_arguments(arguments: &[String], layout: &WorkspaceLayout) -> Vec<PathBuf> {
+    arguments
+        .iter()
+        .map(|argument| match argument.as_str() {
+            "{input_file}" => layout.input_file.clone(),
+            "{input_dir}" => layout.input_dir.clone(),
+            "{output_file}" => layout.output_file.clone(),
+            "{work_dir}" => layout.work_dir.clone(),
+            _ => PathBuf::from(argument),
+        })
+        .collect()
+}
+
+fn execute_workspace_process(
+    profile: &Profile,
+    arguments: &[PathBuf],
+    layout: &WorkspaceLayout,
+) -> Result<(), String> {
+    let mut child = Command::new(&profile.program)
+        .args(arguments)
+        .current_dir(&layout.work_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("could not start renderer: {error}"))?;
+    let mut stderr = child.stderr.take().expect("piped renderer stderr");
+    let stderr_reader = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stderr.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let deadline = Instant::now() + Duration::from_secs(profile.timeout_seconds);
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("could not wait for renderer: {error}"))?
+        {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "renderer exceeded its {}-second timeout",
+                profile.timeout_seconds
+            ));
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| "renderer stderr reader panicked".to_owned())
+        .and_then(|result| {
+            result.map_err(|error| format!("could not read renderer diagnostics: {error}"))
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "renderer exited with {}; {}",
+            status,
+            String::from_utf8_lossy(&stderr[..stderr.len().min(8192)])
+        ))
+    }
+}
+
+fn validate_workspace_output(layout: &WorkspaceLayout) -> Result<Vec<u8>, String> {
+    let metadata = fs::symlink_metadata(&layout.output_file)
+        .map_err(|_| "renderer did not produce its declared primary output file".to_owned())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("renderer primary output must be a regular file".into());
+    }
+    for entry in WalkDir::new(&layout.output_dir).min_depth(1) {
+        let entry = entry.map_err(|error| format!("could not inspect renderer output: {error}"))?;
+        if entry.path() != layout.output_file {
+            return Err(
+                "renderer output directory contains files besides the primary output".into(),
+            );
+        }
+    }
+    let bytes = fs::read(&layout.output_file)
+        .map_err(|error| format!("could not read renderer output: {error}"))?;
+    if bytes.is_empty() {
+        return Err("renderer returned empty output".into());
+    }
+    Ok(bytes)
 }
 
 pub(crate) fn run_stream(

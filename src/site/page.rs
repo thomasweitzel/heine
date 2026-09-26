@@ -573,46 +573,62 @@ impl Page {
                     .renderer_profiles()
                     .get(&request.profile)
                     .expect("resolved renderer profile");
-                let input = match &request.input {
-                    crate::markdown::ResolvedInput::Body => {
-                        source.source[request.body_span.clone()].as_bytes().to_vec()
-                    }
-                    crate::markdown::ResolvedInput::Source(name) => {
-                        let declared = &self.renderer_sources[name];
-                        if declared.input() != crate::renderer::NamedInput::File {
-                            return Err(Box::new(crate::markdown::source_error(
-                                &source.display_path,
-                                &source.source,
-                                crate::markdown::RenderError::RendererProcess {
-                                    message: "stream renderers cannot consume source bundles"
-                                        .into(),
-                                    span: request.span.clone(),
-                                },
-                            )));
+                let replacement = (if profile.uses_workspace() {
+                    let input = match &request.input {
+                        crate::markdown::ResolvedInput::Body => {
+                            crate::renderer::WorkspaceInput::Body(
+                                source.source[request.body_span.clone()].as_bytes(),
+                            )
                         }
-                        fs::read(declared.entry()).map_err(|error| {
-                            Box::new(crate::markdown::source_error(
-                                &source.display_path,
-                                &source.source,
-                                crate::markdown::RenderError::RendererProcess {
-                                    message: format!(
-                                        "could not read renderer source {name:?}: {error}"
-                                    ),
-                                    span: request.span.clone(),
-                                },
-                            ))
-                        })?
-                    }
-                };
-                let replacement = crate::renderer::run_stream(
-                    renderer.renderer_cache_root(),
-                    renderer.refresh_renderers(),
-                    &request.profile,
-                    profile,
-                    request.placement,
-                    request.output,
-                    &input,
-                )
+                        crate::markdown::ResolvedInput::Source(name) => {
+                            crate::renderer::WorkspaceInput::Source(&self.renderer_sources[name])
+                        }
+                    };
+                    crate::renderer::run_workspace(profile, request.placement, input).and_then(
+                        |bytes| crate::renderer::validate_embedded(profile.result(), bytes),
+                    )
+                } else {
+                    let input = match &request.input {
+                        crate::markdown::ResolvedInput::Body => {
+                            source.source[request.body_span.clone()].as_bytes().to_vec()
+                        }
+                        crate::markdown::ResolvedInput::Source(name) => {
+                            let declared = &self.renderer_sources[name];
+                            if declared.input() != crate::renderer::NamedInput::File {
+                                return Err(Box::new(crate::markdown::source_error(
+                                    &source.display_path,
+                                    &source.source,
+                                    crate::markdown::RenderError::RendererProcess {
+                                        message: "stream renderers cannot consume source bundles"
+                                            .into(),
+                                        span: request.span.clone(),
+                                    },
+                                )));
+                            }
+                            fs::read(declared.entry()).map_err(|error| {
+                                Box::new(crate::markdown::source_error(
+                                    &source.display_path,
+                                    &source.source,
+                                    crate::markdown::RenderError::RendererProcess {
+                                        message: format!(
+                                            "could not read renderer source {name:?}: {error}"
+                                        ),
+                                        span: request.span.clone(),
+                                    },
+                                ))
+                            })?
+                        }
+                    };
+                    crate::renderer::run_stream(
+                        renderer.renderer_cache_root(),
+                        renderer.refresh_renderers(),
+                        &request.profile,
+                        profile,
+                        request.placement,
+                        request.output,
+                        &input,
+                    )
+                })
                 .map_err(|message| {
                     Box::new(crate::markdown::source_error(
                         &source.display_path,
