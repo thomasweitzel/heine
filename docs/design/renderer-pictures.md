@@ -30,9 +30,9 @@ unrelated constructs.
 
 Add a renderer result shape named `picture`. It represents exactly one
 meaningful image in two visual forms: `light` and `dark`. A selected request
-has one checked input, one required `alt`, and optionally one caption and one
-pair of presentation dimensions. It produces two checked generated image
-resources and one native `picture` replacement.
+has one checked input, one required `alt`, and optionally one caption, one
+pair of presentation dimensions, and one list of CSS classes. It produces two
+checked generated image resources and one native `picture` replacement.
 
 `picture` is limited to image media types. It is not a generic appearance
 variant mechanism for every renderer result.
@@ -95,22 +95,56 @@ placeholder rules for each appearance variant.
 The request keeps the existing image-resource fields:
 
 ```markdown
-:::render[typst-diagram alt="Architecture diagram" caption="Request path"]
+:::render[typst-diagram alt="Architecture diagram" caption="Request path" class="diagram align-center"]
 #import "diagram.typ": diagram
 #diagram(scheme: sys.inputs.at("scheme"))
 :::
 ```
 
 `alt` remains required. `caption`, `width`, and `height` retain the existing
-picture meanings and validation rules. Markdown does not name the light or
-dark resource. Those are profile-owned fixed representations of the one
-request.
+picture meanings and validation rules. `class` follows the shared contract
+below. Markdown does not name the light or dark resource. Those are
+profile-owned fixed representations of the one request.
+
+`class` is one non-empty TOML string containing one or more HTML class tokens.
+Heine splits tokens at ASCII whitespace, normalizes every separator to one
+space, preserves authored token order, and rejects a repeated token after that
+normalization. It follows the HTML class-attribute model, not CSS selector
+grammar: a token may require CSS escaping when a site selects it, and authors
+remain responsible for choosing selector-friendly names. Heine HTML-escapes
+every accepted token. The field provides a site-owned presentation hook, not an
+arbitrary HTML-attribute mechanism. The same field is added to copied-asset
+`:::picture` blocks, so a site can use one CSS rule for copied and generated
+picture results:
+
+```markdown
+:::picture
+alt = "Architecture diagram"
+light = "asset:images/architecture-light.svg"
+dark = "asset:images/architecture-dark.svg"
+class = "diagram align-center"
+:::
+```
+
+The class list applies to every host-owned structural element that represents
+the picture result: `picture` always, and `figure` as well when the request has
+a caption. This gives CSS stable hooks for image selection and the complete
+captioned unit. Authors should select `picture.<class>` or `figure.<class>`
+when a rule belongs to only one of those roles; a broad `.<class>` selector
+matches both elements for a captioned result. This duplication is deliberate:
+it lets a `picture.<class>` selector work whether the picture stands alone or
+is nested in a captioned figure. It also means a class intended for only one
+role needs an element-qualified selector.
+
+A caption emits a block-level `figure`, so `caption` is valid only for a block
+renderer-picture request. Heine rejects a caption on an inline request at that
+option. An inline picture request may still use `alt`, `class`, and dimensions.
 
 The host emits this structure, with its checked digest URLs substituted:
 
 ```html
-<figure>
-  <picture>
+<figure class="diagram align-center">
+  <picture class="diagram align-center">
     <source media="(prefers-color-scheme: dark)" srcset="/heine-renderers/sha256-<dark>.svg">
     <img src="/heine-renderers/sha256-<light>.svg" alt="Architecture diagram">
   </picture>
@@ -213,6 +247,14 @@ rather than become a generated picture pair. Prefer that self-theming SVG form
 when the renderer can deliberately produce it. Use a generated picture pair
 when the renderer produces fixed-colour SVG or raster output.
 
+### Arbitrary Markdown attributes and embedded-renderer classes
+
+`class` is limited to copied and generated picture results because Heine owns
+their structural HTML. It does not introduce a general Markdown attributes
+dialect, arbitrary `style` declarations, or arbitrary HTML attributes. An
+embedded HTML or MathML renderer owns its returned fragment, so Heine does not
+inject a class into it or guess which nested element should receive one.
+
 ### Linked and arbitrary resources
 
 A PDF, archive, audio file, video file, or other download does not normally
@@ -288,7 +330,9 @@ Implementation must include:
 - stream and workspace fixture coverage for successful and failing pairs;
 - cache, refresh, output-collision, quick-build, and watcher coverage;
 - generated HTML checks for `picture`, `source`, fallback `img`, figure,
-  caption, accessibility text, dimensions, and base paths;
+  caption, accessibility text, dimensions, base paths, and class placement
+  with and without a caption; class-token normalization, duplicate rejection,
+  and HTML escaping; and inline-caption diagnostics;
 - dimension coverage for matching known variants, incompatible variant ratios,
   authored dimensions that disagree with a known shared ratio, derivation from
   a known light variant when the dark size is unknown, and explicit dimensions
