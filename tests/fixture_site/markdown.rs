@@ -377,6 +377,103 @@ arguments = ["-c", "sleep 3", "workspace", "{output_file}"]
 
 #[cfg(unix)]
 #[test]
+fn workspace_renderer_diagnostics_preserve_the_staged_body_location() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.workspace]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "workspace-diagnostic-1"
+inputs = ["body"]
+input_extension = "txt"
+result = "html"
+[renderers.workspace.block]
+arguments = ["-c", "printf 'renderer error\\n  --> ../input/input.txt:2:3\\n' >&2; exit 1", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[workspace]\nfirst\nsecond\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("workspace renderer fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("../input/input.txt:2:3"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("paths and line numbers below refer to that input"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("renderer output:"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("renderer exited with exit status"),
+        "{diagnostic}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn stream_renderer_diagnostics_preserve_program_output() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.stream]
+protocol = "stream"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "stream-diagnostic-1"
+inputs = ["body"]
+result = "html"
+[renderers.stream.block]
+arguments = ["-c", "cat >/dev/null; printf 'stream renderer error\\n  at source input:2:3\\n' >&2; exit 1"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[stream]\nfirst\nsecond\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("stream renderer fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("stream renderer error"), "{diagnostic}");
+    assert!(diagnostic.contains("at source input:2:3"), "{diagnostic}");
+    assert!(diagnostic.contains("renderer output:"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("renderer exited with exit status"),
+        "{diagnostic}"
+    );
+    assert!(
+        !diagnostic.contains("isolated staged input"),
+        "{diagnostic}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn workspace_renderer_publishes_digest_resources_with_semantic_replacements() {
     let fixture = Fixture::new();
     fixture.write(

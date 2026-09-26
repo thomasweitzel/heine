@@ -6,7 +6,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -32,6 +32,32 @@ pub(crate) struct WorkspaceRequest<'a> {
     pub(crate) placement: Placement,
     pub(crate) output: Output,
     pub(crate) input: WorkspaceInput<'a>,
+}
+
+/// A failed renderer operation, with optional program-provided diagnostics.
+///
+/// Process output stays separate from the host's concise failure summary so
+/// callers can attach it to the authored request rather than treating it as a
+/// fragment of a source label.
+#[derive(Debug)]
+pub(crate) struct RendererError {
+    pub(crate) message: String,
+    pub(crate) diagnostics: Option<String>,
+}
+
+impl From<String> for RendererError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            diagnostics: None,
+        }
+    }
+}
+
+impl From<&str> for RendererError {
+    fn from(message: &str) -> Self {
+        message.to_owned().into()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -69,16 +95,11 @@ struct WorkspaceSlot {
 
 impl WorkspaceManager {
     fn new() -> Result<Self, String> {
-        let temporary_directory = std::env::temp_dir();
-        static STALE_WORKSPACE_SWEEP: OnceLock<()> = OnceLock::new();
-        STALE_WORKSPACE_SWEEP
-            .get_or_init(|| cleanup_stale_workspace_sessions(&temporary_directory));
-        Self::create_in(&temporary_directory)
+        Self::create_in(&std::env::temp_dir())
     }
 
     #[cfg(test)]
     fn new_in(temporary_directory: &Path) -> Result<Self, String> {
-        cleanup_stale_workspace_sessions(temporary_directory);
         Self::create_in(temporary_directory)
     }
 
@@ -150,25 +171,9 @@ impl WorkspaceManager {
     }
 }
 
-fn cleanup_stale_workspace_sessions(temporary_directory: &Path) {
-    let Ok(entries) = fs::read_dir(temporary_directory) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        if !entry
-            .file_name()
-            .to_string_lossy()
-            .starts_with(WORKSPACE_SESSION_PREFIX)
-        {
-            continue;
-        }
-        if entry.file_type().is_ok_and(|file_type| file_type.is_dir()) {
-            let _ = fs::remove_dir_all(entry.path());
-        }
-    }
-}
-
-pub(crate) fn run_workspace(request: WorkspaceRequest<'_>) -> Result<RendererOutput, String> {
+pub(crate) fn run_workspace(
+    request: WorkspaceRequest<'_>,
+) -> Result<RendererOutput, RendererError> {
     let WorkspaceRequest {
         runtime,
         refresh,
@@ -201,11 +206,15 @@ pub(crate) fn run_workspace(request: WorkspaceRequest<'_>) -> Result<RendererOut
         .as_mut()
         .expect("workspace manager is initialized before use");
     let workspace = manager.prepare(profile_name)?;
-    let result = (|| {
+    let result = (|| -> Result<RendererOutput, RendererError> {
         let layout = WorkspaceLayout::create(&workspace, profile, input)?;
         let arguments = expand_workspace_arguments(&variant.arguments, &layout);
         execute_workspace_process(profile, &arguments, &layout)?;
-        validate_renderer_output(profile, output, validate_workspace_output(&layout)?)
+        Ok(validate_renderer_output(
+            profile,
+            output,
+            validate_workspace_output(&layout)?,
+        )?)
     })();
     let cleanup = manager.clean(profile_name);
     let result = match (result, cleanup) {
@@ -298,7 +307,7 @@ fn execute_workspace_process(
     profile: &Profile,
     arguments: &[PathBuf],
     layout: &WorkspaceLayout,
-) -> Result<(), String> {
+) -> Result<(), RendererError> {
     let mut child = Command::new(&profile.program)
         .args(arguments)
         .current_dir(&layout.work_dir)
@@ -353,7 +362,7 @@ pub(crate) struct StreamRequest<'a> {
     pub(crate) input: &'a [u8],
 }
 
-pub(crate) fn run_stream(request: StreamRequest<'_>) -> Result<RendererOutput, String> {
+pub(crate) fn run_stream(request: StreamRequest<'_>) -> Result<RendererOutput, RendererError> {
     let StreamRequest {
         runtime,
         refresh,
@@ -386,7 +395,7 @@ fn execute_stream(
     profile: &Profile,
     placement: Placement,
     input: &[u8],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, RendererError> {
     if profile.protocol != Protocol::Stream {
         return Err("selected profile does not use the stream protocol".into());
     }
@@ -463,12 +472,12 @@ fn read_process_output(
         })
 }
 
-fn renderer_exit_error(status: std::process::ExitStatus, stderr: &[u8]) -> String {
-    format!(
-        "renderer exited with {}; {}",
-        status,
-        String::from_utf8_lossy(&stderr[..stderr.len().min(8192)])
-    )
+fn renderer_exit_error(status: std::process::ExitStatus, stderr: &[u8]) -> RendererError {
+    let output = String::from_utf8_lossy(&stderr[..stderr.len().min(8192)]).into_owned();
+    RendererError {
+        message: format!("renderer exited with {status}"),
+        diagnostics: (!output.trim().is_empty()).then_some(output),
+    }
 }
 
 #[cfg(test)]
@@ -522,19 +531,20 @@ mod tests {
     }
 
     #[test]
-    fn workspace_manager_removes_only_stale_owned_sessions() {
+    fn workspace_manager_preserves_another_live_session() {
         let temporary_directory = tempfile::tempdir().expect("temporary directory");
-        let stale = temporary_directory
-            .path()
-            .join("heine-renderer-session-old");
-        let unrelated = temporary_directory.path().join("other-tool-session");
-        fs::create_dir(&stale).expect("stale workspace");
-        fs::write(stale.join("leftover"), "input").expect("stale workspace content");
-        fs::create_dir(&unrelated).expect("unrelated directory");
-        let manager =
+        let first =
+            WorkspaceManager::new_in(temporary_directory.path()).expect("first workspace manager");
+        let active_session = first.session.path().to_path_buf();
+        fs::write(active_session.join("input"), "input").expect("active workspace content");
+        let second =
             WorkspaceManager::new_in(temporary_directory.path()).expect("workspace manager");
-        assert!(!stale.exists());
-        assert!(unrelated.is_dir());
-        assert!(manager.session.path().is_dir());
+        assert!(active_session.is_dir());
+        assert_eq!(
+            fs::read_to_string(active_session.join("input")).expect("active workspace content"),
+            "input"
+        );
+        assert!(second.session.path().is_dir());
+        assert_ne!(active_session, second.session.path());
     }
 }

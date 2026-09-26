@@ -607,8 +607,10 @@ workspace slot below that parent. A successfully cleaned slot is reused. A
 slot that remains locked is unavailable until cleanup succeeds. Heine retries
 that cleanup before the next request. If it still cannot clean the slot, Heine
 fails the request with the affected path instead of creating unbounded
-temporary directories. At process startup, it makes a best-effort sweep of
-stale, clearly Heine-owned workspace parents.
+temporary directories. `TempDir` removes a session parent when its owning
+process exits normally. Heine does not sweep prefix-matched session parents at
+startup because a name cannot prove that another Heine process has stopped.
+Crash leftovers are safer than deleting a live renderer's inputs or outputs.
 
 ## Caching, watching, and failure behavior
 
@@ -761,7 +763,7 @@ An implementation must include focused and fixture-site coverage for:
   selects it, selected requests that fail before cache lookup without
   permission, and unused profiles that need neither permission nor a program;
 - cache-key behavior, streamed bundle hashing, source-bundle watcher behavior,
-  locked workspace-slot exhaustion, stale-workspace cleanup, failed renderers,
-  refreshed builds, and previous-output preservation;
+  locked workspace-slot exhaustion, cross-process workspace isolation, failed
+  renderers, refreshed builds, and previous-output preservation;
 - public documentation, reference, tutorial, glossary, and a
   starter-site example.

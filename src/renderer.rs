@@ -18,7 +18,8 @@ pub(super) use cache::RendererCache;
 pub(super) use result::validate_renderer_output;
 pub(crate) use result::{Output, Placement, RendererOutput, ResultCapabilities};
 pub(crate) use runner::{
-    RendererRuntime, StreamRequest, WorkspaceInput, WorkspaceRequest, run_stream, run_workspace,
+    RendererError, RendererRuntime, StreamRequest, WorkspaceInput, WorkspaceRequest, run_stream,
+    run_workspace,
 };
 
 #[derive(Debug, Clone, Default)]

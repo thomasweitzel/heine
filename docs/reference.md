@@ -420,6 +420,10 @@ MathML, SVG, image, and link result profiles when they declare a fixed-argument
 inline or block variant. HTML must be UTF-8. MathML and embedded or published
 SVG must be well-formed XML with `math` and `svg` document elements
 respectively; Heine strips XML declarations and doctypes before embedding.
+When a renderer fails, Heine labels its complete Markdown request and presents
+the program's diagnostic output separately without rewriting it. For a
+workspace body request, paths and line numbers in that output refer to the
+isolated staged input.
 
 A workspace profile may render the same embedded result shapes from a body,
 declared file, or declared bundle. Heine creates one temporary `input/`,
@@ -428,7 +432,10 @@ runs the program in `work/`, and accepts only its host-selected regular file
 at `{output_file}`. It expands `{input_file}`, `{input_dir}`, `{output_file}`
 and `{work_dir}` only when an argument is exactly that placeholder. Extra
 output files, missing or empty primary output, failed processes, and timeouts
-fail at the request. The temporary workspace is removed after execution.
+fail at the request. Heine removes the temporary workspace after execution
+when the operating system permits it. If cleanup fails, Heine retains that
+workspace slot, warns about its path, and retries cleanup before another
+request uses the slot.
 SVG, image, and link resource requests publish one non-empty primary output as
 `heine-renderers/sha256-<digest>.<extension>`. The digest names the returned
 bytes, so identical results share one generated file. Heine replaces image

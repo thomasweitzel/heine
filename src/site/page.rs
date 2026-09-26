@@ -613,6 +613,8 @@ impl Page {
                                     crate::markdown::RenderError::RendererProcess {
                                         message: "stream renderers cannot consume source bundles"
                                             .into(),
+                                        diagnostics: None,
+                                        staged_body_input: false,
                                         span: request.span.clone(),
                                     },
                                 )));
@@ -625,6 +627,8 @@ impl Page {
                                         message: format!(
                                             "could not read renderer source {name:?}: {error}"
                                         ),
+                                        diagnostics: None,
+                                        staged_body_input: false,
                                         span: request.span.clone(),
                                     },
                                 ))
@@ -641,14 +645,16 @@ impl Page {
                         input: &input,
                     })
                 })
-                .map_err(|message| {
+                .map_err(|error| {
                     Box::new(crate::markdown::source_error(
                         &source.display_path,
                         &source.source,
-                        crate::markdown::RenderError::RendererProcess {
-                            message,
-                            span: request.span.clone(),
-                        },
+                        crate::markdown::renderer_process_error(
+                            error,
+                            profile.uses_workspace()
+                                && matches!(request.input, crate::markdown::ResolvedInput::Body),
+                            request.span.clone(),
+                        ),
                     ))
                 })?;
                 let replacement = match rendered {

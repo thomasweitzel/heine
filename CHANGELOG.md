@@ -31,6 +31,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Renderer failure diagnostics.** External renderer output now appears
+  separately from Heine's request label. Workspace body diagnostics identify
+  that renderer paths and line locations refer to an isolated staged input.
+
 ### Added
 
 - **Renderer result caching.** Successful stream and workspace results,

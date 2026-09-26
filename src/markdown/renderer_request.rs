@@ -22,9 +22,6 @@ pub(super) struct Request {
 /// A renderer request after its selected profile, input form, output mode,
 /// and authored accessibility text have been checked. Rendering owns this
 /// model rather than reparsing the directive when it eventually replaces it.
-// The execution stage consumes this complete source-level fact. It is retained
-// before that stage exists so request resolution has one stable owner.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedRequest {
     pub(crate) span: Range<usize>,
@@ -37,7 +34,6 @@ pub(crate) struct ResolvedRequest {
     pub(crate) label: Option<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) enum ResolvedInput {
     Body,

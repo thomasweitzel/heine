@@ -21,6 +21,11 @@ before building, for example with `katex --version`, `typst --version`, or
 environment identity. Change it after changing a renderer or a meaningful part
 of its environment.
 
+When a renderer fails, Heine labels the complete authored request and presents
+the program's diagnostic output separately. Heine preserves that output as the
+renderer emitted it. For a workspace request with a body, paths and line
+numbers in that output refer to the isolated staged input.
+
 ## KaTeX embedded mathematics
 
 Install the KaTeX command-line program so `katex` is available on `PATH`.

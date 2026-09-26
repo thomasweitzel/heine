@@ -447,7 +447,12 @@ pub(crate) enum RenderError {
     #[error("external renderer permission is required")]
     RendererPermission { span: Range<usize> },
     #[error("renderer failed: {message}")]
-    RendererProcess { message: String, span: Range<usize> },
+    RendererProcess {
+        message: String,
+        diagnostics: Option<String>,
+        staged_body_input: bool,
+        span: Range<usize>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -614,10 +619,15 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
                 .into(),
             span.clone(),
         ),
-        RenderError::RendererProcess { message, span } => (
+        RenderError::RendererProcess {
+            message,
+            diagnostics,
+            staged_body_input,
+            span,
+        } => (
             "renderer request",
-            message.clone(),
-            "inspect the configured renderer profile and its diagnostic output".into(),
+            format!("renderer failed here: {message}"),
+            renderer_process_help(diagnostics.as_deref(), *staged_body_input),
             span.clone(),
         ),
     };
@@ -634,6 +644,32 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
         label,
         help,
     }
+}
+
+pub(crate) fn renderer_process_error(
+    error: crate::renderer::RendererError,
+    staged_body_input: bool,
+    span: Range<usize>,
+) -> RenderError {
+    RenderError::RendererProcess {
+        message: error.message,
+        diagnostics: error.diagnostics,
+        staged_body_input,
+        span,
+    }
+}
+
+fn renderer_process_help(diagnostics: Option<&str>, staged_body_input: bool) -> String {
+    let Some(diagnostics) = diagnostics else {
+        return "inspect the configured renderer profile and its diagnostic output".into();
+    };
+    let context = staged_body_input.then_some(
+        "the renderer received the request body as an isolated staged input; paths and line numbers below refer to that input\n\n",
+    );
+    format!(
+        "{}renderer output:\n{diagnostics}\ncorrect the renderer input or its configured invocation",
+        context.unwrap_or_default(),
+    )
 }
 
 /// Validates one parsed event that needs the resolved site relationship model.
