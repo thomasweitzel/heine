@@ -166,6 +166,51 @@ fn stream_renderer_rejects_an_invalid_typed_embedded_result() {
     assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
 }
 
+#[test]
+fn stream_renderer_publishes_checked_svg_resources() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+            "result = \"svg\"\n",
+            "result = \"svg\"\nmaterializations = [\"resource\"]\n",
+            1,
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture overview\"]\n<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("SVG resource renderer builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    let src = output
+        .split("src=\"")
+        .nth(1)
+        .and_then(|value| value.split('\"').next())
+        .expect("SVG image");
+    assert!(output.contains("alt=\"Architecture overview\""), "{output}");
+    assert_eq!(
+        fs::read_to_string(
+            fixture
+                .path()
+                .join("public")
+                .join(src.strip_prefix('/').expect("site-relative SVG URL")),
+        )
+        .expect("SVG resource"),
+        "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn stream_renderer_times_out_at_the_request() {
@@ -303,6 +348,63 @@ arguments = ["-c", "sleep 3", "workspace", "{output_file}"]
     )
     .expect_err("workspace timeout fails");
     assert!(format!("{error:?}").contains("exceeded its 1-second timeout"));
+}
+
+#[cfg(unix)]
+#[test]
+fn workspace_renderer_publishes_digest_resources_with_semantic_replacements() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[site]
+base_path = "/guide/"
+
+[renderers.document]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "document-1"
+inputs = ["body"]
+input_extension = "txt"
+result = "link"
+media_type = "text/plain"
+extension = "txt"
+[renderers.document.block]
+arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[document label=\"Download report\"]\nreport bytes\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("resource renderer builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    let href = output
+        .split("href=\"")
+        .nth(1)
+        .and_then(|value| value.split('\"').next())
+        .expect("resource link");
+    assert!(
+        href.starts_with("/guide/heine-renderers/sha256-"),
+        "{output}"
+    );
+    assert!(output.contains(">Download report</a>"), "{output}");
+    let path = href.strip_prefix("/guide/").expect("base path");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public").join(path)).expect("resource"),
+        "report bytes"
+    );
 }
 
 #[test]

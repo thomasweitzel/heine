@@ -256,6 +256,7 @@ pub(crate) struct Site {
     sitemap: Option<sitemap::Sitemap>,
     feeds: std::sync::Arc<feed::Catalog>,
     search: std::sync::Arc<search::Catalog>,
+    renderer_resources: Vec<page::RendererResource>,
 }
 
 impl Site {
@@ -424,6 +425,7 @@ impl Site {
                         &page_links,
                         reading_time.words_per_minute(locale),
                         search_selections.contains(locale, &page.id),
+                        site_settings.base_path().as_str(),
                     )?;
                 }
             }
@@ -481,6 +483,13 @@ impl Site {
             taxonomies: &taxonomy_config,
         })
         .map_err(|error| Error::Search(Box::new(error)))?;
+        let mut renderer_resources = pages
+            .values()
+            .flat_map(|pages| pages.values())
+            .flat_map(|page| page.renderer_resources.iter().cloned())
+            .collect::<Vec<_>>();
+        renderer_resources.sort_by(|left, right| left.output_path.cmp(&right.output_path));
+        renderer_resources.dedup_by(|left, right| left.output_path == right.output_path);
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks, series.tasks());
         let sitemap = match (sitemap_config, canonical_urls.as_ref()) {
             (Some(config), Some(urls)) => Some(
@@ -548,6 +557,14 @@ impl Site {
         }
         output_claims.extend(feeds.output_claims());
         output_claims.extend(search.output_claims());
+        output_claims.extend(renderer_resources.iter().map(|resource| {
+            OutputClaim::renderer(
+                resource.output_path.clone(),
+                "renderer resource",
+                resource.source.clone(),
+                resource.span,
+            )
+        }));
         let output_plan = OutputPlan::validate(&output_claims)?;
         let pages = PageCatalog::from_pages(pages, excluded_drafts, canonical_urls.as_ref());
         let collections = std::sync::Arc::new(
@@ -583,6 +600,7 @@ impl Site {
             sitemap: sitemap.map(|(sitemap, _)| sitemap),
             feeds: std::sync::Arc::new(feeds),
             search: std::sync::Arc::new(search),
+            renderer_resources,
         })
     }
 

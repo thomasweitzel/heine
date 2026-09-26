@@ -169,6 +169,16 @@ impl Profile {
         self.protocol == Protocol::Workspace
     }
 
+    pub(crate) fn resource_extension(&self) -> Option<&str> {
+        match &self.result {
+            ResultCapabilities::Svg { .. } => Some("svg"),
+            ResultCapabilities::Image { extension } | ResultCapabilities::Link { extension } => {
+                Some(extension)
+            }
+            ResultCapabilities::Html | ResultCapabilities::Mathml => None,
+        }
+    }
+
     fn workspace_variant(&self, placement: Placement) -> Result<&Variant, String> {
         if self.protocol != Protocol::Workspace {
             return Err("selected profile does not use the workspace protocol".into());
@@ -373,6 +383,31 @@ pub(crate) fn run_stream(
     Ok(result)
 }
 
+pub(crate) fn run_stream_raw(
+    profile: &Profile,
+    placement: Placement,
+    input: &[u8],
+) -> Result<Vec<u8>, String> {
+    execute_stream(profile, placement, input)
+}
+
+pub(crate) fn resource_output_path(
+    profile: &Profile,
+    bytes: &[u8],
+) -> Result<crate::output::OutputPath, String> {
+    if bytes.is_empty() {
+        return Err("renderer returned empty output".into());
+    }
+    let extension = profile
+        .resource_extension()
+        .ok_or_else(|| "selected renderer result cannot produce a resource".to_owned())?;
+    crate::output::OutputPath::try_new(PathBuf::from(format!(
+        "heine-renderers/sha256-{}.{}",
+        hex_digest(&Sha256::digest(bytes)),
+        extension
+    )))
+}
+
 fn execute_stream(
     profile: &Profile,
     placement: Placement,
@@ -537,8 +572,8 @@ fn cache_result_kind(result: &ResultCapabilities) -> &'static str {
         ResultCapabilities::Html => "html",
         ResultCapabilities::Mathml => "mathml",
         ResultCapabilities::Svg { .. } => "svg",
-        ResultCapabilities::Image => "image",
-        ResultCapabilities::Link => "link",
+        ResultCapabilities::Image { .. } => "image",
+        ResultCapabilities::Link { .. } => "link",
     }
 }
 
@@ -567,7 +602,7 @@ pub(crate) fn validate_embedded(
             .map_err(|_| "HTML renderer returned non-UTF-8 embedded output".to_owned()),
         ResultCapabilities::Mathml => validate_xml_fragment(bytes, b"math", "MathML"),
         ResultCapabilities::Svg { .. } => validate_xml_fragment(bytes, b"svg", "SVG"),
-        ResultCapabilities::Image | ResultCapabilities::Link => {
+        ResultCapabilities::Image { .. } | ResultCapabilities::Link { .. } => {
             Err("selected renderer result cannot be embedded".to_owned())
         }
     }
@@ -576,6 +611,26 @@ pub(crate) fn validate_embedded(
             .then_some(result)
             .ok_or_else(|| "renderer returned empty embedded output".to_owned())
     })
+}
+
+/// Checks the result forms that are published unchanged as generated files.
+pub(crate) fn validate_resource(
+    result: &ResultCapabilities,
+    bytes: Vec<u8>,
+) -> Result<Vec<u8>, String> {
+    if bytes.is_empty() {
+        return Err("renderer returned empty output".to_owned());
+    }
+    match result {
+        ResultCapabilities::Svg { .. } => {
+            validate_xml_fragment(bytes.clone(), b"svg", "SVG")?;
+            Ok(bytes)
+        }
+        ResultCapabilities::Image { .. } | ResultCapabilities::Link { .. } => Ok(bytes),
+        ResultCapabilities::Html | ResultCapabilities::Mathml => {
+            Err("selected renderer result cannot produce a resource".to_owned())
+        }
+    }
 }
 
 fn validate_xml_fragment(
@@ -749,8 +804,12 @@ pub(crate) enum ResultCapabilities {
         materializations: BTreeSet<Output>,
         default_output: Output,
     },
-    Image,
-    Link,
+    Image {
+        extension: String,
+    },
+    Link {
+        extension: String,
+    },
 }
 
 impl ResultCapabilities {
@@ -767,7 +826,7 @@ impl ResultCapabilities {
                 let output = requested.unwrap_or(*default_output);
                 materializations.contains(&output).then_some(output)
             }
-            Self::Image | Self::Link => match requested {
+            Self::Image { .. } | Self::Link { .. } => match requested {
                 None | Some(Output::Resource) => Some(Output::Resource),
                 Some(Output::Embedded) => None,
             },
@@ -775,11 +834,11 @@ impl ResultCapabilities {
     }
 
     pub(crate) fn needs_alt(&self, output: Output) -> bool {
-        matches!(self, Self::Svg { .. } | Self::Image) && output == Output::Resource
+        matches!(self, Self::Svg { .. } | Self::Image { .. }) && output == Output::Resource
     }
 
     pub(crate) fn needs_label(&self, output: Output) -> bool {
-        matches!(self, Self::Link) && output == Output::Resource
+        matches!(self, Self::Link { .. }) && output == Output::Resource
     }
 }
 
@@ -1037,9 +1096,18 @@ fn validate_svg_result(
             ),
         });
     }
+    let default_output = default.map_or_else(
+        || {
+            *materializations
+                .iter()
+                .next()
+                .expect("non-empty SVG materializations were checked above")
+        },
+        |(_, output)| output,
+    );
     Ok(ResultCapabilities::Svg {
-        default_output: default.map_or(Output::Embedded, |(_, output)| output),
         materializations,
+        default_output,
     })
 }
 
@@ -1091,14 +1159,14 @@ fn validate_resource_result(
         span: result_span,
         message: format!("resource renderer profile {name} must declare extension"),
     })?;
-    validate_extension(
+    let extension = validate_extension(
         extension,
         &format!("resource renderer profile {name} extension"),
     )?;
     Ok(if image {
-        ResultCapabilities::Image
+        ResultCapabilities::Image { extension }
     } else {
-        ResultCapabilities::Link
+        ResultCapabilities::Link { extension }
     })
 }
 

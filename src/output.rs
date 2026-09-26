@@ -30,6 +30,7 @@ pub(crate) use writer::{CopiedFiles, OutputWriter};
 pub(crate) struct OutputClaim {
     path: OutputPath,
     origin: OutputOrigin,
+    allows_renderer_namespace: bool,
 }
 
 impl OutputClaim {
@@ -46,12 +47,30 @@ impl OutputClaim {
                 source_code,
                 span,
             },
+            allows_renderer_namespace: false,
+        }
+    }
+    pub(crate) fn renderer(
+        path: OutputPath,
+        description: impl Into<String>,
+        source_code: Arc<NamedSource<String>>,
+        span: SourceSpan,
+    ) -> Self {
+        Self {
+            path,
+            origin: OutputOrigin::Authored {
+                description: description.into(),
+                source_code,
+                span,
+            },
+            allows_renderer_namespace: true,
         }
     }
     pub(crate) fn file(path: OutputPath, source_path: PathBuf) -> Self {
         Self {
             path,
             origin: OutputOrigin::File { source_path },
+            allows_renderer_namespace: false,
         }
     }
 }
@@ -91,7 +110,10 @@ impl OutputPlan {
         let mut ordered = BTreeMap::new();
         let mut portable = BTreeMap::new();
         for claim in claims {
-            if is_internal_output_path(claim.path.as_path()) {
+            if is_internal_output_path(claim.path.as_path())
+                || (is_renderer_output_path(claim.path.as_path())
+                    && !claim.allows_renderer_namespace)
+            {
                 return Err(Error::Claim(Box::new(OutputClaimError::reserved(claim))));
             }
             if let Some(existing) = portable.insert(claim.path.collision_key(), claim) {
@@ -435,6 +457,7 @@ impl GeneratedFile {
 /// output. Keeping this namespace out of the output tree prevents a source
 /// asset or page from changing development-server behavior.
 pub(crate) const INTERNAL_DIRECTORY: &str = "__heine";
+pub(crate) const RENDERER_DIRECTORY: &str = "heine-renderers";
 pub(super) const MARKER: &str = ".heine-output";
 pub(super) const MARKER_CONTENTS: &str = "heine-output-v1\n";
 
@@ -512,6 +535,13 @@ pub(crate) fn is_reserved_output_path(path: &Path) -> bool {
 /// use the same dotfile name in one of its own subdirectories.
 pub(crate) fn is_internal_output_path(path: &Path) -> bool {
     path == Path::new(MARKER) || is_reserved_output_path(path)
+}
+
+/// Whether an output path enters the namespace owned by renderer resources.
+pub(crate) fn is_renderer_output_path(path: &Path) -> bool {
+    path.components()
+        .next()
+        .is_some_and(|component| component.as_os_str() == RENDERER_DIRECTORY)
 }
 
 /// Whether one user-authored path component can be materialized portably in
@@ -758,5 +788,24 @@ mod tests {
         assert!(is_internal_output_path(Path::new(MARKER)));
         assert!(is_internal_output_path(Path::new("__heine/reload.js")));
         assert!(!is_internal_output_path(Path::new("images/.heine-output")));
+    }
+
+    #[test]
+    fn identifies_renderer_output_paths() {
+        assert!(is_renderer_output_path(Path::new("heine-renderers/a.svg")));
+        assert!(!is_renderer_output_path(Path::new(
+            "images/heine-renderers/a.svg"
+        )));
+    }
+
+    #[test]
+    fn reserves_renderer_namespace_for_renderer_claims() {
+        let path = OutputPath::try_new("heine-renderers/a.svg".into()).expect("valid output path");
+        let source = Arc::new(NamedSource::new("index.md", "request".to_owned()));
+        let ordinary = OutputClaim::authored(path.clone(), "page", source.clone(), (0, 1).into());
+        assert!(OutputPlan::validate(&[ordinary]).is_err());
+
+        let renderer = OutputClaim::renderer(path, "renderer resource", source, (0, 1).into());
+        assert!(OutputPlan::validate(&[renderer]).is_ok());
     }
 }

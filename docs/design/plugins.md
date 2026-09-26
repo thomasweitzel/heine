@@ -4,11 +4,11 @@
 
 This is the accepted design for Heine's first extension boundary,
 Markdown-aware renderer adapters and configured external renderer profiles.
-The stream-protocol and workspace-backed embedded-result slices are
-implemented. Generated resources, workspace-result caching, watcher
-integration, and cache cleanup remain future work. Other extension kinds
-remain undecided until a separate concrete use case requires them. Package
-discovery, installation, and distribution are likewise undecided.
+The stream-protocol, workspace-backed embedded-result, and generated-resource
+slices are implemented. Workspace-result caching, watcher integration, and
+cache cleanup remain future work. Other extension kinds remain undecided until
+a separate concrete use case requires them. Package discovery, installation,
+and distribution are likewise undecided.
 
 ## Decision
 
@@ -455,7 +455,7 @@ The full SHA-256 digest identifies the returned bytes, not the renderer cache
 key. A refreshed renderer that returns different bytes therefore receives a
 new public URL even when its declared input and cache key did not change.
 Requests with the same returned bytes and extension share one generated output
-file. Heine retains every originating request for that shared file.
+file.
 
 A full build stages only the current resolved renderer-resource inventory, then
 atomically replaces the managed output tree. When a refreshed renderer returns
@@ -602,14 +602,14 @@ clearly Heine-owned workspace parents.
 
 ## Caching, watching, and failure behavior
 
-The cache key for a renderer result includes:
+The current cache applies only to embedded results from stream profiles. Its
+key includes:
 
 - renderer-profile name, `cache_identity`, and normalized configuration;
 - the selected placement variant and normalized directive options;
 - materialization;
-- the input form and its checked representation: inline body bytes; a named
-  file's content-relative path and bytes; or every checked relative path and
-  file byte sequence in a named source bundle.
+- the input form and its checked representation: inline or block body bytes,
+  or a named file's bytes.
 
 The explicit `cache_identity` represents the selected renderer version or
 other cache-relevant tool identity. Heine can make publication deterministic
@@ -619,11 +619,6 @@ change `cache_identity` after changing that program. This responsibility is
 intentional: generic version probing or executable fingerprints would not
 reliably account for each tool's dependencies and environment.
 
-Hashing every bundle file favors correctness over speed: file
-metadata alone is not a reliable cache identity across filesystems, copies, or
-coarse timestamp resolutions. The implementation streams file bytes into the
-cache hash and does not retain bundle contents merely to compute that key.
-
 A cache entry stores the checked typed result and an integrity hash of its
 returned bytes. Heine verifies that hash before reusing an entry. A missing,
 partial, or corrupt entry is a cache miss, so the host runs the selected
@@ -631,12 +626,12 @@ renderer after external-renderer permission has been granted. This integrity
 check detects cache corruption; it cannot establish that an external renderer
 would return different bytes for unchanged Heine-visible inputs.
 
-`--refresh-renderers` bypasses reusable entries for every selected request. It
-runs each selected renderer, validates its result, and writes the refreshed
-entry for that request's existing cache key. It does not need to delete older
+`--refresh-renderers` bypasses reusable stream embedded entries. It runs the
+selected renderer, validates its result, and writes the refreshed entry for
+that request's existing cache key. It does not need to delete older
 content-addressed entries: they cannot affect a request unless its exact prior
-key recurs. Cache cleanup, if later justified, is separate from renderer
-correctness.
+key recurs. Workspace results and generated resources currently run for every
+selected request. Their cache policy remains future work.
 
 Renderer cache entries live below the site root at
 `.heine/cache/renderers/v1/`. This is private, disposable Heine working state,

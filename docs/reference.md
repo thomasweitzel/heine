@@ -19,13 +19,13 @@ A site root contains `heine.toml`, `content/`, and `templates/`; `data/`, `deplo
 | `heine`       | `--root <path>`    | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
 | `heine`       | `--quick`          | off                        | flag               | Updates managed output for changed page, declared content, inherited descriptor, data, Fluent resources, present copied assets and sidecars, deployment files, and license texts; it remains incomplete |
 | `heine`       | `--clean-output`   | off                        | flag               | Adopts unmanaged output; conflicts with `--quick`                                                                                                                                                       |
-| `heine`       | `--allow-external-renderers` | off              | flag               | Permits selected checked stream renderer requests to start their configured program                                                                                                                     |
-| `heine`       | `--refresh-renderers` | off                    | flag               | Re-runs permitted renderer requests instead of reusing their cached results                                                                                                                            |
+| `heine`       | `--allow-external-renderers` | off              | flag               | Permits selected checked renderer requests to start their configured program                                                                                                                            |
+| `heine`       | `--refresh-renderers` | off                    | flag               | Re-runs permitted stream embedded requests instead of reusing their cached results                                                                                                                     |
 | `heine serve` | `--root <path>`    | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
 | `heine serve` | `--clean-output`   | off                        | flag               | Adopts unmanaged output before its initial build                                                                                                                                                        |
 | `heine serve` | `--drafts`         | off                        | flag               | Includes otherwise unpublished `draft = true` pages in this local preview                                                                                                                               |
-| `heine serve` | `--allow-external-renderers` | off              | flag               | Permits selected checked stream renderer requests to start their configured program                                                                                                                     |
-| `heine serve` | `--refresh-renderers` | off                    | flag               | Re-runs permitted renderer requests instead of reusing their cached results                                                                                                                            |
+| `heine serve` | `--allow-external-renderers` | off              | flag               | Permits selected checked renderer requests to start their configured program                                                                                                                            |
+| `heine serve` | `--refresh-renderers` | off                    | flag               | Re-runs permitted stream embedded requests instead of reusing their cached results                                                                                                                     |
 | `heine serve` | `--host <address>` | `127.0.0.1`                | IP address         | Interface on which to listen                                                                                                                                                                            |
 | `heine serve` | `--port <number>`  | `1111`                     | `1024`-`65535`     | First port to try; then the next free port                                                                                                                                                              |
 
@@ -93,7 +93,11 @@ fields use the following defaults.
 | `renderers.<name>.cache_identity`                 | string               | required                              | Non-empty stable site-owner version or environment identity                                                                                                           | Deliberate renderer-cache invalidation input                                                    |
 | `renderers.<name>.inputs`                         | array of strings     | required                              | Stream: unique subset of `"body"`, `"file"`; workspace: those plus `"bundle"`                                                                                    | Permitted request input forms                                                                    |
 | `renderers.<name>.input_extension`                | string               | workspace body required               | Unprefixed ASCII alphanumeric extension; otherwise absent                                                                                                             | Filename extension for a staged body input                                                       |
-| `renderers.<name>.result`                         | string               | required                              | `"html"`, `"mathml"`, or `"svg"`; SVG also needs `materializations = ["embedded"]`                                                                             | Checked embedded result shape                                                                    |
+| `renderers.<name>.result`                         | string               | required                              | `"html"`, `"mathml"`, `"svg"`, `"image"`, or `"link"`; SVG declares supported materializations, image and link declare `media_type` and `extension` | Checked renderer result shape                                                                    |
+| `renderers.<name>.media_type`                     | string               | required for image or link            | Valid media type, starting with `image/` for image results; otherwise absent                                                                                         | Declared generated-resource media type                                                           |
+| `renderers.<name>.extension`                      | string               | required for image or link            | Unprefixed ASCII alphanumeric extension; otherwise absent                                                                                                             | Generated-resource filename extension                                                            |
+| `renderers.<name>.materializations`               | array of strings     | required for SVG                      | Non-empty subset of `"embedded"`, `"resource"`; otherwise absent                                                                                                  | Supported SVG result forms                                                                       |
+| `renderers.<name>.default_output`                 | string               | sole SVG materialization               | Required for SVG with both materializations; one of the declared forms; otherwise absent                                                                            | Default SVG result form                                                                          |
 | `renderers.<name>.inline.arguments`               | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                            | Enables inline requests                                                                          |
 | `renderers.<name>.block.arguments`                | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                            | Enables block requests                                                                           |
 
@@ -410,12 +414,12 @@ the expected result shape. A valid profile remains inert until authored
 Markdown selects it and the build includes `--allow-external-renderers`.
 Heine never discovers, installs, or version-checks that program.
 
-The currently implemented stream slice accepts `protocol = "stream"`, a
-non-empty input subset of `"body"` and `"file"`, result `"html"`, `"mathml"`,
-or embedded `"svg"`, and an `inline` or `block` fixed-argument variant.
-HTML must be UTF-8. MathML and SVG must be well-formed XML with `math` and
-`svg` document elements respectively; Heine strips XML declarations and
-doctypes before embedding.
+The stream protocol accepts a non-empty input subset of `"body"` and `"file"`.
+The workspace protocol also accepts `"bundle"`. Both protocols support HTML,
+MathML, SVG, image, and link result profiles when they declare a fixed-argument
+inline or block variant. HTML must be UTF-8. MathML and embedded or published
+SVG must be well-formed XML with `math` and `svg` document elements
+respectively; Heine strips XML declarations and doctypes before embedding.
 
 A workspace profile may render the same embedded result shapes from a body,
 declared file, or declared bundle. Heine creates one temporary `input/`,
@@ -425,7 +429,12 @@ at `{output_file}`. It expands `{input_file}`, `{input_dir}`, `{output_file}`
 and `{work_dir}` only when an argument is exactly that placeholder. Extra
 output files, missing or empty primary output, failed processes, and timeouts
 fail at the request. The temporary workspace is removed after execution.
-Image, link, and resource-output workflows are not available yet.
+SVG, image, and link resource requests publish one non-empty primary output as
+`heine-renderers/sha256-<digest>.<extension>`. The digest names the returned
+bytes, so identical results share one generated file. Heine replaces image
+requests with an `img` element using the required `alt` text and link requests
+with an `a` element using the required `label` text. Resource bytes remain
+outside copied-asset licensing coverage.
 
 ```toml
 [renderers.katex]
@@ -462,13 +471,14 @@ Heine captures bounded standard-error text for a failed program and terminates
 the direct child when it exceeds `timeout_seconds`. It does not manage a
 renderer's descendant process tree.
 
-Heine stores successful results below `.heine/cache/renderers/v1/`, outside
-published output. The key includes the profile identity and effective fixed
-configuration, placement, requested output form, and input bytes. A profile's
-`cache_identity` is therefore the site owner's deliberate promise to update
-when the installed renderer or its meaningful environment changes.
-`--refresh-renderers` bypasses reads for one build and atomically replaces the
-matching entry after successful execution.
+Heine caches successful stream embedded results below
+`.heine/cache/renderers/v1/`, outside published output. The key includes the
+profile identity and effective fixed configuration, placement, requested
+output form, and input bytes. A profile's `cache_identity` is therefore the
+site owner's deliberate promise to update when the installed renderer or its
+meaningful environment changes. `--refresh-renderers` bypasses reads for one
+build and atomically replaces the matching embedded-result entry. Workspace
+and generated-resource results currently run for every selected request.
 
 ## `data/`
 

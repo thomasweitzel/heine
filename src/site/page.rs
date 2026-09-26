@@ -366,6 +366,7 @@ pub(super) struct Page {
     pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
     pub(super) renderer_sources: BTreeMap<String, crate::renderer::Source>,
     pub(super) renderer_requests: BTreeMap<String, Vec<crate::markdown::ResolvedRequest>>,
+    pub(super) renderer_resources: Vec<RendererResource>,
     pub(super) markdown_facts: BTreeMap<String, crate::markdown::MarkdownFacts>,
     /// Search owns these transient sections while it constructs its generated
     /// documents. Pages outside every configured search index never allocate
@@ -387,6 +388,14 @@ pub(super) struct Page {
     pub(super) weight: SiblingWeight,
     pub(super) weight_span: Option<SourceSpan>,
     pub(super) translations: BTreeMap<String, PageLink>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct RendererResource {
+    pub(super) output_path: OutputPath,
+    pub(super) bytes: Vec<u8>,
+    pub(super) source: Arc<NamedSource<String>>,
+    pub(super) span: SourceSpan,
 }
 
 /// The resolved relationship between a page and directory sibling ordering.
@@ -526,11 +535,13 @@ impl Page {
         pages: &PageLinks,
         words_per_minute: Option<NonZeroU64>,
         collect_search_sections: bool,
+        resource_base_path: &str,
     ) -> Result<(), Box<crate::markdown::SourceError>> {
         let mut facts = BTreeMap::new();
         let mut renderer_requests = BTreeMap::new();
         let mut rendered_content = BTreeMap::new();
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
+        let mut renderer_resources = Vec::new();
         for (name, source) in &self.markdown_sources {
             let fragments = self
                 .toc
@@ -559,21 +570,11 @@ impl Page {
             }
             let mut transformed = source.source.clone();
             for request in analysis.renderer_requests.iter().rev() {
-                if request.output != crate::renderer::Output::Embedded {
-                    return Err(Box::new(crate::markdown::source_error(
-                        &source.display_path,
-                        &source.source,
-                        crate::markdown::RenderError::RendererProcess {
-                            message: "resource renderer output is not available until generated-resource support is implemented".into(),
-                            span: request.span.clone(),
-                        },
-                    )));
-                }
                 let profile = renderer
                     .renderer_profiles()
                     .get(&request.profile)
                     .expect("resolved renderer profile");
-                let replacement = (if profile.uses_workspace() {
+                let rendered = (if profile.uses_workspace() {
                     let input = match &request.input {
                         crate::markdown::ResolvedInput::Body => {
                             crate::renderer::WorkspaceInput::Body(
@@ -584,9 +585,7 @@ impl Page {
                             crate::renderer::WorkspaceInput::Source(&self.renderer_sources[name])
                         }
                     };
-                    crate::renderer::run_workspace(profile, request.placement, input).and_then(
-                        |bytes| crate::renderer::validate_embedded(profile.result(), bytes),
-                    )
+                    crate::renderer::run_workspace(profile, request.placement, input)
                 } else {
                     let input = match &request.input {
                         crate::markdown::ResolvedInput::Body => {
@@ -619,15 +618,20 @@ impl Page {
                             })?
                         }
                     };
-                    crate::renderer::run_stream(
-                        renderer.renderer_cache_root(),
-                        renderer.refresh_renderers(),
-                        &request.profile,
-                        profile,
-                        request.placement,
-                        request.output,
-                        &input,
-                    )
+                    if request.output == crate::renderer::Output::Embedded {
+                        crate::renderer::run_stream(
+                            renderer.renderer_cache_root(),
+                            renderer.refresh_renderers(),
+                            &request.profile,
+                            profile,
+                            request.placement,
+                            request.output,
+                            &input,
+                        )
+                        .map(String::into_bytes)
+                    } else {
+                        crate::renderer::run_stream_raw(profile, request.placement, &input)
+                    }
                 })
                 .map_err(|message| {
                     Box::new(crate::markdown::source_error(
@@ -639,6 +643,54 @@ impl Page {
                         },
                     ))
                 })?;
+                let replacement = if request.output == crate::renderer::Output::Embedded {
+                    crate::renderer::validate_embedded(profile.result(), rendered).map_err(
+                        |message| {
+                            Box::new(crate::markdown::source_error(
+                                &source.display_path,
+                                &source.source,
+                                crate::markdown::RenderError::RendererProcess {
+                                    message,
+                                    span: request.span.clone(),
+                                },
+                            ))
+                        },
+                    )?
+                } else {
+                    let rendered = crate::renderer::validate_resource(profile.result(), rendered)
+                        .and_then(|rendered| {
+                            crate::renderer::resource_output_path(profile, &rendered)
+                                .map(|output_path| (output_path, rendered))
+                        })
+                        .map_err(|message| {
+                            Box::new(crate::markdown::source_error(
+                                &source.display_path,
+                                &source.source,
+                                crate::markdown::RenderError::RendererProcess {
+                                    message,
+                                    span: request.span.clone(),
+                                },
+                            ))
+                        })?;
+                    let (output_path, rendered) = rendered;
+                    let url = format!("{}{}", resource_base_path, output_path.url_path().as_str());
+                    let replacement = resource_replacement(
+                        profile.result(),
+                        &url,
+                        request.alt.as_deref(),
+                        request.label.as_deref(),
+                    );
+                    renderer_resources.push(RendererResource {
+                        output_path,
+                        bytes: rendered,
+                        source: Arc::new(NamedSource::new(
+                            source.display_path.display().to_string(),
+                            source.source.clone(),
+                        )),
+                        span: request.span.clone().into(),
+                    });
+                    replacement
+                };
                 transformed.replace_range(request.span.clone(), &replacement);
             }
             rendered_content.insert(name.clone(), transformed);
@@ -650,6 +702,7 @@ impl Page {
         }
         self.markdown_facts = facts;
         self.renderer_requests = renderer_requests;
+        self.renderer_resources = renderer_resources;
         for (name, content) in rendered_content {
             self.content.insert(name, Value::String(content));
         }
@@ -707,6 +760,39 @@ impl Page {
             weight: self.weight.ordered(),
         }
     }
+}
+
+fn resource_replacement(
+    result: &crate::renderer::ResultCapabilities,
+    url: &str,
+    alt: Option<&str>,
+    label: Option<&str>,
+) -> String {
+    let url = escape_html(url);
+    match result {
+        crate::renderer::ResultCapabilities::Svg { .. }
+        | crate::renderer::ResultCapabilities::Image { .. } => {
+            format!(
+                "<img src=\"{url}\" alt=\"{}\">",
+                escape_html(alt.unwrap_or(""))
+            )
+        }
+        crate::renderer::ResultCapabilities::Link { .. } => {
+            format!("<a href=\"{url}\">{}</a>", escape_html(label.unwrap_or("")))
+        }
+        crate::renderer::ResultCapabilities::Html | crate::renderer::ResultCapabilities::Mathml => {
+            unreachable!("embedded-only profile cannot produce a resource")
+        }
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 /// Deliberate, serializable template contract derived from a validated page.
