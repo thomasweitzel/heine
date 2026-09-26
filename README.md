@@ -146,7 +146,9 @@ deleted inputs. If an existing output directory was not created by Heine, use
 notice template, configuration, relationship, rename, or deletion changes, so
 use a normal build after those changes. The [glossary](docs/glossary.md#quick-build)
 and [reference](docs/reference.md#site-root-and-commands) describe the exact
-contract.
+contract. A changed present renderer input can update its selected page, but a
+full build remains necessary after renderer-profile, request, or input-layout
+changes.
 
 ## Development
 

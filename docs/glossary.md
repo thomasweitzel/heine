@@ -178,13 +178,15 @@ value. See [word counts and reading time](markdown-facts.md).
 A root-owned `[renderers.<name>]` configuration that fixes one external
 renderer program, protocol, inputs, result shape, timeout, and cache identity.
 It has no effect until a Markdown renderer request selects it in a build that
-explicitly permits external renderers. See [renderer adapters](reference.md#renderer-adapters).
+explicitly permits external renderers. Successful results use private typed
+cache entries. See [renderer adapters](reference.md#renderer-adapters).
 
 ### Renderer request
 
 An explicit Markdown `render` construct that selects one renderer profile and
-provides either a body or a declared page-owned renderer file. The implemented
-stream slice replaces the construct with checked embedded HTML, SVG, or MathML.
+provides a body or declared page-owned file or bundle. Heine replaces the
+construct with checked embedded HTML, SVG, or MathML, or with semantic HTML
+that refers to one generated resource.
 
 ### Deployment file
 

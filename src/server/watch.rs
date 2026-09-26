@@ -357,6 +357,22 @@ mod tests {
     }
 
     #[test]
+    fn recognizes_renderer_source_files_below_content() {
+        let root = Path::new("/site");
+        let write = Event::new(EventKind::Modify(notify::event::ModifyKind::Data(
+            notify::event::DataChange::Content,
+        )))
+        .add_path(root.join("content/en/diagrams/request.puml"));
+
+        let changes = changed_source_paths(root, &write, None);
+        assert!(
+            changes
+                .events
+                .contains_key(Path::new("content/en/diagrams/request.puml"))
+        );
+    }
+
+    #[test]
     fn watches_selected_kit_runtime_inputs_but_not_snapshots_or_other_kits() {
         let root = Path::new("/site");
         let name = crate::kit::KitName::parse("paper".into()).expect("valid kit name");
