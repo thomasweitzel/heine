@@ -586,8 +586,7 @@ impl Page {
                         }
                     };
                     crate::renderer::run_workspace(crate::renderer::WorkspaceRequest {
-                        runtime: renderer.workspace_runtime(),
-                        cache_root: renderer.renderer_cache_root(),
+                        runtime: renderer.renderer_runtime(),
                         refresh: renderer.refresh_renderers(),
                         profile_name: &request.profile,
                         profile,
@@ -627,15 +626,15 @@ impl Page {
                             })?
                         }
                     };
-                    crate::renderer::run_stream(
-                        renderer.renderer_cache_root(),
-                        renderer.refresh_renderers(),
-                        &request.profile,
+                    crate::renderer::run_stream(crate::renderer::StreamRequest {
+                        runtime: renderer.renderer_runtime(),
+                        refresh: renderer.refresh_renderers(),
+                        profile_name: &request.profile,
                         profile,
-                        request.placement,
-                        request.output,
-                        &input,
-                    )
+                        placement: request.placement,
+                        output: request.output,
+                        input: &input,
+                    })
                 })
                 .map_err(|message| {
                     Box::new(crate::markdown::source_error(
@@ -647,53 +646,28 @@ impl Page {
                         },
                     ))
                 })?;
-                let replacement = if request.output == crate::renderer::Output::Embedded {
-                    crate::renderer::validate_embedded(profile.result(), rendered).map_err(
-                        |message| {
-                            Box::new(crate::markdown::source_error(
-                                &source.display_path,
-                                &source.source,
-                                crate::markdown::RenderError::RendererProcess {
-                                    message,
-                                    span: request.span.clone(),
-                                },
-                            ))
-                        },
-                    )?
-                } else {
-                    let rendered = crate::renderer::validate_resource(profile.result(), rendered)
-                        .and_then(|rendered| {
-                            crate::renderer::resource_output_path(profile, &rendered)
-                                .map(|output_path| (output_path, rendered))
-                        })
-                        .map_err(|message| {
-                            Box::new(crate::markdown::source_error(
-                                &source.display_path,
-                                &source.source,
-                                crate::markdown::RenderError::RendererProcess {
-                                    message,
-                                    span: request.span.clone(),
-                                },
-                            ))
-                        })?;
-                    let (output_path, rendered) = rendered;
-                    let url = format!("{}{}", resource_base_path, output_path.url_path().as_str());
-                    let replacement = resource_replacement(
-                        profile.result(),
-                        &url,
-                        request.alt.as_deref(),
-                        request.label.as_deref(),
-                    );
-                    renderer_resources.push(RendererResource {
-                        output_path,
-                        bytes: rendered,
-                        source: Arc::new(NamedSource::new(
-                            source.display_path.display().to_string(),
-                            source.source.clone(),
-                        )),
-                        span: request.span.clone().into(),
-                    });
-                    replacement
+                let replacement = match rendered {
+                    crate::renderer::RendererOutput::Embedded(replacement) => replacement,
+                    crate::renderer::RendererOutput::Resource { output_path, bytes } => {
+                        let url =
+                            format!("{}{}", resource_base_path, output_path.url_path().as_str());
+                        let replacement = resource_replacement(
+                            profile.result(),
+                            &url,
+                            request.alt.as_deref(),
+                            request.label.as_deref(),
+                        );
+                        renderer_resources.push(RendererResource {
+                            output_path,
+                            bytes,
+                            source: Arc::new(NamedSource::new(
+                                source.display_path.display().to_string(),
+                                source.source.clone(),
+                            )),
+                            span: request.span.clone().into(),
+                        });
+                        replacement
+                    }
                 };
                 transformed.replace_range(request.span.clone(), &replacement);
             }

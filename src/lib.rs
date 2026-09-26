@@ -131,7 +131,7 @@ pub(crate) fn build_at_with_publication(
 pub(crate) fn build_at_with_renderer_runtime(
     root: &Path,
     build: BuildOptions,
-) -> miette::Result<(BuildPublication, renderer::WorkspaceRuntime)> {
+) -> miette::Result<(BuildPublication, renderer::RendererRuntime)> {
     build_at_with_publication_in_runtime(root, build, None)
 }
 
@@ -140,8 +140,8 @@ pub(crate) fn build_at_with_renderer_runtime(
 pub(crate) fn build_at_with_publication_in_runtime(
     root: &Path,
     build: BuildOptions,
-    runtime: Option<&renderer::WorkspaceRuntime>,
-) -> miette::Result<(BuildPublication, renderer::WorkspaceRuntime)> {
+    runtime: Option<&renderer::RendererRuntime>,
+) -> miette::Result<(BuildPublication, renderer::RendererRuntime)> {
     let paths = ProjectPaths::new(root);
     let diagnostics = source_diagnostic::DiagnosticPaths::new(paths.root());
     let config = SiteConfig::load(paths.config(), &diagnostics).map_err(miette::Report::new)?;
@@ -155,18 +155,22 @@ pub(crate) fn build_at_with_publication_in_runtime(
         .map(asset::KitAssets::load)
         .transpose()
         .map_err(miette::Report::new)?;
-    let workspace_runtime = runtime
+    let renderer_runtime = runtime
         .cloned()
         .map(Ok)
-        .unwrap_or_else(|| renderer::WorkspaceRuntime::new(config.renderers()))
+        .unwrap_or_else(|| {
+            renderer::RendererRuntime::new(
+                config.renderers(),
+                paths.root().join(".heine/cache/renderers/v1"),
+            )
+        })
         .map_err(miette::Report::msg)?;
     let markdown = markdown::Renderer::with_renderer_profiles(
         config.markdown().clone(),
         config.renderers().clone(),
         build.allow_external_renderers,
-        paths.root().join(".heine/cache/renderers/v1"),
         build.refresh_renderers,
-        workspace_runtime.clone(),
+        renderer_runtime.clone(),
     )
     .map_err(|error| miette::Report::new(*error))?;
     let (data, locale_data) =
@@ -221,7 +225,7 @@ pub(crate) fn build_at_with_publication_in_runtime(
     OutputWriter::new(OutputTarget::new(paths.root(), &output_dir))
         .write(&copied_files, rendered, build.mode, build.clean_output)
         .map_err(miette::Report::new)?;
-    Ok((publication, workspace_runtime))
+    Ok((publication, renderer_runtime))
 }
 
 /// Builds and serves a site for local development.

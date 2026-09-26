@@ -216,7 +216,7 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
     } else {
         rebuild
     };
-    let (initial_build, workspace_runtime) = build_at_with_renderer_runtime(&root, build)?;
+    let (initial_build, renderer_runtime) = build_at_with_renderer_runtime(&root, build)?;
     let kit_paths = initial_build.kit_paths.clone();
     let initial =
         PublishedSite::from_build(initial_build, generation_from_start_time(SystemTime::now()));
@@ -239,7 +239,7 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
         watcher,
         rebuild,
         kit_paths,
-        workspace_runtime,
+        renderer_runtime,
     ))
 }
 
@@ -249,7 +249,7 @@ async fn run(
     watcher: watch::PendingWatcher,
     rebuild: BuildOptions,
     kit_paths: Option<crate::kit::Paths>,
-    workspace_runtime: crate::renderer::WorkspaceRuntime,
+    renderer_runtime: crate::renderer::RendererRuntime,
 ) -> miette::Result<()> {
     let address = listener
         .local_addr()
@@ -261,7 +261,7 @@ async fn run(
         .map_err(|source| miette::Report::new(Error::RuntimeListener { address, source }))?;
     let (published, receiver) = state_watch::channel(initial);
     let _watcher = watcher
-        .start(published, rebuild, kit_paths, workspace_runtime)
+        .start(published, rebuild, kit_paths, renderer_runtime)
         .map_err(miette::Report::new)?;
     let state = ServerState {
         published: receiver,

@@ -6,7 +6,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     ops::Range,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
 };
 
@@ -27,6 +27,9 @@ use crate::{
     renderer::Profiles as RendererProfiles,
     site::PageLinks,
 };
+
+#[cfg(test)]
+use std::path::PathBuf;
 
 mod analysis;
 mod highlighting;
@@ -194,9 +197,8 @@ pub(crate) struct Renderer {
     highlighter: Option<Arc<Highlighter>>,
     renderer_profiles: RendererProfiles,
     allow_external_renderers: bool,
-    renderer_cache_root: PathBuf,
     refresh_renderers: bool,
-    workspace_runtime: crate::renderer::WorkspaceRuntime,
+    renderer_runtime: crate::renderer::RendererRuntime,
 }
 
 /// The one source-backed heading model shared by the template view and
@@ -326,25 +328,20 @@ impl Renderer {
     #[cfg(test)]
     pub(crate) fn new(config: MarkdownConfig) -> Result<Self, Box<InitializationError>> {
         let renderer_profiles = RendererProfiles::default();
-        let workspace_runtime = crate::renderer::WorkspaceRuntime::new(&renderer_profiles)
-            .expect("a stream-only renderer configuration has no workspace runtime");
-        Self::with_renderer_profiles(
-            config,
-            renderer_profiles,
-            false,
+        let renderer_runtime = crate::renderer::RendererRuntime::new(
+            &renderer_profiles,
             PathBuf::from(".heine/cache/renderers/v1"),
-            false,
-            workspace_runtime,
         )
+        .expect("a stream-only renderer configuration has no workspace runtime");
+        Self::with_renderer_profiles(config, renderer_profiles, false, false, renderer_runtime)
     }
 
     pub(crate) fn with_renderer_profiles(
         config: MarkdownConfig,
         renderer_profiles: RendererProfiles,
         allow_external_renderers: bool,
-        renderer_cache_root: PathBuf,
         refresh_renderers: bool,
-        workspace_runtime: crate::renderer::WorkspaceRuntime,
+        renderer_runtime: crate::renderer::RendererRuntime,
     ) -> Result<Self, Box<InitializationError>> {
         let highlighter = config.highlighting().map(|highlighting| {
             Highlighter::new(highlighting).map(Arc::new).map_err(|source| {
@@ -367,9 +364,8 @@ impl Renderer {
             highlighter,
             renderer_profiles,
             allow_external_renderers,
-            renderer_cache_root,
             refresh_renderers,
-            workspace_runtime,
+            renderer_runtime,
         })
     }
 
@@ -377,16 +373,12 @@ impl Renderer {
         &self.config
     }
 
-    pub(crate) fn renderer_cache_root(&self) -> &Path {
-        &self.renderer_cache_root
-    }
-
     pub(crate) fn refresh_renderers(&self) -> bool {
         self.refresh_renderers
     }
 
-    pub(crate) fn workspace_runtime(&self) -> &crate::renderer::WorkspaceRuntime {
-        &self.workspace_runtime
+    pub(crate) fn renderer_runtime(&self) -> &crate::renderer::RendererRuntime {
+        &self.renderer_runtime
     }
 
     pub(crate) fn renderer_profiles(&self) -> &RendererProfiles {

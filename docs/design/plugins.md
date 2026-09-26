@@ -633,7 +633,9 @@ runs the selected renderer, validates its result, and writes the refreshed
 entry for that request's existing cache key. It does not need to delete older
 content-addressed entries: they cannot affect a request unless its exact prior
 key recurs. The cache removes incomplete companion files left by interrupted
-atomic writes, while complete entries remain disposable private working state.
+atomic writes when a renderer build session starts. It does not scan the
+complete cache for every request or evict valid entries automatically. Complete
+entries remain disposable private working state.
 
 Renderer cache entries live below the site root at
 `.heine/cache/renderers/v1/`. This is private, disposable Heine working state,

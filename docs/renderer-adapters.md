@@ -170,6 +170,11 @@ tools or after an external change not represented by `cache_identity`:
 heine --allow-external-renderers --refresh-renderers
 ```
 
+At the start of each build session, Heine removes incomplete cache files from
+an interrupted atomic write. It does not scan the complete cache for every
+request, and it does not evict valid entries automatically. Remove `.heine/`
+when you want to discard the private cache completely.
+
 `heine serve --allow-external-renderers` applies the same permission to every
 complete watched rebuild. Renderer source files and bundles live below
 `content/`, so changes trigger a rebuild. A `--quick` build can update a

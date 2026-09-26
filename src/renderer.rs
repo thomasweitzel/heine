@@ -204,8 +204,7 @@ pub(crate) enum WorkspaceInput<'a> {
 /// Everything the host has already checked for one workspace renderer request.
 /// Grouping these values keeps the execution boundary explicit as it grows.
 pub(crate) struct WorkspaceRequest<'a> {
-    pub(crate) runtime: &'a WorkspaceRuntime,
-    pub(crate) cache_root: &'a Path,
+    pub(crate) runtime: &'a RendererRuntime,
     pub(crate) refresh: bool,
     pub(crate) profile_name: &'a str,
     pub(crate) profile: &'a Profile,
@@ -214,21 +213,76 @@ pub(crate) struct WorkspaceRequest<'a> {
     pub(crate) input: WorkspaceInput<'a>,
 }
 
-/// State that outlives one build when the development server rebuilds a site.
-/// Stream-only configurations do not allocate a temporary directory.
+/// Renderer state that outlives one build when the development server rebuilds
+/// a site. Stream-only configurations do not allocate a temporary directory.
 #[derive(Clone, Debug)]
-pub(crate) struct WorkspaceRuntime {
-    manager: Option<Arc<Mutex<WorkspaceManager>>>,
+pub(crate) struct RendererRuntime {
+    manager: Arc<Mutex<Option<WorkspaceManager>>>,
+    cache: RendererCache,
 }
 
-impl WorkspaceRuntime {
-    pub(crate) fn new(profiles: &Profiles) -> Result<Self, String> {
+impl RendererRuntime {
+    pub(crate) fn new(profiles: &Profiles, cache_root: PathBuf) -> Result<Self, String> {
         let manager = profiles
             .uses_workspace()
             .then(WorkspaceManager::new)
-            .transpose()?
-            .map(|manager| Arc::new(Mutex::new(manager)));
-        Ok(Self { manager })
+            .transpose()?;
+        Ok(Self {
+            manager: Arc::new(Mutex::new(manager)),
+            cache: RendererCache::open(cache_root)?,
+        })
+    }
+}
+
+/// One build session owns cache cleanup. Complete cache entries remain
+/// immutable and available until the site owner removes `.heine/`.
+#[derive(Clone, Debug)]
+struct RendererCache {
+    root: PathBuf,
+}
+
+impl RendererCache {
+    fn open(root: PathBuf) -> Result<Self, String> {
+        cleanup_cache(&root)?;
+        Ok(Self { root })
+    }
+
+    fn read(
+        &self,
+        key: &str,
+        profile: &Profile,
+        output: Output,
+    ) -> Result<Option<RendererOutput>, String> {
+        let bytes_path = self.root.join(format!("{key}.bin"));
+        let digest_path = self.root.join(format!("{key}.sha256"));
+        let (bytes, digest) = match (fs::read(&bytes_path), fs::read_to_string(&digest_path)) {
+            (Ok(bytes), Ok(digest)) => (bytes, digest),
+            (Err(error), _) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            (_, Err(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            (Err(error), _) => return Err(format!("could not read renderer cache: {error}")),
+            (_, Err(error)) => return Err(format!("could not read renderer cache: {error}")),
+        };
+        let expected = format!(
+            "v1 {} {}",
+            cache_result_kind(profile.result()),
+            hex_digest(&Sha256::digest(&bytes))
+        );
+        if digest.trim() != expected {
+            return Ok(None);
+        }
+        validate_renderer_output(profile, output, bytes).map(Some)
+    }
+
+    fn write(&self, key: &str, result: &ResultCapabilities, bytes: &[u8]) -> Result<(), String> {
+        fs::create_dir_all(&self.root)
+            .map_err(|error| format!("could not create renderer cache: {error}"))?;
+        let digest = format!(
+            "v1 {} {}\n",
+            cache_result_kind(result),
+            hex_digest(&Sha256::digest(bytes))
+        );
+        write_cache_file(&self.root.join(format!("{key}.bin")), bytes)?;
+        write_cache_file(&self.root.join(format!("{key}.sha256")), digest.as_bytes())
     }
 }
 
@@ -353,10 +407,9 @@ fn cleanup_stale_workspace_sessions(temporary_directory: &Path) {
 /// Runs one workspace profile in an isolated temporary directory and returns
 /// only its declared primary result. The workspace itself is never visible to
 /// the renderer as a project path.
-pub(crate) fn run_workspace(request: WorkspaceRequest<'_>) -> Result<Vec<u8>, String> {
+pub(crate) fn run_workspace(request: WorkspaceRequest<'_>) -> Result<RendererOutput, String> {
     let WorkspaceRequest {
         runtime,
-        cache_root,
         refresh,
         profile_name,
         profile,
@@ -370,31 +423,30 @@ pub(crate) fn run_workspace(request: WorkspaceRequest<'_>) -> Result<Vec<u8>, St
         profile,
         placement,
         output,
-        cache_input_for_workspace(&input)?,
+        cache_input_for_workspace(&input),
     )?;
     if !refresh {
-        if let Some(bytes) = read_cache(cache_root, &cache_key, profile.result())? {
-            return validate_renderer_output(profile.result(), output, bytes);
+        if let Some(result) = runtime.cache.read(&cache_key, profile, output)? {
+            return Ok(result);
         }
     }
     let variant = profile.workspace_variant(placement)?;
-    let manager = runtime
+    let mut manager = runtime
         .manager
-        .as_ref()
-        .ok_or_else(|| "workspace renderer runtime is not available".to_owned())?;
-    let mut manager = manager
         .lock()
         .map_err(|_| "renderer workspace runtime is unavailable".to_owned())?;
+    if manager.is_none() {
+        *manager = Some(WorkspaceManager::new()?);
+    }
+    let manager = manager
+        .as_mut()
+        .expect("workspace manager is initialized before use");
     let workspace = manager.prepare(profile_name)?;
     let result = (|| {
         let layout = WorkspaceLayout::create(&workspace, profile, input)?;
         let arguments = expand_workspace_arguments(&variant.arguments, &layout);
         execute_workspace_process(profile, &arguments, &layout)?;
-        validate_renderer_output(
-            profile.result(),
-            output,
-            validate_workspace_output(&layout)?,
-        )
+        validate_renderer_output(profile, output, validate_workspace_output(&layout)?)
     })();
     let cleanup = manager.clean(profile_name);
     let result = match (result, cleanup) {
@@ -411,7 +463,9 @@ pub(crate) fn run_workspace(request: WorkspaceRequest<'_>) -> Result<Vec<u8>, St
         }
         (Err(error), Ok(())) => return Err(error),
     };
-    write_cache(cache_root, &cache_key, profile.result(), &result)?;
+    runtime
+        .cache
+        .write(&cache_key, profile.result(), result.bytes())?;
     Ok(result)
 }
 
@@ -558,15 +612,26 @@ fn validate_workspace_output(layout: &WorkspaceLayout) -> Result<Vec<u8>, String
     Ok(bytes)
 }
 
-pub(crate) fn run_stream(
-    cache_root: &Path,
-    refresh: bool,
-    profile_name: &str,
-    profile: &Profile,
-    placement: Placement,
-    output: Output,
-    input: &[u8],
-) -> Result<Vec<u8>, String> {
+pub(crate) struct StreamRequest<'a> {
+    pub(crate) runtime: &'a RendererRuntime,
+    pub(crate) refresh: bool,
+    pub(crate) profile_name: &'a str,
+    pub(crate) profile: &'a Profile,
+    pub(crate) placement: Placement,
+    pub(crate) output: Output,
+    pub(crate) input: &'a [u8],
+}
+
+pub(crate) fn run_stream(request: StreamRequest<'_>) -> Result<RendererOutput, String> {
+    let StreamRequest {
+        runtime,
+        refresh,
+        profile_name,
+        profile,
+        placement,
+        output,
+        input,
+    } = request;
     let cache_key = renderer_cache_key(
         "stream",
         profile_name,
@@ -576,20 +641,36 @@ pub(crate) fn run_stream(
         CacheInput::Body(input),
     )?;
     if !refresh {
-        if let Some(bytes) = read_cache(cache_root, &cache_key, profile.result())? {
-            return validate_renderer_output(profile.result(), output, bytes);
+        if let Some(result) = runtime.cache.read(&cache_key, profile, output)? {
+            return Ok(result);
         }
     }
-    let result = validate_renderer_output(
-        profile.result(),
-        output,
-        execute_stream(profile, placement, input)?,
-    )?;
-    write_cache(cache_root, &cache_key, profile.result(), &result)?;
+    let result =
+        validate_renderer_output(profile, output, execute_stream(profile, placement, input)?)?;
+    runtime
+        .cache
+        .write(&cache_key, profile.result(), result.bytes())?;
     Ok(result)
 }
 
-pub(crate) fn resource_output_path(
+pub(crate) enum RendererOutput {
+    Embedded(String),
+    Resource {
+        output_path: crate::output::OutputPath,
+        bytes: Vec<u8>,
+    },
+}
+
+impl RendererOutput {
+    fn bytes(&self) -> &[u8] {
+        match self {
+            Self::Embedded(value) => value.as_bytes(),
+            Self::Resource { bytes, .. } => bytes,
+        }
+    }
+}
+
+fn resource_output_path(
     profile: &Profile,
     bytes: &[u8],
 ) -> Result<crate::output::OutputPath, String> {
@@ -688,11 +769,11 @@ enum CacheInput<'a> {
     Source(&'a Source),
 }
 
-fn cache_input_for_workspace<'a>(input: &'a WorkspaceInput<'a>) -> Result<CacheInput<'a>, String> {
-    Ok(match input {
+fn cache_input_for_workspace<'a>(input: &'a WorkspaceInput<'a>) -> CacheInput<'a> {
+    match input {
         WorkspaceInput::Body(bytes) => CacheInput::Body(bytes),
         WorkspaceInput::Source(source) => CacheInput::Source(source),
-    })
+    }
 }
 
 fn renderer_cache_key(
@@ -749,9 +830,7 @@ fn renderer_cache_key(
                     .map_err(|_| "renderer source is outside its checked input root".to_owned())?;
                 hasher.update(relative.as_os_str().as_encoded_bytes());
                 hasher.update([0]);
-                let bytes = fs::read(path)
-                    .map_err(|error| format!("could not read renderer source: {error}"))?;
-                hasher.update(bytes);
+                hash_renderer_source(&mut hasher, path)?;
                 hasher.update([0]);
             }
         }
@@ -759,48 +838,19 @@ fn renderer_cache_key(
     Ok(hex_digest(&hasher.finalize()))
 }
 
-fn read_cache(
-    root: &Path,
-    key: &str,
-    result: &ResultCapabilities,
-) -> Result<Option<Vec<u8>>, String> {
-    cleanup_cache(root)?;
-    let bytes_path = root.join(format!("{key}.bin"));
-    let digest_path = root.join(format!("{key}.sha256"));
-    let (bytes, digest) = match (fs::read(&bytes_path), fs::read_to_string(&digest_path)) {
-        (Ok(bytes), Ok(digest)) => (bytes, digest),
-        (Err(error), _) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        (_, Err(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        (Err(error), _) => return Err(format!("could not read renderer cache: {error}")),
-        (_, Err(error)) => return Err(format!("could not read renderer cache: {error}")),
-    };
-    let expected = format!(
-        "v1 {} {}",
-        cache_result_kind(result),
-        hex_digest(&Sha256::digest(&bytes))
-    );
-    if digest.trim() != expected {
-        return Ok(None);
+fn hash_renderer_source(hasher: &mut Sha256, path: &Path) -> Result<(), String> {
+    let mut file =
+        fs::File::open(path).map_err(|error| format!("could not read renderer source: {error}"))?;
+    let mut buffer = [0; 8192];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("could not read renderer source: {error}"))?;
+        if read == 0 {
+            return Ok(());
+        }
+        hasher.update(&buffer[..read]);
     }
-    Ok(Some(bytes))
-}
-
-fn write_cache(
-    root: &Path,
-    key: &str,
-    result: &ResultCapabilities,
-    bytes: &[u8],
-) -> Result<(), String> {
-    fs::create_dir_all(root)
-        .map_err(|error| format!("could not create renderer cache: {error}"))?;
-    cleanup_cache(root)?;
-    let digest = format!(
-        "v1 {} {}\n",
-        cache_result_kind(result),
-        hex_digest(&Sha256::digest(bytes))
-    );
-    write_cache_file(&root.join(format!("{key}.bin")), bytes)?;
-    write_cache_file(&root.join(format!("{key}.sha256")), digest.as_bytes())
 }
 
 /// Removes incomplete cache artifacts left by an interrupted atomic write.
@@ -864,15 +914,12 @@ fn write_cache_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .map_err(|error| format!("could not publish renderer cache: {error}"))
 }
 
-pub(crate) fn validate_embedded(
-    result: &ResultCapabilities,
-    bytes: Vec<u8>,
-) -> Result<String, String> {
+fn validate_embedded(result: &ResultCapabilities, bytes: Vec<u8>) -> Result<String, String> {
     match result {
         ResultCapabilities::Html => String::from_utf8(bytes)
             .map_err(|_| "HTML renderer returned non-UTF-8 embedded output".to_owned()),
-        ResultCapabilities::Mathml => validate_xml_fragment(bytes, b"math", "MathML"),
-        ResultCapabilities::Svg { .. } => validate_xml_fragment(bytes, b"svg", "SVG"),
+        ResultCapabilities::Mathml => validate_xml_fragment(&bytes, b"math", "MathML"),
+        ResultCapabilities::Svg { .. } => validate_xml_fragment(&bytes, b"svg", "SVG"),
         ResultCapabilities::Image { .. } | ResultCapabilities::Link { .. } => {
             Err("selected renderer result cannot be embedded".to_owned())
         }
@@ -885,16 +932,13 @@ pub(crate) fn validate_embedded(
 }
 
 /// Checks the result forms that are published unchanged as generated files.
-pub(crate) fn validate_resource(
-    result: &ResultCapabilities,
-    bytes: Vec<u8>,
-) -> Result<Vec<u8>, String> {
+fn validate_resource(result: &ResultCapabilities, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     if bytes.is_empty() {
         return Err("renderer returned empty output".to_owned());
     }
     match result {
         ResultCapabilities::Svg { .. } => {
-            validate_xml_fragment(bytes.clone(), b"svg", "SVG")?;
+            validate_xml_fragment(&bytes, b"svg", "SVG")?;
             Ok(bytes)
         }
         ResultCapabilities::Image { .. } | ResultCapabilities::Link { .. } => Ok(bytes),
@@ -905,22 +949,23 @@ pub(crate) fn validate_resource(
 }
 
 fn validate_renderer_output(
-    result: &ResultCapabilities,
+    profile: &Profile,
     output: Output,
     bytes: Vec<u8>,
-) -> Result<Vec<u8>, String> {
+) -> Result<RendererOutput, String> {
     match output {
-        Output::Embedded => validate_embedded(result, bytes).map(String::into_bytes),
-        Output::Resource => validate_resource(result, bytes),
+        Output::Embedded => {
+            validate_embedded(profile.result(), bytes).map(RendererOutput::Embedded)
+        }
+        Output::Resource => validate_resource(profile.result(), bytes).and_then(|bytes| {
+            resource_output_path(profile, &bytes)
+                .map(|output_path| RendererOutput::Resource { output_path, bytes })
+        }),
     }
 }
 
-fn validate_xml_fragment(
-    bytes: Vec<u8>,
-    expected_root: &[u8],
-    kind: &str,
-) -> Result<String, String> {
-    let mut reader = Reader::from_reader(bytes.as_slice());
+fn validate_xml_fragment(bytes: &[u8], expected_root: &[u8], kind: &str) -> Result<String, String> {
+    let mut reader = Reader::from_reader(bytes);
     let mut writer = Writer::new(Vec::new());
     let mut buffer = Vec::new();
     let mut depth = 0usize;
@@ -1641,6 +1686,44 @@ mod tests {
         assert!(!stale.exists());
         assert!(unrelated.is_dir());
         assert!(manager.session.path().is_dir());
+    }
+
+    #[test]
+    fn renderer_cache_cleans_incomplete_entries_once_when_the_session_starts() {
+        let root = tempfile::tempdir().expect("cache root");
+        let stale = root.path().join("stale.bin");
+        fs::write(&stale, "bytes").expect("incomplete cache entry");
+
+        let cache = RendererCache::open(root.path().to_path_buf()).expect("renderer cache");
+        assert!(!stale.exists());
+
+        let later_stale = root.path().join("later.bin");
+        fs::write(&later_stale, "bytes").expect("later incomplete cache entry");
+        cache
+            .write("complete", &ResultCapabilities::Html, b"<p>result</p>")
+            .expect("cache write");
+
+        assert!(later_stale.exists());
+        assert!(root.path().join("complete.bin").is_file());
+        assert!(root.path().join("complete.sha256").is_file());
+    }
+
+    #[test]
+    fn renderer_source_hashing_matches_a_complete_byte_sequence() {
+        let root = tempfile::tempdir().expect("source root");
+        let source = root.path().join("input.bin");
+        let bytes = (0..20_000)
+            .map(|index| (index % 251) as u8)
+            .collect::<Vec<_>>();
+        fs::write(&source, &bytes).expect("renderer source");
+        let mut hasher = Sha256::new();
+
+        hash_renderer_source(&mut hasher, &source).expect("streamed source hash");
+
+        assert_eq!(
+            hasher.finalize().as_slice(),
+            Sha256::digest(&bytes).as_slice()
+        );
     }
 
     #[test]
