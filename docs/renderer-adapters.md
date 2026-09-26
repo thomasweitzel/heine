@@ -187,6 +187,24 @@ Heine publishes that resource once. If another producer claims its path,
 Heine's collision report identifies every Markdown request that contributed to
 the shared resource.
 
+## Checking local renderer installations
+
+Heine's ordinary test suite does not require an external renderer. This keeps
+a source checkout testable on systems that have only Rust installed. The
+repository also includes one ignored integration test that runs the locally
+installed `pandoc` and `typst` programs. It checks Pandoc HTML replacements
+and Typst PDF, SVG, and PNG resources through the same public build boundary
+that a site uses:
+
+```bash
+cargo +1.88.0 test --test external_renderers -- --ignored
+```
+
+Run that command deliberately after installing both programs. It fails when a
+selected program is absent or does not produce its checked result. A published
+source checkout therefore retains the examples and test without silently
+skipping a requested external-tool check.
+
 Read the [reference](reference.md#renderer-adapters) for every field and the
 [renderer-adapter design](design/plugins.md) for the trust and output-ownership
 boundaries.
