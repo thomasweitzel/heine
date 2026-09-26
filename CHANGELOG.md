@@ -33,6 +33,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Renderer result caching.** Successful stream and workspace results,
+  including generated resources and source bundles, now use typed,
+  integrity-checked cache entries. `--refresh-renderers` refreshes every
+  selected request, and Heine removes incomplete cache artifacts left by an
+  interrupted cache write.
+
 - **Generated renderer resources.** SVG, image, and linked-resource requests
   now publish one digest-addressed output below `heine-renderers/` and replace
   their Markdown request with checked semantic HTML. Identical renderer bytes

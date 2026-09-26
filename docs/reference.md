@@ -20,12 +20,12 @@ A site root contains `heine.toml`, `content/`, and `templates/`; `data/`, `deplo
 | `heine`       | `--quick`          | off                        | flag               | Updates managed output for changed page, declared content, inherited descriptor, data, Fluent resources, present copied assets and sidecars, deployment files, and license texts; it remains incomplete |
 | `heine`       | `--clean-output`   | off                        | flag               | Adopts unmanaged output; conflicts with `--quick`                                                                                                                                                       |
 | `heine`       | `--allow-external-renderers` | off              | flag               | Permits selected checked renderer requests to start their configured program                                                                                                                            |
-| `heine`       | `--refresh-renderers` | off                    | flag               | Re-runs permitted stream embedded requests instead of reusing their cached results                                                                                                                     |
+| `heine`       | `--refresh-renderers` | off                    | flag               | Re-runs permitted renderer requests instead of reusing their cached results                                                                                                                            |
 | `heine serve` | `--root <path>`    | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
 | `heine serve` | `--clean-output`   | off                        | flag               | Adopts unmanaged output before its initial build                                                                                                                                                        |
 | `heine serve` | `--drafts`         | off                        | flag               | Includes otherwise unpublished `draft = true` pages in this local preview                                                                                                                               |
 | `heine serve` | `--allow-external-renderers` | off              | flag               | Permits selected checked renderer requests to start their configured program                                                                                                                            |
-| `heine serve` | `--refresh-renderers` | off                    | flag               | Re-runs permitted stream embedded requests instead of reusing their cached results                                                                                                                     |
+| `heine serve` | `--refresh-renderers` | off                    | flag               | Re-runs permitted renderer requests instead of reusing their cached results                                                                                                                            |
 | `heine serve` | `--host <address>` | `127.0.0.1`                | IP address         | Interface on which to listen                                                                                                                                                                            |
 | `heine serve` | `--port <number>`  | `1111`                     | `1024`-`65535`     | First port to try; then the next free port                                                                                                                                                              |
 
@@ -471,14 +471,15 @@ Heine captures bounded standard-error text for a failed program and terminates
 the direct child when it exceeds `timeout_seconds`. It does not manage a
 renderer's descendant process tree.
 
-Heine caches successful stream embedded results below
-`.heine/cache/renderers/v1/`, outside published output. The key includes the
-profile identity and effective fixed configuration, placement, requested
-output form, and input bytes. A profile's `cache_identity` is therefore the
-site owner's deliberate promise to update when the installed renderer or its
-meaningful environment changes. `--refresh-renderers` bypasses reads for one
-build and atomically replaces the matching embedded-result entry. Workspace
-and generated-resource results currently run for every selected request.
+Heine caches successful renderer results below `.heine/cache/renderers/v1/`,
+outside published output. The key includes the profile identity and effective
+fixed configuration, placement, requested output form, and the complete
+checked input bytes. A source bundle contributes every checked relative path
+and file. A profile's `cache_identity` is therefore the site owner's deliberate
+promise to update when the installed renderer or its meaningful environment
+changes. `--refresh-renderers` bypasses reads for one build and atomically
+replaces matching entries. Heine removes incomplete cache companions from an
+interrupted write, while complete entries remain disposable working state.
 
 ## `data/`
 

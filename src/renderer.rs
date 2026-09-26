@@ -201,10 +201,27 @@ pub(crate) enum WorkspaceInput<'a> {
 /// only its declared primary result. The workspace itself is never visible to
 /// the renderer as a project path.
 pub(crate) fn run_workspace(
+    cache_root: &Path,
+    refresh: bool,
+    profile_name: &str,
     profile: &Profile,
     placement: Placement,
+    output: Output,
     input: WorkspaceInput<'_>,
 ) -> Result<Vec<u8>, String> {
+    let cache_key = renderer_cache_key(
+        "workspace",
+        profile_name,
+        profile,
+        placement,
+        output,
+        cache_input_for_workspace(&input)?,
+    )?;
+    if !refresh {
+        if let Some(bytes) = read_cache(cache_root, &cache_key, profile.result())? {
+            return validate_renderer_output(profile.result(), output, bytes);
+        }
+    }
     let variant = profile.workspace_variant(placement)?;
     let workspace = tempfile::Builder::new()
         .prefix("heine-renderer-")
@@ -213,7 +230,13 @@ pub(crate) fn run_workspace(
     let layout = WorkspaceLayout::create(&workspace, profile, input)?;
     let arguments = expand_workspace_arguments(&variant.arguments, &layout);
     execute_workspace_process(profile, &arguments, &layout)?;
-    validate_workspace_output(&layout)
+    let result = validate_renderer_output(
+        profile.result(),
+        output,
+        validate_workspace_output(&layout)?,
+    )?;
+    write_cache(cache_root, &cache_key, profile.result(), &result)?;
+    Ok(result)
 }
 
 struct WorkspaceLayout {
@@ -371,24 +394,27 @@ pub(crate) fn run_stream(
     placement: Placement,
     output: Output,
     input: &[u8],
-) -> Result<String, String> {
-    let cache_key = stream_cache_key(profile_name, profile, placement, output, input);
+) -> Result<Vec<u8>, String> {
+    let cache_key = renderer_cache_key(
+        "stream",
+        profile_name,
+        profile,
+        placement,
+        output,
+        CacheInput::Body(input),
+    )?;
     if !refresh {
         if let Some(bytes) = read_cache(cache_root, &cache_key, profile.result())? {
-            return validate_embedded(profile.result(), bytes);
+            return validate_renderer_output(profile.result(), output, bytes);
         }
     }
-    let result = validate_embedded(profile.result(), execute_stream(profile, placement, input)?)?;
-    write_cache(cache_root, &cache_key, profile.result(), result.as_bytes())?;
+    let result = validate_renderer_output(
+        profile.result(),
+        output,
+        execute_stream(profile, placement, input)?,
+    )?;
+    write_cache(cache_root, &cache_key, profile.result(), &result)?;
     Ok(result)
-}
-
-pub(crate) fn run_stream_raw(
-    profile: &Profile,
-    placement: Placement,
-    input: &[u8],
-) -> Result<Vec<u8>, String> {
-    execute_stream(profile, placement, input)
 }
 
 pub(crate) fn resource_output_path(
@@ -485,21 +511,35 @@ fn execute_stream(
     }
 }
 
-fn stream_cache_key(
+enum CacheInput<'a> {
+    Body(&'a [u8]),
+    Source(&'a Source),
+}
+
+fn cache_input_for_workspace<'a>(input: &'a WorkspaceInput<'a>) -> Result<CacheInput<'a>, String> {
+    Ok(match input {
+        WorkspaceInput::Body(bytes) => CacheInput::Body(bytes),
+        WorkspaceInput::Source(source) => CacheInput::Source(source),
+    })
+}
+
+fn renderer_cache_key(
+    protocol: &str,
     profile_name: &str,
     profile: &Profile,
     placement: Placement,
     output: Output,
-    input: &[u8],
-) -> String {
+    input: CacheInput<'_>,
+) -> Result<String, String> {
     let arguments = match placement {
         Placement::Inline => profile.inline.as_ref(),
         Placement::Block => profile.block.as_ref(),
     };
     let mut hasher = Sha256::new();
-    hasher.update(b"heine-renderer-stream-cache-v1\0");
+    hasher.update(b"heine-renderer-cache-v2\0");
     for value in [
         profile_name,
+        protocol,
         &profile.cache_identity,
         &profile.program,
         profile.input_extension.as_deref().unwrap_or(""),
@@ -521,8 +561,30 @@ fn stream_cache_key(
         hasher.update(argument.as_bytes());
         hasher.update([0]);
     }
-    hasher.update(input);
-    hex_digest(&hasher.finalize())
+    match input {
+        CacheInput::Body(bytes) => {
+            hasher.update(b"body\0");
+            hasher.update(bytes);
+        }
+        CacheInput::Source(source) => {
+            hasher.update(match source.input() {
+                NamedInput::File => b"file\0".as_slice(),
+                NamedInput::Bundle => b"bundle\0".as_slice(),
+            });
+            for path in source.files() {
+                let relative = path
+                    .strip_prefix(source.root())
+                    .map_err(|_| "renderer source is outside its checked input root".to_owned())?;
+                hasher.update(relative.as_os_str().as_encoded_bytes());
+                hasher.update([0]);
+                let bytes = fs::read(path)
+                    .map_err(|error| format!("could not read renderer source: {error}"))?;
+                hasher.update(bytes);
+                hasher.update([0]);
+            }
+        }
+    }
+    Ok(hex_digest(&hasher.finalize()))
 }
 
 fn read_cache(
@@ -530,6 +592,7 @@ fn read_cache(
     key: &str,
     result: &ResultCapabilities,
 ) -> Result<Option<Vec<u8>>, String> {
+    cleanup_cache(root)?;
     let bytes_path = root.join(format!("{key}.bin"));
     let digest_path = root.join(format!("{key}.sha256"));
     let (bytes, digest) = match (fs::read(&bytes_path), fs::read_to_string(&digest_path)) {
@@ -558,6 +621,7 @@ fn write_cache(
 ) -> Result<(), String> {
     fs::create_dir_all(root)
         .map_err(|error| format!("could not create renderer cache: {error}"))?;
+    cleanup_cache(root)?;
     let digest = format!(
         "v1 {} {}\n",
         cache_result_kind(result),
@@ -565,6 +629,41 @@ fn write_cache(
     );
     write_cache_file(&root.join(format!("{key}.bin")), bytes)?;
     write_cache_file(&root.join(format!("{key}.sha256")), digest.as_bytes())
+}
+
+/// Removes incomplete cache artifacts left by an interrupted atomic write.
+/// Complete entries are immutable and remain available until the site owner
+/// removes `.heine/` or a later cache policy replaces them.
+fn cleanup_cache(root: &Path) -> Result<(), String> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("could not inspect renderer cache: {error}")),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("could not inspect renderer cache: {error}"))?;
+        let path = entry.path();
+        if !entry
+            .file_type()
+            .map_err(|error| format!("could not inspect renderer cache: {error}"))?
+            .is_file()
+        {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let companion = if let Some(key) = name.strip_suffix(".bin") {
+            Some(root.join(format!("{key}.sha256")))
+        } else {
+            name.strip_suffix(".sha256")
+                .map(|key| root.join(format!("{key}.bin")))
+        };
+        if name.contains(".tmp-") || companion.is_some_and(|path| !path.is_file()) {
+            fs::remove_file(&path)
+                .map_err(|error| format!("could not clean renderer cache: {error}"))?;
+        }
+    }
+    Ok(())
 }
 
 fn cache_result_kind(result: &ResultCapabilities) -> &'static str {
@@ -630,6 +729,17 @@ pub(crate) fn validate_resource(
         ResultCapabilities::Html | ResultCapabilities::Mathml => {
             Err("selected renderer result cannot produce a resource".to_owned())
         }
+    }
+}
+
+fn validate_renderer_output(
+    result: &ResultCapabilities,
+    output: Output,
+    bytes: Vec<u8>,
+) -> Result<Vec<u8>, String> {
+    match output {
+        Output::Embedded => validate_embedded(result, bytes).map(String::into_bytes),
+        Output::Resource => validate_resource(result, bytes),
     }
 }
 
@@ -1284,4 +1394,27 @@ struct RawVariant {
 pub(crate) struct ConfigError {
     pub(crate) span: SourceSpan,
     pub(crate) message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_cleanup_removes_only_incomplete_write_artifacts() {
+        let root = tempfile::tempdir().expect("cache root");
+        fs::write(root.path().join("complete.bin"), "bytes").expect("complete bytes");
+        fs::write(root.path().join("complete.sha256"), "digest").expect("complete digest");
+        fs::write(root.path().join("partial.bin"), "bytes").expect("partial bytes");
+        fs::write(root.path().join("partial.sha256.tmp-1"), "digest").expect("temporary digest");
+        fs::create_dir(root.path().join("directory")).expect("cache directory");
+
+        cleanup_cache(root.path()).expect("cache cleanup");
+
+        assert!(root.path().join("complete.bin").is_file());
+        assert!(root.path().join("complete.sha256").is_file());
+        assert!(!root.path().join("partial.bin").exists());
+        assert!(!root.path().join("partial.sha256.tmp-1").exists());
+        assert!(root.path().join("directory").is_dir());
+    }
 }

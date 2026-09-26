@@ -4,11 +4,11 @@
 
 This is the accepted design for Heine's first extension boundary,
 Markdown-aware renderer adapters and configured external renderer profiles.
-The stream-protocol, workspace-backed embedded-result, and generated-resource
-slices are implemented. Workspace-result caching, watcher integration, and
-cache cleanup remain future work. Other extension kinds remain undecided until
-a separate concrete use case requires them. Package discovery, installation,
-and distribution are likewise undecided.
+The stream-protocol, workspace-backed embedded-result, generated-resource,
+and renderer-cache slices are implemented. Renderer source files and bundles
+already live below the watched content tree. Other extension kinds remain
+undecided until a separate concrete use case requires them. Package discovery,
+installation, and distribution are likewise undecided.
 
 ## Decision
 
@@ -602,14 +602,14 @@ clearly Heine-owned workspace parents.
 
 ## Caching, watching, and failure behavior
 
-The current cache applies only to embedded results from stream profiles. Its
-key includes:
+The cache applies to every successful renderer result. Its key includes:
 
 - renderer-profile name, `cache_identity`, and normalized configuration;
 - the selected placement variant and normalized directive options;
 - materialization;
-- the input form and its checked representation: inline or block body bytes,
-  or a named file's bytes.
+- the input form and its checked representation: inline or block body bytes;
+  a named file's bytes; or every checked relative path and byte sequence in a
+  named source bundle.
 
 The explicit `cache_identity` represents the selected renderer version or
 other cache-relevant tool identity. Heine can make publication deterministic
@@ -626,12 +626,12 @@ renderer after external-renderer permission has been granted. This integrity
 check detects cache corruption; it cannot establish that an external renderer
 would return different bytes for unchanged Heine-visible inputs.
 
-`--refresh-renderers` bypasses reusable stream embedded entries. It runs the
-selected renderer, validates its result, and writes the refreshed entry for
-that request's existing cache key. It does not need to delete older
+`--refresh-renderers` bypasses reusable entries for every selected request. It
+runs the selected renderer, validates its result, and writes the refreshed
+entry for that request's existing cache key. It does not need to delete older
 content-addressed entries: they cannot affect a request unless its exact prior
-key recurs. Workspace results and generated resources currently run for every
-selected request. Their cache policy remains future work.
+key recurs. The cache removes incomplete companion files left by interrupted
+atomic writes, while complete entries remain disposable private working state.
 
 Renderer cache entries live below the site root at
 `.heine/cache/renderers/v1/`. This is private, disposable Heine working state,

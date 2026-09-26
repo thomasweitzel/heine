@@ -290,6 +290,31 @@ arguments = ["-c", "cat \"$1\" > \"$2\"", "workspace", "{input_file}", "{output_
     for fragment in ["<p>body</p>", "<p>file</p>", "<p>bundle</p>"] {
         assert!(output.contains(fragment), "{output}");
     }
+    let cache = fixture.path().join(".heine/cache/renderers/v1");
+    assert_eq!(
+        fs::read_dir(&cache)
+            .expect("workspace renderer cache")
+            .count(),
+        6,
+        "each checked input form receives one cache entry and integrity record"
+    );
+
+    fixture.write(
+        "content/en/bundle/imported.txt",
+        "changed bundle dependency\n",
+    );
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("changed bundle input rebuilds");
+    assert_eq!(
+        fs::read_dir(&cache)
+            .expect("workspace renderer cache")
+            .count(),
+        8,
+        "every checked bundle file contributes to the cache key"
+    );
 }
 
 #[cfg(unix)]
@@ -389,6 +414,33 @@ arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_fil
         heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
     )
     .expect("resource renderer builds");
+    let cache = fixture.path().join(".heine/cache/renderers/v1");
+    assert_eq!(
+        fs::read_dir(&cache)
+            .expect("workspace renderer cache")
+            .count(),
+        2,
+        "workspace result and integrity record are cached"
+    );
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("cached workspace resource renderer builds");
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full)
+            .allow_external_renderers()
+            .refresh_renderers(),
+    )
+    .expect("refresh reruns and replaces the workspace resource cache entry");
+    assert_eq!(
+        fs::read_dir(&cache)
+            .expect("workspace renderer cache")
+            .count(),
+        2,
+        "refresh replaces the matching cache entry"
+    );
     let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
     let href = output
         .split("href=\"")

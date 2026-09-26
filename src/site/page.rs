@@ -585,7 +585,15 @@ impl Page {
                             crate::renderer::WorkspaceInput::Source(&self.renderer_sources[name])
                         }
                     };
-                    crate::renderer::run_workspace(profile, request.placement, input)
+                    crate::renderer::run_workspace(
+                        renderer.renderer_cache_root(),
+                        renderer.refresh_renderers(),
+                        &request.profile,
+                        profile,
+                        request.placement,
+                        request.output,
+                        input,
+                    )
                 } else {
                     let input = match &request.input {
                         crate::markdown::ResolvedInput::Body => {
@@ -618,20 +626,15 @@ impl Page {
                             })?
                         }
                     };
-                    if request.output == crate::renderer::Output::Embedded {
-                        crate::renderer::run_stream(
-                            renderer.renderer_cache_root(),
-                            renderer.refresh_renderers(),
-                            &request.profile,
-                            profile,
-                            request.placement,
-                            request.output,
-                            &input,
-                        )
-                        .map(String::into_bytes)
-                    } else {
-                        crate::renderer::run_stream_raw(profile, request.placement, &input)
-                    }
+                    crate::renderer::run_stream(
+                        renderer.renderer_cache_root(),
+                        renderer.refresh_renderers(),
+                        &request.profile,
+                        profile,
+                        request.placement,
+                        request.output,
+                        &input,
+                    )
                 })
                 .map_err(|message| {
                     Box::new(crate::markdown::source_error(

@@ -7,10 +7,11 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Next
 
-- **Renderer adapters:** add workspace-result caching, watcher integration,
-  and cleanup policy to the existing trusted external-renderer boundary.
+- **Renderer adapters:** complete the development-server qualification and
+  publication contract around the existing trusted external-renderer boundary.
   Stream and workspace renderers already provide checked embedded and
-  generated-resource replacements. See the [design](design/plugins.md).
+  generated-resource replacements with typed cached results. See the
+  [design](design/plugins.md).
 
 ## Later
 
