@@ -457,6 +457,33 @@ arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_fil
         fs::read_to_string(fixture.path().join("public").join(path)).expect("resource"),
         "report bytes"
     );
+
+    let markdown = fixture.path().join("content/en/index.md");
+    fixture.write(
+        "content/en/index.md",
+        ":::render[document label=\"Download report\"]\nupdated report bytes\n:::\n",
+    );
+    fs::File::open(&markdown)
+        .expect("changed Markdown")
+        .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(1)))
+        .expect("changed Markdown timestamp");
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Quick).allow_external_renderers(),
+    )
+    .expect("quick build updates a changed renderer request");
+    let output =
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("quick output");
+    let href = output
+        .split("href=\"")
+        .nth(1)
+        .and_then(|value| value.split('\"').next())
+        .expect("updated resource link");
+    let path = href.strip_prefix("/guide/").expect("base path");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public").join(path)).expect("updated resource"),
+        "updated report bytes"
+    );
 }
 
 #[test]

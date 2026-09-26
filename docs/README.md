@@ -57,8 +57,8 @@ required prerequisite for the guides.
   variants of one authored image.
 - [Word counts and reading time](markdown-facts.md): deterministic Markdown
   facts and opt-in, locale-specific reading-time estimates.
-- [Renderer adapters](reference.md#renderer-adapters): explicit Markdown
-  requests for checked external stream and workspace-renderer replacements.
+- [Renderer adapters](renderer-adapters.md): configure and use checked
+  external stream and workspace-renderer replacements.
 
 ## Operate a site and account for assets
 
