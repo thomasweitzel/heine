@@ -7,11 +7,11 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Next
 
-- **Renderer adapters:** complete the development-server qualification and
-  publication contract around the existing trusted external-renderer boundary.
-  Stream and workspace renderers already provide checked embedded and
-  generated-resource replacements with typed cached results. See the
-  [design](design/plugins.md).
+- **Generated color-scheme pictures:** extend the completed renderer-adapter
+  boundary with one checked light and dark generated-image pair. The host will
+  emit native `picture` markup while stream and workspace profiles retain
+  fixed renderer-owned appearance invocations. See the [accepted
+  design](design/renderer-pictures.md).
 
 ## Later
 
