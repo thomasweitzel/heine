@@ -79,7 +79,10 @@ For renderer adapters, a request selects exactly one configured renderer
 profile. A profile exists when its named configuration exists; there is no
 separate enable or disable state. A request for a missing profile is a checked
 error. Generated resources are normal output claims with existing collision
-diagnostics. Profiles have no incidental ordering relationship.
+diagnostics. When identical renderer bytes share one digest-addressed resource,
+that claim retains every Markdown request that produced it. A later collision
+therefore identifies every relevant request, not an arbitrary representative.
+Profiles have no incidental ordering relationship.
 
 No generic conflict or ordering policy is accepted for unimplemented plugin
 kinds. If a future kind is justified, its design must define checked ownership

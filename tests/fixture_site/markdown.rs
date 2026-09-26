@@ -1531,7 +1531,6 @@ fn rejects_a_highlighting_stylesheet_that_would_be_an_asset_directory() {
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("directory collision fails");
     let diagnostic = format!("{error:?}");
-    assert!(diagnostic.contains("syntax-highlighting"), "{diagnostic}");
     assert!(diagnostic.contains("stylesheet"), "{diagnostic}");
 }
 

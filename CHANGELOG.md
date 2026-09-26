@@ -42,8 +42,9 @@ are corrected only to repair an error or explain a missed material migration.
 - **Generated renderer resources.** SVG, image, and linked-resource requests
   now publish one digest-addressed output below `heine-renderers/` and replace
   their Markdown request with checked semantic HTML. Identical renderer bytes
-  share one generated file, while full builds remove superseded resources with
-  the previous managed output tree.
+  share one generated file, and collision reports retain every Markdown request
+  that produced the shared resource. Full builds remove superseded resources
+  with the previous managed output tree.
 
 - **Workspace renderer inputs.** Embedded renderer requests can now run a
   configured workspace profile with a checked body, declared file, or declared

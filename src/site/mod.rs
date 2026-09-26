@@ -483,13 +483,12 @@ impl Site {
             taxonomies: &taxonomy_config,
         })
         .map_err(|error| Error::Search(Box::new(error)))?;
-        let mut renderer_resources = pages
-            .values()
-            .flat_map(|pages| pages.values())
-            .flat_map(|page| page.renderer_resources.iter().cloned())
-            .collect::<Vec<_>>();
-        renderer_resources.sort_by(|left, right| left.output_path.cmp(&right.output_path));
-        renderer_resources.dedup_by(|left, right| left.output_path == right.output_path);
+        let renderer_resources = group_renderer_resources(
+            pages
+                .values()
+                .flat_map(|pages| pages.values())
+                .flat_map(|page| page.renderer_resources.iter().cloned()),
+        );
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks, series.tasks());
         let sitemap = match (sitemap_config, canonical_urls.as_ref()) {
             (Some(config), Some(urls)) => Some(
@@ -561,8 +560,10 @@ impl Site {
             OutputClaim::renderer(
                 resource.output_path.clone(),
                 "renderer resource",
-                resource.source.clone(),
-                resource.span,
+                resource
+                    .origins
+                    .iter()
+                    .map(|origin| (origin.source.clone(), origin.span)),
             )
         }));
         let output_plan = OutputPlan::validate(&output_claims)?;
@@ -609,6 +610,26 @@ impl Site {
     }
 }
 
+fn group_renderer_resources(
+    resources: impl IntoIterator<Item = page::RendererResource>,
+) -> Vec<page::RendererResource> {
+    resources
+        .into_iter()
+        .fold(
+            BTreeMap::<_, page::RendererResource>::new(),
+            |mut grouped, resource| {
+                if let Some(existing) = grouped.get_mut(&resource.output_path) {
+                    existing.origins.extend(resource.origins);
+                } else {
+                    grouped.insert(resource.output_path.clone(), resource);
+                }
+                grouped
+            },
+        )
+        .into_values()
+        .collect()
+}
+
 fn self_series_claims(series: &series::Catalog) -> Vec<OutputClaim> {
     series
         .tasks()
@@ -624,4 +645,32 @@ fn self_series_claims(series: &series::Catalog) -> Vec<OutputClaim> {
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use miette::NamedSource;
+
+    use super::{group_renderer_resources, page};
+
+    #[test]
+    fn identical_renderer_resources_retain_every_markdown_origin() {
+        let output_path = crate::output::OutputPath::try_new("heine-renderers/a.svg".into())
+            .expect("valid renderer output path");
+        let resource = |name| page::RendererResource {
+            output_path: output_path.clone(),
+            bytes: b"<svg/>".to_vec(),
+            origins: vec![page::RendererResourceOrigin {
+                source: Arc::new(NamedSource::new(name, ":::render[diagram]".to_owned())),
+                span: (0, 1).into(),
+            }],
+        };
+
+        let grouped = group_renderer_resources([resource("first.md"), resource("second.md")]);
+
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].origins.len(), 2);
+    }
 }

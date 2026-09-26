@@ -394,6 +394,11 @@ pub(super) struct Page {
 pub(super) struct RendererResource {
     pub(super) output_path: OutputPath,
     pub(super) bytes: Vec<u8>,
+    pub(super) origins: Vec<RendererResourceOrigin>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct RendererResourceOrigin {
     pub(super) source: Arc<NamedSource<String>>,
     pub(super) span: SourceSpan,
 }
@@ -660,11 +665,13 @@ impl Page {
                         renderer_resources.push(RendererResource {
                             output_path,
                             bytes,
-                            source: Arc::new(NamedSource::new(
-                                source.display_path.display().to_string(),
-                                source.source.clone(),
-                            )),
-                            span: request.span.clone().into(),
+                            origins: vec![RendererResourceOrigin {
+                                source: Arc::new(NamedSource::new(
+                                    source.display_path.display().to_string(),
+                                    source.source.clone(),
+                                )),
+                                span: request.span.clone().into(),
+                            }],
                         });
                         replacement
                     }

@@ -29,7 +29,7 @@ pub(crate) use writer::{CopiedFiles, OutputWriter};
 #[derive(Debug, Clone)]
 pub(crate) struct OutputClaim {
     path: OutputPath,
-    origin: OutputOrigin,
+    origins: Vec<OutputOrigin>,
     allows_renderer_namespace: bool,
 }
 
@@ -42,34 +42,37 @@ impl OutputClaim {
     ) -> Self {
         Self {
             path,
-            origin: OutputOrigin::Authored {
+            origins: vec![OutputOrigin::Authored {
                 description: description.into(),
                 source_code,
                 span,
-            },
+            }],
             allows_renderer_namespace: false,
         }
     }
     pub(crate) fn renderer(
         path: OutputPath,
         description: impl Into<String>,
-        source_code: Arc<NamedSource<String>>,
-        span: SourceSpan,
+        origins: impl IntoIterator<Item = (Arc<NamedSource<String>>, SourceSpan)>,
     ) -> Self {
+        let description = description.into();
         Self {
             path,
-            origin: OutputOrigin::Authored {
-                description: description.into(),
-                source_code,
-                span,
-            },
+            origins: origins
+                .into_iter()
+                .map(|(source_code, span)| OutputOrigin::Authored {
+                    description: description.clone(),
+                    source_code,
+                    span,
+                })
+                .collect(),
             allows_renderer_namespace: true,
         }
     }
     pub(crate) fn file(path: OutputPath, source_path: PathBuf) -> Self {
         Self {
             path,
-            origin: OutputOrigin::File { source_path },
+            origins: vec![OutputOrigin::File { source_path }],
             allows_renderer_namespace: false,
         }
     }
@@ -193,13 +196,13 @@ pub(crate) enum OutputClaimError {
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum ClaimOrigin {
-    #[error("{description} first claims output {path}")]
+    #[error("{description} also claims output {path}")]
     Authored {
         description: String,
         path: PathBuf,
         #[source_code]
         source_code: Arc<NamedSource<String>>,
-        #[label("first output declaration")]
+        #[label("other output declaration")]
         span: SourceSpan,
     },
     #[error("copied file {source_path} claims output {path}")]
@@ -208,7 +211,11 @@ pub(crate) enum ClaimOrigin {
 
 impl OutputClaimError {
     fn reserved(claim: &OutputClaim) -> Self {
-        match &claim.origin {
+        match claim
+            .origins
+            .first()
+            .expect("output claims retain one origin")
+        {
             OutputOrigin::Authored {
                 source_code, span, ..
             } => Self::Reserved {
@@ -223,56 +230,71 @@ impl OutputClaimError {
         }
     }
     fn collision(left: &OutputClaim, right: &OutputClaim) -> Self {
-        let (primary, related) = match (&left.origin, &right.origin) {
-            (_, OutputOrigin::Authored { .. }) => (right, left),
-            (OutputOrigin::Authored { .. }, _) => (left, right),
-            (
-                OutputOrigin::File { source_path: first },
-                OutputOrigin::File {
-                    source_path: second,
-                },
-            ) => {
-                return Self::CollisionFiles {
-                    path: right.path.as_path().into(),
-                    first: first.clone(),
-                    second: second.clone(),
-                };
-            }
+        let primary = right
+            .origins
+            .iter()
+            .find(|origin| matches!(origin, OutputOrigin::Authored { .. }))
+            .or_else(|| {
+                left.origins
+                    .iter()
+                    .find(|origin| matches!(origin, OutputOrigin::Authored { .. }))
+            });
+        let Some(primary) = primary else {
+            let OutputOrigin::File { source_path: first } = &left.origins[0] else {
+                unreachable!()
+            };
+            let OutputOrigin::File {
+                source_path: second,
+            } = &right.origins[0]
+            else {
+                unreachable!()
+            };
+            return Self::CollisionFiles {
+                path: right.path.as_path().into(),
+                first: first.clone(),
+                second: second.clone(),
+            };
         };
         let OutputOrigin::Authored {
             description,
             source_code,
             span,
-        } = &primary.origin
+        } = primary
         else {
             unreachable!()
         };
         Self::Collision {
-            path: primary.path.as_path().into(),
+            path: right.path.as_path().into(),
             description: description.clone(),
             source_code: source_code.clone(),
             span: *span,
-            related: vec![ClaimOrigin::from_claim(related)],
+            related: left
+                .origins
+                .iter()
+                .chain(right.origins.iter())
+                .filter(|origin| !std::ptr::eq(*origin, primary))
+                .map(|origin| ClaimOrigin::from_origin(origin, right.path.as_path()))
+                .collect(),
         }
     }
 }
 
 impl ClaimOrigin {
-    fn from_claim(claim: &OutputClaim) -> Self {
-        match &claim.origin {
+    fn from_origin(origin: &OutputOrigin, path: &Path) -> Self {
+        match origin {
             OutputOrigin::Authored {
                 description,
                 source_code,
                 span,
             } => Self::Authored {
                 description: description.clone(),
-                path: claim.path.as_path().into(),
+                path: path.into(),
                 source_code: source_code.clone(),
                 span: *span,
             },
             OutputOrigin::File { source_path } => Self::File {
                 source_path: source_path.clone(),
-                path: claim.path.as_path().into(),
+                path: path.into(),
             },
         }
     }
@@ -805,7 +827,38 @@ mod tests {
         let ordinary = OutputClaim::authored(path.clone(), "page", source.clone(), (0, 1).into());
         assert!(OutputPlan::validate(&[ordinary]).is_err());
 
-        let renderer = OutputClaim::renderer(path, "renderer resource", source, (0, 1).into());
+        let renderer = OutputClaim::renderer(path, "renderer resource", [(source, (0, 1).into())]);
         assert!(OutputPlan::validate(&[renderer]).is_ok());
+    }
+
+    #[test]
+    fn renderer_claim_collisions_retain_every_renderer_request_origin() {
+        let path = OutputPath::try_new("diagram.svg".into()).expect("valid output path");
+        let first = Arc::new(NamedSource::new(
+            "first.md",
+            ":::render[diagram]".to_owned(),
+        ));
+        let second = Arc::new(NamedSource::new(
+            "second.md",
+            ":::render[diagram]".to_owned(),
+        ));
+        let page = Arc::new(NamedSource::new(
+            "page.toml",
+            "path = 'diagram.svg'".to_owned(),
+        ));
+        let renderer = OutputClaim::renderer(
+            path.clone(),
+            "renderer resource",
+            [(first, (0, 1).into()), (second, (0, 1).into())],
+        );
+        let page = OutputClaim::authored(path, "page", page, (0, 1).into());
+
+        let error = OutputPlan::validate(&[renderer, page]).expect_err("output collision");
+
+        assert!(matches!(
+            error,
+            Error::Claim(error)
+                if matches!(*error, OutputClaimError::Collision { ref related, .. } if related.len() == 2)
+        ));
     }
 }

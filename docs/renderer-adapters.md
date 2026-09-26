@@ -182,6 +182,11 @@ selected request after a present body or declared input changes, but it remains
 incomplete: change profiles, request structure, source declarations, names, or
 paths with a full build.
 
+When identical renderer bytes produce the same digest-addressed resource,
+Heine publishes that resource once. If another producer claims its path,
+Heine's collision report identifies every Markdown request that contributed to
+the shared resource.
+
 Read the [reference](reference.md#renderer-adapters) for every field and the
 [renderer-adapter design](design/plugins.md) for the trust and output-ownership
 boundaries.
