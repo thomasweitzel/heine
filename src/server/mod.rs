@@ -21,7 +21,7 @@ use thiserror::Error;
 use tokio::sync::watch as state_watch;
 
 use crate::{
-    BuildMode, BuildOptions, BuildPublication, build_at_with_publication, config::BasePath,
+    BuildMode, BuildOptions, BuildPublication, build_at_with_renderer_runtime, config::BasePath,
 };
 
 pub(crate) use crate::output::INTERNAL_DIRECTORY;
@@ -216,7 +216,7 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
     } else {
         rebuild
     };
-    let initial_build = build_at_with_publication(&root, build)?;
+    let (initial_build, workspace_runtime) = build_at_with_renderer_runtime(&root, build)?;
     let kit_paths = initial_build.kit_paths.clone();
     let initial =
         PublishedSite::from_build(initial_build, generation_from_start_time(SystemTime::now()));
@@ -233,7 +233,14 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
         .enable_all()
         .build()
         .map_err(|source| miette::Report::new(Error::Runtime { source }))?;
-    runtime.block_on(run(listener, initial, watcher, rebuild, kit_paths))
+    runtime.block_on(run(
+        listener,
+        initial,
+        watcher,
+        rebuild,
+        kit_paths,
+        workspace_runtime,
+    ))
 }
 
 async fn run(
@@ -242,6 +249,7 @@ async fn run(
     watcher: watch::PendingWatcher,
     rebuild: BuildOptions,
     kit_paths: Option<crate::kit::Paths>,
+    workspace_runtime: crate::renderer::WorkspaceRuntime,
 ) -> miette::Result<()> {
     let address = listener
         .local_addr()
@@ -253,7 +261,7 @@ async fn run(
         .map_err(|source| miette::Report::new(Error::RuntimeListener { address, source }))?;
     let (published, receiver) = state_watch::channel(initial);
     let _watcher = watcher
-        .start(published, rebuild, kit_paths)
+        .start(published, rebuild, kit_paths, workspace_runtime)
         .map_err(miette::Report::new)?;
     let state = ServerState {
         published: receiver,

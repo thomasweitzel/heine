@@ -196,6 +196,7 @@ pub(crate) struct Renderer {
     allow_external_renderers: bool,
     renderer_cache_root: PathBuf,
     refresh_renderers: bool,
+    workspace_runtime: crate::renderer::WorkspaceRuntime,
 }
 
 /// The one source-backed heading model shared by the template view and
@@ -324,12 +325,16 @@ fn fragment_base(text: &str) -> String {
 impl Renderer {
     #[cfg(test)]
     pub(crate) fn new(config: MarkdownConfig) -> Result<Self, Box<InitializationError>> {
+        let renderer_profiles = RendererProfiles::default();
+        let workspace_runtime = crate::renderer::WorkspaceRuntime::new(&renderer_profiles)
+            .expect("a stream-only renderer configuration has no workspace runtime");
         Self::with_renderer_profiles(
             config,
-            RendererProfiles::default(),
+            renderer_profiles,
             false,
             PathBuf::from(".heine/cache/renderers/v1"),
             false,
+            workspace_runtime,
         )
     }
 
@@ -339,6 +344,7 @@ impl Renderer {
         allow_external_renderers: bool,
         renderer_cache_root: PathBuf,
         refresh_renderers: bool,
+        workspace_runtime: crate::renderer::WorkspaceRuntime,
     ) -> Result<Self, Box<InitializationError>> {
         let highlighter = config.highlighting().map(|highlighting| {
             Highlighter::new(highlighting).map(Arc::new).map_err(|source| {
@@ -363,6 +369,7 @@ impl Renderer {
             allow_external_renderers,
             renderer_cache_root,
             refresh_renderers,
+            workspace_runtime,
         })
     }
 
@@ -376,6 +383,10 @@ impl Renderer {
 
     pub(crate) fn refresh_renderers(&self) -> bool {
         self.refresh_renderers
+    }
+
+    pub(crate) fn workspace_runtime(&self) -> &crate::renderer::WorkspaceRuntime {
+        &self.workspace_runtime
     }
 
     pub(crate) fn renderer_profiles(&self) -> &RendererProfiles {

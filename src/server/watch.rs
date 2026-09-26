@@ -15,7 +15,10 @@ use thiserror::Error;
 use tokio::sync::watch;
 
 use super::{PublishedSite, next_generation};
-use crate::{BuildOptions, build_at_with_publication, project::ProjectPaths};
+use crate::{
+    BuildOptions, build_at_with_publication_in_runtime, project::ProjectPaths,
+    renderer::WorkspaceRuntime,
+};
 
 const DEBOUNCE: Duration = Duration::from_millis(150);
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S.%3fZ";
@@ -90,6 +93,7 @@ impl PendingWatcher {
         published: watch::Sender<PublishedSite>,
         build: BuildOptions,
         kit_paths: Option<crate::kit::Paths>,
+        workspace_runtime: WorkspaceRuntime,
     ) -> Result<SourceWatcher, Error> {
         let thread = thread::Builder::new()
             .name("heine-source-watcher".into())
@@ -101,6 +105,7 @@ impl PendingWatcher {
                     published,
                     build,
                     kit_paths,
+                    workspace_runtime,
                 )
             })
             .map_err(|source| Error::Thread { source })?;
@@ -115,6 +120,7 @@ fn watch_loop(
     published: watch::Sender<PublishedSite>,
     build: BuildOptions,
     mut kit_paths: Option<crate::kit::Paths>,
+    workspace_runtime: WorkspaceRuntime,
 ) {
     let mut generation = published.borrow().generation;
     while let Ok(event) = receiver.recv() {
@@ -140,8 +146,8 @@ fn watch_loop(
         if changed_paths.is_empty() {
             continue;
         }
-        match build_at_with_publication(&root, build) {
-            Ok(build) => {
+        match build_at_with_publication_in_runtime(&root, build, Some(&workspace_runtime)) {
+            Ok((build, _)) => {
                 generation = next_generation(generation);
                 kit_paths = build.kit_paths.clone();
                 let _ = published.send(PublishedSite::from_build(build, generation));

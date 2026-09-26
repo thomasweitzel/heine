@@ -128,6 +128,12 @@ extension = "pdf"
 arguments = ["compile", "{input_file}", "{output_file}"]
 ```
 
+Heine keeps one reusable workspace slot for each workspace profile during a
+build session. It clears that slot before and after each request. If a platform
+lock prevents cleanup, Heine keeps a successful result but reports the retained
+path; later requests retry cleanup instead of allocating unbounded temporary
+directories.
+
 ```markdown
 :::render[typst-report label="Download the one-page report (PDF)"]
 = Report title

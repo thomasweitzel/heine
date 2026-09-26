@@ -6,6 +6,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::{Arc, Mutex, OnceLock},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -14,7 +15,6 @@ use miette::SourceSpan;
 use quick_xml::{Reader, Writer, events::Event};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use tempfile::TempDir;
 use walkdir::WalkDir;
 
 use crate::source_path;
@@ -27,6 +27,10 @@ pub(crate) struct Profiles {
 impl Profiles {
     pub(crate) fn get(&self, name: &str) -> Option<&Profile> {
         self.profiles.get(name)
+    }
+
+    pub(crate) fn uses_workspace(&self) -> bool {
+        self.profiles.values().any(Profile::uses_workspace)
     }
 }
 
@@ -197,18 +201,169 @@ pub(crate) enum WorkspaceInput<'a> {
     Source(&'a Source),
 }
 
+/// Everything the host has already checked for one workspace renderer request.
+/// Grouping these values keeps the execution boundary explicit as it grows.
+pub(crate) struct WorkspaceRequest<'a> {
+    pub(crate) runtime: &'a WorkspaceRuntime,
+    pub(crate) cache_root: &'a Path,
+    pub(crate) refresh: bool,
+    pub(crate) profile_name: &'a str,
+    pub(crate) profile: &'a Profile,
+    pub(crate) placement: Placement,
+    pub(crate) output: Output,
+    pub(crate) input: WorkspaceInput<'a>,
+}
+
+/// State that outlives one build when the development server rebuilds a site.
+/// Stream-only configurations do not allocate a temporary directory.
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceRuntime {
+    manager: Option<Arc<Mutex<WorkspaceManager>>>,
+}
+
+impl WorkspaceRuntime {
+    pub(crate) fn new(profiles: &Profiles) -> Result<Self, String> {
+        let manager = profiles
+            .uses_workspace()
+            .then(WorkspaceManager::new)
+            .transpose()?
+            .map(|manager| Arc::new(Mutex::new(manager)));
+        Ok(Self { manager })
+    }
+}
+
+const WORKSPACE_SESSION_PREFIX: &str = "heine-renderer-session-";
+
+/// A synchronous renderer session has one reusable slot per profile. Keeping
+/// the manager locked for a request preserves that bound if a future caller
+/// renders pages from more than one thread.
+#[derive(Debug)]
+struct WorkspaceManager {
+    session: tempfile::TempDir,
+    slots: BTreeMap<String, WorkspaceSlot>,
+}
+
+#[derive(Debug)]
+struct WorkspaceSlot {
+    path: PathBuf,
+    available: bool,
+}
+
+impl WorkspaceManager {
+    fn new() -> Result<Self, String> {
+        let temporary_directory = std::env::temp_dir();
+        static STALE_WORKSPACE_SWEEP: OnceLock<()> = OnceLock::new();
+        STALE_WORKSPACE_SWEEP
+            .get_or_init(|| cleanup_stale_workspace_sessions(&temporary_directory));
+        Self::create_in(&temporary_directory)
+    }
+
+    #[cfg(test)]
+    fn new_in(temporary_directory: &Path) -> Result<Self, String> {
+        cleanup_stale_workspace_sessions(temporary_directory);
+        Self::create_in(temporary_directory)
+    }
+
+    fn create_in(temporary_directory: &Path) -> Result<Self, String> {
+        let session = tempfile::Builder::new()
+            .prefix(WORKSPACE_SESSION_PREFIX)
+            .tempdir_in(temporary_directory)
+            .map_err(|error| format!("could not create renderer workspace session: {error}"))?;
+        Ok(Self {
+            session,
+            slots: BTreeMap::new(),
+        })
+    }
+
+    fn prepare(&mut self, profile_name: &str) -> Result<PathBuf, String> {
+        let slot = self
+            .slots
+            .entry(profile_name.to_owned())
+            .or_insert_with(|| WorkspaceSlot {
+                path: self.session.path().join(profile_name),
+                available: true,
+            });
+        let path = slot.path.clone();
+        let was_unavailable = !slot.available;
+        self.clean(profile_name).map_err(|error| {
+            if was_unavailable {
+                format!(
+                    "renderer workspace slot for {profile_name:?} is still unavailable: {error}"
+                )
+            } else {
+                error
+            }
+        })?;
+        if let Err(error) = fs::create_dir(&path) {
+            self.slots
+                .get_mut(profile_name)
+                .expect("workspace slot is registered before preparation")
+                .available = false;
+            return Err(format!(
+                "could not prepare renderer workspace {}: {error}",
+                path.display()
+            ));
+        }
+        Ok(path)
+    }
+
+    fn clean(&mut self, profile_name: &str) -> Result<(), String> {
+        let slot = self
+            .slots
+            .get_mut(profile_name)
+            .expect("workspace slot is registered before cleanup");
+        match fs::remove_dir_all(&slot.path) {
+            Ok(()) => {
+                slot.available = true;
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                slot.available = true;
+                Ok(())
+            }
+            Err(error) => {
+                slot.available = false;
+                Err(format!(
+                    "could not clean renderer workspace {}; it remains unavailable: {error}",
+                    slot.path.display()
+                ))
+            }
+        }
+    }
+}
+
+fn cleanup_stale_workspace_sessions(temporary_directory: &Path) {
+    let Ok(entries) = fs::read_dir(temporary_directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with(WORKSPACE_SESSION_PREFIX) {
+            continue;
+        }
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 /// Runs one workspace profile in an isolated temporary directory and returns
 /// only its declared primary result. The workspace itself is never visible to
 /// the renderer as a project path.
-pub(crate) fn run_workspace(
-    cache_root: &Path,
-    refresh: bool,
-    profile_name: &str,
-    profile: &Profile,
-    placement: Placement,
-    output: Output,
-    input: WorkspaceInput<'_>,
-) -> Result<Vec<u8>, String> {
+pub(crate) fn run_workspace(request: WorkspaceRequest<'_>) -> Result<Vec<u8>, String> {
+    let WorkspaceRequest {
+        runtime,
+        cache_root,
+        refresh,
+        profile_name,
+        profile,
+        placement,
+        output,
+        input,
+    } = request;
     let cache_key = renderer_cache_key(
         "workspace",
         profile_name,
@@ -223,18 +378,39 @@ pub(crate) fn run_workspace(
         }
     }
     let variant = profile.workspace_variant(placement)?;
-    let workspace = tempfile::Builder::new()
-        .prefix("heine-renderer-")
-        .tempdir()
-        .map_err(|error| format!("could not create renderer workspace: {error}"))?;
-    let layout = WorkspaceLayout::create(&workspace, profile, input)?;
-    let arguments = expand_workspace_arguments(&variant.arguments, &layout);
-    execute_workspace_process(profile, &arguments, &layout)?;
-    let result = validate_renderer_output(
-        profile.result(),
-        output,
-        validate_workspace_output(&layout)?,
-    )?;
+    let manager = runtime
+        .manager
+        .as_ref()
+        .ok_or_else(|| "workspace renderer runtime is not available".to_owned())?;
+    let mut manager = manager
+        .lock()
+        .map_err(|_| "renderer workspace runtime is unavailable".to_owned())?;
+    let workspace = manager.prepare(profile_name)?;
+    let result = (|| {
+        let layout = WorkspaceLayout::create(&workspace, profile, input)?;
+        let arguments = expand_workspace_arguments(&variant.arguments, &layout);
+        execute_workspace_process(profile, &arguments, &layout)?;
+        validate_renderer_output(
+            profile.result(),
+            output,
+            validate_workspace_output(&layout)?,
+        )
+    })();
+    let cleanup = manager.clean(profile_name);
+    let result = match (result, cleanup) {
+        (Ok(result), Ok(())) => result,
+        // A complete result remains usable when a platform lock delays cleanup.
+        // The unavailable slot is retried before the next request.
+        (Ok(result), Err(cleanup)) => {
+            eprintln!("renderer workspace cleanup warning: {cleanup}");
+            result
+        }
+        (Err(error), Err(cleanup)) => {
+            eprintln!("renderer workspace cleanup warning: {cleanup}");
+            return Err(error);
+        }
+        (Err(error), Ok(())) => return Err(error),
+    };
     write_cache(cache_root, &cache_key, profile.result(), &result)?;
     Ok(result)
 }
@@ -248,14 +424,10 @@ struct WorkspaceLayout {
 }
 
 impl WorkspaceLayout {
-    fn create(
-        root: &TempDir,
-        profile: &Profile,
-        input: WorkspaceInput<'_>,
-    ) -> Result<Self, String> {
-        let input_dir = root.path().join("input");
-        let output_dir = root.path().join("output");
-        let work_dir = root.path().join("work");
+    fn create(root: &Path, profile: &Profile, input: WorkspaceInput<'_>) -> Result<Self, String> {
+        let input_dir = root.join("input");
+        let output_dir = root.join("output");
+        let work_dir = root.join("work");
         for path in [&input_dir, &output_dir, &work_dir] {
             fs::create_dir(path)
                 .map_err(|error| format!("could not create renderer workspace: {error}"))?;
@@ -1399,6 +1571,77 @@ pub(crate) struct ConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_manager_reuses_a_cleaned_slot_for_one_profile() {
+        let temporary_directory = tempfile::tempdir().expect("temporary directory");
+        let mut manager =
+            WorkspaceManager::new_in(temporary_directory.path()).expect("workspace manager");
+
+        let first = manager.prepare("typst").expect("first slot");
+        fs::write(first.join("leftover"), "input").expect("workspace content");
+        manager.clean("typst").expect("slot cleanup");
+        let second = manager.prepare("typst").expect("reused slot");
+
+        assert_eq!(first, second);
+        assert!(
+            fs::read_dir(&second)
+                .expect("clean workspace")
+                .next()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn workspace_manager_keeps_one_slot_per_profile() {
+        let temporary_directory = tempfile::tempdir().expect("temporary directory");
+        let mut manager =
+            WorkspaceManager::new_in(temporary_directory.path()).expect("workspace manager");
+
+        let typst = manager.prepare("typst").expect("Typst slot");
+        let mermaid = manager.prepare("mermaid").expect("Mermaid slot");
+
+        assert_ne!(typst, mermaid);
+        assert_eq!(manager.slots.len(), 2);
+    }
+
+    #[test]
+    fn workspace_manager_recovers_an_unavailable_slot_before_reusing_it() {
+        let temporary_directory = tempfile::tempdir().expect("temporary directory");
+        let mut manager =
+            WorkspaceManager::new_in(temporary_directory.path()).expect("workspace manager");
+
+        let path = manager.prepare("typst").expect("workspace slot");
+        manager.clean("typst").expect("slot cleanup");
+        manager
+            .slots
+            .get_mut("typst")
+            .expect("workspace slot")
+            .available = false;
+        let recovered = manager.prepare("typst").expect("recovered workspace slot");
+
+        assert_eq!(recovered, path);
+        assert!(manager.slots["typst"].available);
+    }
+
+    #[test]
+    fn workspace_manager_removes_only_stale_owned_sessions() {
+        let temporary_directory = tempfile::tempdir().expect("temporary directory");
+        let stale = temporary_directory
+            .path()
+            .join("heine-renderer-session-old");
+        let unrelated = temporary_directory.path().join("other-tool-session");
+        fs::create_dir(&stale).expect("stale workspace");
+        fs::write(stale.join("leftover"), "input").expect("stale workspace content");
+        fs::create_dir(&unrelated).expect("unrelated directory");
+
+        let manager =
+            WorkspaceManager::new_in(temporary_directory.path()).expect("workspace manager");
+
+        assert!(!stale.exists());
+        assert!(unrelated.is_dir());
+        assert!(manager.session.path().is_dir());
+    }
 
     #[test]
     fn cache_cleanup_removes_only_incomplete_write_artifacts() {

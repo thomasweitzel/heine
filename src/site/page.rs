@@ -585,15 +585,16 @@ impl Page {
                             crate::renderer::WorkspaceInput::Source(&self.renderer_sources[name])
                         }
                     };
-                    crate::renderer::run_workspace(
-                        renderer.renderer_cache_root(),
-                        renderer.refresh_renderers(),
-                        &request.profile,
+                    crate::renderer::run_workspace(crate::renderer::WorkspaceRequest {
+                        runtime: renderer.workspace_runtime(),
+                        cache_root: renderer.renderer_cache_root(),
+                        refresh: renderer.refresh_renderers(),
+                        profile_name: &request.profile,
                         profile,
-                        request.placement,
-                        request.output,
+                        placement: request.placement,
+                        output: request.output,
                         input,
-                    )
+                    })
                 } else {
                     let input = match &request.input {
                         crate::markdown::ResolvedInput::Body => {

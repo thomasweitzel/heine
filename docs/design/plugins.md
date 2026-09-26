@@ -523,7 +523,8 @@ suits tools that can act as filters, including PlantUML, KaTeX, and Pandoc.
 
 #### Workspace protocol
 
-Heine creates an isolated per-request temporary workspace with this layout:
+Heine assigns each serialized workspace profile one isolated reusable workspace
+slot with this layout:
 
 ```text
 input/
@@ -568,8 +569,9 @@ platform-specific. For example, a Windows bridge may invoke
 may invoke an executable script directly. Heine itself does not add an
 implicit shell layer.
 
-The host captures bounded standard error, checks the exit status, and reads and
-checks the primary output file before it cleans the workspace. Extra files
+The host clears the slot before staging an input, captures bounded standard
+error, checks the exit status, and reads and checks the primary output file
+before it cleans the workspace again. Extra files
 below `output/` are a checked error, not incidental publication. A cleanup
 failure after successful result capture does not invalidate that complete
 result. Heine reports the retained workspace path for recovery, which
@@ -592,13 +594,13 @@ and any retained workspace path without claiming to have contained those
 children.
 
 The host creates a session-owned renderer-workspace parent below the operating
-system temporary directory. Each serialized renderer profile uses a fixed
-number of reusable workspace slots below that parent. A successfully cleaned
-slot is reused. A slot that remains locked is unavailable until cleanup
-succeeds. If all slots for a profile are unavailable, Heine fails the next
-request with the affected paths instead of creating unbounded temporary
-directories. At process startup, it makes a best-effort sweep of stale,
-clearly Heine-owned workspace parents.
+system temporary directory. Each serialized renderer profile uses one reusable
+workspace slot below that parent. A successfully cleaned slot is reused. A
+slot that remains locked is unavailable until cleanup succeeds. Heine retries
+that cleanup before the next request. If it still cannot clean the slot, Heine
+fails the request with the affected path instead of creating unbounded
+temporary directories. At process startup, it makes a best-effort sweep of
+stale, clearly Heine-owned workspace parents.
 
 ## Caching, watching, and failure behavior
 
