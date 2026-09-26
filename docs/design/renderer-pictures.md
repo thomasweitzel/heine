@@ -137,17 +137,32 @@ Heine checks the same invariants as an ordinary generated image resource:
 - SVG has an `svg` document element and is well-formed XML;
 - its generated path is a digest-addressed claim below `heine-renderers/`.
 
-The two representations must have the same known aspect ratio. If Heine
-cannot determine either intrinsic dimension, it omits automatic dimensions.
-An author may provide both positive `width` and `height`, following the
-existing `:::picture` contract. The host must not claim dimensions or a ratio
-it cannot check.
+When Heine can determine both variants' intrinsic dimensions, the two
+representations must have the same aspect ratio and the host emits the light
+variant's dimensions. If it cannot determine both variants' dimensions, it
+emits no automatic dimensions without authored dimensions. When the light
+variant has known dimensions, an author may provide one positive `width` or
+`height` and Heine derives the other from that fallback image. When both
+variants have known dimensions, every authored dimension must preserve their
+shared ratio. When the light variant has no known dimensions, one authored
+dimension is insufficient: the author must provide both, and Heine cannot
+check their ratio. A known dark size alone does not permit derivation because
+the fallback `img` uses the light resource. The host must not claim dimensions
+or a ratio it cannot check.
+
+The ratio comparison is exact, using the same integer cross-multiplication
+rule as copied-asset pictures. A minor renderer-induced size difference still
+fails because it can change layout when the browser selects the other
+appearance. Authors must stabilize the renderer's visual frame, for example by
+setting an explicit diagram or page size, or provide explicit dimensions that
+Heine accepts without ratio verification when intrinsic dimensions are unknown.
 
 The two appearances must represent the same information. Heine cannot infer
 that property from bytes, so the profile and request syntax make it explicit.
 Documentation must state that a light and dark picture changes presentation,
-not meaning. Distinct information belongs in separate ordinary images or
-separate renderer requests.
+not meaning. Matching aspect ratios are the only automated relationship check:
+two different images with matching dimensions still pass. Distinct information
+belongs in separate ordinary images or separate renderer requests.
 
 ## Execution, cache, and output ownership
 
@@ -156,6 +171,16 @@ Each cache key includes the appearance role, selected placement, fixed variant
 arguments, profile identity, requested materialization, and complete checked
 input. `--refresh-renderers` refreshes both variants. A cache hit for one
 appearance does not excuse a failed or missing other appearance.
+
+On a cold cache and during refresh, a picture request costs two renderer
+invocations. That cost is deliberate: automatic recolouring of one fixed
+result cannot reliably preserve diagram meaning or contrast. Independent cache
+entries avoid repeated invocations when an unchanged variant remains valid.
+
+The current synchronous renderer pipeline runs the two appearances
+sequentially. Parallel execution is deliberately undecided: it would need a
+separate design for deterministic diagnostic ordering, process-resource limits,
+cache publication, and the one-reusable-workspace-slot-per-profile invariant.
 
 The host retains the originating page, content source, directive span, profile
 name, and appearance role for both generated-resource claims. Identical bytes
@@ -184,7 +209,9 @@ An embedded renderer that needs theme-aware presentation must return one
 semantic fragment with stable classes. The site stylesheet owns its colours
 through its normal tokens, custom properties, and appearance rules. An SVG
 that can contain its own responsive CSS should likewise remain one SVG result
-rather than become a generated picture pair.
+rather than become a generated picture pair. Prefer that self-theming SVG form
+when the renderer can deliberately produce it. Use a generated picture pair
+when the renderer produces fixed-colour SVG or raster output.
 
 ### Linked and arbitrary resources
 
@@ -201,6 +228,13 @@ brand colours, and accessibility contrast in general. A renderer profile may
 invoke a trusted external wrapper after explicit permission, but the host
 continues to validate only the declared final result.
 
+The profile intentionally repeats the complete fixed argument vector for each
+appearance. Heine expands only complete path placeholders and does not
+interpolate values into arbitrary arguments, because command-string templating
+would weaken the process boundary. A shared-argument facility needs a separate
+concrete design: tool argument order can be significant, so a simplistic common
+prefix or `{scheme}` interpolation would not reliably remove duplication.
+
 ### A site-owned appearance switch
 
 The existing copied-asset picture contract uses the browser's
@@ -208,6 +242,15 @@ The existing copied-asset picture contract uses the browser's
 site presentation contract that defines persistence, initial rendering,
 template integration, and how image selection follows it. Renderer pictures
 must not introduce that unrelated feature implicitly.
+
+### Further variant axes
+
+This design owns only light and dark image representations selected by the
+browser's colour-scheme media feature. A contrast preference, reduced-motion
+alternative, pixel-density representation, locale-specific image, or another
+variant axis may have a different number of alternatives, fallback behavior,
+accessibility meaning, or native HTML mapping. It requires a separate concrete
+design record rather than a new value added to this profile contract.
 
 ## Alternatives considered
 
@@ -246,6 +289,10 @@ Implementation must include:
 - cache, refresh, output-collision, quick-build, and watcher coverage;
 - generated HTML checks for `picture`, `source`, fallback `img`, figure,
   caption, accessibility text, dimensions, and base paths;
+- dimension coverage for matching known variants, incompatible variant ratios,
+  authored dimensions that disagree with a known shared ratio, derivation from
+  a known light variant when the dark size is unknown, and explicit dimensions
+  when the light size is unknown;
 - real-tool coverage with Typst rendering a light and dark SVG pair;
 - reference, glossary, focused-guide, design-record, and changelog updates;
 - a starter-site example only if a coherent real site image benefits from two
