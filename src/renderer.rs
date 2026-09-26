@@ -425,10 +425,8 @@ pub(crate) fn run_workspace(request: WorkspaceRequest<'_>) -> Result<RendererOut
         output,
         cache_input_for_workspace(&input),
     )?;
-    if !refresh {
-        if let Some(result) = runtime.cache.read(&cache_key, profile, output)? {
-            return Ok(result);
-        }
+    if !refresh && let Some(result) = runtime.cache.read(&cache_key, profile, output)? {
+        return Ok(result);
     }
     let variant = profile.workspace_variant(placement)?;
     let mut manager = runtime
@@ -640,10 +638,8 @@ pub(crate) fn run_stream(request: StreamRequest<'_>) -> Result<RendererOutput, S
         output,
         CacheInput::Body(input),
     )?;
-    if !refresh {
-        if let Some(result) = runtime.cache.read(&cache_key, profile, output)? {
-            return Ok(result);
-        }
+    if !refresh && let Some(result) = runtime.cache.read(&cache_key, profile, output)? {
+        return Ok(result);
     }
     let result =
         validate_renderer_output(profile, output, execute_stream(profile, placement, input)?)?;
