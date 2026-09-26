@@ -437,6 +437,11 @@ SVG export, a PlantUML input containing several diagrams, or a Pandoc
 conversion with extracted media. Those modes fail as unsupported until a later
 resource-set contract can define their page replacement and ownership.
 
+One planned exception is a checked light and dark pair for one semantic image.
+It remains distinct from a general resource set because the host can replace
+it with native `picture` markup. See [generated color-scheme
+pictures](renderer-pictures.md).
+
 Heine allocates safe deterministic output paths for generated resources, checks
 them with every other output claim, and builds base-path-aware URLs. The
 adapter cannot overwrite a page, copied asset, deployment file, license text,

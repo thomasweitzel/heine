@@ -90,6 +90,8 @@ features and planned work.
 
 ### Planned work
 
+- [Generated color-scheme pictures](design/renderer-pictures.md)
+
 ## Reference material
 
 The [reference](reference.md) is the complete current contract. It lists every
