@@ -59,6 +59,9 @@ required prerequisite for the guides.
   facts and opt-in, locale-specific reading-time estimates.
 - [Renderer adapters](renderer-adapters.md): configure and use checked
   external stream and workspace-renderer replacements.
+- [Reproducible renderer examples](renderer-examples.md): install Typst or
+  KaTeX and build light and dark SVG or accessible embedded mathematics
+  locally.
 
 ## Operate a site and account for assets
 
@@ -91,6 +94,11 @@ features and planned work.
 ### Planned work
 
 - [Generated color-scheme pictures](design/renderer-pictures.md)
+
+### Deferred proposals
+
+- [Renderer output dependencies](design/renderer-output-dependencies.md): a
+  future typed resource-manifest boundary for embedded renderer results.
 
 ## Reference material
 
