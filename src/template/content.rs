@@ -61,35 +61,36 @@ pub(super) fn register(
                 .assets()
                 .with_locale(locale.clone());
             let page_links = markdown_content_runtime.pages().with_locale(locale);
-            let (content, toc, footnotes) =
-                markdown_content_runtime.markdown_content(state, name)?;
+            let content = markdown_content_runtime.markdown_content(state, name)?;
             let table_scroll_label = markdown_content_runtime.table_scroll_label(state)?;
-            if toc.is_some() || footnotes.is_some() {
+            if content.toc.is_some() || content.footnotes.is_some() {
                 markdown_content_runtime.record_source_aware_render(name)?;
             }
-            let rendered = if let Some(footnotes) = footnotes {
+            let rendered = if let Some(footnotes) = content.footnotes {
                 let labels =
                     markdown_content_runtime.margin_footnote_labels(state, footnotes.plan())?;
                 crate::markdown::margin_footnotes::render(
-                    content,
+                    content.source,
                     crate::markdown::margin_footnotes::RenderContext {
                         renderer: &markdown_renderer,
                         assets: Some(&asset_links),
                         pages: Some(&page_links),
-                        anchors: toc.map(|toc| toc.anchors()),
+                        anchors: content.toc.map(|toc| toc.anchors()),
                         table_scroll_label: table_scroll_label.as_deref(),
+                        replacements: content.replacements,
                     },
                     footnotes.plan(),
                     &labels,
                 )
             } else {
                 crate::markdown::render_with_links_anchors(
-                    content,
+                    content.source,
                     &markdown_renderer,
                     Some(&asset_links),
                     Some(&page_links),
-                    toc.map(|toc| toc.anchors()),
+                    content.toc.map(|toc| toc.anchors()),
                     table_scroll_label.as_deref(),
+                    content.replacements,
                 )
             };
             rendered

@@ -559,11 +559,13 @@ impl Site {
         output_claims.extend(renderer_resources.iter().map(|resource| {
             OutputClaim::renderer(
                 resource.output_path.clone(),
-                "renderer resource",
-                resource
-                    .origins
-                    .iter()
-                    .map(|origin| (origin.source.clone(), origin.span)),
+                resource.origins.iter().map(|origin| {
+                    (
+                        origin.description.clone(),
+                        origin.source.clone(),
+                        origin.span,
+                    )
+                }),
             )
         }));
         let output_plan = OutputPlan::validate(&output_claims)?;
@@ -659,18 +661,33 @@ mod tests {
     fn identical_renderer_resources_retain_every_markdown_origin() {
         let output_path = crate::output::OutputPath::try_new("heine-renderers/a.svg".into())
             .expect("valid renderer output path");
-        let resource = |name| page::RendererResource {
+        let resource = |name: &str, description: &str| page::RendererResource {
             output_path: output_path.clone(),
             bytes: b"<svg/>".to_vec(),
             origins: vec![page::RendererResourceOrigin {
+                description: description.to_owned(),
                 source: Arc::new(NamedSource::new(name, ":::render[diagram]".to_owned())),
                 span: (0, 1).into(),
             }],
         };
 
-        let grouped = group_renderer_resources([resource("first.md"), resource("second.md")]);
+        let grouped = group_renderer_resources([
+            resource("first.md", "light picture renderer resource"),
+            resource("second.md", "dark picture renderer resource"),
+        ]);
 
         assert_eq!(grouped.len(), 1);
         assert_eq!(grouped[0].origins.len(), 2);
+        assert_eq!(
+            grouped[0]
+                .origins
+                .iter()
+                .map(|origin| origin.description.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "light picture renderer resource",
+                "dark picture renderer resource"
+            ]
+        );
     }
 }

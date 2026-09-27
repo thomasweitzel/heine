@@ -121,7 +121,7 @@ fn markdown_picture_captions_render_a_native_figure_and_are_escaped() {
     );
     fixture.write(
         "content/en/index.md",
-        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.PNG\"\ndark = \"asset:images/dark.PNG\"\ncaption = \"Heine & <friends>\\\"\"\n:::\n",
+        ":::picture\nalt = \"A portrait\"\nlight = \"asset:images/light.PNG\"\ndark = \"asset:images/dark.PNG\"\ncaption = \"Heine & <friends>\\\"\"\nclass = \"portrait  feature\"\n:::\n",
     );
     write_bytes(&fixture, "content/en/images/light.PNG", PIXEL_PNG);
     write_bytes(&fixture, "content/en/images/dark.PNG", PIXEL_PNG);
@@ -131,7 +131,7 @@ fn markdown_picture_captions_render_a_native_figure_and_are_escaped() {
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).expect("output"),
-        "<figure>\n<picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"/images/dark.PNG\"><img src=\"/images/light.PNG\" width=\"1\" height=\"1\" alt=\"A portrait\"></picture>\n<figcaption>Heine &amp; &lt;friends&gt;\"</figcaption>\n</figure>\n"
+        "<figure class=\"portrait feature\">\n<picture class=\"portrait feature\"><source media=\"(prefers-color-scheme: dark)\" srcset=\"/images/dark.PNG\"><img src=\"/images/light.PNG\" width=\"1\" height=\"1\" alt=\"A portrait\"></picture>\n<figcaption>Heine &amp; &lt;friends&gt;\"</figcaption>\n</figure>\n"
     );
 }
 

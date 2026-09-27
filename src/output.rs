@@ -52,16 +52,14 @@ impl OutputClaim {
     }
     pub(crate) fn renderer(
         path: OutputPath,
-        description: impl Into<String>,
-        origins: impl IntoIterator<Item = (Arc<NamedSource<String>>, SourceSpan)>,
+        origins: impl IntoIterator<Item = (String, Arc<NamedSource<String>>, SourceSpan)>,
     ) -> Self {
-        let description = description.into();
         Self {
             path,
             origins: origins
                 .into_iter()
-                .map(|(source_code, span)| OutputOrigin::Authored {
-                    description: description.clone(),
+                .map(|(description, source_code, span)| OutputOrigin::Authored {
+                    description,
                     source_code,
                     span,
                 })
@@ -827,7 +825,10 @@ mod tests {
         let ordinary = OutputClaim::authored(path.clone(), "page", source.clone(), (0, 1).into());
         assert!(OutputPlan::validate(&[ordinary]).is_err());
 
-        let renderer = OutputClaim::renderer(path, "renderer resource", [(source, (0, 1).into())]);
+        let renderer = OutputClaim::renderer(
+            path,
+            [("renderer resource".to_owned(), source, (0, 1).into())],
+        );
         assert!(OutputPlan::validate(&[renderer]).is_ok());
     }
 
@@ -848,8 +849,18 @@ mod tests {
         ));
         let renderer = OutputClaim::renderer(
             path.clone(),
-            "renderer resource",
-            [(first, (0, 1).into()), (second, (0, 1).into())],
+            [
+                (
+                    "light picture renderer resource".to_owned(),
+                    first,
+                    (0, 1).into(),
+                ),
+                (
+                    "dark picture renderer resource".to_owned(),
+                    second,
+                    (0, 1).into(),
+                ),
+            ],
         );
         let page = OutputClaim::authored(path, "page", page, (0, 1).into());
 
@@ -857,8 +868,17 @@ mod tests {
 
         assert!(matches!(
             error,
-            Error::Claim(error)
-                if matches!(*error, OutputClaimError::Collision { ref related, .. } if related.len() == 2)
+            Error::Claim(ref error)
+                if matches!(**error, OutputClaimError::Collision { ref related, .. } if related.len() == 2)
         ));
+        let diagnostic = format!("{error:?}");
+        assert!(
+            diagnostic.contains("light picture renderer resource"),
+            "{diagnostic}"
+        );
+        assert!(
+            diagnostic.contains("dark picture renderer resource"),
+            "{diagnostic}"
+        );
     }
 }

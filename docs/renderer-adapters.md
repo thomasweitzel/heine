@@ -5,6 +5,10 @@ external program and return either checked embedded markup or one generated
 resource. Heine owns the request syntax, input boundary, timeout, cache, and
 published output. The external program remains a tool you install and choose.
 
+An embedded SVG request may add a normalized `class` list to its checked root
+element. This lets site CSS style an inline SVG without a wrapper. HTML and
+MathML results remain renderer-owned fragments, so they do not accept `class`.
+
 This guide starts with three working profile shapes. Each example assumes its
 program is already available on `PATH`, except PlantUML, whose JAR path must
 be replaced with the local absolute path. First add the profile to the root
@@ -163,6 +167,20 @@ The profile can use `{input_dir}` instead of `{input_file}` when its fixed
 arguments need the staged bundle directory. Heine copies only the declared
 bundle files, hashes every checked file into the cache key, and rejects an
 extra renderer output file.
+
+## Light and dark generated images
+
+`result = "picture"` represents one meaningful image in fixed light and dark
+forms. The profile owns both renderer invocations; a Markdown request supplies
+one alternative text and optional picture presentation fields. Heine checks
+both resources, emits a native `picture`, and uses the light source as its
+fallback. Read the [generated-picture design](design/renderer-pictures.md) for
+the complete contract.
+
+For complete local Typst SVG and KaTeX HTML walkthroughs, including
+installation, profiles, stylesheets, accessibility, and test commands, see
+[reproducible renderer examples](renderer-examples.md). That guide is the
+single maintained source for those external-tool recipes.
 
 ## Build and development behavior
 

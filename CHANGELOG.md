@@ -39,6 +39,17 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Embedded SVG renderer classes.** Embedded SVG renderer requests may now
+  attach checked CSS class tokens to the returned root `svg` element. This lets
+  site CSS style intentionally monochrome inline SVG, including with
+  `currentColor`, without changing cached renderer output or adding a wrapper.
+
+- **Generated color-scheme renderer pictures.** A `result = "picture"`
+  profile now runs fixed light and dark renderer variants from one Markdown
+  request and emits one native `picture` element with digest-addressed image
+  resources. Picture requests support checked captions, dimensions, and shared
+  `:::picture` CSS classes.
+
 - **Renderer result caching.** Successful stream and workspace results,
   including generated resources and source bundles, now use typed,
   integrity-checked cache entries. `--refresh-renderers` refreshes every

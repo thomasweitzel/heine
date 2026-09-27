@@ -61,7 +61,7 @@ message prefix, and declares its public integration surface.
 # kits/paper/kit.toml
 name = "paper"
 version = "1.0.0"
-heine = ">=0.8.0, <0.9.0"
+heine = ">=0.9.0, <0.10.0"
 message_prefix = "paper-"
 
 [public]

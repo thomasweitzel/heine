@@ -30,6 +30,7 @@ text and punctuation unambiguous. `width` and `height` use TOML integers.
 | `light`   | A checked `asset:<id>` reference for the ordinary fallback image.                                                     |
 | `dark`    | A checked `asset:<id>` reference selected for a dark browser preference.                                              |
 | `caption` | Optional visible plain text. When present, Heine wraps the picture in a native `figure` and emits it as `figcaption`. |
+| `class`   | Optional non-empty HTML class-token string. Heine normalizes ASCII whitespace and rejects repeated tokens.            |
 
 The two sources must be copied assets below `content/`. Heine rejects an
 external URL, a raw public URL, a page reference, or an unknown asset ID at the
@@ -96,6 +97,11 @@ URLs substituted for the source IDs:
 ```
 
 Without `caption`, Heine emits the `picture` element alone.
+
+When `class` is present, Heine adds its normalized class list to `picture`, and
+also to `figure` when a caption creates one. Use `picture.<class>` or
+`figure.<class>` when a rule belongs to one element only. A broad `.<class>`
+selector matches both elements for a captioned picture.
 
 The directive is a standalone Markdown block. Its opening line is exactly
 `:::picture`, and its closing line is exactly `:::`. Fenced code remains

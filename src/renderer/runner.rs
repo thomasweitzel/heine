@@ -14,7 +14,8 @@ use std::{
 use walkdir::WalkDir;
 
 use super::{
-    Output, Placement, Profile, Profiles, Protocol, RendererCache, RendererOutput, Source,
+    Appearance, Output, Placement, Profile, Profiles, Protocol, RendererCache, RendererOutput,
+    Source,
     cache::{CacheInput, cache_input_for_workspace, renderer_cache_key},
     validate_renderer_output,
 };
@@ -30,6 +31,7 @@ pub(crate) struct WorkspaceRequest<'a> {
     pub(crate) profile_name: &'a str,
     pub(crate) profile: &'a Profile,
     pub(crate) placement: Placement,
+    pub(crate) appearance: Option<Appearance>,
     pub(crate) output: Output,
     pub(crate) input: WorkspaceInput<'a>,
 }
@@ -57,6 +59,17 @@ impl From<String> for RendererError {
 impl From<&str> for RendererError {
     fn from(message: &str) -> Self {
         message.to_owned().into()
+    }
+}
+
+impl RendererError {
+    pub(crate) fn for_appearance(mut self, appearance: Appearance) -> Self {
+        self.message = format!(
+            "{} picture renderer failed: {}",
+            appearance.name(),
+            self.message
+        );
+        self
     }
 }
 
@@ -180,6 +193,7 @@ pub(crate) fn run_workspace(
         profile_name,
         profile,
         placement,
+        appearance,
         output,
         input,
     } = request;
@@ -188,13 +202,14 @@ pub(crate) fn run_workspace(
         profile_name,
         profile,
         placement,
+        appearance,
         output,
         cache_input_for_workspace(&input),
     )?;
     if !refresh && let Some(result) = runtime.cache.read(&cache_key, profile, output)? {
         return Ok(result);
     }
-    let variant = profile.workspace_variant(placement)?;
+    let variant = profile.variant(placement, appearance)?;
     let mut manager = runtime
         .manager
         .lock()
@@ -358,6 +373,7 @@ pub(crate) struct StreamRequest<'a> {
     pub(crate) profile_name: &'a str,
     pub(crate) profile: &'a Profile,
     pub(crate) placement: Placement,
+    pub(crate) appearance: Option<Appearance>,
     pub(crate) output: Output,
     pub(crate) input: &'a [u8],
 }
@@ -369,6 +385,7 @@ pub(crate) fn run_stream(request: StreamRequest<'_>) -> Result<RendererOutput, R
         profile_name,
         profile,
         placement,
+        appearance,
         output,
         input,
     } = request;
@@ -377,14 +394,18 @@ pub(crate) fn run_stream(request: StreamRequest<'_>) -> Result<RendererOutput, R
         profile_name,
         profile,
         placement,
+        appearance,
         output,
         CacheInput::Body(input),
     )?;
     if !refresh && let Some(result) = runtime.cache.read(&cache_key, profile, output)? {
         return Ok(result);
     }
-    let result =
-        validate_renderer_output(profile, output, execute_stream(profile, placement, input)?)?;
+    let result = validate_renderer_output(
+        profile,
+        output,
+        execute_stream(profile, placement, appearance, input)?,
+    )?;
     runtime
         .cache
         .write(&cache_key, profile.result(), result.bytes())?;
@@ -394,18 +415,15 @@ pub(crate) fn run_stream(request: StreamRequest<'_>) -> Result<RendererOutput, R
 fn execute_stream(
     profile: &Profile,
     placement: Placement,
+    appearance: Option<Appearance>,
     input: &[u8],
 ) -> Result<Vec<u8>, RendererError> {
     if profile.protocol != Protocol::Stream {
         return Err("selected profile does not use the stream protocol".into());
     }
-    let arguments = match placement {
-        Placement::Inline => profile.inline.as_ref(),
-        Placement::Block => profile.block.as_ref(),
-    }
-    .ok_or_else(|| "selected profile does not support this placement".to_owned())?;
+    let arguments = profile.variant(placement, appearance)?;
     let mut child = Command::new(&profile.program)
-        .args(&arguments.arguments)
+        .args(arguments.arguments())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

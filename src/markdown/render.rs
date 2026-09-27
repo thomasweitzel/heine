@@ -9,8 +9,9 @@ use pulldown_cmark::{Event, Parser, Tag, TagEnd, html};
 use crate::{asset::AssetLinks, site::PageLinks};
 
 use super::{
-    OrdinaryFootnotes, RenderError, Renderer, TransformLinks, highlight_code_blocks, options,
-    picture, task_labels, transform_event, unresolved_footnote_reference, wrap_tables,
+    OrdinaryFootnotes, RenderError, Renderer, TransformLinks, apply_renderer_replacements,
+    highlight_code_blocks, options, picture, task_labels, transform_event,
+    unresolved_footnote_reference, wrap_tables,
 };
 
 #[cfg(test)]
@@ -29,7 +30,15 @@ pub(crate) fn render_with_links(
     pages: Option<&PageLinks>,
     table_scroll_label: Option<&str>,
 ) -> Result<String, RenderError> {
-    render_with_links_anchors(input, renderer, assets, pages, None, table_scroll_label)
+    render_with_links_anchors(
+        input,
+        renderer,
+        assets,
+        pages,
+        None,
+        table_scroll_label,
+        &[],
+    )
 }
 
 pub(crate) fn render_with_links_anchors(
@@ -39,6 +48,7 @@ pub(crate) fn render_with_links_anchors(
     pages: Option<&PageLinks>,
     anchors: Option<&[String]>,
     table_scroll_label: Option<&str>,
+    replacements: &[super::RendererReplacement],
 ) -> Result<String, RenderError> {
     if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config()) {
         return Err(RenderError::Footnote { label, span });
@@ -64,6 +74,7 @@ pub(crate) fn render_with_links_anchors(
         .into_offset_iter()
         .collect();
     let events = picture::transform(input, events, assets)?;
+    let events = apply_renderer_replacements(events, replacements);
     let mut footnote_definition_depth = 0usize;
     let mut transformed_events = Vec::with_capacity(events.len());
     for (event, span) in events {

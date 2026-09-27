@@ -2,9 +2,8 @@
 
 ## Status
 
-Accepted design. This record defines a planned extension to renderer adapters.
-It does not change the current renderer-adapter contract until implementation,
-reference documentation, and tests land together.
+Implemented. This record defines the renderer-adapter color-scheme picture
+contract.
 
 ## Context
 
@@ -54,7 +53,7 @@ and one safe filename extension. It has both light and dark placement
 variants. The variants are fixed renderer invocations, not Markdown options.
 
 ```toml
-[renderers.typst-diagram]
+[renderers.typst_diagram]
 protocol = "workspace"
 program = "typst"
 timeout_seconds = 30
@@ -65,14 +64,14 @@ result = "picture"
 media_type = "image/svg+xml"
 extension = "svg"
 
-[renderers.typst-diagram.block.light]
+[renderers.typst_diagram.block.light]
 arguments = [
   "compile", "{input_file}", "{output_file}",
   "--format", "svg",
   "--input", "scheme=light",
 ]
 
-[renderers.typst-diagram.block.dark]
+[renderers.typst_diagram.block.dark]
 arguments = [
   "compile", "{input_file}", "{output_file}",
   "--format", "svg",
@@ -95,7 +94,7 @@ placeholder rules for each appearance variant.
 The request keeps the existing image-resource fields:
 
 ```markdown
-:::render[typst-diagram alt="Architecture diagram" caption="Request path" class="diagram align-center"]
+:::render[typst_diagram alt="Architecture diagram" caption="Request path" class="diagram align-center"]
 #import "diagram.typ": diagram
 #diagram(scheme: sys.inputs.at("scheme"))
 :::
@@ -216,11 +215,10 @@ sequentially. Parallel execution is deliberately undecided: it would need a
 separate design for deterministic diagnostic ordering, process-resource limits,
 cache publication, and the one-reusable-workspace-slot-per-profile invariant.
 
-The host retains the originating page, content source, directive span, profile
-name, and appearance role for both generated-resource claims. Identical bytes
-may still share one digest-addressed output where their media type and
-extension agree. Collision diagnostics retain every contributing request and
-appearance.
+The host retains the originating page, content source, directive span, and
+appearance role for both generated-resource claims. Identical bytes may still
+share one digest-addressed output where their media type and extension agree.
+Collision diagnostics retain every contributing request and appearance.
 
 A full build publishes only the current complete pair inventory. A quick
 build may retain superseded generated resources until the next full build,
@@ -249,11 +247,18 @@ when the renderer produces fixed-colour SVG or raster output.
 
 ### Arbitrary Markdown attributes and embedded-renderer classes
 
-`class` is limited to copied and generated picture results because Heine owns
-their structural HTML. It does not introduce a general Markdown attributes
-dialect, arbitrary `style` declarations, or arbitrary HTML attributes. An
-embedded HTML or MathML renderer owns its returned fragment, so Heine does not
-inject a class into it or guess which nested element should receive one.
+`class` is available for copied and generated picture results because Heine
+owns their structural HTML. It is also available for embedded SVG renderer
+results because Heine checks one `svg` document element and can add the list to
+that root without changing document structure. The list gives site CSS a stable
+hook for a deliberately monochrome SVG, including one that follows
+`currentColor` in light and dark prose.
+
+This does not introduce a general Markdown attributes dialect, arbitrary
+`style` declarations, or arbitrary HTML attributes. An embedded HTML or MathML
+renderer owns its returned fragment, so Heine does not inject a class into it
+or guess which nested element should receive one. SVG resources remain `img`
+elements and use the existing image-resource contract.
 
 ### Linked and arbitrary resources
 
@@ -266,8 +271,10 @@ silently choose a download based on a browser preference.
 
 Heine does not invert, recolour, or inject CSS into renderer output. Such a
 transformation cannot preserve the meaning of diagrams, photographs, charts,
-brand colours, and accessibility contrast in general. A renderer profile may
-invoke a trusted external wrapper after explicit permission, but the host
+brand colours, and accessibility contrast in general. A root class on one
+embedded SVG is different: it lets the site choose CSS for a renderer output
+that the profile author deliberately designed as monochrome. A renderer profile
+may invoke a trusted external wrapper after explicit permission, but the host
 continues to validate only the declared final result.
 
 The profile intentionally repeats the complete fixed argument vector for each
@@ -328,11 +335,14 @@ Implementation must include:
 
 - profile and request diagnostics for every incomplete or incompatible pair;
 - stream and workspace fixture coverage for successful and failing pairs;
-- cache, refresh, output-collision, quick-build, and watcher coverage;
+- cache, refresh, output-collision, quick-build, and watcher coverage,
+  including the light and dark roles where they share an otherwise identical
+  renderer result;
 - generated HTML checks for `picture`, `source`, fallback `img`, figure,
   caption, accessibility text, dimensions, base paths, and class placement
   with and without a caption; class-token normalization, duplicate rejection,
-  and HTML escaping; and inline-caption diagnostics;
+  and HTML escaping; inline-caption diagnostics; and embedded SVG root-class
+  placement with cached renderer output remaining undecorated;
 - dimension coverage for matching known variants, incompatible variant ratios,
   authored dimensions that disagree with a known shared ratio, derivation from
   a known light variant when the dark size is unknown, and explicit dimensions

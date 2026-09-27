@@ -16,8 +16,9 @@ use thiserror::Error;
 
 use super::{
     GENERATED_FOOTNOTE_ID_PREFIX, RenderError, Renderer, TransformLinks,
-    UnresolvedFootnoteReferenceScanner, highlight_code_blocks, is_escaped_markdown_character,
-    options, picture, push_html_attribute, task_labels, transform_event, wrap_tables,
+    UnresolvedFootnoteReferenceScanner, apply_renderer_replacements, highlight_code_blocks,
+    is_escaped_markdown_character, options, picture, push_html_attribute, task_labels,
+    transform_event, wrap_tables,
 };
 use crate::{asset::AssetLinks, config::MarkdownConfig, site::PageLinks};
 
@@ -38,6 +39,7 @@ pub(crate) struct RenderContext<'a> {
     pub(crate) pages: Option<&'a PageLinks>,
     pub(crate) anchors: Option<&'a [String]>,
     pub(crate) table_scroll_label: Option<&'a str>,
+    pub(crate) replacements: &'a [super::RendererReplacement],
 }
 
 #[derive(Debug, Clone)]
@@ -407,6 +409,7 @@ pub(crate) fn render(
         .into_offset_iter()
         .collect();
     let events = picture::transform(input, events, context.assets)?;
+    let events = apply_renderer_replacements(events, context.replacements);
     let mut in_definition = 0usize;
     let mut transformed_events = Vec::with_capacity(events.len());
     for (event, span) in events {

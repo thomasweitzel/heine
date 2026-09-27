@@ -10,8 +10,8 @@ use std::{
 use sha2::{Digest, Sha256};
 
 use super::{
-    NamedInput, Output, Profile, RendererOutput, ResultCapabilities, Source, WorkspaceInput,
-    validate_renderer_output,
+    Appearance, NamedInput, Output, Profile, RendererOutput, ResultCapabilities, Source,
+    WorkspaceInput, validate_renderer_output,
 };
 
 /// One build session owns cache cleanup. Complete cache entries remain
@@ -88,13 +88,11 @@ pub(super) fn renderer_cache_key(
     profile_name: &str,
     profile: &Profile,
     placement: super::Placement,
+    appearance: Option<Appearance>,
     output: Output,
     input: CacheInput<'_>,
 ) -> Result<String, String> {
-    let arguments = match placement {
-        super::Placement::Inline => profile.inline.as_ref(),
-        super::Placement::Block => profile.block.as_ref(),
-    };
+    let arguments = profile.variant(placement, appearance)?;
     let mut hasher = Sha256::new();
     hasher.update(b"heine-renderer-cache-v2\0");
     for value in [
@@ -111,13 +109,14 @@ pub(super) fn renderer_cache_key(
             Output::Embedded => "embedded",
             Output::Resource => "resource",
         },
+        appearance.map_or("single", Appearance::name),
     ] {
         hasher.update(value.as_bytes());
         hasher.update([0]);
     }
     hasher.update(format!("{:?}", profile.result).as_bytes());
     hasher.update([0]);
-    for argument in arguments.into_iter().flat_map(|variant| &variant.arguments) {
+    for argument in arguments.arguments() {
         hasher.update(argument.as_bytes());
         hasher.update([0]);
     }
@@ -198,6 +197,7 @@ fn cache_result_kind(result: &ResultCapabilities) -> &'static str {
         ResultCapabilities::Mathml => "mathml",
         ResultCapabilities::Svg { .. } => "svg",
         ResultCapabilities::Image { .. } => "image",
+        ResultCapabilities::Picture { .. } => "picture",
         ResultCapabilities::Link { .. } => "link",
     }
 }

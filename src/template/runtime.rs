@@ -19,6 +19,15 @@ use crate::{
 
 use super::TemplateResources;
 
+/// One declared Markdown source and the render-time facts Heine keeps outside
+/// its authored text.
+pub(super) struct MarkdownContent<'a> {
+    pub(super) source: &'a str,
+    pub(super) replacements: &'a [crate::markdown::RendererReplacement],
+    pub(super) toc: Option<&'a crate::markdown::TocPlan>,
+    pub(super) footnotes: Option<&'a crate::site::FootnotesView>,
+}
+
 /// The only bridge from Tera's dynamic render state back to validated Heine
 /// values. Built-ins use this instead of independently decoding context data.
 #[derive(Clone)]
@@ -334,11 +343,7 @@ impl TemplateRuntime {
         &'a self,
         state: &tera::State,
         name: &str,
-    ) -> tera::TeraResult<(
-        &'a str,
-        Option<&'a crate::markdown::TocPlan>,
-        Option<&'a crate::site::FootnotesView>,
-    )> {
+    ) -> tera::TeraResult<MarkdownContent<'a>> {
         let locale = self.locale(state)?;
         let id = self.page_id(state)?;
         let page = self.page_view(&locale, &id).ok_or_else(|| {
@@ -353,7 +358,13 @@ impl TemplateRuntime {
         let footnotes = page
             .footnotes()
             .filter(|footnotes| footnotes.content() == name);
-        Ok((content, toc, footnotes))
+        let (content, replacements) = content;
+        Ok(MarkdownContent {
+            source: content,
+            replacements,
+            toc,
+            footnotes,
+        })
     }
 
     pub(super) fn is_selected_source(
@@ -371,11 +382,11 @@ impl TemplateRuntime {
         let selected_toc = page
             .toc()
             .and_then(|toc| page.content_markdown(toc.content()))
-            .is_some_and(|content| content == input);
+            .is_some_and(|(content, _)| content == input);
         let selected_footnotes = page
             .footnotes()
             .and_then(|footnotes| page.content_markdown(footnotes.content()))
-            .is_some_and(|content| content == input);
+            .is_some_and(|(content, _)| content == input);
         Ok(selected_toc || selected_footnotes)
     }
 
