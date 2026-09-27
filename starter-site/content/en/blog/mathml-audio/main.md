@@ -1,5 +1,4 @@
 ## Math
-# Math
 
 This is the first blog post. It keeps *small emphasis*, **important points**,
 ~~unnecessary ceremony~~, and `inline code` close to the prose.
@@ -64,7 +63,7 @@ And for a modest checklist:
 ## Right-to-Left Text
 
 <blockquote lang="ar" dir="rtl">
-  <p>لا يوجد طريقٌ ملوكيٌّ إلى الهندسة.</p>
+  <p>لا يوجد طريقٌ ملوكيٌّ إلى الهندسة.</p>
 </blockquote>
 
 Arabic rendering of "There is no royal road to geometry", a traditional saying

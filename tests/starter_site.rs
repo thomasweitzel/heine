@@ -180,7 +180,7 @@ fn builds_the_documented_starter_site() {
         "{search_json}"
     );
     assert!(
-        search_json.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."),
+        search_json.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."),
         "{search_json}"
     );
 
@@ -496,12 +496,16 @@ fn builds_the_documented_starter_site() {
         post.contains("<blockquote lang=\"ar\" dir=\"rtl\">"),
         "{post}"
     );
-    assert!(post.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."), "{post}");
+    assert!(post.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."), "{post}");
     assert!(post.contains("<del>unnecessary ceremony</del>"), "{post}");
     assert!(
         post.contains(
-            "<input disabled=\"\" type=\"checkbox\" checked=\"\" aria-label=\"Keep the formula in the article.\"/>"
+            "<input disabled=\"\" type=\"checkbox\" checked=\"\" aria-label=\"Keep the formula in the article.\">"
         ),
+        "{post}"
+    );
+    assert!(
+        !post.contains("aria-label=\"Keep the formula in the article.\"/>"),
         "{post}"
     );
     assert!(post.contains("<table>"), "{post}");
