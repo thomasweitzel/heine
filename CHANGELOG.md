@@ -31,7 +31,40 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Renderer failure diagnostics.** External renderer output now appears
+  separately from Heine's request label. Workspace body diagnostics identify
+  that renderer paths and line locations refer to an isolated staged input.
+
 ### Added
+
+- **Renderer result caching.** Successful stream and workspace results,
+  including generated resources and source bundles, now use typed,
+  integrity-checked cache entries. `--refresh-renderers` refreshes every
+  selected request, and Heine removes incomplete cache artifacts once when a
+  renderer build session starts.
+
+- **Generated renderer resources.** SVG, image, and linked-resource requests
+  now publish one digest-addressed output below `heine-renderers/` and replace
+  their Markdown request with checked semantic HTML. Identical renderer bytes
+  share one generated file, and collision reports retain every Markdown request
+  that produced the shared resource. Full builds remove superseded resources
+  with the previous managed output tree.
+
+- **Workspace renderer inputs.** Embedded renderer requests can now run a
+  configured workspace profile with a checked body, declared file, or declared
+  bundle staged into an isolated temporary layout. Heine expands only complete
+  workspace placeholders, accepts one checked primary output file, and reuses
+  one cleaned workspace slot per profile for the build session.
+
+- **Stream renderer adapters.** Root-owned renderer profiles can now turn
+  explicit Markdown requests into checked embedded HTML, SVG, or MathML by
+  running a configured stream program only with
+  `--allow-external-renderers`. Successful results use an integrity-checked
+  local cache, and `--refresh-renderers` deliberately re-runs them.
+  **Migration:** no existing Markdown changes; configure a profile and pass
+  the explicit permission flag for each build that may execute it.
 
 - **Checked kits.** A site may select one local kit with a manifest-declared
   public template, asset, component, message, and presentation-settings
@@ -109,6 +142,13 @@ are corrected only to repair an error or explain a missed material migration.
   its visual checkmark.
 
 ### Changed
+
+- **Compact pager windows.** `pagination.navigation.window` now retains only
+  the first and last page plus the configured number of adjacent pages on each
+  side of the current page. Values range from `1` through `3`, which keeps the
+  generated navigation compact and gives `window` one purpose.
+  **Migration:** change values `4` or `5` to `3` or less; update templates or
+  snapshots that expected neighboring links beside the first or last page.
 
 - **Search result fragments.** Search-document format `3` replaces each
   document's single `text` string with ordered `sections`, each carrying text

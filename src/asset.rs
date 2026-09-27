@@ -420,6 +420,9 @@ impl AssetCatalog {
                         .extension()
                         .is_none_or(|extension| extension != "license")
                 {
+                    if sources.content_inputs.contains(entry.path()) {
+                        continue;
+                    }
                     let relative = relative_path(shared.root, entry.path())?;
                     let id = Path::new("assets").join(relative);
                     let Some(id) = AssetId::from_path(&id) else {
@@ -462,7 +465,7 @@ impl AssetCatalog {
                     path: entry.path().into(),
                 });
             }
-            if sources.content_inputs.contains(&relative) {
+            if sources.content_inputs.contains(entry.path()) {
                 continue;
             }
             let Some(id) = AssetId::from_path(&relative) else {

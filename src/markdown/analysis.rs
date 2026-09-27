@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     RenderError, Renderer, SearchTextSection, TransformLinks, UnresolvedFootnoteReferenceScanner,
-    options, picture, scan_unresolved_footnote_event,
+    options, picture, renderer_request, scan_unresolved_footnote_event,
     search_text::{append_boundary, append_text, raw_html_text},
     validate_event,
 };
@@ -35,6 +35,7 @@ pub(crate) struct MarkdownFacts {
 pub(crate) struct MarkdownAnalysis {
     pub(crate) facts: MarkdownFacts,
     pub(crate) search_sections: Vec<SearchTextSection>,
+    pub(crate) renderer_requests: Vec<renderer_request::ResolvedRequest>,
 }
 
 #[cfg(test)]
@@ -59,27 +60,33 @@ pub(crate) fn analyze(
 /// Derives source facts and validates checked Markdown transformations in one
 /// parser walk. Rendering remains separate because template output has its own
 /// lifetime and may render an input more than once.
+pub(super) struct ValidationInputs<'a> {
+    pub(super) renderer: &'a Renderer,
+    pub(super) assets: &'a AssetLinks,
+    pub(super) pages: &'a PageLinks,
+    pub(super) renderer_sources: &'a std::collections::BTreeMap<String, crate::renderer::Source>,
+}
+
 pub(super) fn analyze_and_validate(
     input: &str,
-    renderer: &Renderer,
-    assets: &AssetLinks,
-    pages: &PageLinks,
+    validation: ValidationInputs<'_>,
     words_per_minute: Option<NonZeroU64>,
     fragments: Option<&[String]>,
     collect_search_sections: bool,
 ) -> Result<MarkdownAnalysis, RenderError> {
     analyze_inner(
         input,
-        renderer.config(),
+        validation.renderer.config(),
         words_per_minute,
         fragments,
         collect_search_sections,
         Some(Validation {
-            renderer,
+            renderer: validation.renderer,
+            renderer_sources: validation.renderer_sources,
             links: TransformLinks {
-                math: renderer.config().math(),
-                assets: Some(assets),
-                pages: Some(pages),
+                math: validation.renderer.config().math(),
+                assets: Some(validation.assets),
+                pages: Some(validation.pages),
             },
         }),
     )
@@ -88,6 +95,7 @@ pub(super) fn analyze_and_validate(
 #[derive(Clone, Copy)]
 struct Validation<'a> {
     renderer: &'a Renderer,
+    renderer_sources: &'a std::collections::BTreeMap<String, crate::renderer::Source>,
     links: TransformLinks<'a>,
 }
 
@@ -99,6 +107,17 @@ fn analyze_inner(
     collect_search_sections: bool,
     validation: Option<Validation<'_>>,
 ) -> Result<MarkdownAnalysis, RenderError> {
+    let renderer_requests = renderer_request::parse(input)?;
+    let resolved_renderer_requests = validation
+        .map(|validation| {
+            renderer_request::validate(
+                &renderer_requests,
+                validation.renderer.renderer_profiles(),
+                validation.renderer_sources,
+            )
+        })
+        .transpose()?
+        .unwrap_or_default();
     let mut text = CountedText::default();
     let mut sections = Vec::new();
     let mut section = SectionBuilder::default();
@@ -219,6 +238,7 @@ fn analyze_inner(
             reading_time,
         },
         search_sections: sections,
+        renderer_requests: resolved_renderer_requests,
     })
 }
 

@@ -14,6 +14,7 @@ use std::{
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use serde_json::Value;
 use thiserror::Error as ThisError;
+use walkdir::WalkDir;
 
 use crate::{
     config::{
@@ -27,9 +28,10 @@ use crate::{
         Error,
         metadata::{Requirement, key_span, parse_metadata},
         page::{
-            DirectoryView, LoadedPage, Metadata, OutputSuffix, Page, PageId, Pagination,
-            PaginationSegment, RawMetadata, RawPage, SeriesMembership, SiblingWeight, Task,
-            TaxonomyMembership, TaxonomyTermMembership, TranslationId,
+            DirectoryView, LoadedPage, Metadata, NavigationWindow, OutputSuffix, Page, PageId,
+            Pagination, PaginationSegment, RawMetadata, RawPage, RawRendererSource,
+            SeriesMembership, SiblingWeight, Task, TaxonomyMembership, TaxonomyTermMembership,
+            TranslationId,
         },
     },
     source_path,
@@ -190,6 +192,7 @@ struct SitemapDirectoryBoundary {
 /// The small source-level fact needed to decide whether a page belongs to the
 /// published catalog before its richer page relationships are resolved.
 pub(super) struct PageLoadContext<'a> {
+    pub(super) project_content_root: &'a Path,
     pub(super) content_root: &'a Path,
     pub(super) diagnostics: &'a crate::source_diagnostic::DiagnosticPaths,
     pub(super) locale: &'a Locale,
@@ -223,6 +226,8 @@ struct RawPageProbe {
     draft: Option<toml::Spanned<toml::Value>>,
     content: Option<toml::Spanned<toml::Value>>,
     footnotes: Option<toml::Spanned<toml::Value>>,
+    #[serde(default)]
+    render: BTreeMap<toml::Spanned<String>, RawRendererSource>,
 }
 
 impl PageProbe {
@@ -242,6 +247,7 @@ impl PageProbe {
 pub(super) fn probe_page(
     path: &Path,
     content_root: &Path,
+    project_content_root: &Path,
     diagnostics: &crate::source_diagnostic::DiagnosticPaths,
 ) -> Result<PageProbe, Error> {
     let text = fs::read_to_string(path).map_err(|source| Error::Io {
@@ -305,7 +311,20 @@ pub(super) fn probe_page(
             };
             let content_path = resolve_content_path(content_root, path, file)
                 .map_err(|message| invalid_with(diagnostics, path, &text, span, message))?;
-            content_inputs.insert(relative_path(content_root, &content_path)?);
+            content_inputs.insert(content_path);
+        }
+    }
+    if draft {
+        let renderer_sources = renderer_sources_for(
+            raw.render,
+            project_content_root,
+            path,
+            &diagnostics.display_path(path),
+            &text,
+        )?;
+        for renderer_source in renderer_sources.values() {
+            debug_assert!(renderer_source.entry().starts_with(renderer_source.root()));
+            content_inputs.extend(renderer_source.files().iter().cloned());
         }
     }
     Ok(PageProbe {
@@ -439,6 +458,30 @@ pub(super) fn load_page(
     let mut content_inputs = BTreeSet::new();
     let mut markdown_sources = BTreeMap::new();
     let mut markdown_names = BTreeSet::new();
+    let renderer_sources = renderer_sources_for(
+        raw.render,
+        context.project_content_root,
+        source_path,
+        path,
+        &text,
+    )?;
+    for source in renderer_sources.values() {
+        debug_assert!(source.entry().starts_with(source.root()));
+        for file in source.files() {
+            latest = latest.max(content_modified(file).map_err(|error| {
+                invalid(
+                    path,
+                    &text,
+                    (0, 0).into(),
+                    format!(
+                        "could not access declared renderer source {}: {error}",
+                        file.display()
+                    ),
+                )
+            })?);
+            content_inputs.insert(file.clone());
+        }
+    }
     for (name, file) in raw.content {
         let file_span: SourceSpan = file.span().into();
         if !source_path::is_simple_identifier(&name) {
@@ -460,7 +503,7 @@ pub(super) fn load_page(
                 format!("could not access declared content file {file:?}: {error}"),
             )
         })?);
-        content_inputs.insert(relative_path(context.content_root, &content_path)?);
+        content_inputs.insert(content_path.clone());
         let loaded =
             content::load(&content_path, context.diagnostics).map_err(|error| match error {
                 content::Error::Read { source, .. } => invalid(
@@ -659,6 +702,9 @@ pub(super) fn load_page(
         content,
         markdown_content: markdown_names,
         markdown_sources,
+        renderer_sources,
+        renderer_requests: BTreeMap::new(),
+        renderer_resources: Vec::new(),
         markdown_facts: BTreeMap::new(),
         markdown_search_sections: None,
         toc,
@@ -765,15 +811,8 @@ fn pagination_for(
     let segment = PaginationSegment::parse(raw.segment.into_inner())
         .map_err(|message| invalid(path, source, segment_span, message))?;
     let window_span: SourceSpan = raw.navigation.window.span().into();
-    let navigation_window = raw.navigation.window.into_inner();
-    if !(1..=5).contains(&navigation_window) {
-        return Err(invalid(
-            path,
-            source,
-            window_span,
-            "pagination.navigation.window must be an integer from 1 through 5",
-        ));
-    }
+    let navigation_window = NavigationWindow::parse(raw.navigation.window.into_inner())
+        .map_err(|message| invalid(path, source, window_span, message))?;
     Ok(Some(Pagination {
         collection,
         per_page,
@@ -1074,6 +1113,213 @@ fn resolve_content_path(
         }
     }
     Ok(content_root.join(relative))
+}
+
+fn renderer_sources_for(
+    declarations: BTreeMap<toml::Spanned<String>, RawRendererSource>,
+    project_content_root: &Path,
+    page_path: &Path,
+    diagnostic_path: &Path,
+    source: &str,
+) -> Result<BTreeMap<String, crate::renderer::Source>, Error> {
+    let mut resolved = BTreeMap::new();
+    for (name, declaration) in declarations {
+        let name_span = name.span().into();
+        let name = name.into_inner();
+        if !source_path::is_simple_identifier(&name) {
+            return Err(invalid(
+                diagnostic_path,
+                source,
+                name_span,
+                format!("renderer source name {name:?} must be a simple identifier"),
+            ));
+        }
+        let RawRendererSource { file, root, entry } = declaration;
+        let renderer_source = match (file, root, entry) {
+            (Some(file), None, None) => {
+                let span = file.span().into();
+                let reference = file.into_inner();
+                let path = resolve_renderer_path(project_content_root, page_path, &reference)
+                    .map_err(|message| invalid(diagnostic_path, source, span, message))?;
+                check_renderer_file(&path, diagnostic_path, source, span, &reference)?;
+                crate::renderer::Source::file(path, span)
+            }
+            (None, Some(root), Some(entry)) => {
+                let root_span = root.span().into();
+                let root_reference = root.into_inner();
+                let root = resolve_renderer_path(project_content_root, page_path, &root_reference)
+                    .map_err(|message| invalid(diagnostic_path, source, root_span, message))?;
+                let metadata = fs::symlink_metadata(&root).map_err(|error| {
+                    invalid(
+                        diagnostic_path,
+                        source,
+                        root_span,
+                        format!("could not access renderer source bundle root {root_reference:?}: {error}"),
+                    )
+                })?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(invalid(
+                        diagnostic_path,
+                        source,
+                        root_span,
+                        format!(
+                            "renderer source bundle root {root_reference:?} must be a non-symbolic-link directory"
+                        ),
+                    ));
+                }
+                let entry_span = entry.span().into();
+                let entry_reference = entry.into_inner();
+                let entry_path = resolve_renderer_path_from(&root, &root, &entry_reference)
+                    .map_err(|message| invalid(diagnostic_path, source, entry_span, message))?;
+                check_renderer_file(
+                    &entry_path,
+                    diagnostic_path,
+                    source,
+                    entry_span,
+                    &entry_reference,
+                )?;
+                let mut files = Vec::new();
+                for discovered in WalkDir::new(&root).sort_by_file_name() {
+                    let discovered = discovered.map_err(|error| {
+                        invalid(
+                            diagnostic_path,
+                            source,
+                            root_span,
+                            format!(
+                                "could not walk renderer source bundle {root_reference:?}: {error}"
+                            ),
+                        )
+                    })?;
+                    if discovered.file_type().is_symlink() {
+                        return Err(invalid(
+                            diagnostic_path,
+                            source,
+                            root_span,
+                            format!(
+                                "renderer source bundle {root_reference:?} contains symbolic link {}",
+                                discovered.path().display()
+                            ),
+                        ));
+                    }
+                    if discovered.file_type().is_file() {
+                        files.push(discovered.into_path());
+                    }
+                }
+                crate::renderer::Source::bundle(root, entry_path, files, root_span)
+            }
+            _ => {
+                return Err(invalid(
+                    diagnostic_path,
+                    source,
+                    (0, 0).into(),
+                    format!(
+                        "renderer source {name:?} must declare either file = \"...\" or both root = \"...\" and entry = \"...\""
+                    ),
+                ));
+            }
+        };
+        resolved.insert(name, renderer_source);
+    }
+    let mut owners = BTreeMap::new();
+    for (name, renderer_source) in &resolved {
+        for file in renderer_source.files() {
+            if let Some(first) = owners.insert(file, name) {
+                return Err(invalid(
+                    diagnostic_path,
+                    source,
+                    renderer_source.declaration_span(),
+                    format!(
+                        "renderer source {name:?} overlaps renderer source {first:?} at {}",
+                        file.display()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(resolved)
+}
+
+fn resolve_renderer_path(
+    project_content_root: &Path,
+    page_path: &Path,
+    reference: &str,
+) -> Result<PathBuf, String> {
+    let page_dir = page_path
+        .parent()
+        .ok_or_else(|| "page has no parent directory".to_owned())?;
+    resolve_renderer_path_from(project_content_root, page_dir, reference)
+}
+
+fn resolve_renderer_path_from(
+    root: &Path,
+    start: &Path,
+    reference: &str,
+) -> Result<PathBuf, String> {
+    if Path::new(reference).is_absolute() {
+        return Err(format!(
+            "renderer source {reference:?} must be relative to its page file"
+        ));
+    }
+    let mut path = start.to_path_buf();
+    for component in Path::new(reference).components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if path == root {
+                    return Err(format!(
+                        "renderer source {reference:?} escapes the content directory"
+                    ));
+                }
+                path.pop();
+            }
+            Component::Normal(part) if part.to_str().is_some_and(|part| !part.contains('\\')) => {
+                path.push(part)
+            }
+            Component::Normal(_) => {
+                return Err(format!(
+                    "renderer source {reference:?} must use UTF-8 path components without backslashes"
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "renderer source {reference:?} must be relative to its page file"
+                ));
+            }
+        }
+    }
+    if path.starts_with(root) {
+        Ok(path)
+    } else {
+        Err(format!(
+            "renderer source {reference:?} escapes the content directory"
+        ))
+    }
+}
+
+fn check_renderer_file(
+    path: &Path,
+    diagnostic_path: &Path,
+    source: &str,
+    span: SourceSpan,
+    reference: &str,
+) -> Result<(), Error> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        invalid(
+            diagnostic_path,
+            source,
+            span,
+            format!("could not access renderer source {reference:?}: {error}"),
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(invalid(
+            diagnostic_path,
+            source,
+            span,
+            format!("renderer source {reference:?} must be a regular non-symbolic-link file"),
+        ));
+    }
+    Ok(())
 }
 
 fn metadata_modified(path: &Path) -> Result<SystemTime, Error> {

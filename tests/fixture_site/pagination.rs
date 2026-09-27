@@ -17,7 +17,7 @@ fn paginates_a_collection_with_generated_routes_and_navigation() {
     fixture.write("heine.toml", "[collections.posts]\norder = 'id-asc'\n");
     listing_fixture(
         &fixture,
-        "template = 'listing.tera'\ncollections = []\n[pagination]\ncollection = 'posts'\nper_page = 2\n",
+        "template = 'listing.tera'\ncollections = []\n[pagination]\ncollection = 'posts'\nper_page = 2\n\n[pagination.navigation]\nwindow = 3\n",
     );
     fixture.write(
         "templates/listing.tera",
@@ -39,6 +39,34 @@ fn paginates_a_collection_with_generated_routes_and_navigation() {
         "blog/index|3/3|5|5:Post 5;|link:1;link:2;link:3;|1=false;2=false;3=true;"
     );
     assert!(!fixture.path().join("public/blog/page/1.html").exists());
+}
+
+#[test]
+fn configured_navigation_window_controls_a_large_rendered_pager() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'id-asc'\n");
+    fixture.write(
+        "content/en/blog/index.page",
+        "template = 'listing.tera'\ncollections = []\n[pagination]\ncollection = 'posts'\nper_page = 1\n\n[pagination.navigation]\nwindow = 3\n",
+    );
+    for number in 1..=11 {
+        fixture.write(
+            format!("content/en/blog/post-{number}.page"),
+            &format!("template = 'post.tera'\ntitle = 'Post {number}'\ncollections = ['posts']\n"),
+        );
+    }
+    fixture.write("templates/post.tera", "{{ page.title }}");
+    fixture.write(
+        "templates/listing.tera",
+        "{% for item in pagination.navigation %}{{ item.kind }}{% if item.kind == 'link' %}:{{ item.page_number }}{% endif %};{% endfor %}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/blog/page/6.html")).expect("middle pager"),
+        "link:1;gap;link:3;link:4;link:5;link:6;link:7;link:8;link:9;gap;link:11;"
+    );
 }
 
 #[test]
@@ -183,8 +211,13 @@ fn validates_pagination_route_and_navigation_policy_at_their_values() {
             "content/en/index.page:5",
         ),
         (
-            "[pagination.navigation]\nwindow = 6\n",
-            "integer from 1 through 5",
+            "[pagination.navigation]\nwindow = 0\n",
+            "integer from 1 through 3",
+            "content/en/index.page:6",
+        ),
+        (
+            "[pagination.navigation]\nwindow = 4\n",
+            "integer from 1 through 3",
             "content/en/index.page:6",
         ),
     ];

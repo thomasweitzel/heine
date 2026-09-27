@@ -441,7 +441,7 @@ fn reports_both_page_locations_for_an_output_collision() {
         "{diagnostic}"
     );
     assert!(
-        diagnostic.contains("first output declaration"),
+        diagnostic.contains("other output declaration"),
         "{diagnostic}"
     );
     assert!(

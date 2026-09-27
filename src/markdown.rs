@@ -24,14 +24,19 @@ use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 use crate::{
     asset::AssetLinks,
     config::{MarkdownConfig, MarkdownExtension, MathMode},
+    renderer::Profiles as RendererProfiles,
     site::PageLinks,
 };
+
+#[cfg(test)]
+use std::path::PathBuf;
 
 mod analysis;
 mod highlighting;
 pub(crate) mod margin_footnotes;
 mod picture;
 mod render;
+mod renderer_request;
 mod search_text;
 pub(crate) use analysis::MarkdownFacts;
 use highlighting::Highlighter;
@@ -39,6 +44,7 @@ pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 #[cfg(test)]
 pub(crate) use render::render;
 pub(crate) use render::{render_with_links, render_with_links_anchors};
+pub(crate) use renderer_request::{ResolvedInput, ResolvedRequest};
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
 
@@ -189,6 +195,10 @@ pub(crate) enum InitializationError {
 pub(crate) struct Renderer {
     config: MarkdownConfig,
     highlighter: Option<Arc<Highlighter>>,
+    renderer_profiles: RendererProfiles,
+    allow_external_renderers: bool,
+    refresh_renderers: bool,
+    renderer_runtime: crate::renderer::RendererRuntime,
 }
 
 /// The one source-backed heading model shared by the template view and
@@ -315,7 +325,24 @@ fn fragment_base(text: &str) -> String {
 }
 
 impl Renderer {
+    #[cfg(test)]
     pub(crate) fn new(config: MarkdownConfig) -> Result<Self, Box<InitializationError>> {
+        let renderer_profiles = RendererProfiles::default();
+        let renderer_runtime = crate::renderer::RendererRuntime::new(
+            &renderer_profiles,
+            PathBuf::from(".heine/cache/renderers/v1"),
+        )
+        .expect("a stream-only renderer configuration has no workspace runtime");
+        Self::with_renderer_profiles(config, renderer_profiles, false, false, renderer_runtime)
+    }
+
+    pub(crate) fn with_renderer_profiles(
+        config: MarkdownConfig,
+        renderer_profiles: RendererProfiles,
+        allow_external_renderers: bool,
+        refresh_renderers: bool,
+        renderer_runtime: crate::renderer::RendererRuntime,
+    ) -> Result<Self, Box<InitializationError>> {
         let highlighter = config.highlighting().map(|highlighting| {
             Highlighter::new(highlighting).map(Arc::new).map_err(|source| {
                 let Some(source_code) = highlighting.stylesheet_source().cloned() else {
@@ -335,11 +362,31 @@ impl Renderer {
         Ok(Self {
             config,
             highlighter,
+            renderer_profiles,
+            allow_external_renderers,
+            refresh_renderers,
+            renderer_runtime,
         })
     }
 
     pub(crate) fn config(&self) -> &MarkdownConfig {
         &self.config
+    }
+
+    pub(crate) fn refresh_renderers(&self) -> bool {
+        self.refresh_renderers
+    }
+
+    pub(crate) fn renderer_runtime(&self) -> &crate::renderer::RendererRuntime {
+        &self.renderer_runtime
+    }
+
+    pub(crate) fn renderer_profiles(&self) -> &RendererProfiles {
+        &self.renderer_profiles
+    }
+
+    pub(crate) fn allows_external_renderers(&self) -> bool {
+        self.allow_external_renderers
     }
 
     pub(crate) fn stylesheet(&self) -> Option<String> {
@@ -362,7 +409,7 @@ impl Renderer {
 }
 
 #[derive(Debug, Error)]
-pub(super) enum RenderError {
+pub(crate) enum RenderError {
     #[error("could not render {kind} TeX {tex:?}: {message}")]
     Math {
         kind: &'static str,
@@ -395,6 +442,17 @@ pub(super) enum RenderError {
     MarginFootnote { message: String, span: Range<usize> },
     #[error("{0}")]
     Picture(#[from] picture::Error),
+    #[error("{0}")]
+    RendererRequest(#[from] renderer_request::Error),
+    #[error("external renderer permission is required")]
+    RendererPermission { span: Range<usize> },
+    #[error("renderer failed: {message}")]
+    RendererProcess {
+        message: String,
+        diagnostics: Option<String>,
+        staged_body_input: bool,
+        span: Range<usize>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -466,6 +524,7 @@ pub(crate) struct SourceAnalysisInputs<'a> {
     pub(crate) words_per_minute: Option<std::num::NonZeroU64>,
     pub(crate) fragments: Option<&'a [String]>,
     pub(crate) collect_search_sections: bool,
+    pub(crate) renderer_sources: &'a BTreeMap<String, crate::renderer::Source>,
 }
 
 /// Derives page facts and validates checked transformations while the original
@@ -476,9 +535,12 @@ pub(crate) fn analyze_source_with_links(
 ) -> Result<analysis::MarkdownAnalysis, Box<SourceError>> {
     analysis::analyze_and_validate(
         inputs.input,
-        inputs.renderer,
-        inputs.assets,
-        inputs.pages,
+        analysis::ValidationInputs {
+            renderer: inputs.renderer,
+            assets: inputs.assets,
+            pages: inputs.pages,
+            renderer_sources: inputs.renderer_sources,
+        },
         inputs.words_per_minute,
         inputs.fragments,
         inputs.collect_search_sections,
@@ -486,7 +548,7 @@ pub(crate) fn analyze_source_with_links(
     .map_err(|error| Box::new(source_error(inputs.display_path, inputs.input, error)))
 }
 
-fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceError {
+pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceError {
     let (kind, label, help, span) = match &error {
         RenderError::Math { span, .. } => (
             "math",
@@ -543,6 +605,31 @@ fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceE
             error.help().into(),
             error.span(),
         ),
+        RenderError::RendererRequest(error) => (
+            "renderer request",
+            error.message.clone(),
+            "use a renderer name and TOML scalar options in the documented render syntax"
+                .into(),
+            error.span.clone(),
+        ),
+        RenderError::RendererPermission { span } => (
+            "renderer request",
+            "external renderer permission is required here".into(),
+            "rerun with --allow-external-renderers after reviewing the selected renderer profile"
+                .into(),
+            span.clone(),
+        ),
+        RenderError::RendererProcess {
+            message,
+            diagnostics,
+            staged_body_input,
+            span,
+        } => (
+            "renderer request",
+            format!("renderer failed here: {message}"),
+            renderer_process_help(diagnostics.as_deref(), *staged_body_input),
+            span.clone(),
+        ),
     };
     SourceError {
         path: display_path.into(),
@@ -557,6 +644,32 @@ fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceE
         label,
         help,
     }
+}
+
+pub(crate) fn renderer_process_error(
+    error: crate::renderer::RendererError,
+    staged_body_input: bool,
+    span: Range<usize>,
+) -> RenderError {
+    RenderError::RendererProcess {
+        message: error.message,
+        diagnostics: error.diagnostics,
+        staged_body_input,
+        span,
+    }
+}
+
+fn renderer_process_help(diagnostics: Option<&str>, staged_body_input: bool) -> String {
+    let Some(diagnostics) = diagnostics else {
+        return "inspect the configured renderer profile and its diagnostic output".into();
+    };
+    let context = staged_body_input.then_some(
+        "the renderer received the request body as an isolated staged input; paths and line numbers below refer to that input\n\n",
+    );
+    format!(
+        "{}renderer output:\n{diagnostics}\ncorrect the renderer input or its configured invocation",
+        context.unwrap_or_default(),
+    )
 }
 
 /// Validates one parsed event that needs the resolved site relationship model.

@@ -7,9 +7,11 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Next
 
-- **Renderer adapters:** explicit Markdown constructs that a trusted external
-  renderer turns into checked generated resources and replacements. This is
-  the only planned plugin boundary. See the [design](design/plugins.md).
+- **Generated color-scheme pictures:** extend the completed renderer-adapter
+  boundary with one checked light and dark generated-image pair. The host will
+  emit native `picture` markup while stream and workspace profiles retain
+  fixed renderer-owned appearance invocations. See the [accepted
+  design](design/renderer-pictures.md).
 
 ## Later
 

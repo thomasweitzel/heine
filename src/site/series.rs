@@ -22,7 +22,7 @@ use crate::{
 use super::{
     PageCatalog, collation,
     index::OrderedPages,
-    page::{Page, PageId, Pager, SeriesMembership},
+    page::{NavigationWindow, Page, PageId, Pager, SeriesMembership},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -433,7 +433,7 @@ pub(super) fn resolve(
                         page_count,
                         item_count: series.members.len(),
                         per_page: config.per_page(),
-                        navigation_window: 1,
+                        navigation_window: NavigationWindow::DEFAULT,
                         paths: paths.clone(),
                     })),
                 });

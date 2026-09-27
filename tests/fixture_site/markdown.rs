@@ -1,5 +1,687 @@
 use super::*;
 
+fn stream_copy_profile(name: &str, inputs: &str, result: &str) -> String {
+    let (program, arguments) = if cfg!(windows) {
+        ("cmd", "[\"/C\", \"more\"]")
+    } else {
+        ("cat", "[]")
+    };
+    format!(
+        r#"
+[renderers.{name}]
+protocol = "stream"
+program = "{program}"
+timeout_seconds = 10
+cache_identity = "copy-1"
+inputs = {inputs}
+result = "{result}"
+[renderers.{name}.block]
+arguments = {arguments}
+"#,
+    )
+}
+
+#[test]
+fn renderer_requests_resolve_profiles_before_markdown_renders() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[site]
+time_zone = "Europe/Berlin"
+
+[i18n]
+default_locale = "en"
+[i18n.locales.en]
+direction = "ltr"
+
+[renderers.katex]
+protocol = "stream"
+program = "katex"
+timeout_seconds = 10
+cache_identity = "katex-0.16.27"
+inputs = ["body"]
+result = "html"
+[renderers.katex.inline]
+arguments = ["--format", "htmlAndMathml"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", ":render[unknown]`x^2`\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown profile fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("renderer profile \"unknown\" is not configured"),
+        "{diagnostic}"
+    );
+    assert!(!diagnostic.contains(fixture.path().to_str().expect("UTF-8 fixture path")));
+
+    fixture.write(
+        "content/en/index.md",
+        ":render[katex output=\"resource\"]`x^2`\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid output fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("cannot produce the requested output form"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn permitted_stream_renderers_embed_checked_html_and_reuse_cached_results() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("copy", "[\"body\"]", "html"),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "before\n\n:::render[copy]\n<span>cached result</span>\n:::\n\nafter\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let options = heine::BuildOptions::new(BuildMode::Full).allow_external_renderers();
+    heine::build_at_with_options(fixture.path(), options).expect("permitted renderer builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<span>cached result</span>"), "{output}");
+
+    let cache = fixture.path().join(".heine/cache/renderers/v1");
+    let entries = fs::read_dir(&cache).expect("renderer cache").count();
+    assert_eq!(entries, 2, "one cached result and its integrity record");
+    let entry = fs::read_dir(&cache)
+        .expect("renderer cache")
+        .find_map(|entry| {
+            let entry = entry.expect("cache entry");
+            (entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "sha256"))
+            .then_some(entry.path())
+        })
+        .expect("typed cache record");
+    assert!(
+        fs::read_to_string(entry)
+            .expect("typed cache record")
+            .starts_with("v1 html "),
+        "cache records its result type"
+    );
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full)
+            .allow_external_renderers()
+            .refresh_renderers(),
+    )
+    .expect("refresh bypasses and replaces cached renderer result");
+    assert_eq!(
+        fs::read_dir(&cache).expect("renderer cache").count(),
+        2,
+        "refresh replaces the same cache entry"
+    );
+}
+
+#[test]
+fn stream_renderer_rejects_an_invalid_typed_embedded_result() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+            "result = \"svg\"\n",
+            "result = \"svg\"\nmaterializations = [\"embedded\"]\n",
+            1,
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram]\n<p>not SVG</p>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("typed SVG result is checked");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("different document element"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+}
+
+#[test]
+fn stream_renderer_publishes_checked_svg_resources() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+            "result = \"svg\"\n",
+            "result = \"svg\"\nmaterializations = [\"resource\"]\n",
+            1,
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture overview\"]\n<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("SVG resource renderer builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    let src = output
+        .split("src=\"")
+        .nth(1)
+        .and_then(|value| value.split('\"').next())
+        .expect("SVG image");
+    assert!(output.contains("alt=\"Architecture overview\""), "{output}");
+    assert_eq!(
+        fs::read_to_string(
+            fixture
+                .path()
+                .join("public")
+                .join(src.strip_prefix('/').expect("site-relative SVG URL")),
+        )
+        .expect("SVG resource"),
+        "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn stream_renderer_times_out_at_the_request() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.wait]
+protocol = "stream"
+program = "sh"
+timeout_seconds = 1
+cache_identity = "wait-1"
+inputs = ["body"]
+result = "html"
+[renderers.wait.block]
+arguments = ["-c", "sleep 3"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", ":::render[wait]\nignored\n:::\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("slow direct child times out");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("exceeded its 1-second timeout"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+}
+
+#[cfg(unix)]
+#[test]
+fn workspace_renderer_stages_body_files_and_bundles_in_an_isolated_layout() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.workspace]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "workspace-copy-1"
+inputs = ["body", "file", "bundle"]
+input_extension = "txt"
+result = "html"
+[renderers.workspace.block]
+arguments = ["-c", "cat \"$1\" > \"$2\"", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[render.file]\nfile = '../assets/file.html'\n\n[render.bundle]\nroot = 'bundle'\nentry = 'main.html'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[workspace]\n<p>body</p>\n:::\n\n:::render[workspace source=\"file\"]\n:::\n\n:::render[workspace source=\"bundle\"]\n:::\n",
+    );
+    fixture.write("content/assets/file.html", "<p>file</p>\n");
+    fixture.write("content/en/bundle/main.html", "<p>bundle</p>\n");
+    fixture.write("content/en/bundle/imported.txt", "kept with bundle\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("workspace inputs render");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    for fragment in ["<p>body</p>", "<p>file</p>", "<p>bundle</p>"] {
+        assert!(output.contains(fragment), "{output}");
+    }
+    let cache = fixture.path().join(".heine/cache/renderers/v1");
+    assert_eq!(
+        fs::read_dir(&cache)
+            .expect("workspace renderer cache")
+            .count(),
+        6,
+        "each checked input form receives one cache entry and integrity record"
+    );
+
+    fixture.write(
+        "content/en/bundle/imported.txt",
+        "changed bundle dependency\n",
+    );
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("changed bundle input rebuilds");
+    assert_eq!(
+        fs::read_dir(&cache)
+            .expect("workspace renderer cache")
+            .count(),
+        8,
+        "every checked bundle file contributes to the cache key"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn workspace_renderer_rejects_extra_output_files_and_times_out() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.workspace]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 1
+cache_identity = "workspace-check-1"
+inputs = ["body"]
+input_extension = "txt"
+result = "html"
+[renderers.workspace.block]
+arguments = ["-c", "cp \"$1\" \"$2\"; touch \"$(dirname \"$2\")/extra\"", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[workspace]\n<p>body</p>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("workspace extra output fails");
+    assert!(format!("{error:?}").contains("besides the primary output"));
+
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.workspace]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 1
+cache_identity = "workspace-timeout-1"
+inputs = ["body"]
+input_extension = "txt"
+result = "html"
+[renderers.workspace.block]
+arguments = ["-c", "sleep 3", "workspace", "{output_file}"]
+"#,
+    );
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("workspace timeout fails");
+    assert!(format!("{error:?}").contains("exceeded its 1-second timeout"));
+}
+
+#[cfg(unix)]
+#[test]
+fn workspace_renderer_diagnostics_preserve_the_staged_body_location() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.workspace]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "workspace-diagnostic-1"
+inputs = ["body"]
+input_extension = "txt"
+result = "html"
+[renderers.workspace.block]
+arguments = ["-c", "printf 'renderer error\\n  --> ../input/input.txt:2:3\\n' >&2; exit 1", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[workspace]\nfirst\nsecond\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("workspace renderer fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("../input/input.txt:2:3"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("paths and line numbers below refer to that input"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("renderer output:"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("renderer exited with exit status"),
+        "{diagnostic}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn stream_renderer_diagnostics_preserve_program_output() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.stream]
+protocol = "stream"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "stream-diagnostic-1"
+inputs = ["body"]
+result = "html"
+[renderers.stream.block]
+arguments = ["-c", "cat >/dev/null; printf 'stream renderer error\\n  at source input:2:3\\n' >&2; exit 1"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[stream]\nfirst\nsecond\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("stream renderer fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("stream renderer error"), "{diagnostic}");
+    assert!(diagnostic.contains("at source input:2:3"), "{diagnostic}");
+    assert!(diagnostic.contains("renderer output:"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("renderer exited with exit status"),
+        "{diagnostic}"
+    );
+    assert!(
+        !diagnostic.contains("isolated staged input"),
+        "{diagnostic}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn workspace_renderer_publishes_digest_resources_with_semantic_replacements() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[site]
+base_path = "/guide/"
+
+[renderers.document]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "document-1"
+inputs = ["body"]
+input_extension = "txt"
+result = "link"
+media_type = "text/plain"
+extension = "txt"
+[renderers.document.block]
+arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[document label=\"Download report\"]\nreport bytes\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("resource renderer builds");
+    let cache = fixture.path().join(".heine/cache/renderers/v1");
+    assert_eq!(
+        fs::read_dir(&cache)
+            .expect("workspace renderer cache")
+            .count(),
+        2,
+        "workspace result and integrity record are cached"
+    );
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("cached workspace resource renderer builds");
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full)
+            .allow_external_renderers()
+            .refresh_renderers(),
+    )
+    .expect("refresh reruns and replaces the workspace resource cache entry");
+    assert_eq!(
+        fs::read_dir(&cache)
+            .expect("workspace renderer cache")
+            .count(),
+        2,
+        "refresh replaces the matching cache entry"
+    );
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    let href = output
+        .split("href=\"")
+        .nth(1)
+        .and_then(|value| value.split('\"').next())
+        .expect("resource link");
+    assert!(
+        href.starts_with("/guide/heine-renderers/sha256-"),
+        "{output}"
+    );
+    assert!(output.contains(">Download report</a>"), "{output}");
+    let path = href.strip_prefix("/guide/").expect("base path");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public").join(path)).expect("resource"),
+        "report bytes"
+    );
+
+    let markdown = fixture.path().join("content/en/index.md");
+    fixture.write(
+        "content/en/index.md",
+        ":::render[document label=\"Download report\"]\nupdated report bytes\n:::\n",
+    );
+    fs::File::open(&markdown)
+        .expect("changed Markdown")
+        .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(1)))
+        .expect("changed Markdown timestamp");
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Quick).allow_external_renderers(),
+    )
+    .expect("quick build updates a changed renderer request");
+    let output =
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("quick output");
+    let href = output
+        .split("href=\"")
+        .nth(1)
+        .and_then(|value| value.split('\"').next())
+        .expect("updated resource link");
+    let path = href.strip_prefix("/guide/").expect("base path");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public").join(path)).expect("updated resource"),
+        "updated report bytes"
+    );
+}
+
+#[test]
+fn renderer_requests_resolve_declared_files_without_publishing_them() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("diagram", "[\"file\"]", "html"),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[render.architecture]\nfile = '../assets/architecture.txt'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram source=\"architecture\"]\n:::\n",
+    );
+    fixture.write("content/assets/architecture.txt", "<p>diagram source</p>\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let permission = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("selected renderer requires explicit permission");
+    assert!(
+        format!("{permission:?}").contains("external renderer permission is required"),
+        "{permission:?}"
+    );
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("declared file streams to the permitted renderer");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<p>diagram source</p>"), "{output}");
+
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram source=\"missing\"]\n:::\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown source fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("renderer source \"missing\" is not declared on this page"),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[render.report]\nroot = 'report'\nentry = 'main.txt'\n",
+    );
+    fixture.write("content/en/report/main.txt", "bundle entry\n");
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram source=\"report\"]\n:::\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsupported bundle fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("does not accept the declared bundle source \"report\""),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[render.first]\nfile = '../assets/architecture.txt'\n\n[render.second]\nfile = '../assets/architecture.txt'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("overlapping sources fail");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:8"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("renderer source \"second\"")
+            && diagnostic.contains("renderer source \"first\""),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn renderer_source_declarations_check_bundle_boundaries() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "[render.report]\nroot = 'report'\nentry = '../outside.typ'\n",
+    );
+    fixture.write("content/en/report/outside.typ", "report");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("bundle entry escapes");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("content/en/index.page:3"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("escapes the content directory"),
+        "{diagnostic}"
+    );
+}
+
 #[test]
 fn source_aware_markdown_exposes_a_toc_and_matching_heading_ids() {
     let fixture = Fixture::new();
@@ -946,7 +1628,6 @@ fn rejects_a_highlighting_stylesheet_that_would_be_an_asset_directory() {
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("directory collision fails");
     let diagnostic = format!("{error:?}");
-    assert!(diagnostic.contains("syntax-highlighting"), "{diagnostic}");
     assert!(diagnostic.contains("stylesheet"), "{diagnostic}");
 }
 

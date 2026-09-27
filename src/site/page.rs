@@ -2,6 +2,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fs,
     num::NonZeroU64,
     path::PathBuf,
     sync::Arc,
@@ -109,7 +110,7 @@ pub(crate) struct Pager {
     pub(super) page_count: usize,
     pub(super) item_count: usize,
     pub(super) per_page: usize,
-    pub(super) navigation_window: usize,
+    pub(super) navigation_window: NavigationWindow,
     pub(super) paths: Arc<Vec<OutputPath>>,
 }
 
@@ -147,6 +148,8 @@ pub(super) struct RawPage {
     #[serde(default)]
     pub(super) content: BTreeMap<String, toml::Spanned<String>>,
     #[serde(default)]
+    pub(super) render: BTreeMap<toml::Spanned<String>, RawRendererSource>,
+    #[serde(default)]
     pub(super) taxonomies: BTreeMap<toml::Spanned<String>, Vec<toml::Spanned<String>>>,
     pub(super) collections: Option<Vec<toml::Spanned<String>>>,
     #[serde(default)]
@@ -155,6 +158,14 @@ pub(super) struct RawPage {
     pub(super) pagination: Option<RawPagination>,
     #[serde(default = "default_suffix")]
     pub(super) suffix: toml::Spanned<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawRendererSource {
+    pub(super) file: Option<toml::Spanned<String>>,
+    pub(super) root: Option<toml::Spanned<String>>,
+    pub(super) entry: Option<toml::Spanned<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -353,6 +364,9 @@ pub(super) struct Page {
     /// Original declared Markdown inputs are retained for source-derived
     /// generated-resource consumers such as search, not for template rendering.
     pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
+    pub(super) renderer_sources: BTreeMap<String, crate::renderer::Source>,
+    pub(super) renderer_requests: BTreeMap<String, Vec<crate::markdown::ResolvedRequest>>,
+    pub(super) renderer_resources: Vec<RendererResource>,
     pub(super) markdown_facts: BTreeMap<String, crate::markdown::MarkdownFacts>,
     /// Search owns these transient sections while it constructs its generated
     /// documents. Pages outside every configured search index never allocate
@@ -374,6 +388,19 @@ pub(super) struct Page {
     pub(super) weight: SiblingWeight,
     pub(super) weight_span: Option<SourceSpan>,
     pub(super) translations: BTreeMap<String, PageLink>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct RendererResource {
+    pub(super) output_path: OutputPath,
+    pub(super) bytes: Vec<u8>,
+    pub(super) origins: Vec<RendererResourceOrigin>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct RendererResourceOrigin {
+    pub(super) source: Arc<NamedSource<String>>,
+    pub(super) span: SourceSpan,
 }
 
 /// The resolved relationship between a page and directory sibling ordering.
@@ -402,11 +429,33 @@ pub(super) struct Pagination {
     pub(super) collection: CollectionName,
     pub(super) per_page: usize,
     pub(super) segment: PaginationSegment,
-    pub(super) navigation_window: usize,
+    pub(super) navigation_window: NavigationWindow,
     /// The authored value responsible for generated pager routes. A default
     /// segment has no source range, so it falls back to the collection value
     /// that declares the pagination relationship.
     pub(super) route_span: SourceSpan,
+}
+
+/// A compact pager retains fixed first and last anchors plus a bounded number
+/// of neighbors around its current page. Keeping the bound here prevents
+/// generated-resource consumers from drifting into different navigation rules.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct NavigationWindow(usize);
+
+impl NavigationWindow {
+    pub(super) const DEFAULT: Self = Self(1);
+
+    pub(super) fn parse(value: usize) -> Result<Self, &'static str> {
+        if (1..=3).contains(&value) {
+            Ok(Self(value))
+        } else {
+            Err("pagination.navigation.window must be an integer from 1 through 3")
+        }
+    }
+
+    pub(super) fn neighbors(self) -> usize {
+        self.0
+    }
 }
 
 /// A generated pager route component that is simultaneously a canonical URL
@@ -491,9 +540,13 @@ impl Page {
         pages: &PageLinks,
         words_per_minute: Option<NonZeroU64>,
         collect_search_sections: bool,
+        resource_base_path: &str,
     ) -> Result<(), Box<crate::markdown::SourceError>> {
         let mut facts = BTreeMap::new();
+        let mut renderer_requests = BTreeMap::new();
+        let mut rendered_content = BTreeMap::new();
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
+        let mut renderer_resources = Vec::new();
         for (name, source) in &self.markdown_sources {
             let fragments = self
                 .toc
@@ -509,13 +562,141 @@ impl Page {
                 words_per_minute,
                 fragments,
                 collect_search_sections,
+                renderer_sources: &self.renderer_sources,
             })?;
+            if !analysis.renderer_requests.is_empty() && !renderer.allows_external_renderers() {
+                return Err(Box::new(crate::markdown::source_error(
+                    &source.display_path,
+                    &source.source,
+                    crate::markdown::RenderError::RendererPermission {
+                        span: analysis.renderer_requests[0].span.clone(),
+                    },
+                )));
+            }
+            let mut transformed = source.source.clone();
+            for request in analysis.renderer_requests.iter().rev() {
+                let profile = renderer
+                    .renderer_profiles()
+                    .get(&request.profile)
+                    .expect("resolved renderer profile");
+                let rendered = (if profile.uses_workspace() {
+                    let input = match &request.input {
+                        crate::markdown::ResolvedInput::Body => {
+                            crate::renderer::WorkspaceInput::Body(
+                                source.source[request.body_span.clone()].as_bytes(),
+                            )
+                        }
+                        crate::markdown::ResolvedInput::Source(name) => {
+                            crate::renderer::WorkspaceInput::Source(&self.renderer_sources[name])
+                        }
+                    };
+                    crate::renderer::run_workspace(crate::renderer::WorkspaceRequest {
+                        runtime: renderer.renderer_runtime(),
+                        refresh: renderer.refresh_renderers(),
+                        profile_name: &request.profile,
+                        profile,
+                        placement: request.placement,
+                        output: request.output,
+                        input,
+                    })
+                } else {
+                    let input = match &request.input {
+                        crate::markdown::ResolvedInput::Body => {
+                            source.source[request.body_span.clone()].as_bytes().to_vec()
+                        }
+                        crate::markdown::ResolvedInput::Source(name) => {
+                            let declared = &self.renderer_sources[name];
+                            if declared.input() != crate::renderer::NamedInput::File {
+                                return Err(Box::new(crate::markdown::source_error(
+                                    &source.display_path,
+                                    &source.source,
+                                    crate::markdown::RenderError::RendererProcess {
+                                        message: "stream renderers cannot consume source bundles"
+                                            .into(),
+                                        diagnostics: None,
+                                        staged_body_input: false,
+                                        span: request.span.clone(),
+                                    },
+                                )));
+                            }
+                            fs::read(declared.entry()).map_err(|error| {
+                                Box::new(crate::markdown::source_error(
+                                    &source.display_path,
+                                    &source.source,
+                                    crate::markdown::RenderError::RendererProcess {
+                                        message: format!(
+                                            "could not read renderer source {name:?}: {error}"
+                                        ),
+                                        diagnostics: None,
+                                        staged_body_input: false,
+                                        span: request.span.clone(),
+                                    },
+                                ))
+                            })?
+                        }
+                    };
+                    crate::renderer::run_stream(crate::renderer::StreamRequest {
+                        runtime: renderer.renderer_runtime(),
+                        refresh: renderer.refresh_renderers(),
+                        profile_name: &request.profile,
+                        profile,
+                        placement: request.placement,
+                        output: request.output,
+                        input: &input,
+                    })
+                })
+                .map_err(|error| {
+                    Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        &source.source,
+                        crate::markdown::renderer_process_error(
+                            error,
+                            profile.uses_workspace()
+                                && matches!(request.input, crate::markdown::ResolvedInput::Body),
+                            request.span.clone(),
+                        ),
+                    ))
+                })?;
+                let replacement = match rendered {
+                    crate::renderer::RendererOutput::Embedded(replacement) => replacement,
+                    crate::renderer::RendererOutput::Resource { output_path, bytes } => {
+                        let url =
+                            format!("{}{}", resource_base_path, output_path.url_path().as_str());
+                        let replacement = resource_replacement(
+                            profile.result(),
+                            &url,
+                            request.alt.as_deref(),
+                            request.label.as_deref(),
+                        );
+                        renderer_resources.push(RendererResource {
+                            output_path,
+                            bytes,
+                            origins: vec![RendererResourceOrigin {
+                                source: Arc::new(NamedSource::new(
+                                    source.display_path.display().to_string(),
+                                    source.source.clone(),
+                                )),
+                                span: request.span.clone().into(),
+                            }],
+                        });
+                        replacement
+                    }
+                };
+                transformed.replace_range(request.span.clone(), &replacement);
+            }
+            rendered_content.insert(name.clone(), transformed);
             facts.insert(name.clone(), analysis.facts);
+            renderer_requests.insert(name.clone(), analysis.renderer_requests);
             if let Some(search_sections) = &mut search_sections {
                 search_sections.insert(name.clone(), analysis.search_sections);
             }
         }
         self.markdown_facts = facts;
+        self.renderer_requests = renderer_requests;
+        self.renderer_resources = renderer_resources;
+        for (name, content) in rendered_content {
+            self.content.insert(name, Value::String(content));
+        }
         self.markdown_search_sections = search_sections;
         Ok(())
     }
@@ -570,6 +751,39 @@ impl Page {
             weight: self.weight.ordered(),
         }
     }
+}
+
+fn resource_replacement(
+    result: &crate::renderer::ResultCapabilities,
+    url: &str,
+    alt: Option<&str>,
+    label: Option<&str>,
+) -> String {
+    let url = escape_html(url);
+    match result {
+        crate::renderer::ResultCapabilities::Svg { .. }
+        | crate::renderer::ResultCapabilities::Image { .. } => {
+            format!(
+                "<img src=\"{url}\" alt=\"{}\">",
+                escape_html(alt.unwrap_or(""))
+            )
+        }
+        crate::renderer::ResultCapabilities::Link { .. } => {
+            format!("<a href=\"{url}\">{}</a>", escape_html(label.unwrap_or("")))
+        }
+        crate::renderer::ResultCapabilities::Html | crate::renderer::ResultCapabilities::Mathml => {
+            unreachable!("embedded-only profile cannot produce a resource")
+        }
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 /// Deliberate, serializable template contract derived from a validated page.

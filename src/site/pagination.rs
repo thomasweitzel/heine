@@ -257,16 +257,19 @@ impl Pager {
                 }
             })
             .collect();
-        let navigation =
-            navigation_links(self.page_number, self.page_count, self.navigation_window)
-                .into_iter()
-                .map(|number| match number {
-                    Some(number) => {
-                        NavigationItem::Link(self.link(number, base_path, canonical_urls, root))
-                    }
-                    None => NavigationItem::Gap,
-                })
-                .collect();
+        let navigation = navigation_links(
+            self.page_number,
+            self.page_count,
+            self.navigation_window.neighbors(),
+        )
+        .into_iter()
+        .map(|number| match number {
+            Some(number) => {
+                NavigationItem::Link(self.link(number, base_path, canonical_urls, root))
+            }
+            None => NavigationItem::Gap,
+        })
+        .collect();
         View {
             collection: self.collection.clone(),
             pages,
@@ -323,10 +326,10 @@ impl Pager {
 
 fn navigation_links(current: usize, total: usize, window: usize) -> Vec<Option<usize>> {
     let mut retained = std::collections::BTreeSet::new();
-    retained.extend(1..=(window + 1).min(total));
+    retained.insert(1);
     retained
         .extend(current.saturating_sub(window).max(1)..=current.saturating_add(window).min(total));
-    retained.extend(total.saturating_sub(window).max(1)..=total);
+    retained.insert(total);
     let mut result = Vec::new();
     let mut previous = None;
     for number in retained {
@@ -359,13 +362,11 @@ mod tests {
             navigation_links(101, 1202, 1),
             vec![
                 Some(1),
-                Some(2),
                 None,
                 Some(100),
                 Some(101),
                 Some(102),
                 None,
-                Some(1201),
                 Some(1202)
             ]
         );
@@ -373,8 +374,6 @@ mod tests {
             navigation_links(101, 1202, 2),
             vec![
                 Some(1),
-                Some(2),
-                Some(3),
                 None,
                 Some(99),
                 Some(100),
@@ -382,8 +381,22 @@ mod tests {
                 Some(102),
                 Some(103),
                 None,
-                Some(1200),
-                Some(1201),
+                Some(1202)
+            ]
+        );
+        assert_eq!(
+            navigation_links(101, 1202, 3),
+            vec![
+                Some(1),
+                None,
+                Some(98),
+                Some(99),
+                Some(100),
+                Some(101),
+                Some(102),
+                Some(103),
+                Some(104),
+                None,
                 Some(1202)
             ]
         );

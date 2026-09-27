@@ -21,7 +21,7 @@ use thiserror::Error;
 use tokio::sync::watch as state_watch;
 
 use crate::{
-    BuildMode, BuildOptions, BuildPublication, build_at_with_publication, config::BasePath,
+    BuildMode, BuildOptions, BuildPublication, build_at_with_renderer_runtime, config::BasePath,
 };
 
 pub(crate) use crate::output::INTERNAL_DIRECTORY;
@@ -33,6 +33,8 @@ pub struct ServeOptions {
     port: u16,
     clean_output: bool,
     drafts: bool,
+    allow_external_renderers: bool,
+    refresh_renderers: bool,
 }
 
 impl Default for ServeOptions {
@@ -42,6 +44,8 @@ impl Default for ServeOptions {
             port: 1111,
             clean_output: false,
             drafts: false,
+            allow_external_renderers: false,
+            refresh_renderers: false,
         }
     }
 }
@@ -65,6 +69,8 @@ impl ServeOptions {
             port,
             clean_output: false,
             drafts: false,
+            allow_external_renderers: false,
+            refresh_renderers: false,
         })
     }
 
@@ -86,6 +92,16 @@ impl ServeOptions {
     /// Includes draft pages in this local development-server preview.
     pub fn with_drafts(mut self) -> Self {
         self.drafts = true;
+        self
+    }
+
+    pub fn allow_external_renderers(mut self) -> Self {
+        self.allow_external_renderers = true;
+        self
+    }
+
+    pub fn refresh_renderers(mut self) -> Self {
+        self.refresh_renderers = true;
         self
     }
 
@@ -185,12 +201,22 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
     } else {
         BuildOptions::new(BuildMode::Full)
     };
+    let rebuild = if options.allow_external_renderers {
+        rebuild.allow_external_renderers()
+    } else {
+        rebuild
+    };
+    let rebuild = if options.refresh_renderers {
+        rebuild.refresh_renderers()
+    } else {
+        rebuild
+    };
     let build = if options.clean_output {
         rebuild.clean_output()
     } else {
         rebuild
     };
-    let initial_build = build_at_with_publication(&root, build)?;
+    let (initial_build, renderer_runtime) = build_at_with_renderer_runtime(&root, build)?;
     let kit_paths = initial_build.kit_paths.clone();
     let initial =
         PublishedSite::from_build(initial_build, generation_from_start_time(SystemTime::now()));
@@ -207,7 +233,14 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
         .enable_all()
         .build()
         .map_err(|source| miette::Report::new(Error::Runtime { source }))?;
-    runtime.block_on(run(listener, initial, watcher, rebuild, kit_paths))
+    runtime.block_on(run(
+        listener,
+        initial,
+        watcher,
+        rebuild,
+        kit_paths,
+        renderer_runtime,
+    ))
 }
 
 async fn run(
@@ -216,6 +249,7 @@ async fn run(
     watcher: watch::PendingWatcher,
     rebuild: BuildOptions,
     kit_paths: Option<crate::kit::Paths>,
+    renderer_runtime: crate::renderer::RendererRuntime,
 ) -> miette::Result<()> {
     let address = listener
         .local_addr()
@@ -227,7 +261,7 @@ async fn run(
         .map_err(|source| miette::Report::new(Error::RuntimeListener { address, source }))?;
     let (published, receiver) = state_watch::channel(initial);
     let _watcher = watcher
-        .start(published, rebuild, kit_paths)
+        .start(published, rebuild, kit_paths, renderer_runtime)
         .map_err(miette::Report::new)?;
     let state = ServerState {
         published: receiver,

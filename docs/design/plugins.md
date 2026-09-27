@@ -2,12 +2,13 @@
 
 ## Status
 
-This is the accepted design for Heine's first future extension boundary,
-Markdown-aware renderer adapters and configured external renderer profiles. It
-is not implemented and is not part of the current public contract. Other
-extension kinds remain undecided until a separate concrete use case requires
-them. Package discovery, installation, and distribution are likewise
-undecided.
+This is the accepted design for Heine's first extension boundary,
+Markdown-aware renderer adapters and configured external renderer profiles.
+The stream-protocol, workspace-backed embedded-result, generated-resource,
+and renderer-cache slices are implemented. Renderer source files and bundles
+already live below the watched content tree. Other extension kinds remain
+undecided until a separate concrete use case requires them. Package discovery,
+installation, and distribution are likewise undecided.
 
 ## Decision
 
@@ -78,7 +79,10 @@ For renderer adapters, a request selects exactly one configured renderer
 profile. A profile exists when its named configuration exists; there is no
 separate enable or disable state. A request for a missing profile is a checked
 error. Generated resources are normal output claims with existing collision
-diagnostics. Profiles have no incidental ordering relationship.
+diagnostics. When identical renderer bytes share one digest-addressed resource,
+that claim retains every Markdown request that produced it. A later collision
+therefore identifies every relevant request, not an arbitrary representative.
+Profiles have no incidental ordering relationship.
 
 No generic conflict or ordering policy is accepted for unimplemented plugin
 kinds. If a future kind is justified, its design must define checked ownership
@@ -367,6 +371,13 @@ inside `content/`, reject symbolic links, and not overlap another declared
 renderer source or a copied asset. A bundle's entry must be a regular file
 beneath its root.
 
+A bundle comprises every regular non-symbolic-link file below its declared
+root. Heine walks those files in deterministic relative-path order and uses
+the same inventory for workspace copying, watching, and cache hashing. It
+does not apply `.gitignore`, VCS, or other implicit ignore rules: omitting a
+file that can affect a renderer would make its result stale. An author who has
+large unrelated inputs therefore chooses a narrower bundle root.
+
 A request names its source instead of supplying a body:
 
 ```markdown
@@ -414,16 +425,51 @@ fragment that is safe for its declared placement and does not conflict with
 the surrounding page. A resource profile is the appropriate choice when a
 renderer cannot make that promise.
 
+The XML transformation uses an event-based parser and writer, never textual
+replacement. It preserves element structure, text, CDATA, comments, processing
+instructions, and namespace declarations while omitting only declaration and
+doctype events. This keeps declaration removal from changing unrelated XML
+content.
+
 The first implementation accepts one primary generated resource per request.
 Tools can produce several files in some modes, for example a multi-page Typst
 SVG export, a PlantUML input containing several diagrams, or a Pandoc
 conversion with extracted media. Those modes fail as unsupported until a later
 resource-set contract can define their page replacement and ownership.
 
+One planned exception is a checked light and dark pair for one semantic image.
+It remains distinct from a general resource set because the host can replace
+it with native `picture` markup. See [generated color-scheme
+pictures](renderer-pictures.md).
+
 Heine allocates safe deterministic output paths for generated resources, checks
 them with every other output claim, and builds base-path-aware URLs. The
 adapter cannot overwrite a page, copied asset, deployment file, license text,
 or another generated resource.
+
+Generated renderer resources publish below the root-level
+`heine-renderers/` namespace. Heine reserves that namespace for this result
+kind: pages, copied assets, deployment files, license texts, and configured
+generated resources cannot claim paths below it. It remains separate from
+`__heine/`, which the development server owns and never publishes as site
+output. A renderer resource uses its validated returned bytes to derive a
+base-path-aware path of this form:
+
+```text
+heine-renderers/sha256-<full-output-digest>.<declared-extension>
+```
+
+The full SHA-256 digest identifies the returned bytes, not the renderer cache
+key. A refreshed renderer that returns different bytes therefore receives a
+new public URL even when its declared input and cache key did not change.
+Requests with the same returned bytes and extension share one generated output
+file.
+
+A full build stages only the current resolved renderer-resource inventory, then
+atomically replaces the managed output tree. When a refreshed renderer returns
+different bytes, the superseded digest file therefore disappears with the
+previous output tree; public renderer resources need no separate garbage
+collector.
 
 A generated renderer resource is not a copied asset. It has no adjacent
 licensing sidecar and is outside the current `[licensing].required` coverage
@@ -432,9 +478,10 @@ resource licensing needs a separate provenance design: relevant facts may come
 from the authored renderer source, the renderer, bundled fonts, or other tool
 inputs. Heine does not infer those facts.
 
-The host must retain the originating page, content file, directive span, and
-renderer-profile name for every derived resource. Any output collision
-therefore names both the generated request and the conflicting authored claim.
+The host retains the originating page, content file, directive span, and
+renderer-profile name for every derived resource. An attempted authored claim
+inside `heine-renderers/` therefore identifies its source, while diagnostics
+for a renderer failure can identify every affected request.
 
 ## External renderer bridges
 
@@ -445,6 +492,14 @@ with the operating-system authority of the user who starts Heine. A temporary
 workspace limits the inputs Heine provides, but is not a sandbox against a
 malicious executable. A future in-process renderer needs its own concrete
 design or should become a native Heine feature.
+
+A renderer profile is trusted in two distinct ways. Its program and any wrapper
+script have the process authority of the Heine invocation, which is broader
+than a template's authority. An embedded HTML, SVG, or MathML result has the
+same browser-output authority as trusted project templates: it can contribute
+arbitrary markup, including active content. Do not configure a renderer
+program, wrapper, or embedded-result profile that the site owner would not
+trust with those respective authorities.
 
 Heine must therefore require an explicit command-line opt-in before it starts
 an external bridge, conceptually `--allow-external-renderers`. A site
@@ -476,7 +531,8 @@ suits tools that can act as filters, including PlantUML, KaTeX, and Pandoc.
 
 #### Workspace protocol
 
-Heine creates an isolated per-request temporary workspace with this layout:
+Heine assigns each serialized workspace profile one isolated reusable workspace
+slot with this layout:
 
 ```text
 input/
@@ -508,6 +564,11 @@ Placeholders never expand inside another argument. A workspace variant uses
 This preserves paths containing spaces or non-ASCII text on Windows, Linux,
 and macOS without creating a command-templating language.
 
+This rule deliberately does not support dynamic joined arguments such as
+`--output={output_file}`. A renderer that requires that command shape needs a
+site-owned wrapper script. That wrapper remains an explicit external bridge
+and therefore runs only with external-renderer permission.
+
 An external bridge may invoke a user-authored executable shell script or
 batch-file wrapper when the user has granted external-renderer permission.
 Platform-specific wrappers are expected where a renderer itself is
@@ -516,8 +577,9 @@ platform-specific. For example, a Windows bridge may invoke
 may invoke an executable script directly. Heine itself does not add an
 implicit shell layer.
 
-The host captures bounded standard error, checks the exit status, and reads and
-checks the primary output file before it cleans the workspace. Extra files
+The host clears the slot before staging an input, captures bounded standard
+error, checks the exit status, and reads and checks the primary output file
+before it cleans the workspace again. Extra files
 below `output/` are a checked error, not incidental publication. A cleanup
 failure after successful result capture does not invalidate that complete
 result. Heine reports the retained workspace path for recovery, which
@@ -540,23 +602,26 @@ and any retained workspace path without claiming to have contained those
 children.
 
 The host creates a session-owned renderer-workspace parent below the operating
-system temporary directory. Each serialized renderer profile uses a fixed
-number of reusable workspace slots below that parent. A successfully cleaned
-slot is reused. A slot that remains locked is unavailable until cleanup
-succeeds. If all slots for a profile are unavailable, Heine fails the next
-request with the affected paths instead of creating unbounded temporary
-directories. At process startup, it makes a best-effort sweep of stale,
-clearly Heine-owned workspace parents.
+system temporary directory. Each serialized renderer profile uses one reusable
+workspace slot below that parent. A successfully cleaned slot is reused. A
+slot that remains locked is unavailable until cleanup succeeds. Heine retries
+that cleanup before the next request. If it still cannot clean the slot, Heine
+fails the request with the affected path instead of creating unbounded
+temporary directories. `TempDir` removes a session parent when its owning
+process exits normally. Heine does not sweep prefix-matched session parents at
+startup because a name cannot prove that another Heine process has stopped.
+Crash leftovers are safer than deleting a live renderer's inputs or outputs.
 
 ## Caching, watching, and failure behavior
 
-The cache key for a renderer result includes:
+The cache applies to every successful renderer result. Its key includes:
 
 - renderer-profile name, `cache_identity`, and normalized configuration;
 - the selected placement variant and normalized directive options;
 - materialization;
-- inline body bytes; named-file bytes; or every checked relative path and file
-  byte sequence in a named source bundle.
+- the input form and its checked representation: inline or block body bytes;
+  a named file's bytes; or every checked relative path and byte sequence in a
+  named source bundle.
 
 The explicit `cache_identity` represents the selected renderer version or
 other cache-relevant tool identity. Heine can make publication deterministic
@@ -566,10 +631,27 @@ change `cache_identity` after changing that program. This responsibility is
 intentional: generic version probing or executable fingerprints would not
 reliably account for each tool's dependencies and environment.
 
-Hashing every bundle file favors correctness over speed: file
-metadata alone is not a reliable cache identity across filesystems, copies, or
-coarse timestamp resolutions. The implementation streams file bytes into the
-cache hash and does not retain bundle contents merely to compute that key.
+A cache entry stores the checked typed result and an integrity hash of its
+returned bytes. Heine verifies that hash before reusing an entry. A missing,
+partial, or corrupt entry is a cache miss, so the host runs the selected
+renderer after external-renderer permission has been granted. This integrity
+check detects cache corruption; it cannot establish that an external renderer
+would return different bytes for unchanged Heine-visible inputs.
+
+`--refresh-renderers` bypasses reusable entries for every selected request. It
+runs the selected renderer, validates its result, and writes the refreshed
+entry for that request's existing cache key. It does not need to delete older
+content-addressed entries: they cannot affect a request unless its exact prior
+key recurs. The cache removes incomplete companion files left by interrupted
+atomic writes when a renderer build session starts. It does not scan the
+complete cache for every request or evict valid entries automatically. Complete
+entries remain disposable private working state.
+
+Renderer cache entries live below the site root at
+`.heine/cache/renderers/v1/`. This is private, disposable Heine working state,
+not published output or authored content. The host writes entries atomically.
+Heine does not modify a site's `.gitignore`; documentation recommends ignoring
+the `.heine/` directory.
 
 Renderer inputs participate in full builds, development-server watching, and
 future dependency-aware incremental builds. Renderer execution is serialized
@@ -581,13 +663,14 @@ error. A failed build leaves the previous complete output available.
 Renderer-source, renderer-profile, and renderer-configuration changes require
 a full build to update relationships and remove superseded generated output.
 Quick builds may re-render an already-resolved request whose present source
-changes, but they must not claim completeness for those structural changes.
+changes, but they must not claim completeness for those structural changes. A
+quick build may also retain an unreferenced superseded renderer resource until
+the next full build, just as it retains other stale managed output.
 
-`--refresh-renderers` bypasses reusable renderer-cache entries and invokes
-every selected renderer again. It requires `--allow-external-renderers` when a
-selected profile is external. Normal cached builds remain suitable for local
-iteration. A refreshed full build verifies the actual configured tools and is
-the required release and kit-reference-site test path.
+`--refresh-renderers` requires `--allow-external-renderers` when a selected
+profile is external. Normal cached builds remain suitable for local iteration.
+A refreshed full build verifies the actual configured tools and is the required
+release and kit-reference-site test path.
 
 ## Rejected alternatives
 
@@ -665,10 +748,11 @@ An implementation must include focused and fixture-site coverage for:
 - checked named file and source-bundle discovery, path containment, symbolic
   links, overlapping declarations, and non-publication;
 - trusted embedded HTML, SVG, and MathML fragments; image and linked-resource
-  results; result-shape validation; XML declaration and doctype removal for
-  embedded XML; unchanged resource bytes; one-primary-resource enforcement;
-  output collisions; base paths; locale routes; integrity interactions; and
-  atomic publication;
+  results; result-shape validation; event-based XML declaration and doctype
+  removal that preserves CDATA and processing instructions for embedded XML;
+  unchanged resource bytes; one-primary-resource enforcement; output
+  collisions; base paths; locale routes; integrity interactions; and atomic
+  publication;
 - generated-resource licensing remaining outside copied-asset coverage;
 - stream and workspace bridge execution, argument boundaries, paths containing
   spaces and non-ASCII text, complete-placeholder substitution, output escape
@@ -679,7 +763,7 @@ An implementation must include focused and fixture-site coverage for:
   selects it, selected requests that fail before cache lookup without
   permission, and unused profiles that need neither permission nor a program;
 - cache-key behavior, streamed bundle hashing, source-bundle watcher behavior,
-  locked workspace-slot exhaustion, stale-workspace cleanup, failed renderers,
-  refreshed builds, and previous-output preservation;
+  locked workspace-slot exhaustion, cross-process workspace isolation, failed
+  renderers, refreshed builds, and previous-output preservation;
 - public documentation, reference, tutorial, glossary, and a
   starter-site example.

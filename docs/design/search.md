@@ -359,10 +359,10 @@ The starter script uses the same visible navigation rule as Heine's generated
 collection pagers, but applies it to the transient result set in the browser.
 With `window = 1`, it retains:
 
-- pages `1` through `min(page_count, window + 1)`;
+- the first page;
 - every page from `current - window` through `current + window`, clamped to
   the available range; and
-- pages `max(1, page_count - window)` through `page_count`.
+- the last page.
 
 It puts retained numbers in a numeric set, then emits them in ascending order.
 Whenever consecutive retained numbers have one or more omitted page numbers
@@ -372,11 +372,11 @@ result sets with no omitted ranges or adjacent ranges.
 
 For example:
 
-| Current page | Total pages | Navigation items                |
-|-------------:|------------:|---------------------------------|
-|            1 |           1 | `1`                             |
-|            2 |           4 | `1 2 3 4`                       |
-|          101 |       1,202 | `1 2 … 100 101 102 … 1201 1202` |
+| Current page | Total pages | Navigation items         |
+|-------------:|------------:|--------------------------|
+|            1 |           1 | `1`                      |
+|            2 |           4 | `1 2 3 4`                |
+|          101 |       1,202 | `1 … 100 101 102 … 1202` |
 
 These vectors are the shared behavioral examples for the Rust collection pager
 and the starter script. They keep the browser control consistent without

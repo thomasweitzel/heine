@@ -256,6 +256,7 @@ pub(crate) struct Site {
     sitemap: Option<sitemap::Sitemap>,
     feeds: std::sync::Arc<feed::Catalog>,
     search: std::sync::Arc<search::Catalog>,
+    renderer_resources: Vec<page::RendererResource>,
 }
 
 impl Site {
@@ -375,7 +376,7 @@ impl Site {
                     AssetSources {
                         root,
                         entries: &locales.entries[locale],
-                        content_inputs: &locales.content_inputs[locale],
+                        content_inputs: &locales.content_inputs,
                         output_prefix: &prefixes[locale],
                         shared: (!locales.shared_entries.is_empty()).then_some(SharedAssets {
                             root: &locales.shared_root,
@@ -424,6 +425,7 @@ impl Site {
                         &page_links,
                         reading_time.words_per_minute(locale),
                         search_selections.contains(locale, &page.id),
+                        site_settings.base_path().as_str(),
                     )?;
                 }
             }
@@ -481,6 +483,12 @@ impl Site {
             taxonomies: &taxonomy_config,
         })
         .map_err(|error| Error::Search(Box::new(error)))?;
+        let renderer_resources = group_renderer_resources(
+            pages
+                .values()
+                .flat_map(|pages| pages.values())
+                .flat_map(|page| page.renderer_resources.iter().cloned()),
+        );
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks, series.tasks());
         let sitemap = match (sitemap_config, canonical_urls.as_ref()) {
             (Some(config), Some(urls)) => Some(
@@ -548,6 +556,16 @@ impl Site {
         }
         output_claims.extend(feeds.output_claims());
         output_claims.extend(search.output_claims());
+        output_claims.extend(renderer_resources.iter().map(|resource| {
+            OutputClaim::renderer(
+                resource.output_path.clone(),
+                "renderer resource",
+                resource
+                    .origins
+                    .iter()
+                    .map(|origin| (origin.source.clone(), origin.span)),
+            )
+        }));
         let output_plan = OutputPlan::validate(&output_claims)?;
         let pages = PageCatalog::from_pages(pages, excluded_drafts, canonical_urls.as_ref());
         let collections = std::sync::Arc::new(
@@ -583,12 +601,33 @@ impl Site {
             sitemap: sitemap.map(|(sitemap, _)| sitemap),
             feeds: std::sync::Arc::new(feeds),
             search: std::sync::Arc::new(search),
+            renderer_resources,
         })
     }
 
     pub(crate) fn assets(&self) -> &AssetCatalog {
         self.assets.as_ref()
     }
+}
+
+fn group_renderer_resources(
+    resources: impl IntoIterator<Item = page::RendererResource>,
+) -> Vec<page::RendererResource> {
+    resources
+        .into_iter()
+        .fold(
+            BTreeMap::<_, page::RendererResource>::new(),
+            |mut grouped, resource| {
+                if let Some(existing) = grouped.get_mut(&resource.output_path) {
+                    existing.origins.extend(resource.origins);
+                } else {
+                    grouped.insert(resource.output_path.clone(), resource);
+                }
+                grouped
+            },
+        )
+        .into_values()
+        .collect()
 }
 
 fn self_series_claims(series: &series::Catalog) -> Vec<OutputClaim> {
@@ -606,4 +645,32 @@ fn self_series_claims(series: &series::Catalog) -> Vec<OutputClaim> {
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use miette::NamedSource;
+
+    use super::{group_renderer_resources, page};
+
+    #[test]
+    fn identical_renderer_resources_retain_every_markdown_origin() {
+        let output_path = crate::output::OutputPath::try_new("heine-renderers/a.svg".into())
+            .expect("valid renderer output path");
+        let resource = |name| page::RendererResource {
+            output_path: output_path.clone(),
+            bytes: b"<svg/>".to_vec(),
+            origins: vec![page::RendererResourceOrigin {
+                source: Arc::new(NamedSource::new(name, ":::render[diagram]".to_owned())),
+                span: (0, 1).into(),
+            }],
+        };
+
+        let grouped = group_renderer_resources([resource("first.md"), resource("second.md")]);
+
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].origins.len(), 2);
+    }
 }

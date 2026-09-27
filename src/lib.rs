@@ -15,6 +15,7 @@ mod localization;
 mod markdown;
 mod output;
 mod project;
+mod renderer;
 mod server;
 mod site;
 mod source_diagnostic;
@@ -54,6 +55,8 @@ pub struct BuildOptions {
     mode: BuildMode,
     clean_output: bool,
     publication: PublicationMode,
+    allow_external_renderers: bool,
+    refresh_renderers: bool,
 }
 
 impl BuildOptions {
@@ -62,6 +65,8 @@ impl BuildOptions {
             mode,
             clean_output: false,
             publication: PublicationMode::Published,
+            allow_external_renderers: false,
+            refresh_renderers: false,
         }
     }
 
@@ -75,6 +80,18 @@ impl BuildOptions {
     /// The command-line interface exposes this only as `heine serve --drafts`.
     pub fn preview_drafts(mut self) -> Self {
         self.publication = PublicationMode::PreviewDrafts;
+        self
+    }
+
+    /// Permits selected renderer requests to start their configured program.
+    pub fn allow_external_renderers(mut self) -> Self {
+        self.allow_external_renderers = true;
+        self
+    }
+
+    /// Bypasses reusable renderer results for this build.
+    pub fn refresh_renderers(mut self) -> Self {
+        self.refresh_renderers = true;
         self
     }
 }
@@ -106,6 +123,25 @@ pub(crate) fn build_at_with_publication(
     root: &Path,
     build: BuildOptions,
 ) -> miette::Result<BuildPublication> {
+    build_at_with_renderer_runtime(root, build).map(|(publication, _)| publication)
+}
+
+/// Builds a site and creates the renderer runtime that belongs to its process
+/// session. The development server keeps that runtime for later rebuilds.
+pub(crate) fn build_at_with_renderer_runtime(
+    root: &Path,
+    build: BuildOptions,
+) -> miette::Result<(BuildPublication, renderer::RendererRuntime)> {
+    build_at_with_publication_in_runtime(root, build, None)
+}
+
+/// Builds with a caller-owned renderer workspace session when repeated builds
+/// belong to one long-lived process, such as the development server.
+pub(crate) fn build_at_with_publication_in_runtime(
+    root: &Path,
+    build: BuildOptions,
+    runtime: Option<&renderer::RendererRuntime>,
+) -> miette::Result<(BuildPublication, renderer::RendererRuntime)> {
     let paths = ProjectPaths::new(root);
     let diagnostics = source_diagnostic::DiagnosticPaths::new(paths.root());
     let config = SiteConfig::load(paths.config(), &diagnostics).map_err(miette::Report::new)?;
@@ -119,8 +155,24 @@ pub(crate) fn build_at_with_publication(
         .map(asset::KitAssets::load)
         .transpose()
         .map_err(miette::Report::new)?;
-    let markdown = markdown::Renderer::new(config.markdown().clone())
-        .map_err(|error| miette::Report::new(*error))?;
+    let renderer_runtime = runtime
+        .cloned()
+        .map(Ok)
+        .unwrap_or_else(|| {
+            renderer::RendererRuntime::new(
+                config.renderers(),
+                paths.root().join(".heine/cache/renderers/v1"),
+            )
+        })
+        .map_err(miette::Report::msg)?;
+    let markdown = markdown::Renderer::with_renderer_profiles(
+        config.markdown().clone(),
+        config.renderers().clone(),
+        build.allow_external_renderers,
+        build.refresh_renderers,
+        renderer_runtime.clone(),
+    )
+    .map_err(|error| miette::Report::new(*error))?;
     let (data, locale_data) =
         data::SiteData::load_localized(paths.data(), config.i18n().locales(), &diagnostics)
             .map_err(miette::Report::new)?;
@@ -173,7 +225,7 @@ pub(crate) fn build_at_with_publication(
     OutputWriter::new(OutputTarget::new(paths.root(), &output_dir))
         .write(&copied_files, rendered, build.mode, build.clean_output)
         .map_err(miette::Report::new)?;
-    Ok(publication)
+    Ok((publication, renderer_runtime))
 }
 
 /// Builds and serves a site for local development.

@@ -101,6 +101,27 @@ fn rejects_deployment_files_that_claim_reserved_output_paths() {
     );
 }
 
+#[test]
+fn rejects_deployment_files_that_claim_renderer_resource_paths() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "site");
+    fixture.write("deploy/heine-renderers/foreign.svg", "not allowed");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("reserved path");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        error
+            .to_string()
+            .contains("reserved for Heine internal use"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("deploy/heine-renderers/foreign.svg"),
+        "{diagnostic}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_symbolic_links_in_the_deployment_tree() {

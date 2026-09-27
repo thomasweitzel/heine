@@ -30,7 +30,7 @@ pub(super) struct LocalizedContent {
     pub(super) siblings: BTreeMap<Locale, index::SiblingIndex>,
     pub(super) tasks: Vec<Task>,
     pub(super) entries: BTreeMap<Locale, Vec<DirEntry>>,
-    pub(super) content_inputs: BTreeMap<Locale, BTreeSet<PathBuf>>,
+    pub(super) content_inputs: BTreeSet<PathBuf>,
     pub(super) shared_root: PathBuf,
     pub(super) shared_entries: Vec<DirEntry>,
 }
@@ -78,7 +78,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
     let mut siblings = BTreeMap::new();
     let mut tasks = Vec::new();
     let mut entries_by_locale = BTreeMap::new();
-    let mut content_inputs = BTreeMap::new();
+    let mut content_inputs = BTreeSet::new();
     let mut draft_uses_margin_footnotes = false;
 
     for locale in i18n.locales() {
@@ -112,7 +112,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
             }
             let source = entry.path();
             let relative = loader::relative_path(&root, source)?;
-            let probe = loader::probe_page(source, &root, diagnostics)?;
+            let probe = loader::probe_page(source, &root, content_root, diagnostics)?;
             let draft = probe.is_draft();
             if draft && !publication.includes_drafts() {
                 let id = PageId::from_logical_path(
@@ -135,6 +135,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
                 probe.into_text(),
                 draft,
                 loader::PageLoadContext {
+                    project_content_root: content_root,
                     content_root: &root,
                     diagnostics,
                     locale,
@@ -159,7 +160,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         pages.insert(locale.clone(), locale_pages);
         excluded_drafts.insert(locale.clone(), locale_drafts);
         entries_by_locale.insert(locale.clone(), entries);
-        content_inputs.insert(locale.clone(), locale_inputs);
+        content_inputs.extend(locale_inputs);
     }
     validate_markdown_messages(
         &pages,

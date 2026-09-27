@@ -14,16 +14,20 @@ arbitrary structured data.
 
 A site root contains `heine.toml`, `content/`, and `templates/`; `data/`, `deploy/`, `LICENSES/`, and `locales/` are optional. Without `--root`, Heine checks the current directory and each parent directory. It never searches child directories.
 
-| Command       | Option             | Default                    | Allowed values     | Effect                                                                                                                                                                                                  |
-|---------------|--------------------|----------------------------|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `heine`       | `--root <path>`    | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
-| `heine`       | `--quick`          | off                        | flag               | Updates managed output for changed page, declared content, inherited descriptor, data, Fluent resources, present copied assets and sidecars, deployment files, and license texts; it remains incomplete |
-| `heine`       | `--clean-output`   | off                        | flag               | Adopts unmanaged output; conflicts with `--quick`                                                                                                                                                       |
-| `heine serve` | `--root <path>`    | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
-| `heine serve` | `--clean-output`   | off                        | flag               | Adopts unmanaged output before its initial build                                                                                                                                                        |
-| `heine serve` | `--drafts`         | off                        | flag               | Includes otherwise unpublished `draft = true` pages in this local preview                                                                                                                               |
-| `heine serve` | `--host <address>` | `127.0.0.1`                | IP address         | Interface on which to listen                                                                                                                                                                            |
-| `heine serve` | `--port <number>`  | `1111`                     | `1024`-`65535`     | First port to try; then the next free port                                                                                                                                                              |
+| Command       | Option                       | Default                    | Allowed values     | Effect                                                                                                                                                                                                  |
+|---------------|------------------------------|----------------------------|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `heine`       | `--root <path>`              | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
+| `heine`       | `--quick`                    | off                        | flag               | Updates managed output for changed page, declared content, inherited descriptor, data, Fluent resources, present copied assets and sidecars, deployment files, and license texts; it remains incomplete |
+| `heine`       | `--clean-output`             | off                        | flag               | Adopts unmanaged output; conflicts with `--quick`                                                                                                                                                       |
+| `heine`       | `--allow-external-renderers` | off                        | flag               | Permits selected checked renderer requests to start their configured program                                                                                                                            |
+| `heine`       | `--refresh-renderers`        | off                        | flag               | Re-runs permitted renderer requests instead of reusing their cached results                                                                                                                             |
+| `heine serve` | `--root <path>`              | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |
+| `heine serve` | `--clean-output`             | off                        | flag               | Adopts unmanaged output before its initial build                                                                                                                                                        |
+| `heine serve` | `--drafts`                   | off                        | flag               | Includes otherwise unpublished `draft = true` pages in this local preview                                                                                                                               |
+| `heine serve` | `--allow-external-renderers` | off                        | flag               | Permits selected checked renderer requests to start their configured program                                                                                                                            |
+| `heine serve` | `--refresh-renderers`        | off                        | flag               | Re-runs permitted renderer requests instead of reusing their cached results                                                                                                                             |
+| `heine serve` | `--host <address>`           | `127.0.0.1`                | IP address         | Interface on which to listen                                                                                                                                                                            |
+| `heine serve` | `--port <number>`            | `1111`                     | `1024`-`65535`     | First port to try; then the next free port                                                                                                                                                              |
 
 `--quick` does not apply to `serve`.
 
@@ -35,8 +39,8 @@ fields use the following defaults.
 | Field                                             | Type                 | Default                               | Allowed values and constraints                                                                                                                                        | Effect                                                                                            |
 |---------------------------------------------------|----------------------|---------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
 | `kit.name`                                        | string               | absent                                | Required when `[kit]` exists; simple identifier naming an installed `kits/<name>/` directory whose manifest has the same name                                         | Selects one kit                                                                                   |
-| `kit.version`                                     | string               | absent                                | Optional semantic-version requirement satisfied by the selected manifest's `version`                                                                                | Prevents an unintended installed kit release                                                      |
-| `kit.extra`                                       | TOML table           | empty table                           | Keys, value types, and nested shape must be declared by the selected kit's `[extra]` defaults; tables merge, scalar values and arrays replace                       | Root-owned presentation settings exposed as `kit.extra`                                          |
+| `kit.version`                                     | string               | absent                                | Optional semantic-version requirement satisfied by the selected manifest's `version`                                                                                  | Prevents an unintended installed kit release                                                      |
+| `kit.extra`                                       | TOML table           | empty table                           | Keys, value types, and nested shape must be declared by the selected kit's `[extra]` defaults; tables merge, scalar values and arrays replace                         | Root-owned presentation settings exposed as `kit.extra`                                           |
 | `site.base_path`                                  | string               | `"/"`                                 | ASCII absolute URL directory path; starts and ends with `/`; uppercase percent escapes only; no encoded separators or dot segments                                    | Prefix for base-path-aware `url` values, including `asset()`, `page()`, and taxonomy links        |
 | `site.origin`                                     | string               | absent                                | Absolute `http` or `https` origin only: host and optional port, without credentials, query, fragment, or deployment path                                              | Required by sitemaps, Atom feeds, and templates that directly render `site.url` or `absolute_url` |
 | `site.time_zone`                                  | string               | absent                                | IANA time-zone name such as `"Europe/Berlin"`; resolved from Heine's bundled database                                                                                 | Resolves authored `published` and `updated` local times deterministically                         |
@@ -83,6 +87,19 @@ fields use the following defaults.
 | `markdown.highlighting.missing_language`          | string               | `"error"`                             | `"error"`, `"plain"`                                                                                                                                                  | Unknown fenced-language policy                                                                    |
 | `markdown.highlighting.theme.light`               | string               | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                                  | Light syntax palette                                                                              |
 | `markdown.highlighting.theme.dark`                | string               | required when highlighting is enabled | Bundled Giallo theme name; see the linked list below                                                                                                                  | Dark syntax palette                                                                               |
+| `renderers.<name>.protocol`                       | string               | required                              | `"stream"` or `"workspace"`; `<name>` is a simple identifier                                                                                                          | Selects the external-renderer protocol                                                            |
+| `renderers.<name>.program`                        | string               | required                              | Non-empty program path or operating-system-resolved program name                                                                                                      | Program started only for a permitted selected request                                             |
+| `renderers.<name>.timeout_seconds`                | integer              | required                              | Positive                                                                                                                                                              | Direct-child timeout                                                                              |
+| `renderers.<name>.cache_identity`                 | string               | required                              | Non-empty stable site-owner version or environment identity                                                                                                           | Deliberate renderer-cache invalidation input                                                      |
+| `renderers.<name>.inputs`                         | array of strings     | required                              | Stream: unique subset of `"body"`, `"file"`; workspace: those plus `"bundle"`                                                                                         | Permitted request input forms                                                                     |
+| `renderers.<name>.input_extension`                | string               | workspace body required               | Unprefixed ASCII alphanumeric extension; otherwise absent                                                                                                             | Filename extension for a staged body input                                                        |
+| `renderers.<name>.result`                         | string               | required                              | `"html"`, `"mathml"`, `"svg"`, `"image"`, or `"link"`; SVG declares supported materializations, image and link declare `media_type` and `extension`                   | Checked renderer result shape                                                                     |
+| `renderers.<name>.media_type`                     | string               | required for image or link            | Valid media type, starting with `image/` for image results; otherwise absent                                                                                          | Declared generated-resource media type                                                            |
+| `renderers.<name>.extension`                      | string               | required for image or link            | Unprefixed ASCII alphanumeric extension; otherwise absent                                                                                                             | Generated-resource filename extension                                                             |
+| `renderers.<name>.materializations`               | array of strings     | required for SVG                      | Non-empty subset of `"embedded"`, `"resource"`; otherwise absent                                                                                                      | Supported SVG result forms                                                                        |
+| `renderers.<name>.default_output`                 | string               | sole SVG materialization              | Required for SVG with both materializations; one of the declared forms; otherwise absent                                                                              | Default SVG result form                                                                           |
+| `renderers.<name>.inline.arguments`               | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                            | Enables inline requests                                                                           |
+| `renderers.<name>.block.arguments`                | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                            | Enables block requests                                                                            |
 
 Collection definitions establish relationships only; they do not write output.
 Every configured collection exists in every locale, including when it is
@@ -254,7 +271,7 @@ Each `.page` defines a page. Its ID is its path below its `content/<locale>/` tr
 | `pagination.collection`        | string                     | absent                   | Configured collection name; page must render                                                                                             | Makes this authored page a collection listing                                |
 | `pagination.per_page`          | integer                    | required when paginating | Positive integer                                                                                                                         | Collection members on each pager                                             |
 | `pagination.segment`           | string                     | `"page"`                 | Literal ASCII letters/digits or `-._~!$&'()*+,;=@`; no percent escapes, `.`/`..`, or trailing `.`                                        | Generated-pager route segment                                                |
-| `pagination.navigation.window` | integer                    | `1`                      | Integer from `1` through `5`                                                                                                             | Compact navigation link radius around boundaries and current pager           |
+| `pagination.navigation.window` | integer                    | `1`                      | Integer from `1` through `3`                                                                                                             | Adjacent links on each side of the current pager; first and last always show |
 | `content.<name>`               | string                     | absent                   | `<name>` is a simple template identifier; path is relative to page and remains under its locale tree                                     | `page.content.<name>`; input is not copied                                   |
 | `extra`                        | TOML table                 | empty table              | Nested keys begin with ASCII letter or `_`, then letters, digits, or `_`                                                                 | `page.extra`                                                                 |
 
@@ -388,6 +405,89 @@ The following boundaries are part of the current contract:
 syntax-highlighting behavior described in the [`heine.toml`](#heinetoml)
 table. They do not add a general client-side JavaScript or CSS pipeline.
 
+## Renderer adapters
+
+A [renderer profile](glossary.md#renderer-profile) lives in the root
+`heine.toml` under `[renderers.<name>]`. It describes one trusted external
+program, its fixed arguments, a positive timeout, accepted input forms, and
+the expected result shape. A valid profile remains inert until authored
+Markdown selects it and the build includes `--allow-external-renderers`.
+Heine never discovers, installs, or version-checks that program.
+
+The stream protocol accepts a non-empty input subset of `"body"` and `"file"`.
+The workspace protocol also accepts `"bundle"`. Both protocols support HTML,
+MathML, SVG, image, and link result profiles when they declare a fixed-argument
+inline or block variant. HTML must be UTF-8. MathML and embedded or published
+SVG must be well-formed XML with `math` and `svg` document elements
+respectively; Heine strips XML declarations and doctypes before embedding.
+When a renderer fails, Heine labels its complete Markdown request and presents
+the program's diagnostic output separately without rewriting it. For a
+workspace body request, paths and line numbers in that output refer to the
+isolated staged input.
+
+A workspace profile may render the same embedded result shapes from a body,
+declared file, or declared bundle. Heine creates one temporary `input/`,
+`output/`, and `work/` layout per request, stages only the checked input,
+runs the program in `work/`, and accepts only its host-selected regular file
+at `{output_file}`. It expands `{input_file}`, `{input_dir}`, `{output_file}`
+and `{work_dir}` only when an argument is exactly that placeholder. Extra
+output files, missing or empty primary output, failed processes, and timeouts
+fail at the request. Heine removes the temporary workspace after execution
+when the operating system permits it. If cleanup fails, Heine retains that
+workspace slot, warns about its path, and retries cleanup before another
+request uses the slot.
+SVG, image, and link resource requests publish one non-empty primary output as
+`heine-renderers/sha256-<digest>.<extension>`. The digest names the returned
+bytes, so identical results share one generated file. Heine replaces image
+requests with an `img` element using the required `alt` text and link requests
+with an `a` element using the required `label` text. Resource bytes remain
+outside copied-asset licensing coverage.
+
+```toml
+[renderers.katex]
+protocol = "stream"
+program = "katex"
+timeout_seconds = 10
+cache_identity = "katex-0.16.27"
+inputs = ["body"]
+result = "html"
+
+[renderers.katex.inline]
+arguments = ["--format", "htmlAndMathml"]
+```
+
+Use an inline request:
+
+```markdown
+:render[katex]`body`
+```
+
+Or use a block request:
+
+```markdown
+:::render[katex]
+x^2
+:::
+```
+
+A request may instead select a page-owned `[render.<name>] file = "…"`
+declaration when the profile accepts `"file"`; declared files are read as
+renderer input and are never published as copied assets. Stream programs read
+their input on standard input and write one replacement to standard output.
+Heine captures bounded standard-error text for a failed program and terminates
+the direct child when it exceeds `timeout_seconds`. It does not manage a
+renderer's descendant process tree.
+
+Heine caches successful renderer results below `.heine/cache/renderers/v1/`,
+outside published output. The key includes the profile identity and effective
+fixed configuration, placement, requested output form, and the complete
+checked input bytes. A source bundle contributes every checked relative path
+and file. A profile's `cache_identity` is therefore the site owner's deliberate
+promise to update when the installed renderer or its meaningful environment
+changes. `--refresh-renderers` bypasses reads for one build and atomically
+replaces matching entries. Heine removes incomplete cache companions from an
+interrupted write, while complete entries remain disposable working state.
+
 ## `data/`
 
 `data/` is optional and non-published. Files must be `.json` or `.toml`; their extensionless path below `data/` becomes a dot-addressable template key. `data/site.toml` becomes `data.site`, while `data/navigation/main.json` becomes `data.navigation.main`. Each path component and file stem is a simple identifier. Key collisions and symbolic links are rejected. TOML calendar dates and date-times become template strings, so `format_date()` can format a bare `YYYY-MM-DD` data value. A configured locale directory such as `data/de/` is reserved for `locale_data` while rendering German pages and never falls back to shared data.
@@ -440,7 +540,7 @@ they are scoped to the locale currently being rendered unless noted otherwise.
 
 | Value               | Fields and meaning                                                                                                                                                                                                                                                                                                                                                                                                          |
 |---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `kit`               | `null` without a selected kit. Otherwise `extra` holds the kit manifest defaults overlaid by checked root `[kit.extra]` settings. Kit templates and root adapters can read this value; it does not expose the manifest or filesystem paths. |
+| `kit`               | `null` without a selected kit. Otherwise `extra` holds the kit manifest defaults overlaid by checked root `[kit.extra]` settings. Kit templates and root adapters can read this value; it does not expose the manifest or filesystem paths.                                                                                                                                                                                 |
 | `site`              | `url` is present only when `site.origin` is configured. It is the canonical site root formed from the origin and base path, including the trailing slash. Templates never receive the raw origin. See [absolute URLs](absolute-urls.md).                                                                                                                                                                                    |
 | `locale`            | `code` is the configured BCP-47 locale; `direction` is its configured `"ltr"` or `"rtl"` value. Use both on the document element.                                                                                                                                                                                                                                                                                           |
 | `page`              | An authored page's `id`, `path`, `filename`, `dir`, `subdirs`, `content`, `markdown`, `title`, `description`, `summary`, `authors`, `published`, `updated`, `extra`, `directory`, `taxonomies`, `series`, `toc`, `footnotes`, `draft`, `weight`, `translations`, and `absolute_url`; `null` for generated templates. `path` and `filename` are absent without rendering. `absolute_url` is present only with `site.origin`. |

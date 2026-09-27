@@ -360,6 +360,16 @@ impl Site {
             rendered.extend(self.feeds.generated(&self.output_plan));
             rendered.extend(self.search.generated(&self.output_plan));
         }
+        for resource in &self.renderer_resources {
+            let path = self
+                .output_plan
+                .planned_path(&resource.output_path)
+                .expect("renderer resource output was validated in the output plan");
+            rendered.push(GeneratedFile {
+                path,
+                bytes: resource.bytes.clone(),
+            });
+        }
         Ok(rendered)
     }
 
