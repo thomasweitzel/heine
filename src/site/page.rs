@@ -366,6 +366,7 @@ pub(super) struct Page {
     pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
     pub(super) renderer_sources: BTreeMap<String, crate::renderer::Source>,
     pub(super) renderer_requests: BTreeMap<String, Vec<crate::markdown::ResolvedRequest>>,
+    pub(super) renderer_replacements: BTreeMap<String, Vec<crate::markdown::RendererReplacement>>,
     pub(super) renderer_resources: Vec<RendererResource>,
     pub(super) markdown_facts: BTreeMap<String, crate::markdown::MarkdownFacts>,
     /// Search owns these transient sections while it constructs its generated
@@ -399,6 +400,7 @@ pub(super) struct RendererResource {
 
 #[derive(Debug, Clone)]
 pub(super) struct RendererResourceOrigin {
+    pub(super) description: String,
     pub(super) source: Arc<NamedSource<String>>,
     pub(super) span: SourceSpan,
 }
@@ -544,6 +546,7 @@ impl Page {
     ) -> Result<(), Box<crate::markdown::SourceError>> {
         let mut facts = BTreeMap::new();
         let mut renderer_requests = BTreeMap::new();
+        let mut renderer_replacements = BTreeMap::new();
         let mut rendered_content = BTreeMap::new();
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
         let mut renderer_resources = Vec::new();
@@ -574,78 +577,66 @@ impl Page {
                 )));
             }
             let mut transformed = source.source.clone();
+            let mut replacements = Vec::new();
             for request in analysis.renderer_requests.iter().rev() {
                 let profile = renderer
                     .renderer_profiles()
                     .get(&request.profile)
                     .expect("resolved renderer profile");
-                let rendered = (if profile.uses_workspace() {
-                    let input = match &request.input {
-                        crate::markdown::ResolvedInput::Body => {
-                            crate::renderer::WorkspaceInput::Body(
-                                source.source[request.body_span.clone()].as_bytes(),
-                            )
-                        }
-                        crate::markdown::ResolvedInput::Source(name) => {
-                            crate::renderer::WorkspaceInput::Source(&self.renderer_sources[name])
-                        }
-                    };
-                    crate::renderer::run_workspace(crate::renderer::WorkspaceRequest {
-                        runtime: renderer.renderer_runtime(),
-                        refresh: renderer.refresh_renderers(),
-                        profile_name: &request.profile,
-                        profile,
-                        placement: request.placement,
-                        output: request.output,
-                        input,
-                    })
-                } else {
-                    let input = match &request.input {
-                        crate::markdown::ResolvedInput::Body => {
-                            source.source[request.body_span.clone()].as_bytes().to_vec()
-                        }
-                        crate::markdown::ResolvedInput::Source(name) => {
-                            let declared = &self.renderer_sources[name];
-                            if declared.input() != crate::renderer::NamedInput::File {
-                                return Err(Box::new(crate::markdown::source_error(
-                                    &source.display_path,
-                                    &source.source,
-                                    crate::markdown::RenderError::RendererProcess {
-                                        message: "stream renderers cannot consume source bundles"
-                                            .into(),
-                                        diagnostics: None,
-                                        staged_body_input: false,
-                                        span: request.span.clone(),
-                                    },
-                                )));
+                let execute = |appearance| -> Result<_, crate::renderer::RendererError> {
+                    if profile.uses_workspace() {
+                        let input = match &request.input {
+                            crate::markdown::ResolvedInput::Body => {
+                                crate::renderer::WorkspaceInput::Body(
+                                    source.source[request.body_span.clone()].as_bytes(),
+                                )
                             }
-                            fs::read(declared.entry()).map_err(|error| {
-                                Box::new(crate::markdown::source_error(
-                                    &source.display_path,
-                                    &source.source,
-                                    crate::markdown::RenderError::RendererProcess {
-                                        message: format!(
-                                            "could not read renderer source {name:?}: {error}"
-                                        ),
-                                        diagnostics: None,
-                                        staged_body_input: false,
-                                        span: request.span.clone(),
-                                    },
-                                ))
-                            })?
-                        }
-                    };
-                    crate::renderer::run_stream(crate::renderer::StreamRequest {
-                        runtime: renderer.renderer_runtime(),
-                        refresh: renderer.refresh_renderers(),
-                        profile_name: &request.profile,
-                        profile,
-                        placement: request.placement,
-                        output: request.output,
-                        input: &input,
-                    })
-                })
-                .map_err(|error| {
+                            crate::markdown::ResolvedInput::Source(name) => {
+                                crate::renderer::WorkspaceInput::Source(
+                                    &self.renderer_sources[name],
+                                )
+                            }
+                        };
+                        crate::renderer::run_workspace(crate::renderer::WorkspaceRequest {
+                            runtime: renderer.renderer_runtime(),
+                            refresh: renderer.refresh_renderers(),
+                            profile_name: &request.profile,
+                            profile,
+                            placement: request.placement,
+                            appearance,
+                            output: request.output,
+                            input,
+                        })
+                    } else {
+                        let input = match &request.input {
+                            crate::markdown::ResolvedInput::Body => {
+                                source.source[request.body_span.clone()].as_bytes().to_vec()
+                            }
+                            crate::markdown::ResolvedInput::Source(name) => {
+                                let declared = &self.renderer_sources[name];
+                                if declared.input() != crate::renderer::NamedInput::File {
+                                    return Err(
+                                        "stream renderers cannot consume source bundles".into()
+                                    );
+                                }
+                                fs::read(declared.entry()).map_err(|error| {
+                                    format!("could not read renderer source {name:?}: {error}")
+                                })?
+                            }
+                        };
+                        crate::renderer::run_stream(crate::renderer::StreamRequest {
+                            runtime: renderer.renderer_runtime(),
+                            refresh: renderer.refresh_renderers(),
+                            profile_name: &request.profile,
+                            profile,
+                            placement: request.placement,
+                            appearance,
+                            output: request.output,
+                            input: &input,
+                        })
+                    }
+                };
+                let process_error = |error| {
                     Box::new(crate::markdown::source_error(
                         &source.display_path,
                         &source.source,
@@ -656,22 +647,49 @@ impl Page {
                             request.span.clone(),
                         ),
                     ))
-                })?;
-                let replacement = match rendered {
-                    crate::renderer::RendererOutput::Embedded(replacement) => replacement,
-                    crate::renderer::RendererOutput::Resource { output_path, bytes } => {
-                        let url =
-                            format!("{}{}", resource_base_path, output_path.url_path().as_str());
-                        let replacement = resource_replacement(
-                            profile.result(),
-                            &url,
-                            request.alt.as_deref(),
-                            request.label.as_deref(),
-                        );
+                };
+                let replacement = if profile.result().is_picture() {
+                    let light =
+                        execute(Some(crate::renderer::Appearance::Light)).map_err(|error| {
+                            process_error(error.for_appearance(crate::renderer::Appearance::Light))
+                        })?;
+                    let dark =
+                        execute(Some(crate::renderer::Appearance::Dark)).map_err(|error| {
+                            process_error(error.for_appearance(crate::renderer::Appearance::Dark))
+                        })?;
+                    let (light_path, light_bytes) = resource_output(light)?;
+                    let (dark_path, dark_bytes) = resource_output(dark)?;
+                    let dimensions = crate::markdown::picture::dimensions_for_picture(
+                        request.width,
+                        request.height,
+                        crate::renderer::image_dimensions(&light_bytes),
+                        crate::renderer::image_dimensions(&dark_bytes),
+                    )
+                    .map_err(|message| process_error(message.into()))?;
+                    let light_url =
+                        format!("{}{}", resource_base_path, light_path.url_path().as_str());
+                    let dark_url =
+                        format!("{}{}", resource_base_path, dark_path.url_path().as_str());
+                    let replacement = crate::markdown::picture::generated_html(
+                        &light_url,
+                        &dark_url,
+                        request.alt.as_deref().unwrap_or(""),
+                        request.caption.as_deref(),
+                        request.class.as_ref(),
+                        dimensions,
+                    );
+                    for (appearance, output_path, bytes) in [
+                        (crate::renderer::Appearance::Light, light_path, light_bytes),
+                        (crate::renderer::Appearance::Dark, dark_path, dark_bytes),
+                    ] {
                         renderer_resources.push(RendererResource {
                             output_path,
                             bytes,
                             origins: vec![RendererResourceOrigin {
+                                description: format!(
+                                    "{} picture renderer resource",
+                                    appearance.name()
+                                ),
                                 source: Arc::new(NamedSource::new(
                                     source.display_path.display().to_string(),
                                     source.source.clone(),
@@ -679,20 +697,69 @@ impl Page {
                                 span: request.span.clone().into(),
                             }],
                         });
-                        replacement
+                    }
+                    replacement
+                } else {
+                    match execute(None).map_err(process_error)? {
+                        crate::renderer::RendererOutput::Embedded(replacement) => {
+                            if let Some(class) = &request.class {
+                                crate::renderer::add_embedded_svg_class(
+                                    &replacement,
+                                    class.as_str(),
+                                )
+                                .map_err(crate::renderer::RendererError::from)
+                                .map_err(process_error)?
+                            } else {
+                                replacement
+                            }
+                        }
+                        crate::renderer::RendererOutput::Resource { output_path, bytes } => {
+                            let url = format!(
+                                "{}{}",
+                                resource_base_path,
+                                output_path.url_path().as_str()
+                            );
+                            let replacement = resource_replacement(
+                                profile.result(),
+                                &url,
+                                request.alt.as_deref(),
+                                request.label.as_deref(),
+                            );
+                            renderer_resources.push(RendererResource {
+                                output_path,
+                                bytes,
+                                origins: vec![RendererResourceOrigin {
+                                    description: "renderer resource".to_owned(),
+                                    source: Arc::new(NamedSource::new(
+                                        source.display_path.display().to_string(),
+                                        source.source.clone(),
+                                    )),
+                                    span: request.span.clone().into(),
+                                }],
+                            });
+                            replacement
+                        }
                     }
                 };
-                transformed.replace_range(request.span.clone(), &replacement);
+                let replacement = crate::markdown::RendererReplacement::new(
+                    &request.span,
+                    request.placement,
+                    replacement,
+                );
+                transformed.replace_range(request.span.clone(), &replacement.markdown_marker());
+                replacements.push(replacement);
             }
             rendered_content.insert(name.clone(), transformed);
             facts.insert(name.clone(), analysis.facts);
             renderer_requests.insert(name.clone(), analysis.renderer_requests);
+            renderer_replacements.insert(name.clone(), replacements);
             if let Some(search_sections) = &mut search_sections {
                 search_sections.insert(name.clone(), analysis.search_sections);
             }
         }
         self.markdown_facts = facts;
         self.renderer_requests = renderer_requests;
+        self.renderer_replacements = renderer_replacements;
         self.renderer_resources = renderer_resources;
         for (name, content) in rendered_content {
             self.content.insert(name, Value::String(content));
@@ -735,6 +802,7 @@ impl Page {
             subdirs: self.subdirs,
             content: self.content,
             markdown_content: self.markdown_content,
+            renderer_replacements: self.renderer_replacements,
             markdown: self.markdown_facts,
             toc: self.toc,
             footnotes: self.footnotes.map(FootnotesView::from),
@@ -771,8 +839,24 @@ fn resource_replacement(
         crate::renderer::ResultCapabilities::Link { .. } => {
             format!("<a href=\"{url}\">{}</a>", escape_html(label.unwrap_or("")))
         }
+        crate::renderer::ResultCapabilities::Picture { .. } => {
+            unreachable!("picture resources are replaced as a light and dark pair")
+        }
         crate::renderer::ResultCapabilities::Html | crate::renderer::ResultCapabilities::Mathml => {
             unreachable!("embedded-only profile cannot produce a resource")
+        }
+    }
+}
+
+fn resource_output(
+    output: crate::renderer::RendererOutput,
+) -> Result<(OutputPath, Vec<u8>), Box<crate::markdown::SourceError>> {
+    match output {
+        crate::renderer::RendererOutput::Resource { output_path, bytes } => {
+            Ok((output_path, bytes))
+        }
+        crate::renderer::RendererOutput::Embedded(_) => {
+            unreachable!("picture profiles produce resources")
         }
     }
 }
@@ -799,6 +883,8 @@ pub(crate) struct PageView {
     content: BTreeMap<String, Value>,
     #[serde(skip)]
     markdown_content: BTreeSet<String>,
+    #[serde(skip)]
+    renderer_replacements: BTreeMap<String, Vec<crate::markdown::RendererReplacement>>,
     markdown: BTreeMap<String, crate::markdown::MarkdownFacts>,
     toc: Option<TocPlan>,
     footnotes: Option<FootnotesView>,
@@ -836,11 +922,19 @@ impl PageView {
         self.footnotes.as_ref()
     }
 
-    pub(crate) fn content_markdown(&self, name: &str) -> Option<&str> {
-        self.markdown_content
-            .contains(name)
-            .then(|| self.content.get(name)?.as_str())
-            .flatten()
+    pub(crate) fn content_markdown(
+        &self,
+        name: &str,
+    ) -> Option<(&str, &[crate::markdown::RendererReplacement])> {
+        self.markdown_content.contains(name).then(|| {
+            let content = self.content.get(name)?.as_str()?;
+            let replacements = self
+                .renderer_replacements
+                .get(name)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            Some((content, replacements))
+        })?
     }
 }
 

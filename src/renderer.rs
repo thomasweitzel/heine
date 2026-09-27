@@ -16,7 +16,8 @@ use crate::source_path;
 
 pub(super) use cache::RendererCache;
 pub(super) use result::validate_renderer_output;
-pub(crate) use result::{Output, Placement, RendererOutput, ResultCapabilities};
+pub(crate) use result::{Appearance, Output, Placement, RendererOutput, ResultCapabilities};
+pub(crate) use result::{add_embedded_svg_class, image_dimensions};
 pub(crate) use runner::{
     RendererError, RendererRuntime, StreamRequest, WorkspaceInput, WorkspaceRequest, run_stream,
     run_workspace,
@@ -107,10 +108,10 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigEr
         },
     )?;
     let inline = inline
-        .map(|variant| validate_variant(name, "inline", protocol, &inputs, variant))
+        .map(|variant| validate_placement(name, "inline", protocol, &inputs, &result, variant))
         .transpose()?;
     let block = block
-        .map(|variant| validate_variant(name, "block", protocol, &inputs, variant))
+        .map(|variant| validate_placement(name, "block", protocol, &inputs, &result, variant))
         .transpose()?;
     if inline.is_none() && block.is_none() {
         return Err(ConfigError {
@@ -145,8 +146,8 @@ pub(crate) struct Profile {
     input_extension: Option<String>,
     inputs: BTreeSet<Input>,
     result: ResultCapabilities,
-    inline: Option<Variant>,
-    block: Option<Variant>,
+    inline: Option<PlacementVariants>,
+    block: Option<PlacementVariants>,
 }
 
 impl Profile {
@@ -179,28 +180,58 @@ impl Profile {
     pub(crate) fn resource_extension(&self) -> Option<&str> {
         match &self.result {
             ResultCapabilities::Svg { .. } => Some("svg"),
-            ResultCapabilities::Image { extension } | ResultCapabilities::Link { extension } => {
-                Some(extension)
-            }
+            ResultCapabilities::Image { extension }
+            | ResultCapabilities::Picture { extension, .. }
+            | ResultCapabilities::Link { extension } => Some(extension),
             ResultCapabilities::Html | ResultCapabilities::Mathml => None,
         }
     }
 
-    fn workspace_variant(&self, placement: Placement) -> Result<&Variant, String> {
-        if self.protocol != Protocol::Workspace {
-            return Err("selected profile does not use the workspace protocol".into());
-        }
-        match placement {
+    pub(crate) fn variant(
+        &self,
+        placement: Placement,
+        appearance: Option<Appearance>,
+    ) -> Result<&Variant, String> {
+        let variants = match placement {
             Placement::Inline => self.inline.as_ref(),
             Placement::Block => self.block.as_ref(),
         }
-        .ok_or_else(|| "selected profile does not support this placement".to_owned())
+        .ok_or_else(|| "selected profile does not support this placement".to_owned())?;
+        variants.variant(appearance)
     }
 }
 
 #[derive(Debug, Clone)]
-struct Variant {
+pub(crate) struct Variant {
     arguments: Vec<String>,
+}
+
+impl Variant {
+    pub(crate) fn arguments(&self) -> &[String] {
+        &self.arguments
+    }
+}
+
+#[derive(Debug, Clone)]
+enum PlacementVariants {
+    Single(Variant),
+    Picture { light: Variant, dark: Variant },
+}
+
+impl PlacementVariants {
+    fn variant(&self, appearance: Option<Appearance>) -> Result<&Variant, String> {
+        match (self, appearance) {
+            (Self::Single(variant), None) => Ok(variant),
+            (Self::Picture { light, .. }, Some(Appearance::Light)) => Ok(light),
+            (Self::Picture { dark, .. }, Some(Appearance::Dark)) => Ok(dark),
+            (Self::Single(_), Some(_)) => {
+                Err("selected renderer profile has no appearance variants".into())
+            }
+            (Self::Picture { .. }, None) => {
+                Err("selected picture renderer requires an appearance variant".into())
+            }
+        }
+    }
 }
 
 /// The checked form of a page-owned renderer input. Its filesystem inventory
@@ -324,6 +355,75 @@ fn validate_input_extension(
     }
 }
 
+fn validate_placement(
+    name: &str,
+    placement: &str,
+    protocol: Protocol,
+    inputs: &BTreeSet<Input>,
+    result: &ResultCapabilities,
+    raw: toml::Spanned<RawPlacement>,
+) -> Result<PlacementVariants, ConfigError> {
+    let placement_span = raw.span().into();
+    match (
+        matches!(result, ResultCapabilities::Picture { .. }),
+        raw.into_inner(),
+    ) {
+        (
+            false,
+            RawPlacement {
+                arguments: Some(arguments),
+                light: None,
+                dark: None,
+            },
+        ) => {
+            let variant = RawVariant { arguments };
+            validate_variant(name, placement, protocol, inputs, variant)
+                .map(PlacementVariants::Single)
+        }
+        (
+            true,
+            RawPlacement {
+                arguments: None,
+                light: Some(light),
+                dark: Some(dark),
+            },
+        ) => {
+            let light =
+                validate_variant(name, &format!("{placement}.light"), protocol, inputs, light)?;
+            let dark =
+                validate_variant(name, &format!("{placement}.dark"), protocol, inputs, dark)?;
+            Ok(PlacementVariants::Picture { light, dark })
+        }
+        (
+            false,
+            RawPlacement {
+                light: Some(light), ..
+            },
+        ) => Err(ConfigError {
+            span: light.arguments.span().into(),
+            message: format!("renderer profile {name} {placement} must declare arguments directly"),
+        }),
+        (
+            true,
+            RawPlacement {
+                arguments: Some(arguments),
+                ..
+            },
+        ) => Err(ConfigError {
+            span: arguments.span().into(),
+            message: format!(
+                "picture renderer profile {name} {placement} must declare light and dark variants"
+            ),
+        }),
+        (_, RawPlacement { .. }) => Err(ConfigError {
+            span: placement_span,
+            message: format!(
+                "renderer profile {name} {placement} has incomplete appearance variants"
+            ),
+        }),
+    }
+}
+
 fn validate_variant(
     name: &str,
     placement: &str,
@@ -436,7 +536,22 @@ fn validate_result(
         ResultKind::Svg => validate_svg_result(name, result_span, options),
         ResultKind::Image => validate_resource_result(name, result_span, options, true),
         ResultKind::Link => validate_resource_result(name, result_span, options, false),
+        ResultKind::Picture => validate_picture_result(name, result_span, options),
     }
+}
+
+fn validate_picture_result(
+    name: &str,
+    result_span: SourceSpan,
+    options: ResultOptions,
+) -> Result<ResultCapabilities, ConfigError> {
+    validate_resource_result(name, result_span, options, true).map(|result| match result {
+        ResultCapabilities::Image { extension } => ResultCapabilities::Picture {
+            svg: extension.eq_ignore_ascii_case("svg"),
+            extension,
+        },
+        _ => unreachable!("image resource validation always returns an image result"),
+    })
 }
 
 fn reject_result_options(
@@ -667,6 +782,7 @@ enum ResultKind {
     Svg,
     Mathml,
     Image,
+    Picture,
     Link,
 }
 
@@ -700,8 +816,16 @@ pub(crate) struct RawProfile {
     extension: Option<toml::Spanned<String>>,
     materializations: Option<toml::Spanned<Vec<toml::Spanned<SvgMaterialization>>>>,
     default_output: Option<toml::Spanned<SvgMaterialization>>,
-    inline: Option<RawVariant>,
-    block: Option<RawVariant>,
+    inline: Option<toml::Spanned<RawPlacement>>,
+    block: Option<toml::Spanned<RawPlacement>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPlacement {
+    arguments: Option<toml::Spanned<Vec<toml::Spanned<String>>>>,
+    light: Option<RawVariant>,
+    dark: Option<RawVariant>,
 }
 
 #[derive(Debug, Deserialize)]

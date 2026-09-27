@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::asset::AssetLinks;
 
-use super::{RenderError, push_html_attribute, push_html_text};
+use super::{HtmlClassList, RenderError, push_html_attribute, push_html_text};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,6 +21,7 @@ struct RawPicture {
     light: toml::Spanned<String>,
     dark: toml::Spanned<String>,
     caption: Option<toml::Spanned<String>>,
+    class: Option<toml::Spanned<String>>,
     width: Option<toml::Spanned<u32>>,
     height: Option<toml::Spanned<u32>>,
 }
@@ -202,6 +203,19 @@ fn parse(
         light,
         dark,
         caption: raw.caption.map(toml::Spanned::into_inner),
+        class: raw
+            .class
+            .as_ref()
+            .map(|class| {
+                HtmlClassList::parse(class.get_ref()).map_err(|reason| Error {
+                    message: format!("Markdown picture {reason}"),
+                    span: value_span(class, offset + body_offset),
+                    label: "invalid picture class",
+                    help: "use one or more distinct HTML class tokens separated by whitespace"
+                        .into(),
+                })
+            })
+            .transpose()?,
         dimensions,
     }))
 }
@@ -211,36 +225,20 @@ struct Picture {
     light: crate::asset::AssetLink,
     dark: crate::asset::AssetLink,
     caption: Option<String>,
+    class: Option<HtmlClassList>,
     dimensions: Option<(u32, u32)>,
 }
 
 impl Picture {
     fn html(self) -> String {
-        let mut html = String::new();
-        if self.caption.is_some() {
-            html.push_str("<figure>\n");
-        }
-        html.push_str("<picture>");
-        html.push_str("<source media=\"(prefers-color-scheme: dark)\" srcset=\"");
-        push_html_attribute(self.dark.url(), &mut html);
-        html.push_str("\">");
-        html.push_str("<img src=\"");
-        push_html_attribute(self.light.url(), &mut html);
-        html.push('"');
-        if let Some((width, height)) = self.dimensions {
-            html.push_str(&format!(" width=\"{width}\" height=\"{height}\""));
-        }
-        html.push_str(" alt=\"");
-        push_html_attribute(&self.alt, &mut html);
-        html.push_str("\">");
-        html.push_str("</picture>");
-        if let Some(caption) = &self.caption {
-            html.push_str("\n<figcaption>");
-            push_html_text(caption, &mut html);
-            html.push_str("</figcaption>\n</figure>");
-        }
-        html.push('\n');
-        html
+        generated_html(
+            self.light.url(),
+            self.dark.url(),
+            &self.alt,
+            self.caption.as_deref(),
+            self.class.as_ref(),
+            self.dimensions,
+        )
     }
 
     fn search_text(self) -> String {
@@ -249,6 +247,86 @@ impl Picture {
             caption: self.caption,
         }
         .into_text()
+    }
+}
+
+pub(crate) fn generated_html(
+    light: &str,
+    dark: &str,
+    alt: &str,
+    caption: Option<&str>,
+    class: Option<&HtmlClassList>,
+    dimensions: Option<(u32, u32)>,
+) -> String {
+    let mut html = String::new();
+    if caption.is_some() {
+        html.push_str("<figure");
+        push_class(class, &mut html);
+        html.push_str(">\n");
+    }
+    html.push_str("<picture");
+    push_class(class, &mut html);
+    html.push_str("><source media=\"(prefers-color-scheme: dark)\" srcset=\"");
+    push_html_attribute(dark, &mut html);
+    html.push_str("\"><img src=\"");
+    push_html_attribute(light, &mut html);
+    html.push('"');
+    if let Some((width, height)) = dimensions {
+        html.push_str(&format!(" width=\"{width}\" height=\"{height}\""));
+    }
+    html.push_str(" alt=\"");
+    push_html_attribute(alt, &mut html);
+    html.push_str("\"></picture>");
+    if let Some(caption) = caption {
+        html.push_str("\n<figcaption>");
+        push_html_text(caption, &mut html);
+        html.push_str("</figcaption>\n</figure>");
+    }
+    html.push('\n');
+    html
+}
+
+fn push_class(class: Option<&HtmlClassList>, html: &mut String) {
+    if let Some(class) = class {
+        html.push_str(" class=\"");
+        push_html_attribute(class.as_str(), html);
+        html.push('"');
+    }
+}
+
+pub(crate) fn dimensions_for_picture(
+    width: Option<u32>,
+    height: Option<u32>,
+    light_intrinsic: Option<(u32, u32)>,
+    dark_intrinsic: Option<(u32, u32)>,
+) -> Result<Option<(u32, u32)>, &'static str> {
+    if let (Some((light_width, light_height)), Some((dark_width, dark_height))) =
+        (light_intrinsic, dark_intrinsic)
+        && u64::from(light_width) * u64::from(dark_height)
+            != u64::from(dark_width) * u64::from(light_height)
+    {
+        return Err("light and dark picture images have different aspect ratios");
+    }
+    match (width, height, light_intrinsic) {
+        (None, None, Some(dimensions)) => Ok(Some(dimensions)),
+        (None, None, None) => Ok(None),
+        (Some(width), Some(height), Some((natural_width, natural_height)))
+            if u64::from(width) * u64::from(natural_height)
+                != u64::from(height) * u64::from(natural_width) =>
+        {
+            Err("picture width and height would distort the light image")
+        }
+        (Some(width), Some(height), _) => Ok(Some((width, height))),
+        (Some(width), None, Some((natural_width, natural_height))) => {
+            Ok(Some((width, scaled(width, natural_height, natural_width))))
+        }
+        (None, Some(height), Some((natural_width, natural_height))) => Ok(Some((
+            scaled(height, natural_width, natural_height),
+            height,
+        ))),
+        (Some(_), None, None) | (None, Some(_), None) => {
+            Err("picture cannot derive the missing dimension")
+        }
     }
 }
 
@@ -394,4 +472,41 @@ fn lines(source: &str) -> Vec<(usize, &str, usize)> {
         lines.push((0, "", 0));
     }
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dimensions_for_picture;
+
+    #[test]
+    fn generated_pictures_check_and_derive_dimensions_from_the_light_fallback() {
+        assert_eq!(
+            dimensions_for_picture(None, None, Some((20, 10)), Some((40, 20))),
+            Ok(Some((20, 10)))
+        );
+        assert_eq!(
+            dimensions_for_picture(Some(30), None, Some((20, 10)), None),
+            Ok(Some((30, 15)))
+        );
+        assert_eq!(
+            dimensions_for_picture(Some(30), Some(15), None, Some((20, 10))),
+            Ok(Some((30, 15)))
+        );
+        assert_eq!(
+            dimensions_for_picture(Some(30), None, None, Some((20, 10))),
+            Err("picture cannot derive the missing dimension")
+        );
+    }
+
+    #[test]
+    fn generated_pictures_reject_incompatible_known_dimensions() {
+        assert_eq!(
+            dimensions_for_picture(None, None, Some((20, 10)), Some((10, 20))),
+            Err("light and dark picture images have different aspect ratios")
+        );
+        assert_eq!(
+            dimensions_for_picture(Some(20), Some(20), Some((20, 10)), Some((40, 20))),
+            Err("picture width and height would distort the light image")
+        );
+    }
 }

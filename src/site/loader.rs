@@ -704,6 +704,7 @@ pub(super) fn load_page(
         markdown_sources,
         renderer_sources,
         renderer_requests: BTreeMap::new(),
+        renderer_replacements: BTreeMap::new(),
         renderer_resources: Vec::new(),
         markdown_facts: BTreeMap::new(),
         markdown_search_sections: None,

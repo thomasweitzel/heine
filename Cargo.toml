@@ -1,6 +1,6 @@
 [package]
 name = "heine"
-version = "0.8.2"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.88"
 description = "A small, checked static-site generator"
@@ -17,7 +17,7 @@ miette = { version = "7.6.0", features = ["fancy"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 semver = "1.0.28"
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 toml = "1.1.6"
 toml_edit = "0.25.15"
 tera = { version = "2.4.0", features = ["glob_fs"] }
@@ -29,8 +29,8 @@ giallo = { version = "0.5.2", features = ["dump"] }
 image = { version = "0.25.10", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 base64 = "0.23.1"
 sha2 = "0.11.0"
-quick-xml = "0.37.5"
-tempfile = "3.23.0"
+quick-xml = "0.42.0"
+tempfile = "3.27.0"
 axum = "0.8.9"
 mime_guess = "2.0.5"
 mime = "0.3.17"

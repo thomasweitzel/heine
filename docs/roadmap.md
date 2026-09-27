@@ -5,14 +5,6 @@ compatibility promise or a commitment to a particular interface. Before work
 starts, it needs a concrete use case, an issue, a design, tests, documentation,
 and a cohesive starter-site example where one fits naturally.
 
-## Next
-
-- **Generated color-scheme pictures:** extend the completed renderer-adapter
-  boundary with one checked light and dark generated-image pair. The host will
-  emit native `picture` markup while stream and workspace profiles retain
-  fixed renderer-owned appearance invocations. See the [accepted
-  design](design/renderer-pictures.md).
-
 ## Later
 
 - **Kit distribution:** publish a small, curated kit catalogue only after kit

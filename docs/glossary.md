@@ -149,9 +149,9 @@ generated output path. Templates use `asset()` to link to one safely.
 
 ### Color-scheme picture
 
-A standalone Markdown `:::picture` block that names checked light and dark
-variants of one image, plus its alternative text and, when needed, a plain-text
-caption. Heine emits a native HTML `picture`, or a `figure` with `figcaption`;
+A standalone Markdown `:::picture` block, or a `picture` renderer result, that
+names checked light and dark variants of one image, plus its alternative text
+and, when needed, a plain-text caption. Heine emits a native HTML `picture`, or a `figure` with `figcaption`;
 the browser selects its dark source from
 `prefers-color-scheme: dark`. See [color-scheme Markdown pictures](markdown-pictures.md).
 
@@ -185,8 +185,9 @@ cache entries. See [renderer adapters](reference.md#renderer-adapters).
 
 An explicit Markdown `render` construct that selects one renderer profile and
 provides a body or declared page-owned file or bundle. Heine replaces the
-construct with checked embedded HTML, SVG, or MathML, or with semantic HTML
-that refers to one generated resource.
+construct with checked embedded HTML, SVG, or MathML, semantic HTML that refers
+to one generated resource, or one native picture that selects paired generated
+image resources.
 
 ### Deployment file
 

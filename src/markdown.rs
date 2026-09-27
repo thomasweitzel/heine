@@ -10,6 +10,7 @@ use std::{
     sync::Arc,
 };
 
+use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use pulldown_latex::{
@@ -18,6 +19,7 @@ use pulldown_latex::{
     push_mathml,
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
@@ -32,13 +34,15 @@ use crate::{
 use std::path::PathBuf;
 
 mod analysis;
+mod class_list;
 mod highlighting;
 pub(crate) mod margin_footnotes;
-mod picture;
+pub(crate) mod picture;
 mod render;
 mod renderer_request;
 mod search_text;
 pub(crate) use analysis::MarkdownFacts;
+pub(crate) use class_list::HtmlClassList;
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 #[cfg(test)]
@@ -47,6 +51,115 @@ pub(crate) use render::{render_with_links, render_with_links_anchors};
 pub(crate) use renderer_request::{ResolvedInput, ResolvedRequest};
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
+
+/// One checked renderer replacement held outside the Markdown source until
+/// Markdown has determined the authored document structure.
+#[derive(Debug, Clone)]
+pub(crate) struct RendererReplacement {
+    marker: String,
+    placement: crate::renderer::Placement,
+    html: String,
+}
+
+impl RendererReplacement {
+    pub(crate) fn new(
+        span: &Range<usize>,
+        placement: crate::renderer::Placement,
+        html: String,
+    ) -> Self {
+        let mut digest = Sha256::new();
+        digest.update(span.start.to_le_bytes());
+        digest.update(span.end.to_le_bytes());
+        digest.update(html.as_bytes());
+        Self {
+            marker: format!(
+                "⟦heine-renderer-{}⟧",
+                STANDARD_NO_PAD.encode(digest.finalize())
+            ),
+            placement,
+            html,
+        }
+    }
+
+    pub(crate) fn marker(&self) -> &str {
+        &self.marker
+    }
+
+    /// Keeps block replacements isolated while Markdown determines structure.
+    pub(crate) fn markdown_marker(&self) -> String {
+        match self.placement {
+            crate::renderer::Placement::Inline => self.marker.clone(),
+            crate::renderer::Placement::Block => format!("\n\n{}\n\n", self.marker),
+        }
+    }
+}
+
+/// Inserts checked renderer HTML after Markdown has determined paragraphs and
+/// other authored structure. A standalone block replacement removes only its
+/// synthetic paragraph; an inline replacement stays within its paragraph.
+pub(super) fn apply_renderer_replacements(
+    events: Vec<(Event<'static>, Range<usize>)>,
+    replacements: &[RendererReplacement],
+) -> Vec<(Event<'static>, Range<usize>)> {
+    if replacements.is_empty() {
+        return events;
+    }
+    let mut restored = Vec::with_capacity(events.len());
+    let mut index = 0;
+    while index < events.len() {
+        if let [
+            (Event::Start(Tag::Paragraph), _),
+            (Event::Text(marker), marker_span),
+            (Event::End(TagEnd::Paragraph), _),
+            ..,
+        ] = &events[index..]
+            && let Some(replacement) = replacements.iter().find(|replacement| {
+                replacement.placement == crate::renderer::Placement::Block
+                    && replacement.marker == marker.as_ref()
+            })
+        {
+            restored.push((
+                Event::Html(replacement.html.clone().into()),
+                marker_span.clone(),
+            ));
+            index += 3;
+            continue;
+        }
+        let (event, span) = &events[index];
+        match event {
+            Event::Text(text) => {
+                let mut remaining = text.as_ref();
+                while let Some((offset, replacement)) = replacements
+                    .iter()
+                    .filter_map(|replacement| {
+                        remaining
+                            .find(replacement.marker())
+                            .map(|offset| (offset, replacement))
+                    })
+                    .min_by_key(|(offset, _)| *offset)
+                {
+                    if offset > 0 {
+                        restored.push((
+                            Event::Text(remaining[..offset].to_owned().into()),
+                            span.clone(),
+                        ));
+                    }
+                    restored.push((
+                        Event::InlineHtml(replacement.html.clone().into()),
+                        span.clone(),
+                    ));
+                    remaining = &remaining[offset + replacement.marker().len()..];
+                }
+                if !remaining.is_empty() {
+                    restored.push((Event::Text(remaining.to_owned().into()), span.clone()));
+                }
+            }
+            event => restored.push((event.clone(), span.clone())),
+        }
+        index += 1;
+    }
+    restored
+}
 
 // This prefix cannot be produced by the heading-fragment algorithm, which
 // keeps generated heading and footnote identifiers in separate namespaces.
@@ -1053,7 +1166,7 @@ fn task_list_marker(checked: bool, label: Option<&str>) -> String {
         push_html_attribute(label, &mut output);
         output.push('"');
     }
-    output.push_str("/>");
+    output.push('>');
     output
 }
 

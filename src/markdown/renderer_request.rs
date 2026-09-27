@@ -8,6 +8,8 @@ use std::{collections::BTreeMap, ops::Range};
 
 use crate::renderer::{NamedInput, Output, Placement, Profiles, Source};
 
+use super::HtmlClassList;
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Request {
     start: usize,
@@ -32,6 +34,10 @@ pub(crate) struct ResolvedRequest {
     pub(crate) input: ResolvedInput,
     pub(crate) alt: Option<String>,
     pub(crate) label: Option<String>,
+    pub(crate) caption: Option<String>,
+    pub(crate) class: Option<HtmlClassList>,
+    pub(crate) width: Option<u32>,
+    pub(crate) height: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +133,15 @@ fn resolved_request(request: &Request, profiles: &Profiles) -> Result<ResolvedRe
         input: source.map_or(ResolvedInput::Body, ResolvedInput::Source),
         alt: string_option(request, "alt")?.map(str::to_owned),
         label: string_option(request, "label")?.map(str::to_owned),
+        caption: string_option(request, "caption")?.map(str::to_owned),
+        class: string_option(request, "class")?
+            .map(HtmlClassList::parse)
+            .transpose()
+            .map_err(|reason| {
+                option_error(request, "class", format!("renderer request {reason}"))
+            })?,
+        width: positive_u32_option(request, "width")?,
+        height: positive_u32_option(request, "height")?,
     })
 }
 
@@ -217,12 +232,15 @@ fn validate_request(
             span,
         }
     })?;
-    validate_accessibility_options(request, output, profile.result())
+    validate_result_options(request, output, profile.result())
 }
 
 fn validate_options(request: &Request) -> Result<(), Error> {
     for (name, option) in &request.options {
-        if !matches!(name.as_str(), "source" | "output" | "alt" | "label") {
+        if !matches!(
+            name.as_str(),
+            "source" | "output" | "alt" | "label" | "caption" | "class" | "width" | "height"
+        ) {
             return Err(Error {
                 message: format!("renderer request option {name:?} is not supported"),
                 span: option.span.clone(),
@@ -230,6 +248,34 @@ fn validate_options(request: &Request) -> Result<(), Error> {
         }
     }
     Ok(())
+}
+
+fn positive_u32_option(request: &Request, name: &str) -> Result<Option<u32>, Error> {
+    let Some(option) = request.options.get(name) else {
+        return Ok(None);
+    };
+    let Some(value) = option.value.as_integer() else {
+        return Err(option_error(
+            request,
+            name,
+            format!("renderer request option {name:?} must be a positive integer"),
+        ));
+    };
+    let Ok(value) = u32::try_from(value) else {
+        return Err(option_error(
+            request,
+            name,
+            format!("renderer request option {name:?} must be a positive integer"),
+        ));
+    };
+    if value == 0 {
+        return Err(option_error(
+            request,
+            name,
+            format!("renderer request option {name:?} must be a positive integer"),
+        ));
+    }
+    Ok(Some(value))
 }
 
 fn string_option<'a>(request: &'a Request, name: &str) -> Result<Option<&'a str>, Error> {
@@ -268,7 +314,7 @@ fn output_option(request: &Request) -> Result<Option<Output>, Error> {
     }
 }
 
-fn validate_accessibility_options(
+fn validate_result_options(
     request: &Request,
     output: Output,
     result: &crate::renderer::ResultCapabilities,
@@ -299,6 +345,41 @@ fn validate_accessibility_options(
             request,
             "label",
             "label is valid only for a linked renderer resource",
+        ));
+    }
+    let picture = matches!(result, crate::renderer::ResultCapabilities::Picture { .. });
+    for name in ["caption", "width", "height"] {
+        if request.options.contains_key(name) && !picture {
+            return Err(option_error(
+                request,
+                name,
+                format!("{name} is valid only for a picture renderer resource"),
+            ));
+        }
+    }
+    if request.options.contains_key("class") && !picture && !result.is_embedded_svg(output) {
+        return Err(option_error(
+            request,
+            "class",
+            "class is valid only for a picture renderer resource or an embedded SVG renderer result",
+        ));
+    }
+    if picture && request.placement == Placement::Inline && request.options.contains_key("caption")
+    {
+        return Err(option_error(
+            request,
+            "caption",
+            "caption is allowed only in a block picture renderer request",
+        ));
+    }
+    if picture
+        && let Some(caption) = string_option(request, "caption")?
+        && caption.trim().is_empty()
+    {
+        return Err(option_error(
+            request,
+            "caption",
+            "picture caption must not be empty",
         ));
     }
     Ok(())

@@ -21,6 +21,31 @@ arguments = {arguments}
     )
 }
 
+fn stream_picture_copy_profile(name: &str) -> String {
+    let (program, arguments) = if cfg!(windows) {
+        ("cmd", "[\"/C\", \"more\"]")
+    } else {
+        ("cat", "[]")
+    };
+    format!(
+        r#"
+[renderers.{name}]
+protocol = "stream"
+program = "{program}"
+timeout_seconds = 10
+cache_identity = "copy-picture-1"
+inputs = ["body"]
+result = "picture"
+media_type = "image/svg+xml"
+extension = "svg"
+[renderers.{name}.block.light]
+arguments = {arguments}
+[renderers.{name}.block.dark]
+arguments = {arguments}
+"#,
+    )
+}
+
 #[test]
 fn renderer_requests_resolve_profiles_before_markdown_renders() {
     let fixture = Fixture::new();
@@ -129,6 +154,440 @@ fn permitted_stream_renderers_embed_checked_html_and_reuse_cached_results() {
         fs::read_dir(&cache).expect("renderer cache").count(),
         2,
         "refresh replaces the same cache entry"
+    );
+}
+
+#[test]
+fn embedded_renderer_html_is_not_reparsed_as_markdown() {
+    let fixture = Fixture::new();
+    let inline_arguments = if cfg!(windows) {
+        "[\"/C\", \"more\"]"
+    } else {
+        "[]"
+    };
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "{}\n[renderers.copy.inline]\narguments = {inline_arguments}\n",
+            stream_copy_profile("copy", "[\"body\"]", "html")
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "Before :render[copy]`<annotation>\\mathcal{F}[e](\\xi)</annotation>` after.\n\n:::render[copy]\n<annotation>\\mathcal{F}[e](\\xi)</annotation>\n:::\n\n## Following heading\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let options = heine::BuildOptions::new(BuildMode::Full).allow_external_renderers();
+    heine::build_at_with_options(fixture.path(), options).expect("renderer builds");
+
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<annotation>\\mathcal{F}[e](\\xi)</annotation>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<p>Before <annotation>\\mathcal{F}[e](\\xi)</annotation> after.</p>"),
+        "{output}"
+    );
+    assert!(output.contains("<h2>Following heading</h2>"), "{output}");
+    assert!(!output.contains("href=\"%5Cxi\""), "{output}");
+}
+
+#[test]
+fn embedded_svg_renderers_attach_request_classes_without_changing_cached_output() {
+    let fixture = Fixture::new();
+    let inline_arguments = if cfg!(windows) {
+        "[\"/C\", \"more\"]"
+    } else {
+        "[]"
+    };
+    let profile = stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+        "result = \"svg\"\n",
+        "result = \"svg\"\nmaterializations = [\"embedded\"]\n",
+        1,
+    );
+    fixture.write(
+        "heine.toml",
+        &format!("{profile}\n[renderers.diagram.inline]\narguments = {inline_arguments}\n"),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "First :render[diagram class=\"typst-inline-math\"]`<svg class=\"renderer\" xmlns=\"http://www.w3.org/2000/svg\"><use fill=\"#000000\"/></svg>` and :render[diagram class=\"second-math\"]`<svg class=\"renderer\" xmlns=\"http://www.w3.org/2000/svg\"><use fill=\"#000000\"/></svg>`.\n\n:::render[diagram class=\"typst-block-math\"]\n<svg class=\"renderer\" xmlns=\"http://www.w3.org/2000/svg\"><use fill=\"#000000\"/></svg>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("embedded SVG renderers build");
+
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<p>First <svg class=\"renderer typst-inline-math\"")
+            && output.contains("<svg class=\"renderer second-math\"")
+            && output.contains("<svg class=\"renderer typst-block-math\""),
+        "{output}"
+    );
+    assert!(output.contains("<use fill=\"#000000\""), "{output}");
+    assert!(
+        !output.contains("<p><svg"),
+        "a block SVG replacement must not become paragraph content: {output}"
+    );
+
+    let cache = fixture.path().join(".heine/cache/renderers/v1");
+    assert_eq!(
+        fs::read_dir(&cache).expect("renderer cache").count(),
+        4,
+        "one inline and one block renderer result each have bytes and integrity records"
+    );
+    let cached_svg = fs::read_dir(&cache)
+        .expect("renderer cache")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|extension| extension == "bin"))
+        .and_then(|path| fs::read_to_string(path).ok())
+        .expect("cached SVG");
+    assert!(cached_svg.contains("class=\"renderer\""), "{cached_svg}");
+    assert!(!cached_svg.contains("typst-inline-math"), "{cached_svg}");
+}
+
+#[test]
+fn renderer_classes_require_an_embedded_svg_result() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("copy", "[\"body\"]", "html"),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[copy class=\"not-supported\"]\n<div>content</div>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("HTML class is rejected");
+    assert!(format!("{error:?}").contains(
+        "class is valid only for a picture renderer resource or an embedded SVG renderer result"
+    ));
+
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("copy", "[\"body\"]", "svg").replacen(
+            "result = \"svg\"\n",
+            "result = \"svg\"\nmaterializations = [\"embedded\", \"resource\"]\ndefault_output = \"resource\"\n",
+            1,
+        ),
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[copy class=\"not-supported\" alt=\"diagram\"]\n<svg/>\n:::\n",
+    );
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("SVG resource class is rejected");
+    assert!(format!("{error:?}").contains(
+        "class is valid only for a picture renderer resource or an embedded SVG renderer result"
+    ));
+
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("copy", "[\"body\"]", "svg").replacen(
+            "result = \"svg\"\n",
+            "result = \"svg\"\nmaterializations = [\"embedded\"]\n",
+            1,
+        ),
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[copy class=\"repeated repeated\"]\n<svg/>\n:::\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("repeated class is rejected");
+    assert!(format!("{error:?}").contains("renderer request class must not repeat a token"));
+}
+
+#[cfg(unix)]
+#[test]
+fn stream_picture_renderers_publish_two_appearance_resources_and_native_markup() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.diagram]
+protocol = "stream"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "diagram-1"
+inputs = ["body"]
+result = "picture"
+media_type = "image/svg+xml"
+extension = "svg"
+[renderers.diagram.block.light]
+arguments = ["-c", "cat >/dev/null; printf '<svg xmlns=\"http://www.w3.org/2000/svg\"/>'"]
+[renderers.diagram.block.dark]
+arguments = ["-c", "cat >/dev/null; printf '<svg xmlns=\"http://www.w3.org/2000/svg\"><rect fill=\"white\"/></svg>'"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture\" caption=\"Request path\" class=\"diagram  align-center\"]\ninput\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("picture renderer builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<figure class=\"diagram align-center\">"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<picture class=\"diagram align-center\">"),
+        "{output}"
+    );
+    assert!(output.contains("prefers-color-scheme: dark"), "{output}");
+    assert_eq!(
+        fs::read_dir(fixture.path().join("public/heine-renderers"))
+            .expect("resources")
+            .count(),
+        2
+    );
+    assert_eq!(
+        fs::read_dir(fixture.path().join(".heine/cache/renderers/v1"))
+            .expect("cache")
+            .count(),
+        4
+    );
+}
+
+#[test]
+fn picture_renderer_appearance_roles_use_distinct_cache_entries() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", &stream_picture_copy_profile("diagram"));
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let options = heine::BuildOptions::new(BuildMode::Full).allow_external_renderers();
+    heine::build_at_with_options(fixture.path(), options).expect("picture renderer builds");
+
+    assert_eq!(
+        fs::read_dir(fixture.path().join("public/heine-renderers"))
+            .expect("resources")
+            .count(),
+        1,
+        "identical appearance bytes share one published resource"
+    );
+    let cache = fixture.path().join(".heine/cache/renderers/v1");
+    assert_eq!(
+        fs::read_dir(&cache).expect("cache").count(),
+        4,
+        "light and dark roles retain independent cache entries even with identical arguments and bytes"
+    );
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full)
+            .allow_external_renderers()
+            .refresh_renderers(),
+    )
+    .expect("refresh rebuilds both picture appearances");
+    assert_eq!(
+        fs::read_dir(&cache).expect("cache").count(),
+        4,
+        "refresh replaces both appearance cache entries"
+    );
+}
+
+#[test]
+fn quick_build_updates_a_picture_renderer_request() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", &stream_picture_copy_profile("diagram"));
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let options = heine::BuildOptions::new(BuildMode::Full).allow_external_renderers();
+    heine::build_at_with_options(fixture.path(), options).expect("initial picture build");
+    let output_path = fixture.path().join("public/index.html");
+    let before = fs::read_to_string(&output_path).expect("initial output");
+
+    let markdown = fixture.path().join("content/en/index.md");
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"><rect/></svg>\n:::\n",
+    );
+    fs::File::open(markdown)
+        .expect("changed Markdown")
+        .set_times(fs::FileTimes::new().set_modified(SystemTime::now() + Duration::from_secs(1)))
+        .expect("changed Markdown timestamp");
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Quick).allow_external_renderers(),
+    )
+    .expect("quick build updates picture request");
+
+    let after = fs::read_to_string(output_path).expect("quick output");
+    assert_ne!(after, before, "quick build publishes the new picture URL");
+}
+
+#[cfg(unix)]
+#[test]
+fn workspace_picture_renderers_publish_pairs_and_identify_a_failed_appearance() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.diagram]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "workspace-picture-1"
+inputs = ["body"]
+input_extension = "svg"
+result = "picture"
+media_type = "image/svg+xml"
+extension = "svg"
+[renderers.diagram.block.light]
+arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_file}"]
+[renderers.diagram.block.dark]
+arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let options = heine::BuildOptions::new(BuildMode::Full).allow_external_renderers();
+    heine::build_at_with_options(fixture.path(), options).expect("workspace picture builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<picture>"), "{output}");
+
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.diagram]
+protocol = "workspace"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "workspace-picture-2"
+inputs = ["body"]
+input_extension = "svg"
+result = "picture"
+media_type = "image/svg+xml"
+extension = "svg"
+[renderers.diagram.block.light]
+arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_file}"]
+[renderers.diagram.block.dark]
+arguments = ["-c", "exit 1", "workspace", "{input_file}", "{output_file}"]
+"#,
+    );
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("failed dark appearance rejects the picture request");
+    assert!(
+        format!("{error:?}").contains("dark picture renderer failed"),
+        "{error:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn picture_renderer_requests_check_profile_shape_and_picture_only_options() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.diagram]
+protocol = "stream"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "diagram-1"
+inputs = ["body"]
+result = "picture"
+media_type = "image/svg+xml"
+extension = "svg"
+[renderers.diagram.block]
+arguments = []
+"#,
+    );
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("single picture variant fails");
+    assert!(format!("{error:?}").contains("must declare light and dark variants"));
+
+    fixture.write(
+        "heine.toml",
+        r#"
+[renderers.diagram]
+protocol = "stream"
+program = "sh"
+timeout_seconds = 10
+cache_identity = "diagram-1"
+inputs = ["body"]
+result = "picture"
+media_type = "image/svg+xml"
+extension = "svg"
+[renderers.diagram.inline.light]
+arguments = ["-c", "printf '<svg xmlns=\"http://www.w3.org/2000/svg\"/>'"]
+[renderers.diagram.inline.dark]
+arguments = ["-c", "printf '<svg xmlns=\"http://www.w3.org/2000/svg\"/>'"]
+"#,
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":render[diagram alt=\"diagram\" caption=\"no\"]`input`\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("inline caption fails");
+    assert!(
+        format!("{error:?}")
+            .contains("caption is allowed only in a block picture renderer request")
     );
 }
 
@@ -290,6 +749,10 @@ arguments = ["-c", "cat \"$1\" > \"$2\"", "workspace", "{input_file}", "{output_
     for fragment in ["<p>body</p>", "<p>file</p>", "<p>bundle</p>"] {
         assert!(output.contains(fragment), "{output}");
     }
+    assert!(
+        !output.contains("<p><p>"),
+        "adjacent block renderer replacements must remain separate blocks: {output}"
+    );
     let cache = fixture.path().join(".heine/cache/renderers/v1");
     assert_eq!(
         fs::read_dir(&cache)
@@ -1381,7 +1844,7 @@ fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
         "{output}"
     );
     assert!(
-        output.contains("<input disabled=\"\" type=\"checkbox\"/>"),
+        output.contains("<input disabled=\"\" type=\"checkbox\">"),
         "{output}"
     );
     assert!(output.contains("footnote-reference"), "{output}");

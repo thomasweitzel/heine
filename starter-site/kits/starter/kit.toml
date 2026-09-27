@@ -1,6 +1,6 @@
 name = "starter"
 version = "0.1.0"
-heine = ">=0.8.0, <0.9.0"
+heine = ">=0.9.0, <0.10.0"
 message_prefix = "starter-"
 
 [public]
