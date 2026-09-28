@@ -294,7 +294,10 @@ impl WorkspaceLayout {
                 })?)
             }
         };
-        let output_file = output_dir.join("result");
+        let output_file = output_dir.join(format!(
+            "result.{}",
+            profile.result().workspace_output_extension()
+        ));
         Ok(Self {
             input_dir,
             input_file,

@@ -544,7 +544,8 @@ It copies the checked named file or source bundle below `input/`, preserving
 relative paths, and materializes an inline body as `input/input.<extension>`.
 The profile supplies that extension. It invokes the configured program with
 `work/` as its current directory. The host allocates one primary output file
-below `output/`; only that file can become the result.
+below `output/` as `result.<extension>`, deriving the extension from the
+checked result shape. Only that file can become the result.
 
 The implementation uses a cross-platform temporary-directory facility, such
 as Rust's `tempfile` crate, and native `OsString` process arguments. It must

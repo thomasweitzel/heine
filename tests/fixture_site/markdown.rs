@@ -463,7 +463,7 @@ fn quick_build_updates_a_picture_renderer_request() {
 
 #[cfg(unix)]
 #[test]
-fn workspace_picture_renderers_publish_pairs_and_identify_a_failed_appearance() {
+fn workspace_picture_renderers_use_checked_output_extensions_and_identify_failed_appearances() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
@@ -479,9 +479,9 @@ result = "picture"
 media_type = "image/svg+xml"
 extension = "svg"
 [renderers.diagram.block.light]
-arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_file}"]
+arguments = ["-c", "case \"$2\" in *.svg) cp \"$1\" \"$2\" ;; *) exit 17 ;; esac", "workspace", "{input_file}", "{output_file}"]
 [renderers.diagram.block.dark]
-arguments = ["-c", "cp \"$1\" \"$2\"", "workspace", "{input_file}", "{output_file}"]
+arguments = ["-c", "case \"$2\" in *.svg) cp \"$1\" \"$2\" ;; *) exit 17 ;; esac", "workspace", "{input_file}", "{output_file}"]
 "#,
     );
     fixture.write(
