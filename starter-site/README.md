@@ -17,6 +17,14 @@ the root inputs a new site receives after installing the kit. It is not a
 second runtime input tree: Heine ignores it while building this starter site.
 See the [kit guide](../docs/kits.md) for the package and customization model.
 
+## Reusing the starter material
+
+The starter site's authored content, configuration, templates, stylesheets,
+scripts, and example assets are available under MIT. The licence text is
+[`LICENSES/MIT.txt`](LICENSES/MIT.txt). Files with their own declarations,
+including the STIX font and historical portraits, retain those terms. Keep
+those declarations with redistributed or modified starter material.
+
 ## Custom 404 page
 
 The site renders a default-locale `404.html` page and a German counterpart.

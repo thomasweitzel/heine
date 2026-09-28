@@ -1,13 +1,13 @@
 [package]
 name = "heine"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2024"
 rust-version = "1.88"
 description = "A small, checked static-site generator"
 repository = "https://github.com/thomasweitzel/heine/"
 homepage = "https://heine.rs/"
 readme = "README.md"
-license = "EUPL-1.2"
+license = "EUPL-1.2+"
 keywords = ["static-site-generator", "ssg", "markdown", "website"]
 categories = ["command-line-utilities", "web-programming"]
 

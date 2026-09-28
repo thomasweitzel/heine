@@ -162,3 +162,11 @@ cargo +1.88.0 fmt --check
 cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
 cargo +1.88.0 test --all-targets --all-features
 ```
+
+## License
+
+Heine is available under EUPL-1.2-or-later. The copyable starter kit and its
+reference-site material are available under MIT, except where a file declares
+another licence. Building an independently authored site with Heine does not
+place that site under the EUPL. See [LICENSING.md](LICENSING.md) for the
+precise boundary, third-party exceptions, and contribution terms.

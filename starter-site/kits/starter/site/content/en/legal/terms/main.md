@@ -15,9 +15,10 @@ their contents remain their responsibility.
 
 ## Reuse
 
-The licensing information for copied assets is collected on the
-[Attributions](page:legal/licenses/index) page. Other content should not be
-treated as a license grant merely because it is pleasant to copy.
+The starter site's authored content, configuration, templates, stylesheets,
+scripts, and example assets are available under the MIT License. Copied
+artwork and fonts retain their own declarations on the
+[Attributions](page:legal/licenses/index) page.
 
 For the equally illustrative account of data handling, see the
 [Privacy notice](page:legal/privacy/index).
