@@ -90,7 +90,19 @@ Perform these steps on the reviewed release branch, normally `main`.
    `## [<version>] - YYYY-MM-DD`, then create a new empty `Unreleased` section.
    The changelog heading and Cargo version must agree.
 
-3. Run the everyday checks, then verify the source package and a local release
+3. Regenerate the third-party notice from the locked dependency graph before
+   packaging. Install the reviewed `cargo-about` version when it is not already
+   available, then review the generated diff. A `Cargo.lock` change can add a
+   new notice even when every dependency remains within the accepted licence
+   policy in `about.toml`.
+
+   ```bash
+   cargo install cargo-about --version 0.9.2 --locked
+   cargo about generate --locked --output-file THIRD_PARTY_NOTICES.html about.hbs
+   git diff --check -- THIRD_PARTY_NOTICES.html
+   ```
+
+4. Run the everyday checks, then verify the source package and a local release
    binary:
 
    ```bash
@@ -106,7 +118,7 @@ Perform these steps on the reviewed release branch, normally `main`.
    site must build as extracted source, not only from an existing `public/`
    directory.
 
-4. Before the first crates.io publication, confirm that `Cargo.toml` has the
+5. Before the first crates.io publication, confirm that `Cargo.toml` has the
    public canonical `repository` URL and accurate description, categories,
    keywords, licence, and Rust version. Then run:
 
@@ -117,7 +129,7 @@ Perform these steps on the reviewed release branch, normally `main`.
    Crate publication is separate from a GitHub binary release. Do not publish
    a crate merely because binary artifacts are ready.
 
-5. Commit the release preparation, push it to Forgejo, then mirror the same
+6. Commit the release preparation, push it to Forgejo, then mirror the same
    commit to GitHub. Create, verify, and push a signed annotated tag only after
    both remotes contain that commit:
 

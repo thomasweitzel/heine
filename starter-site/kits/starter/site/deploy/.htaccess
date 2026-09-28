@@ -1,11 +1,11 @@
 AddDefaultCharset UTF-8
 
-Header set Content-Security-Policy " \
+Header always set Content-Security-Policy " \
   connect-src 'self'               ; \
   default-src 'self'               ; \
   base-uri 'self'                  ; \
   form-action 'self'               ; \
-  frame-ancestors 'self'           ; \
+  frame-ancestors 'none'           ; \
   script-src 'self'                ; \
   script-src-elem 'self'           ; \
   font-src 'self'                  ; \
@@ -14,11 +14,18 @@ Header set Content-Security-Policy " \
   img-src 'self' data:             ; \
   style-src 'self'"
 Header always set Cross-Origin-Resource-Policy "same-origin"
-Header set Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), usb=(), browsing-topics=()"
-Header set Referrer-Policy "no-referrer"
-Header set X-Content-Type-Options "nosniff"
-Header set X-Frame-Options "SAMEORIGIN"
+Header always set Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), usb=()"
+Header always set Referrer-Policy "no-referrer"
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
 Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" env=HTTPS
+Header always set Cross-Origin-Opener-Policy "same-origin"
+
+<FilesMatch "\.xml$">
+    # Limit the XML-viewer compatibility exception to XML output, including
+    # sitemaps and conventionally named Atom feeds.
+    Header always edit Content-Security-Policy "style-src 'self'" "style-src 'self' 'unsafe-inline'"
+</FilesMatch>
 
 <FilesMatch "\.(pdf|docx|xlsx)$">
     Header set X-Robots-Tag "noindex, noarchive, nosnippet"
