@@ -15,9 +15,10 @@ zu Seiten anderer Betreiber; für deren Inhalte bleiben diese verantwortlich.
 
 ## Weiterverwendung
 
-Die Lizenzangaben kopierter Assets stehen auf der Seite
-[Lizenzhinweise](page:legal/licenses/index). Andere Inhalte werden nicht
-allein dadurch zu einer Lizenz, dass sie angenehm kopierbar sind.
+Die selbst erstellten Inhalte, die Konfiguration, Vorlagen, Stylesheets,
+Skripte und Beispiel-Assets dieser Starter-Site stehen unter der MIT-Lizenz.
+Kopierte Bilder und Schriften behalten ihre eigenen Angaben auf der Seite
+[Lizenzhinweise](page:legal/licenses/index).
 
 Die ebenfalls beispielhafte Erklärung zur Datenverarbeitung steht unter
 [Datenschutz](page:legal/privacy/index).

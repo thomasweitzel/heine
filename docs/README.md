@@ -75,7 +75,7 @@ required prerequisite for the guides.
 
 The focused guides and reference define Heine's user-facing contract. These
 records explain the accepted design, rationale, and boundaries behind current
-features and planned work.
+features and deferred proposals.
 
 ### Implemented features
 
@@ -90,9 +90,6 @@ features and planned work.
 - [Series](design/series.md)
 - [Table of contents](design/table-of-contents.md)
 - [Plugins and renderer adapters](design/plugins.md)
-
-### Planned work
-
 - [Generated color-scheme pictures](design/renderer-pictures.md)
 
 ### Deferred proposals

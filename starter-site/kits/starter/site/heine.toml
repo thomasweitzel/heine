@@ -43,8 +43,8 @@ assets = [
   "blog/mathml-audio/audio/heine-introduction.mp3",
 ]
 SPDX-FileCopyrightText = "2026 Thomas Weitzel"
-SPDX-License-Identifier = "LicenseRef-Public-Domain"
-SPDX-FileComment = "Created for the Heine starter site and dedicated to the public domain by its author."
+SPDX-License-Identifier = "MIT"
+SPDX-FileComment = "Created for the Heine starter site and licensed under MIT by its author."
 
 [collections.posts]
 order = "published-desc"

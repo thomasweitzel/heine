@@ -31,11 +31,21 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
-### Fixed
+### Changed
 
-- **Renderer failure diagnostics.** External renderer output now appears
-  separately from Heine's request label. Workspace body diagnostics identify
-  that renderer paths and line locations refer to an isolated staged input.
+- **Starter-material licensing.** Heine remains EUPL-1.2-or-later, while the
+  copyable starter kit and reference-site material are now explicitly MIT.
+  Bundled third-party fonts and artwork retain their declared terms. The new
+  licensing notes explain that building an independently authored site does not
+  place it under Heine's licence.
+
+### Security
+
+- **Private vulnerability reporting.** The repository now provides a security
+  policy with a private reporting address and the checked boundary for
+  externally permitted renderers.
+
+## [0.9.0] - 2026-09-27
 
 ### Added
 
@@ -197,6 +207,10 @@ are corrected only to repair an error or explain a missed material migration.
   future authored IDs.
 
 ### Fixed
+
+- **Renderer failure diagnostics.** External renderer output now appears
+  separately from Heine's request label. Workspace body diagnostics identify
+  that renderer paths and line locations refer to an isolated staged input.
 
 - **GNU release rehearsal.** The Ubuntu 22.04 GNU builder now records its
   observed glibc requirement inside the container that owns the build output.
