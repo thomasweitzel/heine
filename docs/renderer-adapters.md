@@ -118,8 +118,9 @@ The declared file is renderer input, not a copied asset.
 ## Typst PDF download
 
 Install the `typst` command-line program. A workspace profile receives an
-isolated input, output, and work directory. Typst writes its PDF only to
-Heine's selected primary output file:
+isolated input, output, and work directory. Heine names the selected primary
+output `result.pdf` from the configured result extension, so Typst can infer
+the format from its destination filename:
 
 ```toml
 [renderers.typst-report]

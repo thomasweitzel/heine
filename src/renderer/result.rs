@@ -58,6 +58,22 @@ pub(crate) enum ResultCapabilities {
 }
 
 impl ResultCapabilities {
+    /// Returns the conventional filename extension for a workspace result.
+    ///
+    /// Workspace programs receive a file rather than a stream. Supplying the
+    /// checked result extension lets programs that infer their output format
+    /// from the destination name use the same contract as Heine's publisher.
+    pub(crate) fn workspace_output_extension(&self) -> &str {
+        match self {
+            Self::Html => "html",
+            Self::Mathml => "mml",
+            Self::Svg { .. } => "svg",
+            Self::Image { extension }
+            | Self::Picture { extension, .. }
+            | Self::Link { extension } => extension,
+        }
+    }
+
     pub(crate) fn is_picture(&self) -> bool {
         matches!(self, Self::Picture { .. })
     }
@@ -332,7 +348,47 @@ fn add_root_class(
 
 #[cfg(test)]
 mod tests {
-    use super::add_embedded_svg_class;
+    use std::collections::BTreeSet;
+
+    use super::{Output, ResultCapabilities, add_embedded_svg_class};
+
+    #[test]
+    fn workspace_output_extensions_follow_checked_result_capabilities() {
+        let capabilities = [
+            (ResultCapabilities::Html, "html"),
+            (ResultCapabilities::Mathml, "mml"),
+            (
+                ResultCapabilities::Svg {
+                    materializations: BTreeSet::from([Output::Embedded]),
+                    default_output: Output::Embedded,
+                },
+                "svg",
+            ),
+            (
+                ResultCapabilities::Image {
+                    extension: "webp".into(),
+                },
+                "webp",
+            ),
+            (
+                ResultCapabilities::Picture {
+                    extension: "png".into(),
+                    svg: false,
+                },
+                "png",
+            ),
+            (
+                ResultCapabilities::Link {
+                    extension: "pdf".into(),
+                },
+                "pdf",
+            ),
+        ];
+
+        for (capability, extension) in capabilities {
+            assert_eq!(capability.workspace_output_extension(), extension);
+        }
+    }
 
     #[test]
     fn adds_classes_only_to_the_checked_svg_root() {

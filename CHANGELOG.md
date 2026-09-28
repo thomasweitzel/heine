@@ -33,6 +33,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Changed
 
+- **Workspace renderer output names.** Workspace renderers now receive a
+  host-owned primary output filename with the checked result extension, such
+  as `result.svg` or `result.pdf`. This supports file-oriented tools that infer
+  their format from the destination filename while preserving Heine's exact
+  one-file output rule.
+
 - **Starter-material licensing.** Heine remains EUPL-1.2-or-later, while the
   copyable starter kit and reference-site material are now explicitly MIT.
   Bundled third-party fonts and artwork retain their declared terms. The new

@@ -431,13 +431,16 @@ A workspace profile may render the same embedded result shapes from a body,
 declared file, or declared bundle. Heine creates one temporary `input/`,
 `output/`, and `work/` layout per request, stages only the checked input,
 runs the program in `work/`, and accepts only its host-selected regular file
-at `{output_file}`. It expands `{input_file}`, `{input_dir}`, `{output_file}`
-and `{work_dir}` only when an argument is exactly that placeholder. Extra
-output files, missing or empty primary output, failed processes, and timeouts
-fail at the request. Heine removes the temporary workspace after execution
-when the operating system permits it. If cleanup fails, Heine retains that
-workspace slot, warns about its path, and retries cleanup before another
-request uses the slot.
+at `{output_file}`. That file is named `result.<extension>`, using the checked
+result extension: `.html`, `.mml`, `.svg`, or the configured resource
+extension. It lets a file-oriented renderer infer its output format without
+adding an output-name setting to the profile. Heine expands `{input_file}`,
+`{input_dir}`, `{output_file}` and `{work_dir}` only when an argument is
+exactly that placeholder. Extra output files, missing or empty primary output,
+failed processes, and timeouts fail at the request. Heine removes the temporary
+workspace after execution when the operating system permits it. If cleanup
+fails, Heine retains that workspace slot, warns about its path, and retries
+cleanup before another request uses the slot.
 SVG, image, picture, and link resource requests publish one non-empty primary output as
 `heine-renderers/sha256-<digest>.<extension>`. The digest names the returned
 bytes, so identical results share one generated file. Heine replaces image
