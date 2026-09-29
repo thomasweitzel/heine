@@ -885,6 +885,8 @@ fn unresolved_footnote_reference(
     None
 }
 
+const PLAIN_CODE_LANGUAGE: &str = "plain";
+
 fn highlight_code_blocks(
     events: Vec<(Event<'static>, Range<usize>)>,
     highlighter: Option<&Highlighter>,
@@ -899,13 +901,12 @@ fn highlight_code_blocks(
             output.push((event, span));
             continue;
         };
-        let language = match kind {
-            CodeBlockKind::Fenced(ref info) => info
+        let language = match &kind {
+            CodeBlockKind::Fenced(info) => info
                 .split_ascii_whitespace()
                 .next()
-                .unwrap_or_default()
-                .to_owned(),
-            CodeBlockKind::Indented => String::new(),
+                .unwrap_or(PLAIN_CODE_LANGUAGE),
+            CodeBlockKind::Indented => PLAIN_CODE_LANGUAGE,
         };
         let mut source = String::new();
         let mut block = vec![(Event::Start(Tag::CodeBlock(kind.clone())), span.clone())];
@@ -917,15 +918,11 @@ fn highlight_code_blocks(
                 _ => {}
             }
         }
-        if language.is_empty() {
-            output.extend(block);
-            continue;
-        }
         let rendered =
             highlighter
-                .render(&language, &source)
+                .render(language, &source)
                 .map_err(|error| RenderError::Highlight {
-                    language,
+                    language: language.to_owned(),
                     message: error.to_string(),
                     span,
                 })?;

@@ -45,6 +45,14 @@ are corrected only to repair an error or explain a missed material migration.
   licensing notes explain that building an independently authored site does not
   place it under Heine's licence.
 
+### Fixed
+
+- **Plain code highlighting.** Unlabelled fenced and indented Markdown code
+  blocks now use the configured plain-code highlighter. They therefore receive
+  the same generated light and dark code surface as named language blocks,
+  while explicitly unknown language names retain the configured diagnostic or
+  plain fallback policy.
+
 ### Security
 
 - **Private vulnerability reporting.** The repository now provides a security

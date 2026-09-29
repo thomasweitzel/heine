@@ -2016,6 +2016,32 @@ fn generates_one_preference_aware_stylesheet_for_class_based_code() {
 }
 
 #[test]
+fn highlights_unlabelled_and_indented_code_as_plain() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown.highlighting]\nstylesheet = 'styles/highlighting.css'\n\n[markdown.highlighting.theme]\nlight = 'github-light'\ndark = 'github-dark'\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "```\nunlabelled fence\n```\n\n    indented block\n",
+    );
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("plain code blocks build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+
+    assert_eq!(output.matches("<pre class=\"giallo").count(), 2, "{output}");
+    assert!(output.contains("unlabelled fence"), "{output}");
+    assert!(output.contains("indented block"), "{output}");
+    assert!(!output.contains("<pre><code>"), "{output}");
+}
+
+#[test]
 fn reports_unknown_fenced_languages_at_the_markdown_source() {
     let fixture = Fixture::new();
     fixture.write(
