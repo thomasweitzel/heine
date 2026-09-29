@@ -661,7 +661,9 @@ fn main() {
 ````
 
 **See it now:** visit `/blog/second.html`. The Rust code block uses the
-generated highlighting stylesheet.
+generated highlighting stylesheet. When highlighting is enabled, unlabelled
+and indented code blocks use the same plain-code surface. An explicitly named
+language remains subject to the `missing_language` policy.
 
 ## 10. Prepare the generated site for deployment
 
