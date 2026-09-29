@@ -22,6 +22,13 @@ impl PartialEq for EditorialTimeZone {
 impl Eq for EditorialTimeZone {}
 
 impl EditorialTimeZone {
+    /// Returns the calendar date that this instant has in the site's
+    /// editorial time zone. Templates use this for reader-facing dates while
+    /// feeds and sitemaps retain the same instant in UTC.
+    pub(crate) fn calendar_date(&self, timestamp: Timestamp) -> String {
+        timestamp.to_zoned(self.zone.clone()).date().to_string()
+    }
+
     /// Resolves an authored offsetless TOML date-time without consulting host
     /// timezone data. Callers retain their own source span and field context.
     pub(crate) fn resolve_local(

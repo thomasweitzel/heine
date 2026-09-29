@@ -222,9 +222,10 @@ plural categories and can also express gender or other controlled choices.
 The initial value contract accepts strings, numbers, and booleans/select
 values. Dates use the separate `format_date()` template function so the stable
 UTC RFC 3339 timestamp can remain suitable for HTML `datetime` attributes. It
-accepts the rendered `page.published` value and formats its calendar date for the current locale
-with `short`, `medium`, or `long` styles. It formats calendar dates, not times
-or time zones. The template boundary does not expose arbitrary objects, arrays,
+accepts the rendered `page.published` value, converts it into the site's
+editorial time zone, and formats that calendar date for the current locale with
+`short`, `medium`, or `long` styles. It formats calendar dates, not times or
+time zones. The template boundary does not expose arbitrary objects, arrays,
 raw HTML, Fluent internals, or filesystem access.
 
 Keep the machine-readable value in `datetime` and format only the visible

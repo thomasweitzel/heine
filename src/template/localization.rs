@@ -62,7 +62,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             let value = kwargs.must_get::<&str>("value")?;
             let style = kwargs.get::<&str>("style")?.unwrap_or("medium");
             let locale = date_runtime.locale(state)?;
-            format_date(&locale, value, style)
+            format_date(&locale, date_runtime.editorial_time_zone(), value, style)
                 .map(Into::into)
                 .map_err(tera::Error::message)
         },
@@ -114,8 +114,13 @@ impl DateFormats {
         })
     }
 
-    fn format(&self, value: &str, style: &str) -> Result<String, String> {
-        let date = parse_iso_date(value)?;
+    fn format(
+        &self,
+        editorial_time_zone: Option<&crate::config::EditorialTimeZone>,
+        value: &str,
+        style: &str,
+    ) -> Result<String, String> {
+        let date = parse_iso_date(editorial_time_zone, value)?;
         let formatted = match style {
             "short" => &self.styles.short,
             "medium" => &self.styles.medium,
@@ -137,31 +142,42 @@ thread_local! {
     static DATE_FORMATS: RefCell<BTreeMap<Locale, DateFormats>> = const { RefCell::new(BTreeMap::new()) };
 }
 
-fn format_date(locale: &Locale, value: &str, style: &str) -> Result<String, String> {
+fn format_date(
+    locale: &Locale,
+    editorial_time_zone: Option<&crate::config::EditorialTimeZone>,
+    value: &str,
+    style: &str,
+) -> Result<String, String> {
     DATE_FORMATS.with(|formats| {
         let mut formats = formats.borrow_mut();
         let formats = formats
             .entry(locale.clone())
             .or_insert(DateFormats::for_locale(locale).map_err(|error| error.to_string())?);
-        formats.format(value, style)
+        formats.format(editorial_time_zone, value, style)
     })
 }
 
 /// The template boundary accepts RFC 3339 values from `page.published` and
 /// `page.updated`; plain ISO dates remain useful for authored template data.
-fn parse_iso_date(value: &str) -> Result<Date<icu_calendar::Iso>, String> {
+fn parse_iso_date(
+    editorial_time_zone: Option<&crate::config::EditorialTimeZone>,
+    value: &str,
+) -> Result<Date<icu_calendar::Iso>, String> {
     let calendar = match value.contains('T') {
         true => {
-            value.parse::<Timestamp>().map_err(|_| {
+            let timestamp = value.parse::<Timestamp>().map_err(|_| {
                 format!(
                     "date value {value:?} must be a four-digit ISO calendar date or RFC 3339 offset date-time"
                 )
             })?;
-            value.get(..10).map(str::to_owned).ok_or_else(|| {
-                format!(
-                    "date value {value:?} must be a four-digit ISO calendar date or RFC 3339 offset date-time"
-                )
-            })?
+            match editorial_time_zone {
+                Some(time_zone) => time_zone.calendar_date(timestamp),
+                None => value.get(..10).map(str::to_owned).ok_or_else(|| {
+                    format!(
+                        "date value {value:?} must be a four-digit ISO calendar date or RFC 3339 offset date-time"
+                    )
+                })?,
+            }
         }
         false => value.to_owned(),
     };
@@ -208,12 +224,12 @@ mod tests {
     fn formats_iso_dates_for_the_requested_locale() {
         let formats = DateFormats::for_locale(&"en".parse().unwrap()).unwrap();
         assert_eq!(
-            formats.format("2026-08-14", "long").unwrap(),
+            formats.format(None, "2026-08-14", "long").unwrap(),
             "August 14, 2026"
         );
         let german = DateFormats::for_locale(&"de".parse().unwrap()).unwrap();
         assert_eq!(
-            german.format("2026-08-14", "long").unwrap(),
+            german.format(None, "2026-08-14", "long").unwrap(),
             "14. August 2026"
         );
     }
@@ -221,25 +237,53 @@ mod tests {
     #[test]
     fn rejects_unknown_styles_and_non_dates() {
         let formats = DateFormats::for_locale(&"en".parse().unwrap()).unwrap();
-        assert!(formats.format("2026-08-14", "full").is_err());
-        assert!(formats.format("not a date", "long").is_err());
+        assert!(formats.format(None, "2026-08-14", "full").is_err());
+        assert!(formats.format(None, "not a date", "long").is_err());
     }
 
     #[test]
     fn accepts_the_page_date_model_and_rejects_ambiguous_calendar_forms() {
-        assert!(parse_iso_date("0001-02-03").is_ok());
-        assert!(parse_iso_date("2026-08-14T09:30:00+02:00").is_ok());
-        assert!(parse_iso_date("2026-8-14").is_err());
-        assert!(parse_iso_date("-0001-02-03").is_err());
-        assert!(parse_iso_date("2026-08-14Tnot-a-time").is_err());
+        assert!(parse_iso_date(None, "0001-02-03").is_ok());
+        assert!(parse_iso_date(None, "2026-08-14T09:30:00+02:00").is_ok());
+        assert!(parse_iso_date(None, "2026-8-14").is_err());
+        assert!(parse_iso_date(None, "-0001-02-03").is_err());
+        assert!(parse_iso_date(None, "2026-08-14Tnot-a-time").is_err());
     }
 
     #[test]
-    fn retains_the_authored_calendar_date_of_an_offset_timestamp() {
+    fn retains_an_offset_timestamps_calendar_date_without_an_editorial_time_zone() {
         let formats = DateFormats::for_locale(&"en".parse().unwrap()).unwrap();
         assert_eq!(
-            formats.format("2026-08-14T00:30:00+02:00", "long").unwrap(),
+            formats
+                .format(None, "2026-08-14T00:30:00+02:00", "long")
+                .unwrap(),
             "August 14, 2026"
+        );
+    }
+
+    #[test]
+    fn formats_timestamps_in_the_editorial_time_zone() {
+        let formats = DateFormats::for_locale(&"en".parse().unwrap()).unwrap();
+        let berlin = crate::config::EditorialTimeZone::try_from("Europe/Berlin".to_owned())
+            .expect("known IANA time zone");
+
+        assert_eq!(
+            formats
+                .format(Some(&berlin), "2026-02-10T23:00:00Z", "long")
+                .unwrap(),
+            "February 11, 2026"
+        );
+        assert_eq!(
+            formats
+                .format(Some(&berlin), "2026-03-29T22:00:00Z", "long")
+                .unwrap(),
+            "March 30, 2026"
+        );
+        assert_eq!(
+            formats
+                .format(Some(&berlin), "2026-10-25T23:00:00Z", "long")
+                .unwrap(),
+            "October 26, 2026"
         );
     }
 }

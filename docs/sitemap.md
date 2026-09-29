@@ -177,8 +177,9 @@ neither field remains in the sitemap without `<lastmod>`.
 
 Templates receive the same resolved values as `page.published` and
 `page.updated`: UTC RFC 3339 text such as `2026-08-14T07:30:00Z`. This makes
-them directly usable with `format_date()` and avoids exposing an ambiguous
-local time at the template boundary.
+them directly usable with `format_date()`, which converts them into the
+editorial time zone for reader-facing calendar dates, and avoids exposing an
+ambiguous local time at the template boundary.
 
 Heine never uses the build machine's time zone. A named IANA zone makes the
 intended interpretation of source dates unambiguous and accounts for

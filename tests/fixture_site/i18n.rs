@@ -526,22 +526,22 @@ fn formats_page_dates_for_the_locale_being_rendered() {
     );
     fixture.write(
         "content/en/index.page",
-        "template = 'page.tera'\npublished = 2026-08-14T09:30:00\n",
+        "template = 'page.tera'\npublished = 2026-02-11T00:00:00\n",
     );
     fixture.write(
         "content/de/index.page",
-        "template = 'page.tera'\npublished = 2026-08-14T09:30:00\n",
+        "template = 'page.tera'\npublished = 2026-02-11T00:00:00\n",
     );
     fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
 
     build_at(fixture.path(), BuildMode::Full).expect("localized dates");
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
-        "<time datetime=\"2026-08-14T07:30:00Z\">August 14, 2026</time>"
+        "<time datetime=\"2026-02-10T23:00:00Z\">February 11, 2026</time>"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap(),
-        "<time datetime=\"2026-08-14T07:30:00Z\">14. August 2026</time>"
+        "<time datetime=\"2026-02-10T23:00:00Z\">11. Februar 2026</time>"
     );
 }
 

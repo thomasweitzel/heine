@@ -82,6 +82,7 @@ impl Site {
                 .markdown()
                 .tables()
                 .map(|tables| tables.scroll_message().to_owned()),
+            options.config().site().time_zone().cloned(),
         );
         let engine = TemplateEngine::load(
             templates,
