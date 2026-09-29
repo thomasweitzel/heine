@@ -46,6 +46,7 @@ pub(super) struct TemplateRuntime {
     localization: Arc<Localization>,
     highlight_css: Option<String>,
     table_scroll_message: Option<String>,
+    editorial_time_zone: Option<crate::config::EditorialTimeZone>,
     source_aware_renders: Arc<Mutex<Vec<SourceAwareRender>>>,
 }
 
@@ -120,12 +121,17 @@ impl From<TemplateResources> for TemplateRuntime {
             localization: resources.localization,
             highlight_css: resources.highlight_css,
             table_scroll_message: resources.table_scroll_message,
+            editorial_time_zone: resources.editorial_time_zone,
             source_aware_renders: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
 
 impl TemplateRuntime {
+    pub(super) fn editorial_time_zone(&self) -> Option<&crate::config::EditorialTimeZone> {
+        self.editorial_time_zone.as_ref()
+    }
+
     pub(super) fn table_scroll_label(
         &self,
         state: &tera::State,

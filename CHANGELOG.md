@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-09-30
+
 ### Changed
 
 - **Workspace renderer output names.** Workspace renderers now receive a
@@ -46,6 +48,11 @@ are corrected only to repair an error or explain a missed material migration.
   place it under Heine's licence.
 
 ### Fixed
+
+- **Editorial publication dates.** `format_date()` now converts RFC 3339
+  timestamps into the configured editorial time zone before it selects a
+  calendar date. A post published at local midnight therefore displays its
+  authored publication day while its machine-readable timestamp remains UTC.
 
 - **Plain code highlighting.** Unlabelled fenced and indented Markdown code
   blocks now use the configured plain-code highlighter. They therefore receive

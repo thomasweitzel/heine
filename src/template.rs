@@ -142,6 +142,7 @@ pub(crate) struct TemplateResources {
     localization: std::sync::Arc<Localization>,
     highlight_css: Option<String>,
     table_scroll_message: Option<String>,
+    editorial_time_zone: Option<crate::config::EditorialTimeZone>,
 }
 
 /// Immutable site relationships needed by template built-ins. This has no
@@ -258,6 +259,7 @@ impl TemplateResources {
         localization: std::sync::Arc<Localization>,
         highlight_css: Option<String>,
         table_scroll_message: Option<String>,
+        editorial_time_zone: Option<crate::config::EditorialTimeZone>,
     ) -> Self {
         Self {
             asset_links,
@@ -265,6 +267,7 @@ impl TemplateResources {
             localization,
             highlight_css,
             table_scroll_message,
+            editorial_time_zone,
         }
     }
 }
