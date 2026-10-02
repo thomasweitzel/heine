@@ -2,9 +2,10 @@
 
 ## Status
 
-Proposed. This record defines a deliberately narrow shared formatting boundary
-for template output and Fluent messages. No new formatting function or Fluent
-function is implemented yet.
+Partially implemented. Package 1 provides deterministic decimal formatting in
+`format_number()`, bare Fluent numeric placeables, and Fluent `NUMBER()`.
+Calendar dates retain the existing `format_date()` contract. Time and
+date-time formatting remain planned work in this record.
 
 ## Decision
 

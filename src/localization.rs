@@ -2,21 +2,135 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    convert::Infallible,
     fs, io,
     path::{Path, PathBuf},
     sync::Arc,
     time::SystemTime,
 };
 
-use fluent_bundle::{FluentArgs, FluentResource, concurrent::FluentBundle};
-use fluent_syntax::{ast::Entry, parser};
+use fluent_bundle::{FluentArgs, FluentResource, FluentValue, concurrent::FluentBundle};
+use fluent_syntax::{
+    ast::{CallArguments, Entry, Expression, InlineExpression, Pattern, PatternElement},
+    parser,
+};
+use intl_memoizer::{Memoizable, concurrent::IntlLangMemoizer};
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 use walkdir::WalkDir;
 
 use crate::{locale::Locale, source_path};
 
-pub(crate) type Arguments<'a> = FluentArgs<'a>;
+pub(crate) mod number;
+
+type SelectorBindings = BTreeMap<String, Option<String>>;
+type SelectorStack = BTreeSet<(Locale, String, Option<String>, SelectorBindings)>;
+
+/// Fluent provides the resolved bundle language through its memoizer. The
+/// marker lets Heine retain that language without tying locale formatting to
+/// process-global state.
+struct FluentLocale(unic_langid::LanguageIdentifier);
+
+impl Memoizable for FluentLocale {
+    type Args = ();
+    type Error = Infallible;
+
+    fn construct(
+        language: unic_langid::LanguageIdentifier,
+        (): Self::Args,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self(language))
+    }
+}
+
+fn format_fluent_number(value: &FluentValue<'_>, memoizer: &IntlLangMemoizer) -> Option<String> {
+    let FluentValue::Number(value) = value else {
+        return None;
+    };
+    memoizer
+        .with_try_get::<FluentLocale, _, _>((), |locale| {
+            let locale = locale.0.to_string().parse::<Locale>().ok()?;
+            let number = number::LocalizedNumber::from_f64(value.value).ok()?;
+            let minimum = value.options.minimum_fraction_digits.unwrap_or(0);
+            let maximum = value.options.maximum_fraction_digits.unwrap_or(3);
+            let minimum = u16::try_from(minimum).ok()?;
+            let maximum = u16::try_from(maximum).ok()?;
+            let options =
+                number::Options::new(value.options.use_grouping, minimum, maximum).ok()?;
+            number::format(&locale, &number, options).ok()
+        })
+        .ok()
+        .flatten()
+}
+
+/// Template values remain checked until Heine has resolved the Fluent message
+/// that will consume them. Fluent itself uses `f64` selectors, so selector and
+/// display values deliberately cross that boundary at different points.
+#[derive(Default)]
+pub(crate) struct Arguments {
+    values: BTreeMap<String, Argument>,
+}
+
+pub(crate) enum Argument {
+    Text(String),
+    Number(number::LocalizedNumber),
+}
+
+impl Arguments {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn set<V>(&mut self, key: impl Into<String>, value: V)
+    where
+        V: Into<Argument>,
+    {
+        self.values.insert(key.into(), value.into());
+    }
+
+    pub(crate) fn set_number(&mut self, key: impl Into<String>, value: number::LocalizedNumber) {
+        self.values.insert(key.into(), Argument::Number(value));
+    }
+
+    fn fluent(&self, selectors: &BTreeSet<String>) -> Result<FluentArgs<'static>, String> {
+        let mut arguments = FluentArgs::with_capacity(self.values.len());
+        for (key, value) in &self.values {
+            match value {
+                Argument::Text(value) => arguments.set(key.clone(), value.clone()),
+                Argument::Number(value) => {
+                    let value = if selectors.contains(key) {
+                        value.normalized(number::Options::default())
+                    } else {
+                        value.clone()
+                    };
+                    arguments.set(
+                        key.clone(),
+                        value.fluent_value().map_err(|error| error.to_string())?,
+                    );
+                }
+            }
+        }
+        Ok(arguments)
+    }
+}
+
+impl From<String> for Argument {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for Argument {
+    fn from(value: &str) -> Self {
+        Self::Text(value.into())
+    }
+}
+
+impl From<i64> for Argument {
+    fn from(value: i64) -> Self {
+        Self::Number(number::LocalizedNumber::from_i64(value))
+    }
+}
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
@@ -36,6 +150,8 @@ pub(crate) enum Error {
     MissingKitDirectory { path: PathBuf },
     #[error("localization inventory did not contain configured locale {locale}")]
     MissingResolvedLocale { locale: Locale },
+    #[error("could not register Fluent built-in formatting functions: {message}")]
+    FluentSetup { message: String },
     #[error("localization file {path} is outside localization directory {root}")]
     OutsideDirectory { root: PathBuf, path: PathBuf },
     #[error(transparent)]
@@ -144,6 +260,7 @@ struct FluentEntry {
 pub(crate) struct Localization {
     bundles: BTreeMap<Locale, FluentBundle<FluentResource>>,
     message_sources: BTreeMap<Locale, BTreeMap<String, MessageSource>>,
+    message_owners: BTreeMap<Locale, BTreeMap<String, Locale>>,
     latest_inputs: BTreeMap<Locale, SystemTime>,
     default_locale: Locale,
 }
@@ -198,6 +315,7 @@ impl Localization {
 
         let mut bundles = BTreeMap::new();
         let mut message_sources = BTreeMap::new();
+        let mut message_owners = BTreeMap::new();
         let mut latest_inputs = BTreeMap::new();
         for locale in locales {
             let kit = kit_resources
@@ -227,6 +345,10 @@ impl Localization {
                 }))
             })?;
             let mut bundle = FluentBundle::new_concurrent(vec![language]);
+            bundle.set_formatter(Some(format_fluent_number));
+            bundle.add_builtins().map_err(|error| Error::FluentSetup {
+                message: error.to_string(),
+            })?;
             let default_kit =
                 kit_resources
                     .get(&default_locale)
@@ -258,16 +380,30 @@ impl Localization {
             }
             let mut messages = default_kit.messages.clone();
             messages.extend(default_root.messages.clone());
+            let mut owners = messages
+                .keys()
+                .cloned()
+                .map(|id| (id, default_locale.clone()))
+                .collect::<BTreeMap<_, _>>();
             if locale != default_locale {
                 messages.extend(kit.messages.clone());
                 messages.extend(root_layer.messages.clone());
+                owners.extend(
+                    kit.messages
+                        .keys()
+                        .chain(root_layer.messages.keys())
+                        .cloned()
+                        .map(|id| (id, locale.clone())),
+                );
             }
             bundles.insert(locale.clone(), bundle);
-            message_sources.insert(locale, messages);
+            message_sources.insert(locale.clone(), messages);
+            message_owners.insert(locale, owners);
         }
         Ok(Self {
             bundles,
             message_sources,
+            message_owners,
             latest_inputs,
             default_locale,
         })
@@ -278,16 +414,19 @@ impl Localization {
         locale: &Locale,
         id: &str,
         attribute: Option<&str>,
-        args: &Arguments<'_>,
+        args: &Arguments,
     ) -> Result<String, String> {
-        match self.format_in(locale, id, attribute, args) {
+        let owner = self.format_owner(locale, id, attribute);
+        let selectors = self.selector_variables(&owner, id, attribute);
+        let args = args.fluent(&selectors).map_err(|error| error.to_string())?;
+        match self.format_in(&owner, id, attribute, &args) {
             Ok(value) => Ok(value),
             Err(FormatError::Invalid(message)) => Err(message),
-            Err(FormatError::Missing) if locale == &self.default_locale => {
+            Err(FormatError::Missing) if owner == self.default_locale => {
                 Err(format!("message {id:?} is not defined for locale {locale}"))
             }
             Err(FormatError::Missing) => self
-                .format_in(&self.default_locale, id, attribute, args)
+                .format_in(&self.default_locale, id, attribute, &args)
                 .map_err(|error| match error {
                     FormatError::Missing => format!(
                         "message {id:?} is not defined for locale {locale} or fallback locale {}",
@@ -340,7 +479,7 @@ impl Localization {
         locale: &Locale,
         id: &str,
         attribute: Option<&str>,
-        args: &Arguments<'_>,
+        args: &FluentArgs<'_>,
     ) -> Result<String, FormatError> {
         let bundle = &self.bundles[locale];
         let message = bundle.get_message(id).ok_or(FormatError::Missing)?;
@@ -365,6 +504,207 @@ impl Localization {
                     .collect::<Vec<_>>()
                     .join("; "),
             ))
+        }
+    }
+
+    fn selector_variables(
+        &self,
+        locale: &Locale,
+        id: &str,
+        attribute: Option<&str>,
+    ) -> BTreeSet<String> {
+        let mut selectors = BTreeSet::new();
+        self.collect_selector_variables(
+            locale,
+            id,
+            attribute,
+            &BTreeMap::new(),
+            &mut BTreeSet::new(),
+            &mut selectors,
+        );
+        selectors
+    }
+
+    fn format_owner(&self, locale: &Locale, id: &str, attribute: Option<&str>) -> Locale {
+        let owner = self
+            .message_owners
+            .get(locale)
+            .and_then(|owners| owners.get(id))
+            .unwrap_or(&self.default_locale);
+        if attribute.is_none() || self.has_message_pattern(owner, id, attribute) {
+            owner.clone()
+        } else {
+            self.default_locale.clone()
+        }
+    }
+
+    fn has_message_pattern(&self, locale: &Locale, id: &str, attribute: Option<&str>) -> bool {
+        let Some(source) = self
+            .message_sources
+            .get(locale)
+            .and_then(|messages| messages.get(id))
+        else {
+            return false;
+        };
+        let Ok(resource) = parser::parse(source.source.as_ref().clone()) else {
+            return false;
+        };
+        fluent_pattern(&resource.body, id, attribute).is_some()
+    }
+
+    fn collect_selector_variables(
+        &self,
+        locale: &Locale,
+        id: &str,
+        attribute: Option<&str>,
+        bindings: &SelectorBindings,
+        stack: &mut SelectorStack,
+        selectors: &mut BTreeSet<String>,
+    ) {
+        let key = (
+            locale.clone(),
+            id.to_owned(),
+            attribute.map(str::to_owned),
+            bindings.clone(),
+        );
+        if !stack.insert(key.clone()) {
+            return;
+        }
+
+        let Some(source) = self
+            .message_sources
+            .get(locale)
+            .and_then(|messages| messages.get(id))
+        else {
+            return;
+        };
+        let Ok(resource) = parser::parse(source.source.as_ref().clone()) else {
+            return;
+        };
+        if let Some(pattern) = fluent_pattern(&resource.body, id, attribute) {
+            self.collect_selector_pattern(locale, pattern, bindings, stack, selectors);
+        }
+        stack.remove(&key);
+    }
+
+    fn collect_selector_pattern(
+        &self,
+        locale: &Locale,
+        pattern: &Pattern<String>,
+        bindings: &SelectorBindings,
+        stack: &mut SelectorStack,
+        selectors: &mut BTreeSet<String>,
+    ) {
+        for element in &pattern.elements {
+            let PatternElement::Placeable { expression } = element else {
+                continue;
+            };
+            self.collect_selector_expression(locale, expression, bindings, stack, selectors);
+        }
+    }
+
+    fn collect_selector_expression(
+        &self,
+        locale: &Locale,
+        expression: &Expression<String>,
+        bindings: &SelectorBindings,
+        stack: &mut SelectorStack,
+        selectors: &mut BTreeSet<String>,
+    ) {
+        match expression {
+            Expression::Inline(expression) => {
+                self.collect_selector_inline(locale, expression, bindings, stack, selectors)
+            }
+            Expression::Select { selector, variants } => {
+                if let InlineExpression::VariableReference { id } = selector {
+                    if let Some(variable) = resolve_binding(bindings, id.name.as_ref()) {
+                        selectors.insert(variable);
+                    }
+                }
+                self.collect_selector_inline(locale, selector, bindings, stack, selectors);
+                for variant in variants {
+                    self.collect_selector_pattern(
+                        locale,
+                        &variant.value,
+                        bindings,
+                        stack,
+                        selectors,
+                    );
+                }
+            }
+        }
+    }
+
+    fn collect_selector_inline(
+        &self,
+        locale: &Locale,
+        expression: &InlineExpression<String>,
+        bindings: &SelectorBindings,
+        stack: &mut SelectorStack,
+        selectors: &mut BTreeSet<String>,
+    ) {
+        match expression {
+            InlineExpression::MessageReference { id, attribute } => self
+                .collect_selector_variables(
+                    locale,
+                    id.name.as_ref(),
+                    attribute.as_ref().map(|attribute| attribute.name.as_ref()),
+                    bindings,
+                    stack,
+                    selectors,
+                ),
+            InlineExpression::TermReference {
+                id,
+                attribute,
+                arguments,
+            } => {
+                let mut term_bindings = bindings.clone();
+                if let Some(arguments) = arguments {
+                    for argument in &arguments.named {
+                        let binding = match &argument.value {
+                            InlineExpression::VariableReference { id } => {
+                                resolve_binding(bindings, id.name.as_ref())
+                            }
+                            _ => None,
+                        };
+                        term_bindings.insert(argument.name.name.to_string(), binding);
+                    }
+                    self.collect_selector_arguments(locale, arguments, bindings, stack, selectors);
+                }
+                self.collect_selector_variables(
+                    locale,
+                    &format!("-{}", id.name),
+                    attribute.as_ref().map(|attribute| attribute.name.as_ref()),
+                    &term_bindings,
+                    stack,
+                    selectors,
+                );
+            }
+            InlineExpression::FunctionReference { arguments, .. } => {
+                self.collect_selector_arguments(locale, arguments, bindings, stack, selectors)
+            }
+            InlineExpression::Placeable { expression } => {
+                self.collect_selector_expression(locale, expression, bindings, stack, selectors)
+            }
+            InlineExpression::StringLiteral { .. }
+            | InlineExpression::NumberLiteral { .. }
+            | InlineExpression::VariableReference { .. } => {}
+        }
+    }
+
+    fn collect_selector_arguments(
+        &self,
+        locale: &Locale,
+        arguments: &CallArguments<String>,
+        bindings: &SelectorBindings,
+        stack: &mut SelectorStack,
+        selectors: &mut BTreeSet<String>,
+    ) {
+        for argument in &arguments.positional {
+            self.collect_selector_inline(locale, argument, bindings, stack, selectors);
+        }
+        for argument in &arguments.named {
+            self.collect_selector_inline(locale, &argument.value, bindings, stack, selectors);
         }
     }
 }
@@ -614,6 +954,7 @@ fn message_entries(
             span: error.map_or((0, 0).into(), |error| error.pos.clone().into()),
         }))
     })?;
+    validate_number_calls(&resource.body, path, source, diagnostics)?;
     let identifiers = resource
         .body
         .into_iter()
@@ -645,6 +986,330 @@ fn message_entries(
             })
         })
         .collect()
+}
+
+/// Heine deliberately accepts only the decimal `NUMBER()` options that its
+/// shared formatter implements. Fluent otherwise ignores unsupported named
+/// options, which would turn a misspelling into silently different output.
+fn validate_number_calls(
+    entries: &[Entry<&str>],
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<(), Error> {
+    for entry in entries {
+        match entry {
+            Entry::Message(message) => {
+                validate_number_pattern(message.value.as_ref(), path, source, diagnostics)?;
+                for attribute in &message.attributes {
+                    validate_number_pattern(Some(&attribute.value), path, source, diagnostics)?;
+                }
+            }
+            Entry::Term(term) => {
+                validate_number_pattern(Some(&term.value), path, source, diagnostics)?;
+                for attribute in &term.attributes {
+                    validate_number_pattern(Some(&attribute.value), path, source, diagnostics)?;
+                }
+            }
+            Entry::Junk { .. }
+            | Entry::Comment(_)
+            | Entry::GroupComment(_)
+            | Entry::ResourceComment(_) => {}
+        }
+    }
+    Ok(())
+}
+
+fn fluent_pattern<'a>(
+    entries: &'a [Entry<String>],
+    id: &str,
+    attribute: Option<&str>,
+) -> Option<&'a Pattern<String>> {
+    entries.iter().find_map(|entry| match entry {
+        Entry::Message(message) if message.id.name == id => match attribute {
+            Some(attribute) => message
+                .attributes
+                .iter()
+                .find(|candidate| candidate.id.name == attribute)
+                .map(|attribute| &attribute.value),
+            None => message.value.as_ref(),
+        },
+        Entry::Term(term) if id.strip_prefix('-') == Some(term.id.name.as_ref()) => match attribute
+        {
+            Some(attribute) => term
+                .attributes
+                .iter()
+                .find(|candidate| candidate.id.name == attribute)
+                .map(|attribute| &attribute.value),
+            None => Some(&term.value),
+        },
+        _ => None,
+    })
+}
+
+fn resolve_binding(bindings: &BTreeMap<String, Option<String>>, variable: &str) -> Option<String> {
+    bindings
+        .get(variable)
+        .cloned()
+        .unwrap_or_else(|| Some(variable.to_owned()))
+}
+
+fn validate_number_pattern(
+    pattern: Option<&Pattern<&str>>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<(), Error> {
+    let Some(pattern) = pattern else {
+        return Ok(());
+    };
+    for element in &pattern.elements {
+        if let PatternElement::Placeable { expression } = element {
+            validate_number_expression(expression, path, source, diagnostics)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_number_expression(
+    expression: &Expression<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<(), Error> {
+    match expression {
+        Expression::Inline(expression) => {
+            validate_number_inline(expression, path, source, diagnostics)
+        }
+        Expression::Select { selector, variants } => {
+            validate_number_inline(selector, path, source, diagnostics)?;
+            let selector = match selector {
+                InlineExpression::VariableReference { id } => Some(id.name),
+                _ => None,
+            };
+            for variant in variants {
+                validate_number_pattern(Some(&variant.value), path, source, diagnostics)?;
+                if let Some(selector) = selector {
+                    validate_selector_presentations(
+                        &variant.value,
+                        selector,
+                        path,
+                        source,
+                        diagnostics,
+                    )?;
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+fn validate_selector_presentations(
+    pattern: &Pattern<&str>,
+    selector: &str,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<(), Error> {
+    for element in &pattern.elements {
+        let PatternElement::Placeable { expression } = element else {
+            continue;
+        };
+        match expression {
+            Expression::Inline(InlineExpression::FunctionReference { id, arguments })
+                if id.name == "NUMBER" =>
+            {
+                let selected = matches!(arguments.positional.as_slice(), [InlineExpression::VariableReference { id }] if id.name == selector);
+                if selected && !number_arguments_use_default_precision(arguments) {
+                    return Err(invalid_number_call(
+                        path,
+                        source,
+                        diagnostics,
+                        "NUMBER() for a plural selector must use the default fraction-digit policy",
+                        selector_precision_option(arguments),
+                    ));
+                }
+            }
+            Expression::Select { variants, .. } => {
+                for variant in variants {
+                    validate_selector_presentations(
+                        &variant.value,
+                        selector,
+                        path,
+                        source,
+                        diagnostics,
+                    )?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn number_arguments_use_default_precision(arguments: &CallArguments<&str>) -> bool {
+    arguments.named.iter().all(|argument| match argument.name.name {
+        "minimumFractionDigits" => matches!(&argument.value, InlineExpression::NumberLiteral { value } if *value == "0"),
+        "maximumFractionDigits" => matches!(&argument.value, InlineExpression::NumberLiteral { value } if *value == "3"),
+        _ => true,
+    })
+}
+
+fn selector_precision_option(arguments: &CallArguments<&str>) -> Option<&'static str> {
+    arguments.named.iter().find_map(|argument| match argument.name.name {
+        "minimumFractionDigits"
+            if !matches!(&argument.value, InlineExpression::NumberLiteral { value } if *value == "0") =>
+        {
+            Some("minimumFractionDigits")
+        }
+        "maximumFractionDigits"
+            if !matches!(&argument.value, InlineExpression::NumberLiteral { value } if *value == "3") =>
+        {
+            Some("maximumFractionDigits")
+        }
+        _ => None,
+    })
+}
+
+fn validate_number_inline(
+    expression: &InlineExpression<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<(), Error> {
+    match expression {
+        InlineExpression::FunctionReference { id, arguments } if id.name == "NUMBER" => {
+            validate_number_arguments(arguments, path, source, diagnostics)
+        }
+        InlineExpression::FunctionReference { arguments, .. } => {
+            validate_number_arguments_inside(arguments, path, source, diagnostics)
+        }
+        InlineExpression::TermReference {
+            arguments: Some(arguments),
+            ..
+        } => validate_number_arguments_inside(arguments, path, source, diagnostics),
+        InlineExpression::Placeable { expression } => {
+            validate_number_expression(expression, path, source, diagnostics)
+        }
+        _ => Ok(()),
+    }
+}
+
+fn validate_number_arguments_inside(
+    arguments: &CallArguments<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<(), Error> {
+    for argument in &arguments.positional {
+        validate_number_inline(argument, path, source, diagnostics)?;
+    }
+    for argument in &arguments.named {
+        validate_number_inline(&argument.value, path, source, diagnostics)?;
+    }
+    Ok(())
+}
+
+fn validate_number_arguments(
+    arguments: &CallArguments<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<(), Error> {
+    let invalid = || invalid_number_call(path, source, diagnostics, "invalid NUMBER() call", None);
+    if arguments.positional.len() != 1 {
+        return Err(invalid());
+    }
+    let mut minimum = 0;
+    let mut maximum = 3;
+    for argument in &arguments.named {
+        match argument.name.name {
+            "useGrouping" => match &argument.value {
+                InlineExpression::StringLiteral { value } if matches!(*value, "true" | "false") => {
+                }
+                _ => {
+                    return Err(invalid_number_call(
+                        path,
+                        source,
+                        diagnostics,
+                        "useGrouping must be the string literal \"true\" or \"false\"",
+                        Some("useGrouping"),
+                    ));
+                }
+            },
+            "minimumFractionDigits" => {
+                minimum = number_option(&argument.value).ok_or_else(|| {
+                    invalid_number_call(
+                        path,
+                        source,
+                        diagnostics,
+                        "minimumFractionDigits must be a supported non-negative integer",
+                        Some("minimumFractionDigits"),
+                    )
+                })?;
+            }
+            "maximumFractionDigits" => {
+                maximum = number_option(&argument.value).ok_or_else(|| {
+                    invalid_number_call(
+                        path,
+                        source,
+                        diagnostics,
+                        "maximumFractionDigits must be a supported non-negative integer",
+                        Some("maximumFractionDigits"),
+                    )
+                })?;
+            }
+            _ => {
+                return Err(invalid_number_call(
+                    path,
+                    source,
+                    diagnostics,
+                    "NUMBER() supports only useGrouping, minimumFractionDigits, and maximumFractionDigits",
+                    Some(argument.name.name),
+                ));
+            }
+        }
+    }
+    number::Options::new(true, minimum, maximum).map_err(|_| {
+        invalid_number_call(
+            path,
+            source,
+            diagnostics,
+            "minimumFractionDigits cannot exceed maximumFractionDigits",
+            Some("maximumFractionDigits"),
+        )
+    })?;
+    validate_number_arguments_inside(arguments, path, source, diagnostics)
+}
+
+fn invalid_number_call(
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    message: &str,
+    option: Option<&str>,
+) -> Error {
+    let offset = option
+        .and_then(|option| source.rfind(option))
+        .and_then(|option_offset| source[..option_offset].rfind("NUMBER("))
+        .or_else(|| source.rfind("NUMBER("))
+        .unwrap_or(0);
+    Error::Parse(Box::new(FluentDiagnostic {
+        path: diagnostics.display_path(path),
+        message: message.into(),
+        source_code: diagnostics.named_source(path, source, "Fluent"),
+        span: (offset, "NUMBER".len()).into(),
+    }))
+}
+
+fn number_option(value: &InlineExpression<&str>) -> Option<u16> {
+    let InlineExpression::NumberLiteral { value } = value else {
+        return None;
+    };
+    value
+        .parse::<u16>()
+        .ok()
+        .filter(|value| *value <= number::MAX_FRACTION_DIGITS)
 }
 
 /// Finds each parsed top-level entry after its predecessor. `split_inclusive`

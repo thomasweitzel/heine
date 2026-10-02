@@ -546,6 +546,121 @@ fn formats_page_dates_for_the_locale_being_rendered() {
 }
 
 #[test]
+fn formats_decimal_values_consistently_in_templates_and_fluent() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_number(value=1234567.895, maximum_fraction_digits=2) }}|{{ t(id='number', value=1234567.895) }}|{{ t(id='bare', value=1234567.895) }}|{{ t(id='ungrouped', value=1234567.895) }}|{{ t(id='selector', count=1.0004) }}|{{ t(id='indirect', count=1.0004) }}",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "number = { NUMBER($value, maximumFractionDigits: 2) }\nbare = { $value }\nungrouped = { NUMBER($value, useGrouping: \"false\", maximumFractionDigits: 1) }\nselector = { $count ->\n    [one] one\n   *[other] other\n}\nindirect = { selector }\n",
+    );
+    fixture.write(
+        "locales/de/site.ftl",
+        "number = { NUMBER($value, maximumFractionDigits: 2) }\nbare = { $value }\nungrouped = { NUMBER($value, useGrouping: \"false\", maximumFractionDigits: 1) }\nselector = { $count ->\n    [one] one\n   *[other] other\n}\nindirect = { selector }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/de/index.page", "template = 'page.tera'\n");
+    fixture.write("content/pl/index.page", "template = 'page.tera'\n");
+
+    build_at(fixture.path(), BuildMode::Full).expect("localized decimal build");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
+        "1,234,567.9|1,234,567.9|1,234,567.895|1234567.9|one|one"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap(),
+        "1.234.567,9|1.234.567,9|1.234.567,895|1234567,9|one|one"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/pl/index.html")).unwrap(),
+        "1\u{a0}234\u{a0}567,9|1,234,567.9|1,234,567.895|1234567.9|one|one"
+    );
+}
+
+#[test]
+fn rejects_inexact_fluent_translation_arguments() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "templates/page.tera",
+        "{{ t(id='items', count=9007199254740993) }}",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsafe Fluent integer");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("cannot distinguish this") && diagnostic.contains("format_number"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_incompatible_decimal_precision_at_the_template_call_site() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_number(value=1, minimum_fraction_digits=3, maximum_fraction_digits=2) }}",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("incompatible precision");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("minimum_fraction_digits")
+            && diagnostic.contains("maximum_fraction_digits")
+            && diagnostic.contains("templates/page.tera:1"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_unsupported_fluent_number_options_at_the_resource_call() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { NUMBER($count, maximumFractionDigits: 2, currency: \"EUR\") }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsupported NUMBER option");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("NUMBER() supports only")
+            && diagnostic.contains("locales/en/site.ftl")
+            && diagnostic.contains("NUMBER"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_a_plural_selector_with_incompatible_number_precision() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { $count ->\n    [one] { NUMBER($count, minimumFractionDigits: 1) } item\n   *[other] { NUMBER($count, minimumFractionDigits: 1) } items\n}\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("incompatible selector precision");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("default fraction") && diagnostic.contains("locales/en/site.ftl"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn reports_invalid_date_formatting_options_at_the_template_call_site() {
     let fixture = multilingual_fixture();
     fixture.write(

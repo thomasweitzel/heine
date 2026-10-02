@@ -6,7 +6,13 @@ use icu_datetime::{DateTimeFormatter, fieldsets::YMD, input::Date};
 use jiff::Timestamp;
 use thiserror::Error;
 
-use crate::{locale::Locale, localization::Arguments};
+use crate::{
+    locale::Locale,
+    localization::{
+        Arguments,
+        number::{self, LocalizedNumber, Options as NumberOptions},
+    },
+};
 
 use super::{arguments, runtime::TemplateRuntime};
 
@@ -27,10 +33,8 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                 if matches!(key, "id" | "attribute") {
                     continue;
                 }
-                if let Some(value) = value.as_i64() {
-                    arguments.set(key.to_owned(), value);
-                } else if let Some(value) = value.as_f64() {
-                    arguments.set(key.to_owned(), value);
+                if value.is_i64() || value.is_u64() || value.is_f64() {
+                    arguments.set_number(key.to_owned(), localized_number(value)?);
                 } else if let Some(value) = value.as_bool() {
                     arguments.set(key.to_owned(), value.to_string());
                 } else if let Some(value) = value.as_str() {
@@ -67,6 +71,62 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                 .map_err(tera::Error::message)
         },
     );
+
+    let number_runtime = runtime.clone();
+    tera.register_function(
+        "format_number",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only(
+                "format_number",
+                &kwargs,
+                &[
+                    "value",
+                    "grouping",
+                    "minimum_fraction_digits",
+                    "maximum_fraction_digits",
+                ],
+            )?;
+            let value = kwargs.get("value")?.ok_or_else(|| {
+                tera::Error::message("format_number() requires keyword argument \"value\"")
+            })?;
+            let number = localized_number(value)?;
+            let grouping = kwargs.get::<bool>("grouping")?.unwrap_or(true);
+            let minimum = fraction_digits(&kwargs, "minimum_fraction_digits", 0)?;
+            let maximum = fraction_digits(&kwargs, "maximum_fraction_digits", 3)?;
+            let options = NumberOptions::new(grouping, minimum, maximum)
+                .map_err(|error| tera::Error::message(error.to_string()))?;
+            number::format(&number_runtime.locale(state)?, &number, options)
+                .map(Into::into)
+                .map_err(|error| tera::Error::message(error.to_string()))
+        },
+    );
+}
+
+fn localized_number(value: &tera::Value) -> tera::TeraResult<LocalizedNumber> {
+    if let Some(value) = value.as_i64() {
+        Ok(LocalizedNumber::from_i64(value))
+    } else if let Some(value) = value.as_u64() {
+        Ok(LocalizedNumber::from_u64(value))
+    } else if let Some(value) = value.as_f64() {
+        LocalizedNumber::from_f64(value).map_err(|error| tera::Error::message(error.to_string()))
+    } else {
+        Err(tera::Error::message(
+            "format_number() value must be a finite number",
+        ))
+    }
+}
+
+fn fraction_digits(
+    kwargs: &tera::Kwargs,
+    name: &'static str,
+    default: u16,
+) -> tera::TeraResult<u16> {
+    match kwargs.get::<u64>(name)? {
+        Some(value) => u16::try_from(value).map_err(|_| {
+            tera::Error::message(format!("{name} must be an integer from 0 through 32768"))
+        }),
+        None => Ok(default),
+    }
 }
 
 #[derive(Debug, Error)]

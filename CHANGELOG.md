@@ -31,6 +31,13 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Added
+
+- **Localized decimal numbers.** Templates can now use `format_number()` and
+  Fluent messages can use bare numeric placeables or `NUMBER()`. Both use the
+  supplying locale and bundled ICU data, while checked diagnostics reject a
+  numeric argument that Fluent cannot represent without changing its value.
+
 ### Fixed
 
 - **Editorial time-zone data.** Builds now always use Heine's bundled IANA

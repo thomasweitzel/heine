@@ -220,7 +220,9 @@ Fluent messages may use named values, terms, attributes, message references,
 and select expressions. Select expressions provide correct language-specific
 plural categories and can also express gender or other controlled choices.
 The initial value contract accepts strings, numbers, and booleans/select
-values. Dates use the separate `format_date()` template function so the stable
+values. Numbers use the same locale-aware formatting boundary as
+`format_number()` and Fluent's `NUMBER()` function. The [localized numbers](localized-values.md)
+guide explains its exact Fluent boundary and presentation options. Dates use the separate `format_date()` template function so the stable
 UTC RFC 3339 timestamp can remain suitable for HTML `datetime` attributes. It
 accepts the rendered `page.published` value, converts it into the site's
 editorial time zone, and formats that calendar date for the current locale with

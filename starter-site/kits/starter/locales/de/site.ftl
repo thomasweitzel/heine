@@ -25,18 +25,18 @@ starter-post-dates = Datumsangaben zum Beitrag
 starter-post-reading-facts = Wortzahl und Lesezeit
 starter-word-count = { $words ->
    [one] Ein Wort
-  *[other] { $words } Wörter
+  *[other] { NUMBER($words) } Wörter
 }
 starter-reading-time = etwa { $minutes ->
    [one] eine Minute
-  *[other] { $minutes } Minuten
+  *[other] { NUMBER($minutes) } Minuten
 } Lesezeit
 starter-reading-facts = { $words ->
    [one] Ein Wort
-  *[other] { $words } Wörter
+  *[other] { NUMBER($words) } Wörter
 } · etwa { $minutes ->
    [one] eine Minute
-  *[other] { $minutes } Minuten
+  *[other] { NUMBER($minutes) } Minuten
 } Lesezeit
 
 # Beschriftungen für lokale Navigation und Fußnotensteuerungen.

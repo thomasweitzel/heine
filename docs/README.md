@@ -57,6 +57,8 @@ required prerequisite for the guides.
   variants of one authored image.
 - [Word counts and reading time](markdown-facts.md): deterministic Markdown
   facts and opt-in, locale-specific reading-time estimates.
+- [Localized numbers](localized-values.md): deterministic decimal formatting
+  shared by Tera and Fluent.
 - [Renderer adapters](renderer-adapters.md): configure and use checked
   external stream and workspace-renderer replacements.
 - [Reproducible renderer examples](renderer-examples.md): install Typst or
@@ -83,6 +85,7 @@ features and deferred proposals.
 - [Copied-asset licensing coverage](design/asset-licensing-coverage.md)
 - [Draft publication](design/drafts.md)
 - [Kits](design/kits.md)
+- [Localized value formatting](design/localized-value-formatting.md)
 - [Markdown facts](design/markdown-facts.md)
 - [Multilingual sitemap alternates](design/multilingual-sitemap-alternates.md)
 - [Margin footnotes](design/margin-footnotes.md)
@@ -94,9 +97,6 @@ features and deferred proposals.
 
 ### Deferred proposals
 
-- [Localized value formatting](design/localized-value-formatting.md): a
-  proposed checked CLDR formatting boundary for exact Tera decimals, a
-  Fluent-safe numeric subset, and temporal values.
 - [Percentage and currency formatting](design/percentage-and-currency-formatting.md):
   deferred extensions that await stable ICU4X formatter APIs.
 - [Renderer output dependencies](design/renderer-output-dependencies.md): a

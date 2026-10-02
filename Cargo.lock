@@ -480,6 +480,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79c3c892f121fff406e5dd6b28c1b30096b95111c30701a899d4f2b18da6d1bd"
 dependencies = [
  "displaydoc",
+ "ryu",
  "smallvec",
  "writeable",
 ]
@@ -666,6 +667,7 @@ dependencies = [
  "axum",
  "base64",
  "clap",
+ "fixed_decimal",
  "fluent-bundle",
  "fluent-syntax",
  "giallo",
@@ -673,8 +675,10 @@ dependencies = [
  "icu_calendar",
  "icu_collator",
  "icu_datetime",
+ "icu_decimal",
  "icu_locale",
  "image",
+ "intl-memoizer",
  "jiff",
  "miette",
  "mime",
