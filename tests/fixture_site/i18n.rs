@@ -641,6 +641,28 @@ fn rejects_unsupported_fluent_number_options_at_the_resource_call() {
 }
 
 #[test]
+fn reports_unknown_fluent_functions_at_the_resource_call() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { \"NUMBERS(\" } { NUMBERS($count) }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown Fluent function");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("unknown Fluent function")
+            && diagnostic.contains("\"NUMBERS\"")
+            && diagnostic.contains("Heine currently provides NUMBER()")
+            && diagnostic.contains("locales/en/site.ftl:1:26"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn rejects_a_plural_selector_with_incompatible_number_precision() {
     let fixture = multilingual_fixture();
     fixture.write(

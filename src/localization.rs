@@ -188,7 +188,7 @@ pub(crate) struct FluentDiagnostic {
     message: String,
     #[source_code]
     source_code: NamedSource<String>,
-    #[label("invalid Fluent syntax here")]
+    #[label("problem in this Fluent source")]
     span: SourceSpan,
 }
 
@@ -1181,8 +1181,8 @@ fn validate_number_inline(
         InlineExpression::FunctionReference { id, arguments } if id.name == "NUMBER" => {
             validate_number_arguments(arguments, path, source, diagnostics)
         }
-        InlineExpression::FunctionReference { arguments, .. } => {
-            validate_number_arguments_inside(arguments, path, source, diagnostics)
+        InlineExpression::FunctionReference { id, arguments: _ } => {
+            Err(unknown_fluent_function(path, source, diagnostics, id.name))
         }
         InlineExpression::TermReference {
             arguments: Some(arguments),
@@ -1300,6 +1300,95 @@ fn invalid_number_call(
         source_code: diagnostics.named_source(path, source, "Fluent"),
         span: (offset, "NUMBER".len()).into(),
     }))
+}
+
+/// Fluent-bundle registers one function for Heine. Checking every function
+/// reference while loading a resource keeps a typo in a translation from
+/// becoming a later, unrelated template-rendering error.
+fn unknown_fluent_function(
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    function: &str,
+) -> Error {
+    let offset = fluent_function_offset(source, function).unwrap_or_default();
+    Error::Parse(Box::new(FluentDiagnostic {
+        path: diagnostics.display_path(path),
+        message: format!("unknown Fluent function {function:?}; Heine currently provides NUMBER()"),
+        source_code: diagnostics.named_source(path, source, "Fluent"),
+        span: (offset, function.len()).into(),
+    }))
+}
+
+/// Fluent's AST intentionally does not retain source spans. This narrow lexer
+/// recovers a function-name span without mistaking ordinary resource text or
+/// a string literal for a call.
+fn fluent_function_offset(source: &str, function: &str) -> Option<usize> {
+    let mut offset = 0;
+    let mut placeables = 0usize;
+    let mut quoted = false;
+    let mut line_start = true;
+
+    while offset < source.len() {
+        let character = source[offset..].chars().next()?;
+        if quoted {
+            if character == '\\' {
+                offset += 1;
+                if let Some(next) = source[offset..].chars().next() {
+                    offset += next.len_utf8();
+                }
+                continue;
+            }
+            if character == '"' {
+                quoted = false;
+            }
+            offset += character.len_utf8();
+            continue;
+        }
+
+        if line_start && character.is_ascii_whitespace() && character != '\n' {
+            offset += character.len_utf8();
+            continue;
+        }
+        if line_start && character == '#' {
+            let line_end = source[offset..]
+                .find('\n')
+                .map_or(source.len(), |length| offset + length);
+            offset = line_end;
+            continue;
+        }
+
+        line_start = character == '\n';
+        match character {
+            '"' if placeables > 0 => quoted = true,
+            '{' => placeables += 1,
+            '}' => placeables = placeables.saturating_sub(1),
+            _ if placeables > 0 && source[offset..].starts_with(function) => {
+                let before = source[..offset].chars().next_back();
+                let after = offset + function.len();
+                let mut next = after;
+                while source[next..]
+                    .chars()
+                    .next()
+                    .is_some_and(|character| character.is_ascii_whitespace())
+                {
+                    next += source[next..].chars().next()?.len_utf8();
+                }
+                if !before.is_some_and(fluent_identifier_character)
+                    && source[next..].starts_with('(')
+                {
+                    return Some(offset);
+                }
+            }
+            _ => {}
+        }
+        offset += character.len_utf8();
+    }
+    None
+}
+
+fn fluent_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
 }
 
 fn number_option(value: &InlineExpression<&str>) -> Option<u16> {

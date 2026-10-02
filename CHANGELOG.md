@@ -40,6 +40,10 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Fluent function diagnostics.** Misspelled Fluent functions now fail while
+  Heine loads the resource and identify the function in the `.ftl` source,
+  rather than failing later at an unrelated `t()` template call.
+
 - **Editorial time-zone data.** Builds now always use Heine's bundled IANA
   time-zone database. A machine's `TZDIR` or installed zoneinfo files can no
   longer change publication-date resolution or other editorial-time-zone
