@@ -94,6 +94,11 @@ features and deferred proposals.
 
 ### Deferred proposals
 
+- [Localized value formatting](design/localized-value-formatting.md): a
+  proposed checked CLDR formatting boundary for exact Tera decimals, a
+  Fluent-safe numeric subset, and temporal values.
+- [Percentage and currency formatting](design/percentage-and-currency-formatting.md):
+  deferred extensions that await stable ICU4X formatter APIs.
 - [Renderer output dependencies](design/renderer-output-dependencies.md): a
   future typed resource-manifest boundary for embedded renderer results.
 

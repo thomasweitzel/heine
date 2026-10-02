@@ -69,6 +69,21 @@ jobs:
       - name: Run tests
         run: cargo +1.88.0 test --all-targets --all-features
 
+      - name: Verify bundled editorial time-zone data
+        run: |
+          set -euo pipefail
+
+          features="$(cargo +1.88.0 tree --locked -e features -i jiff)"
+          printf '%s\n' "$features"
+          grep --fixed-strings --quiet 'jiff feature "tzdb-bundle-always"' <<<"$features"
+
+          for forbidden in tz-system tzdb-bundle-platform tzdb-zoneinfo tzdb-concatenated; do
+            if grep --fixed-strings --quiet "jiff feature \"$forbidden\"" <<<"$features"; then
+              echo "error: Jiff feature $forbidden permits host time-zone data" >&2
+              exit 1
+            fi
+          done
+
       - name: Check the crate package
         run: |
           cargo +1.88.0 package --locked

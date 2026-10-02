@@ -263,6 +263,40 @@ mod tests {
 
     #[test]
     fn formats_timestamps_in_the_editorial_time_zone() {
+        assert_berlin_editorial_dates();
+    }
+
+    #[test]
+    fn editorial_time_zone_uses_bundled_data() -> Result<(), Box<dyn std::error::Error>> {
+        const CHILD: &str = "HEINE_EDITORIAL_TIME_ZONE_CHILD";
+
+        if std::env::var_os(CHILD).is_some() {
+            assert_berlin_editorial_dates();
+            return Ok(());
+        }
+
+        let nonexistent_tzdir = std::env::temp_dir().join(format!(
+            "heine-no-zoneinfo-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let status = std::process::Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "template::localization::tests::editorial_time_zone_uses_bundled_data",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("TZ", "Pacific/Kiritimati")
+            .env("TZDIR", nonexistent_tzdir)
+            .status()?;
+        assert!(status.success(), "isolated time-zone test failed");
+        Ok(())
+    }
+
+    fn assert_berlin_editorial_dates() {
         let formats = DateFormats::for_locale(&"en".parse().unwrap()).unwrap();
         let berlin = crate::config::EditorialTimeZone::try_from("Europe/Berlin".to_owned())
             .expect("known IANA time zone");

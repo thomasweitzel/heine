@@ -24,6 +24,17 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Under consideration
 
+### Localized value formatting
+
+The proposed [localized value-formatting design](design/localized-value-formatting.md)
+would give Tera exact checked decimal formatting and Fluent a checked numeric
+subset compatible with its current selector model, alongside dates, times, and
+date times. It deliberately excludes a generic ICU formatting language, units,
+relative time, and browser-selected time zones. The first implementation
+package would establish locale-aware decimal formatting and Fluent `NUMBER()`.
+The separate [percentage and currency design](design/percentage-and-currency-formatting.md)
+preserves those deliberate later extensions until ICU4X provides stable APIs.
+
 ### Redirect aliases
 
 A host-level redirect is preferable whenever the deployment platform supports

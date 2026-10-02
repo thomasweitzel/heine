@@ -31,6 +31,13 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Editorial time-zone data.** Builds now always use Heine's bundled IANA
+  time-zone database. A machine's `TZDIR` or installed zoneinfo files can no
+  longer change publication-date resolution or other editorial-time-zone
+  output.
+
 ## [0.9.4] - 2026-09-30
 
 ### Changed

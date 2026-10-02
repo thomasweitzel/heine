@@ -116,7 +116,15 @@ Perform these steps on the reviewed release branch, normally `main`.
    Inspect the package listing. It must contain the intended source,
    documentation, and licence material, and no local-only files. The starter
    site must build as extracted source, not only from an existing `public/`
-   directory.
+   directory. Then confirm that Jiff cannot consult host time-zone data:
+
+   ```bash
+   features="$(cargo tree --locked -e features -i jiff)"
+   printf '%s\n' "$features"
+   rg 'jiff feature "tzdb-bundle-always"' <<<"$features"
+   ! rg 'jiff feature "(tz-system|tzdb-bundle-platform|tzdb-zoneinfo|tzdb-concatenated)"' \
+     <<<"$features"
+   ```
 
 5. Before the first crates.io publication, confirm that `Cargo.toml` has the
    public canonical `repository` URL and accurate description, categories,
