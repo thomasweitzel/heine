@@ -1,5 +1,3 @@
-# About Heine
-
 Heine is a small static-site generator written in Rust. It turns a configured
 content tree and Tera2 templates into deterministic output, checking internal
 relationships while the site is built rather than leaving broken links for a

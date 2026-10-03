@@ -1,5 +1,3 @@
-# Über Heine
-
 Heine ist ein kleiner statischer Site-Generator, geschrieben in Rust. Aus
 einem klar gegliederten Inhaltsbaum und Tera2-Templates erzeugt er eine
 deterministische Website. Interne Verweise prüft er schon beim Bauen, damit
