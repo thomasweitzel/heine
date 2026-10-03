@@ -266,10 +266,11 @@ Neither `dateStyle` nor `timeStyle` is a generic ICU escape hatch.
 Fluent resource validation rejects an unknown formatting function, unknown
 option, invalid literal option value, incompatible minimum and maximum digit
 pair, or an option that does not apply to the chosen formatter. It also rejects
-a numeric formatter that could disagree with a selector for the same Fluent
-variable. A formatting option must be a literal, so resource loading can
-perform those checks. A dynamic argument with the wrong value type fails when
-Heine formats the selected message.
+a numeric formatter that could disagree with a selector in the same message.
+After `t()` resolves a message and its reachable references, it rejects the
+same mismatch across that reference closure. A formatting option must be a
+literal, so resource loading can perform its checks. A dynamic argument with
+the wrong value type fails when Heine formats the selected message.
 
 `DATETIME()` accepts only the two canonical temporal forms:
 
@@ -325,8 +326,9 @@ occurrence must use the selector's effective digit policy. The closure includes
 the selected message or attribute and every reachable message or term reference
 with its variable bindings. `NUMBER()` may change grouping, omit digit options,
 or repeat the default maximum of three and minimum of zero. The resource loader
-rejects another minimum or maximum digit setting because it could display
-plural operands that disagree with the selector. This rejects
+rejects another minimum or maximum digit setting in the selected message. When
+a reference introduces that setting, the checked `t()` call rejects it because
+it could display plural operands that disagree with the selector. This rejects
 `NUMBER($count, minimumFractionDigits: 1)` beside a `$count` selector instead
 of silently producing English text such as “1.0 item”. The first package does
 not provide per-selector precision. A template author who needs a different
@@ -346,14 +348,16 @@ Every formatter boundary remains checked:
 - Tera formatting functions identify their call site and explain invalid
   values, unknown options, incompatible options, or a missing `site.time_zone`.
 - `t()` identifies its call site when an argument cannot become a supported
-  Fluent formatting value, including a decimal that cannot round-trip through
-  Fluent's `f64` boundary. For example, a large integer diagnostic explains
-  that Fluent cannot distinguish it from a neighboring integer and recommends
-  formatting it with Tera's `format_number()` instead.
+  Fluent formatting value, including a reference-closure selector mismatch or
+  a decimal that cannot round-trip through Fluent's `f64` boundary. A
+  reference-closure diagnostic also names the Fluent message declaration that
+  introduces the incompatible presentation. For example, a large integer
+  diagnostic explains that Fluent cannot distinguish it from a neighboring
+  integer and recommends formatting it with Tera's `format_number()` instead.
 - Fluent resource loading identifies the FTL source and expression for an
-  unknown Heine formatting function, invalid literal option, or selector and
-  numeric-presentation mismatch. It also identifies an unsafe exact-number
-  variant key.
+  unknown Heine formatting function, invalid literal option, or direct
+  selector and numeric-presentation mismatch. It also identifies an unsafe
+  exact-number variant key.
 - Formatting a selected message identifies both the Tera call and the FTL
   message when a dynamic argument has an incompatible type or temporal form.
 

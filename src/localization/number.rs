@@ -285,4 +285,23 @@ mod tests {
             "18,446,744,073,709,551,615"
         );
     }
+
+    #[test]
+    fn accepts_the_documented_fraction_digit_boundary() {
+        let options = Options::new(false, MAX_FRACTION_DIGITS, MAX_FRACTION_DIGITS).unwrap();
+        let output = format(
+            &"en".parse().unwrap(),
+            &LocalizedNumber::from_i64(1),
+            options,
+        )
+        .unwrap();
+        assert_eq!(output.len(), usize::from(MAX_FRACTION_DIGITS) + 2);
+        assert!(output.starts_with("1."));
+    }
+
+    #[test]
+    fn accepts_scientific_notation_from_a_template_float() {
+        let value = LocalizedNumber::from_f64(1.25e-7).unwrap();
+        assert_eq!(value.to_string(), "0.000000125");
+    }
 }

@@ -641,6 +641,26 @@ fn rejects_unsupported_fluent_number_options_at_the_resource_call() {
 }
 
 #[test]
+fn reports_the_second_invalid_number_call_at_its_own_source_span() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { NUMBER($first) } { NUMBER($second, currency: \"EUR\") }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsupported NUMBER option");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("locales/en/site.ftl:1:30")
+            && diagnostic.contains("NUMBER() supports only"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn reports_unknown_fluent_functions_at_the_resource_call() {
     let fixture = multilingual_fixture();
     fixture.write(
@@ -678,6 +698,31 @@ fn rejects_a_plural_selector_with_incompatible_number_precision() {
     let diagnostic = format!("{error:?}");
     assert!(
         diagnostic.contains("default fraction") && diagnostic.contains("locales/en/site.ftl"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_incompatible_number_precision_through_a_message_reference() {
+    let fixture = multilingual_fixture();
+    fixture.write("templates/page.tera", "{{ t(id='items', count=1) }}");
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { $count ->\n    [one] { display } item\n   *[other] { display } items\n}\ndisplay = { NUMBER($count, maximumFractionDigits: 2) } { NUMBER($count) }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("incompatible referenced selector precision");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("default fraction-digit policy")
+            && diagnostic.contains("templates/page.tera:1")
+            && diagnostic.contains("locales/en/site.ftl:5:1")
+            && diagnostic.contains("referenced Fluent message")
+            && diagnostic.contains("\"display\""),
         "{diagnostic}"
     );
 }
