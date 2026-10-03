@@ -64,7 +64,7 @@ starter-authors = { $count ->
 }
 starter-blog-post-summary = { $count ->
    [one] Bisher gibt es einen Beitrag auf Deutsch.
-   *[other] Bisher gibt es { $count } Beiträge auf Deutsch.
+   *[other] Bisher gibt es { NUMBER($count) } Beiträge auf Deutsch.
 }
 starter-tags-index-description = Durchsuche die Schlagwörter der Beiträge in dieser Heine-Starter-Site.
 starter-tags-term-description = Beiträge mit dem Schlagwort { $term } in dieser Heine-Starter-Site.

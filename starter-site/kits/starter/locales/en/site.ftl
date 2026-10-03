@@ -64,7 +64,7 @@ starter-authors = { $count ->
 }
 starter-blog-post-summary = { $count ->
    [one] So far there is one post.
-   *[other] So far there are { $count } posts.
+   *[other] So far there are { NUMBER($count) } posts.
 }
 starter-tags-index-description = Browse the tags used by posts in this Heine starter site.
 starter-tags-term-description = Posts filed under { $term } in this Heine starter site.
