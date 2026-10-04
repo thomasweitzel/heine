@@ -33,6 +33,13 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Added
 
+- **Generated-listing sitemap boundaries.** Taxonomy definitions and the
+  global Series configuration can now use `sitemap = false` to exclude their
+  complete generated listing families, including every derived pager, from a
+  configured sitemap. Sitemap configuration can also use
+  `include_pagers = false` to omit only derived pager pages while retaining
+  every listing's first page.
+
 - **Localized dates and times.** Templates can now use `format_time()` and
   `format_datetime()`, while Fluent messages can use `DATETIME()`. They format
   RFC 3339 instants with the configured editorial time zone and bundled ICU

@@ -18,11 +18,6 @@ and a cohesive starter-site example where one fits naturally.
 - **Collection-specific membership weights:** model a page's distinct curated
   position in more than one weight-ordered collection without overloading its
   directory sibling weight.
-- **Generated-listing sitemap inclusion:** let a taxonomy or Series definition
-  exclude its complete generated listing family from the sitemap. One setting
-  must cover the taxonomy or Series index, every listing, and every derived
-  pager; authored paginated listings already inherit their page's sitemap
-  setting.
 - **Dependency-aware incremental builds** and, if large sites justify it,
   streaming rendering into the staging tree while preserving atomic
   publication.

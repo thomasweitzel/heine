@@ -263,9 +263,7 @@ publishing concerns.
 
 When the opted-out page is a paginated listing, the setting excludes both its
 authored first page and every pager generated from it. They are one listing
-family with one authored owner. Taxonomy index and term pages have no such
-owner, so the first version has no taxonomy-wide or individual taxonomy-page
-opt-out.
+family with one authored owner.
 
 Page sitemap settings require sitemap generation to be enabled. If a page has
 `sitemap = false` but `heine.toml` has no `[sitemap]` table, Heine reports
@@ -277,6 +275,26 @@ The page field accepts only `false`; omit it to use ordinary membership.
 `sitemap = true` is rejected rather than accepted as an inert restatement of
 the default. Sitemap settings on a non-rendered page are rejected for the same
 reason.
+
+### Derived pagers
+
+By default, a sitemap includes every pager because each has its own canonical
+URL. When every primary page is already listed directly, a site can keep pager
+navigation public while omitting its derived pages from the sitemap:
+
+```toml
+[sitemap]
+include_pagers = false
+```
+
+This retains every first listing page, including authored listings, taxonomy
+indexes and term listings, and Series indexes and listings. It excludes only
+later `page/2.html`, `page/3.html`, and similar outputs. The setting applies
+to all pager kinds so the sitemap has one consistent pager policy. It neither
+changes pager routes or links nor asks search engines not to index them.
+
+`include_pagers` defaults to `true`. The field accepts only `false`; omit it
+when derived pagers should remain sitemap entries.
 
 ### Directory boundaries
 
@@ -302,8 +320,28 @@ has the same effect and can state an individual page's intent without
 weakening the boundary.
 
 Generated pagers cannot have an independent opt-out. Taxonomy pages have no
-authored owner in the first version, so they likewise have no individual
-opt-out.
+authored owner, so their taxonomy definition owns one whole listing-family
+boundary instead:
+
+```toml
+[taxonomies.tags]
+collection = "posts"
+path = "tags"
+index_template = "taxonomy-index.tera"
+term_template = "taxonomy-term.tera"
+per_page = 20
+sitemap = false
+```
+
+This excludes the taxonomy index, every term listing, and every derived
+pager. The setting does not change the generated routes or any other taxonomy
+behavior. Likewise, `sitemap = false` in `[series]` excludes the Series index,
+every Series listing, and their pagers. Both settings require `[sitemap]` and
+accept only `false`; omit them to include the complete generated family.
+
+Generated pages have no independent sitemap setting. A whole-family boundary
+keeps their sitemap membership aligned with the configuration that owns their
+routes.
 
 ## First-version boundary
 
@@ -312,7 +350,7 @@ page chronology supplies it. It does not provide:
 
 - arbitrary externally supplied URLs;
 - `changefreq` or `priority` fields;
-- taxonomy-wide or individual taxonomy-page opt-outs;
+- individual generated-listing-page opt-outs;
 - XML template overrides or template-side sitemap generation; or
 - a development-only sitemap with local-host URLs.
 

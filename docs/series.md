@@ -64,6 +64,11 @@ The first listing page is `index.html`. Later pages always use the fixed
 in ordinary output ownership and sitemaps. It does not create collection,
 taxonomy, feed, or search membership.
 
+Set `sitemap = false` in `[series]` to exclude the generated Series index,
+every listing, and every derived pager from a configured sitemap. The setting
+accepts only `false`; omit it to keep ordinary sitemap membership. It changes
+neither generated routes nor page-level Series navigation.
+
 ## Build behavior
 
 Series relationships are full-build concerns. A quick build may re-render an

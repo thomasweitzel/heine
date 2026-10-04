@@ -106,6 +106,45 @@ fn generates_checked_series_views_and_paginated_listings() {
 }
 
 #[test]
+fn series_sitemap_boundary_excludes_its_index_listings_and_pagers() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\norigin = 'https://example.org'\n\n[sitemap]\n\n[series]\npath = 'series'\nindex_template = 'series-index.tera'\nlisting_template = 'series.tera'\nindex_title_key = 'series-index-title'\nper_page = 1\nsitemap = false\n\n[series.definitions.guide]\ntitle_key = 'series-guide-title'\n",
+    );
+    fixture.write(
+        "content/en/one.page",
+        "template = 'page.tera'\ntitle = 'One'\n[[series]]\nid = 'guide'\nposition = 10\n",
+    );
+    fixture.write(
+        "content/en/two.page",
+        "template = 'page.tera'\ntitle = 'Two'\n[[series]]\nid = 'guide'\nposition = 20\n",
+    );
+    resources(&fixture);
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    for path in [
+        "public/series/index.html",
+        "public/series/guide/index.html",
+        "public/series/guide/page/2.html",
+    ] {
+        assert!(fixture.path().join(path).is_file(), "{path}");
+    }
+    let sitemap =
+        fs::read_to_string(fixture.path().join("public/sitemap.xml")).expect("sitemap output");
+    assert!(
+        sitemap.contains("https://example.org/one.html"),
+        "{sitemap}"
+    );
+    assert!(
+        sitemap.contains("https://example.org/two.html"),
+        "{sitemap}"
+    );
+    assert!(!sitemap.contains("/series/"), "{sitemap}");
+}
+
+#[test]
 fn rejects_duplicate_series_positions_at_both_memberships() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", config());

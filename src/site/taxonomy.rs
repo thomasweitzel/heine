@@ -54,6 +54,7 @@ pub(super) struct ResolvedTaxonomy {
     route_origin: Origin,
     per_page_origin: Origin,
     per_page: usize,
+    sitemap_include: bool,
     terms: Vec<ResolvedTerm>,
 }
 
@@ -90,6 +91,7 @@ pub(super) struct Task {
     pub(super) output_source: Arc<NamedSource<String>>,
     pub(super) output_span: SourceSpan,
     pub(super) latest_input: SystemTime,
+    pub(super) sitemap_include: bool,
     pub(super) taxonomy: View,
     pub(super) pagination: Option<Arc<Pager>>,
     term_paths: Arc<BTreeMap<String, OutputPath>>,
@@ -530,6 +532,7 @@ fn resolved(
             span: per_page_span,
         },
         per_page: definition.per_page(),
+        sitemap_include: definition.sitemap_include(),
         terms,
     }
 }
@@ -631,6 +634,7 @@ impl Catalog {
                     output_span: taxonomy.route_origin.span,
                     latest_input: latest_for_terms(locale, &taxonomy.terms, latest_inputs)
                         .max(locale_latest[locale]),
+                    sitemap_include: taxonomy.sitemap_include,
                     taxonomy: View {
                         name: taxonomy.name.to_string(),
                         url: None,
@@ -727,6 +731,7 @@ fn term_tasks(
                 taxonomy.per_page_origin.span
             },
             latest_input,
+            sitemap_include: taxonomy.sitemap_include,
             taxonomy: View {
                 name: taxonomy.name.to_string(),
                 url: None,
