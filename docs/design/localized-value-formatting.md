@@ -2,10 +2,12 @@
 
 ## Status
 
-Partially implemented. Package 1 provides deterministic decimal formatting in
-`format_number()`, bare Fluent numeric placeables, and Fluent `NUMBER()`.
-Calendar dates retain the existing `format_date()` contract. Time and
-date-time formatting remain planned work in this record.
+Implemented for decimal and temporal values. Package 1 provides deterministic
+decimal formatting in `format_number()`, bare Fluent numeric placeables, and
+Fluent `NUMBER()`. Package 2 preserves `format_date()` and adds
+`format_time()`, `format_datetime()`, and Fluent `DATETIME()` for the site's
+editorial time zone. Percentage and currency formatting remain separate
+deferred proposals.
 
 ## Decision
 
@@ -401,13 +403,13 @@ needs them.
    Fluent's `f64` boundary. Cover direct conversion in Tera for `i64::MIN`,
    `i64::MAX`, and `u64::MAX`, ordinary binary-float values, and finite floats
    whose shortest representation uses scientific notation.
-2. **Temporal formatting.** Preserve `format_date()` behavior, then add
-   `format_time()`, `format_datetime()`, and Fluent `DATETIME()`. Cover
-   calendar-date rejection, editorial-zone conversion, daylight-saving
-   boundaries in both directions, date-only, time-only, and combined field
-   sets, and matching Tera and Fluent style lengths. Assert that long time
-   output contains no zone text. Run the editorial-zone fixture in an isolated
-   process with varied `TZ` and `TZDIR` values.
+2. **Temporal formatting.** Completed. `format_date()` retains its calendar
+   date contract; `format_time()`, `format_datetime()`, and Fluent
+   `DATETIME()` format RFC 3339 instants through the editorial zone. Focused
+   tests cover calendar-date rejection, daylight-saving boundaries in both
+   directions, date-only, time-only, and combined field sets, matching Tera
+   and Fluent output, and long time output without a zone label. The existing
+   isolated editorial-zone regression continues to vary `TZ` and `TZDIR`.
 
 ### Starter-site example
 

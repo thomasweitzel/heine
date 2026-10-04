@@ -221,14 +221,15 @@ and select expressions. Select expressions provide correct language-specific
 plural categories and can also express gender or other controlled choices.
 The initial value contract accepts strings, numbers, and booleans/select
 values. Numbers use the same locale-aware formatting boundary as
-`format_number()` and Fluent's `NUMBER()` function. The [localized numbers](localized-values.md)
-guide explains its exact Fluent boundary and presentation options. Dates use the separate `format_date()` template function so the stable
-UTC RFC 3339 timestamp can remain suitable for HTML `datetime` attributes. It
-accepts the rendered `page.published` value, converts it into the site's
-editorial time zone, and formats that calendar date for the current locale with
-`short`, `medium`, or `long` styles. It formats calendar dates, not times or
-time zones. The template boundary does not expose arbitrary objects, arrays,
-raw HTML, Fluent internals, or filesystem access.
+`format_number()` and Fluent's `NUMBER()` function. Dates and instants use
+`format_date()`, `format_time()`, `format_datetime()`, and Fluent's
+`DATETIME()` function. The [localized values](localized-values.md) guide
+explains their exact boundaries and presentation options. `format_date()`
+formats a calendar date; for an RFC 3339 timestamp it first selects the date in
+the editorial time zone. `format_time()` and `format_datetime()` require an
+RFC 3339 timestamp and use that same zone. The template boundary does not
+expose arbitrary objects, arrays, raw HTML, Fluent internals, or filesystem
+access.
 
 Keep the machine-readable value in `datetime` and format only the visible
 text:

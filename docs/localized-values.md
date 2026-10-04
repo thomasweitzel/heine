@@ -1,4 +1,4 @@
-# Localized numbers
+# Localized values
 
 Sites often need to show a count or measured value in prose. Writing commas,
 spaces, or decimal separators in a template makes that presentation belong to
@@ -82,7 +82,58 @@ policy when the same value appears through `NUMBER()`. If a message needs a
 differently rounded display value, the template author should pass that value
 as a separate argument with the intended meaning.
 
-Heine currently formats decimal values only. Percentages, currencies, units,
-compact notation, and relative dates have distinct semantics and remain out of
-scope. The [deferred percentage and currency record](design/percentage-and-currency-formatting.md)
+For numeric values, Heine currently formats decimal values only. Percentages,
+currencies, units, compact notation, and relative dates have distinct semantics
+and remain out of scope. The [deferred percentage and currency record](design/percentage-and-currency-formatting.md)
 explains why those APIs wait for stable formatter support.
+
+## Dates and times
+
+`format_date()` presents a calendar date. It also accepts an RFC 3339 instant,
+then selects that instant's calendar date in the configured `site.time_zone`.
+This keeps a published page on its authored editorial day:
+
+```tera
+<time datetime="{{ page.published }}">
+  {{ format_date(value=page.published, style="long") }}
+</time>
+```
+
+`format_time()` and `format_datetime()` accept an RFC 3339 instant only. A
+calendar date has no time, so Heine rejects it rather than assuming midnight.
+Both functions use the site's editorial time zone and the locale of the page:
+
+```tera
+{{ format_time(value=data.event.starts_at, style="short") }}
+{{ format_datetime(
+  value=data.event.starts_at,
+  date_style="long",
+  time_style="short",
+) }}
+```
+
+Every style is `short`, `medium`, or `long`; `medium` is the default. A
+combined value chooses its date and time styles separately. Heine uses the
+ordinary ICU date and time field sets, which do not add a time-zone label. A
+rendered time therefore implies the site's configured editorial time zone.
+Write an event's zone in surrounding localized prose when it differs from that
+editorial policy.
+
+Fluent messages use `DATETIME()` with the equivalent camel-case option names:
+
+```ftl
+event-time = Starts at { DATETIME($when, timeStyle: "short") }.
+event-date-time = Starts at { DATETIME($when, dateStyle: "long", timeStyle: "short") }.
+```
+
+```tera
+{{ t(id="event-time", when=data.event.starts_at) }}
+```
+
+`DATETIME()` requires a value variable and one or both of `dateStyle` and
+`timeStyle`. Heine checks the function's options while it loads Fluent
+resources, then checks the supplied value when the selected message renders.
+Like numeric values, dates and times follow the locale of the Fluent message
+that supplies them after fallback. An English fallback message on a German page
+therefore keeps English date and time conventions. Heine never uses the host
+time zone, a browser setting, or the current clock.

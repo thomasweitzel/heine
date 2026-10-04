@@ -18,21 +18,26 @@ and a cohesive starter-site example where one fits naturally.
 - **Collection-specific membership weights:** model a page's distinct curated
   position in more than one weight-ordered collection without overloading its
   directory sibling weight.
+- **Generated-listing sitemap inclusion:** let a taxonomy or Series definition
+  exclude its complete generated listing family from the sitemap. One setting
+  must cover the taxonomy or Series index, every listing, and every derived
+  pager; authored paginated listings already inherit their page's sitemap
+  setting.
 - **Dependency-aware incremental builds** and, if large sites justify it,
   streaming rendering into the staging tree while preserving atomic
   publication.
 
 ## Under consideration
 
-### Localized time values
+### Localized value formatting
 
-[Localized decimal formatting](localized-values.md) now gives Tera and Fluent
-one deterministic decimal presentation path. The remaining
+[Localized values](localized-values.md) now give Tera and Fluent one
+deterministic presentation path for decimal numbers, calendar dates, and
+editorial-zone times and date-times. The
 [localized-value-formatting design](design/localized-value-formatting.md)
-considers times and date times without broadening that boundary into a generic
-ICU formatting language. It still excludes units, relative time, browser-
-selected time zones, and per-event time zones. The separate [percentage and
-currency design](design/percentage-and-currency-formatting.md) preserves those
+still excludes units, relative time, browser-selected time zones, and
+per-event time zones. The separate [percentage and currency
+design](design/percentage-and-currency-formatting.md) preserves those
 deliberate later extensions until ICU4X provides stable APIs.
 
 ### Redirect aliases

@@ -546,6 +546,187 @@ fn formats_page_dates_for_the_locale_being_rendered() {
 }
 
 #[test]
+fn formats_times_and_datetimes_consistently_in_templates_and_fluent() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_date(value=page.published, style='long') }}|{{ t(id='date', value=page.published) }}|{{ format_time(value=page.published, style='short') }}|{{ format_datetime(value=page.published, date_style='long', time_style='short') }}|{{ t(id='time', value=page.published) }}|{{ t(id='datetime', value=page.published) }}",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "date = { DATETIME($value, dateStyle: \"long\") }\ntime = { DATETIME($value, timeStyle: \"short\") }\ndatetime = { DATETIME($value, dateStyle: \"long\", timeStyle: \"short\") }\n",
+    );
+    fixture.write(
+        "locales/de/site.ftl",
+        "date = { DATETIME($value, dateStyle: \"long\") }\ntime = { DATETIME($value, timeStyle: \"short\") }\ndatetime = { DATETIME($value, dateStyle: \"long\", timeStyle: \"short\") }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T03:30:00\n",
+    );
+    fixture.write(
+        "content/de/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T03:30:00\n",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("localized temporal build");
+    let english = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    let german = fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap();
+    assert_eq!(
+        english,
+        "March 29, 2026|March 29, 2026|3:30\u{202f}AM|March 29, 2026 at 3:30\u{202f}AM|3:30\u{202f}AM|March 29, 2026 at 3:30\u{202f}AM"
+    );
+    assert_eq!(
+        german,
+        "29. März 2026|29. März 2026|03:30|29. März 2026 um 03:30|03:30|29. März 2026 um 03:30"
+    );
+}
+
+#[test]
+fn rejects_invalid_datetime_calls_while_loading_fluent_resources() {
+    for (call, expected) in [
+        ("DATETIME($value)", "requires dateStyle"),
+        (
+            "DATETIME($value, dateStyle: \"long\", dateStyle: \"short\")",
+            "appears twice",
+        ),
+        ("DATETIME($value, timeStyle: \"full\")", "styles must be"),
+        (
+            "DATETIME($value, calendar: \"gregory\")",
+            "DATETIME() supports only",
+        ),
+    ] {
+        let fixture = multilingual_fixture();
+        let source = format!("time = {{ {call} }}\n");
+        fixture.write("locales/en/site.ftl", &source);
+        fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+        fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+        fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+        let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid DATETIME call");
+        let diagnostic = format!("{error:?}");
+        assert!(
+            diagnostic.contains(expected)
+                && diagnostic.contains("locales/en/site.ftl")
+                && diagnostic.contains("DATETIME"),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn rejects_literal_datetime_values_while_loading_fluent_resources() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "time = { DATETIME(\"2026-08-14T09:30:00Z\", timeStyle: \"short\") }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("literal DATETIME value");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("DATETIME()")
+            && diagnostic.contains("variable value argument")
+            && diagnostic.contains("locales/en/site.ftl"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_datetime_value_kind_errors_at_the_template_call_site() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ t(id='time', value='2026-08-14') }}",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "time = { DATETIME($value, timeStyle: \"short\") }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("calendar date has no time");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("templates/page.tera:1:4")
+            && diagnostic.contains("DATETIME() argument")
+            && diagnostic.contains("calendar dates"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_direct_time_value_errors_at_the_template_call_site() {
+    for (configuration, template, expected) in [
+        (
+            "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
+            "{{ format_time(value='2026-08-14') }}",
+            "calendar dates do not have a time",
+        ),
+        (
+            "[site]\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
+            "{{ format_time(value='2026-08-14T09:30:00Z') }}",
+            "time formatting requires",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        fixture.write("heine.toml", configuration);
+        fixture.write("templates/page.tera", template);
+        fixture.write("content/en/index.page", "template = 'page.tera'\n");
+
+        let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid time value");
+        let diagnostic = format!("{error:?}");
+        assert!(
+            diagnostic.contains("templates/page.tera:1:4") && diagnostic.contains(expected),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn fallback_datetime_messages_use_the_locale_that_supplies_the_message() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "heine.toml",
+        "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[i18n.locales.pl]\ndirection = 'ltr'\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_datetime(value=page.published, date_style='long', time_style='short') }}|{{ t(id='event-time', when=page.published) }}",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "event-time = Starts at { DATETIME($when, dateStyle: \"long\", timeStyle: \"short\") }.\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T03:30:00\n",
+    );
+    fixture.write(
+        "content/de/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T03:30:00\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    build_at(fixture.path(), BuildMode::Full).expect("localized fallback temporal build");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap(),
+        "29. März 2026 um 03:30|Starts at \u{2068}March 29, 2026 at 3:30\u{202f}AM\u{2069}."
+    );
+}
+
+#[test]
 fn formats_decimal_values_consistently_in_templates_and_fluent() {
     let fixture = multilingual_fixture();
     fixture.write(

@@ -22,16 +22,19 @@ use walkdir::WalkDir;
 use crate::{locale::Locale, source_path};
 
 pub(crate) mod number;
+pub(crate) mod temporal;
 
 type SelectorBindings = BTreeMap<String, Option<String>>;
 type SelectorStack = BTreeSet<(Locale, String, Option<String>, SelectorBindings)>;
 type SelectorPresentations = BTreeMap<String, FluentPresentation>;
+type TemporalPresentations = BTreeMap<String, BTreeSet<temporal::Presentation>>;
 
 #[derive(Default)]
 struct SelectorAnalysis {
     stack: SelectorStack,
     selectors: BTreeSet<String>,
     presentations: SelectorPresentations,
+    temporal_presentations: TemporalPresentations,
 }
 
 #[derive(Clone, Copy)]
@@ -68,20 +71,27 @@ impl FluentPresentation {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum FluentFunction {
     Number,
+    DateTime,
 }
 
 impl FluentFunction {
-    const SUPPORTED: [Self; 1] = [Self::Number];
+    const SUPPORTED: [Self; 2] = [Self::Number, Self::DateTime];
 
     fn parse(name: &str) -> Option<Self> {
-        (name == "NUMBER").then_some(Self::Number)
+        match name {
+            "NUMBER" => Some(Self::Number),
+            "DATETIME" => Some(Self::DateTime),
+            _ => None,
+        }
     }
 
     fn install(
         bundle: &mut FluentBundle<FluentResource>,
+        locale: Locale,
+        editorial_time_zone: Option<crate::config::EditorialTimeZone>,
     ) -> Result<(), fluent_bundle::FluentError> {
         for function in Self::SUPPORTED {
-            function.register(bundle)?;
+            function.register(bundle, locale.clone(), editorial_time_zone.clone())?;
         }
         Ok(())
     }
@@ -89,10 +99,17 @@ impl FluentFunction {
     fn register(
         self,
         bundle: &mut FluentBundle<FluentResource>,
+        locale: Locale,
+        editorial_time_zone: Option<crate::config::EditorialTimeZone>,
     ) -> Result<(), fluent_bundle::FluentError> {
         match self {
             // fluent-bundle 0.16 registers only NUMBER through this API.
             Self::Number => bundle.add_builtins(),
+            Self::DateTime => bundle.add_function("DATETIME", move |positional, named| {
+                temporal::format_fluent(&locale, editorial_time_zone.as_ref(), positional, named)
+                    .map(Into::into)
+                    .unwrap_or(fluent_bundle::FluentValue::Error)
+            }),
         }
     }
 }
@@ -163,7 +180,13 @@ impl Arguments {
         self.values.insert(key.into(), Argument::Number(value));
     }
 
-    fn fluent(&self, selectors: &BTreeSet<String>) -> Result<FluentArgs<'static>, String> {
+    fn fluent(
+        &self,
+        selectors: &BTreeSet<String>,
+        temporal_presentations: &TemporalPresentations,
+        editorial_time_zone: Option<&crate::config::EditorialTimeZone>,
+    ) -> Result<FluentArgs<'static>, String> {
+        self.validate_temporal(temporal_presentations, editorial_time_zone)?;
         let mut arguments = FluentArgs::with_capacity(self.values.len());
         for (key, value) in &self.values {
             match value {
@@ -182,6 +205,29 @@ impl Arguments {
             }
         }
         Ok(arguments)
+    }
+
+    fn validate_temporal(
+        &self,
+        presentations: &TemporalPresentations,
+        editorial_time_zone: Option<&crate::config::EditorialTimeZone>,
+    ) -> Result<(), String> {
+        for (name, presentations) in presentations {
+            let Some(value) = self.values.get(name) else {
+                continue;
+            };
+            let Argument::Text(value) = value else {
+                return Err(format!(
+                    "DATETIME() argument {name:?} must be an RFC 3339 instant or ISO calendar date string"
+                ));
+            };
+            for presentation in presentations {
+                presentation
+                    .validate(editorial_time_zone, value)
+                    .map_err(|error| format!("DATETIME() argument {name:?}: {error}"))?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -335,6 +381,7 @@ pub(crate) struct Localization {
     message_owners: BTreeMap<Locale, BTreeMap<String, Locale>>,
     latest_inputs: BTreeMap<Locale, SystemTime>,
     default_locale: Locale,
+    editorial_time_zone: Option<crate::config::EditorialTimeZone>,
 }
 
 impl std::fmt::Debug for Localization {
@@ -353,6 +400,7 @@ impl Localization {
         selected_kit: Option<&crate::kit::Selected>,
         locales: impl IntoIterator<Item = &'a Locale>,
         default_locale: Locale,
+        editorial_time_zone: Option<crate::config::EditorialTimeZone>,
         diagnostics: &crate::source_diagnostic::DiagnosticPaths,
     ) -> Result<Self, Error> {
         let locales = locales.into_iter().cloned().collect::<Vec<_>>();
@@ -418,9 +466,10 @@ impl Localization {
             })?;
             let mut bundle = FluentBundle::new_concurrent(vec![language]);
             bundle.set_formatter(Some(format_fluent_number));
-            FluentFunction::install(&mut bundle).map_err(|error| Error::FluentSetup {
-                message: error.to_string(),
-            })?;
+            FluentFunction::install(&mut bundle, locale.clone(), editorial_time_zone.clone())
+                .map_err(|error| Error::FluentSetup {
+                    message: error.to_string(),
+                })?;
             let default_kit =
                 kit_resources
                     .get(&default_locale)
@@ -478,6 +527,7 @@ impl Localization {
             message_owners,
             latest_inputs,
             default_locale,
+            editorial_time_zone,
         })
     }
 
@@ -489,8 +539,14 @@ impl Localization {
         args: &Arguments,
     ) -> Result<String, String> {
         let owner = self.format_owner(locale, id, attribute);
-        let selectors = self.selector_variables(&owner, id, attribute)?;
-        let args = args.fluent(&selectors).map_err(|error| error.to_string())?;
+        let analysis = self.formatting_analysis(&owner, id, attribute)?;
+        let args = args
+            .fluent(
+                &analysis.selectors,
+                &analysis.temporal_presentations,
+                self.editorial_time_zone.as_ref(),
+            )
+            .map_err(|error| error.to_string())?;
         match self.format_in(&owner, id, attribute, &args) {
             Ok(value) => Ok(value),
             Err(FormatError::Invalid(message)) => Err(message),
@@ -579,12 +635,12 @@ impl Localization {
         }
     }
 
-    fn selector_variables(
+    fn formatting_analysis(
         &self,
         locale: &Locale,
         id: &str,
         attribute: Option<&str>,
-    ) -> Result<BTreeSet<String>, String> {
+    ) -> Result<SelectorAnalysis, String> {
         let mut analysis = SelectorAnalysis::default();
         self.collect_selector_variables(
             locale,
@@ -609,7 +665,7 @@ impl Localization {
                 presentation.location(),
             ));
         }
-        Ok(analysis.selectors)
+        Ok(analysis)
     }
 
     fn format_owner(&self, locale: &Locale, id: &str, attribute: Option<&str>) -> Locale {
@@ -785,6 +841,18 @@ impl Localization {
                         .entry(variable)
                         .or_insert_with(|| presentation.clone());
                 }
+                if id.name == "DATETIME"
+                    && let [InlineExpression::VariableReference { id }] =
+                        arguments.positional.as_slice()
+                    && let Some(variable) = resolve_binding(bindings, id.name.as_ref())
+                    && let Some(presentation) = datetime_presentation(arguments)
+                {
+                    analysis
+                        .temporal_presentations
+                        .entry(variable)
+                        .or_default()
+                        .insert(presentation);
+                }
                 self.collect_selector_arguments(locale, arguments, bindings, analysis, presentation)
             }
             InlineExpression::Placeable { expression } => self.collect_selector_expression(
@@ -815,6 +883,25 @@ impl Localization {
             self.collect_selector_inline(locale, &argument.value, bindings, analysis, presentation);
         }
     }
+}
+
+fn datetime_presentation<S: AsRef<str>>(
+    arguments: &CallArguments<S>,
+) -> Option<temporal::Presentation> {
+    let mut date_style = None;
+    let mut time_style = None;
+    for argument in &arguments.named {
+        let InlineExpression::StringLiteral { value } = &argument.value else {
+            return None;
+        };
+        let style = temporal::Style::parse(value.as_ref(), argument.name.name.as_ref()).ok()?;
+        match argument.name.name.as_ref() {
+            "dateStyle" => date_style = Some(style),
+            "timeStyle" => time_style = Some(style),
+            _ => return None,
+        }
+    }
+    temporal::fluent_presentation(date_style, time_style).ok()
 }
 
 fn ensure_root_directory(root: &Path) -> Result<(), Error> {
@@ -1063,7 +1150,7 @@ fn message_entries(
             span: error.map_or((0, 0).into(), |error| error.pos.clone().into()),
         }))
     })?;
-    validate_number_calls(&resource.body, path, source, diagnostics)?;
+    validate_fluent_function_calls(&resource.body, path, source, diagnostics)?;
     let parsed = Arc::new(parser::parse(source.to_owned()).map_err(|(_, errors)| {
         let error = errors.first();
         Error::Parse(Box::new(FluentDiagnostic {
@@ -1113,7 +1200,7 @@ fn message_entries(
 /// Heine deliberately accepts only the decimal `NUMBER()` options that its
 /// shared formatter implements. Fluent otherwise ignores unsupported named
 /// options, which would turn a misspelling into silently different output.
-fn validate_number_calls(
+fn validate_fluent_function_calls(
     entries: &[Entry<&str>],
     path: &Path,
     source: &str,
@@ -1123,7 +1210,7 @@ fn validate_number_calls(
     for entry in entries {
         match entry {
             Entry::Message(message) => {
-                validate_number_pattern(
+                validate_fluent_function_pattern(
                     message.value.as_ref(),
                     path,
                     source,
@@ -1132,7 +1219,7 @@ fn validate_number_calls(
                     None,
                 )?;
                 for attribute in &message.attributes {
-                    validate_number_pattern(
+                    validate_fluent_function_pattern(
                         Some(&attribute.value),
                         path,
                         source,
@@ -1143,7 +1230,7 @@ fn validate_number_calls(
                 }
             }
             Entry::Term(term) => {
-                validate_number_pattern(
+                validate_fluent_function_pattern(
                     Some(&term.value),
                     path,
                     source,
@@ -1152,7 +1239,7 @@ fn validate_number_calls(
                     None,
                 )?;
                 for attribute in &term.attributes {
-                    validate_number_pattern(
+                    validate_fluent_function_pattern(
                         Some(&attribute.value),
                         path,
                         source,
@@ -1205,7 +1292,7 @@ fn resolve_binding(bindings: &BTreeMap<String, Option<String>>, variable: &str) 
         .unwrap_or_else(|| Some(variable.to_owned()))
 }
 
-fn validate_number_pattern(
+fn validate_fluent_function_pattern(
     pattern: Option<&Pattern<&str>>,
     path: &Path,
     source: &str,
@@ -1218,13 +1305,20 @@ fn validate_number_pattern(
     };
     for element in &pattern.elements {
         if let PatternElement::Placeable { expression } = element {
-            validate_number_expression(expression, path, source, diagnostics, calls, selector)?;
+            validate_fluent_function_expression(
+                expression,
+                path,
+                source,
+                diagnostics,
+                calls,
+                selector,
+            )?;
         }
     }
     Ok(())
 }
 
-fn validate_number_expression(
+fn validate_fluent_function_expression(
     expression: &Expression<&str>,
     path: &Path,
     source: &str,
@@ -1234,16 +1328,16 @@ fn validate_number_expression(
 ) -> Result<(), Error> {
     match expression {
         Expression::Inline(expression) => {
-            validate_number_inline(expression, path, source, diagnostics, calls, selector)
+            validate_fluent_function_inline(expression, path, source, diagnostics, calls, selector)
         }
         Expression::Select { selector, variants } => {
-            validate_number_inline(selector, path, source, diagnostics, calls, None)?;
+            validate_fluent_function_inline(selector, path, source, diagnostics, calls, None)?;
             let nested_selector = match selector {
                 InlineExpression::VariableReference { id } => Some(id.name),
                 _ => None,
             };
             for variant in variants {
-                validate_number_pattern(
+                validate_fluent_function_pattern(
                     Some(&variant.value),
                     path,
                     source,
@@ -1265,7 +1359,7 @@ fn number_arguments_use_default_precision<S: AsRef<str>>(arguments: &CallArgumen
     })
 }
 
-fn validate_number_inline(
+fn validate_fluent_function_inline(
     expression: &InlineExpression<&str>,
     path: &Path,
     source: &str,
@@ -1294,6 +1388,9 @@ fn validate_number_inline(
                     }
                     Ok(())
                 }
+                Some(FluentFunction::DateTime) => {
+                    validate_datetime_arguments(arguments, path, source, diagnostics, calls, span)
+                }
                 None => Err(unknown_fluent_function(
                     path,
                     source,
@@ -1306,17 +1403,27 @@ fn validate_number_inline(
         InlineExpression::TermReference {
             arguments: Some(arguments),
             ..
-        } => {
-            validate_number_arguments_inside(arguments, path, source, diagnostics, calls, selector)
-        }
-        InlineExpression::Placeable { expression } => {
-            validate_number_expression(expression, path, source, diagnostics, calls, selector)
-        }
+        } => validate_fluent_function_arguments(
+            arguments,
+            path,
+            source,
+            diagnostics,
+            calls,
+            selector,
+        ),
+        InlineExpression::Placeable { expression } => validate_fluent_function_expression(
+            expression,
+            path,
+            source,
+            diagnostics,
+            calls,
+            selector,
+        ),
         _ => Ok(()),
     }
 }
 
-fn validate_number_arguments_inside(
+fn validate_fluent_function_arguments(
     arguments: &CallArguments<&str>,
     path: &Path,
     source: &str,
@@ -1325,10 +1432,17 @@ fn validate_number_arguments_inside(
     selector: Option<&str>,
 ) -> Result<(), Error> {
     for argument in &arguments.positional {
-        validate_number_inline(argument, path, source, diagnostics, calls, selector)?;
+        validate_fluent_function_inline(argument, path, source, diagnostics, calls, selector)?;
     }
     for argument in &arguments.named {
-        validate_number_inline(&argument.value, path, source, diagnostics, calls, selector)?;
+        validate_fluent_function_inline(
+            &argument.value,
+            path,
+            source,
+            diagnostics,
+            calls,
+            selector,
+        )?;
     }
     Ok(())
 }
@@ -1404,10 +1518,72 @@ fn validate_number_arguments(
             span,
         )
     })?;
-    validate_number_arguments_inside(arguments, path, source, diagnostics, calls, None)
+    validate_fluent_function_arguments(arguments, path, source, diagnostics, calls, None)
+}
+
+/// `DATETIME()` deliberately exposes only date and time field-set lengths.
+/// Fluent otherwise accepts arbitrary named options and silently ignores them.
+fn validate_datetime_arguments(
+    arguments: &CallArguments<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    calls: &mut FluentCallCursor,
+    span: SourceSpan,
+) -> Result<(), Error> {
+    let invalid = |message| invalid_datetime_call(path, source, diagnostics, message, span);
+    if arguments.positional.len() != 1 {
+        return Err(invalid("DATETIME() requires exactly one value argument"));
+    }
+    if !matches!(
+        arguments.positional.as_slice(),
+        [InlineExpression::VariableReference { .. }]
+    ) {
+        return Err(invalid("DATETIME() requires a variable value argument"));
+    }
+    let mut styles = BTreeSet::new();
+    for argument in &arguments.named {
+        let name = argument.name.name;
+        if !matches!(name, "dateStyle" | "timeStyle") {
+            return Err(invalid(
+                "DATETIME() supports only dateStyle and timeStyle options",
+            ));
+        }
+        if !styles.insert(name) {
+            return Err(invalid("DATETIME() cannot repeat a style option"));
+        }
+        match &argument.value {
+            InlineExpression::StringLiteral { value }
+                if matches!(*value, "short" | "medium" | "long") => {}
+            _ => {
+                return Err(invalid(
+                    "DATETIME() styles must be the string literal \"short\", \"medium\", or \"long\"",
+                ));
+            }
+        }
+    }
+    if styles.is_empty() {
+        return Err(invalid("DATETIME() requires dateStyle or timeStyle"));
+    }
+    validate_fluent_function_arguments(arguments, path, source, diagnostics, calls, None)
 }
 
 fn invalid_number_call(
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    message: &str,
+    span: SourceSpan,
+) -> Error {
+    Error::Parse(Box::new(FluentDiagnostic {
+        path: diagnostics.display_path(path),
+        message: message.into(),
+        source_code: diagnostics.named_source(path, source, "Fluent"),
+        span,
+    }))
+}
+
+fn invalid_datetime_call(
     path: &Path,
     source: &str,
     diagnostics: &crate::source_diagnostic::DiagnosticPaths,
@@ -1434,7 +1610,9 @@ fn unknown_fluent_function(
 ) -> Error {
     Error::Parse(Box::new(FluentDiagnostic {
         path: diagnostics.display_path(path),
-        message: format!("unknown Fluent function {function:?}; Heine currently provides NUMBER()"),
+        message: format!(
+            "unknown Fluent function {function:?}; Heine currently provides NUMBER() and DATETIME()"
+        ),
         source_code: diagnostics.named_source(path, source, "Fluent"),
         span,
     }))
