@@ -2,21 +2,252 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    convert::Infallible,
     fs, io,
     path::{Path, PathBuf},
     sync::Arc,
     time::SystemTime,
 };
 
-use fluent_bundle::{FluentArgs, FluentResource, concurrent::FluentBundle};
-use fluent_syntax::{ast::Entry, parser};
+use fluent_bundle::{FluentArgs, FluentResource, FluentValue, concurrent::FluentBundle};
+use fluent_syntax::{
+    ast::{CallArguments, Entry, Expression, InlineExpression, Pattern, PatternElement, Resource},
+    parser,
+};
+use intl_memoizer::{Memoizable, concurrent::IntlLangMemoizer};
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 use walkdir::WalkDir;
 
 use crate::{locale::Locale, source_path};
 
-pub(crate) type Arguments<'a> = FluentArgs<'a>;
+pub(crate) mod number;
+pub(crate) mod temporal;
+
+type SelectorBindings = BTreeMap<String, Option<String>>;
+type SelectorStack = BTreeSet<(Locale, String, Option<String>, SelectorBindings)>;
+type SelectorPresentations = BTreeMap<String, FluentPresentation>;
+type TemporalPresentations = BTreeMap<String, BTreeSet<temporal::Presentation>>;
+
+#[derive(Default)]
+struct SelectorAnalysis {
+    stack: SelectorStack,
+    selectors: BTreeSet<String>,
+    presentations: SelectorPresentations,
+    temporal_presentations: TemporalPresentations,
+}
+
+#[derive(Clone, Copy)]
+struct SelectorTarget<'a> {
+    id: &'a str,
+    attribute: Option<&'a str>,
+}
+
+#[derive(Clone)]
+struct FluentPresentation {
+    message: String,
+    path: PathBuf,
+    source: Arc<String>,
+    span: SourceSpan,
+}
+
+impl FluentPresentation {
+    fn location(&self) -> String {
+        let offset = self.span.offset();
+        let before = &self.source[..offset];
+        let line = before.bytes().filter(|byte| *byte == b'\n').count() + 1;
+        let column = before
+            .rsplit_once('\n')
+            .map_or(before.chars().count() + 1, |(_, line)| {
+                line.chars().count() + 1
+            });
+        format!("{}:{line}:{column}", self.path.display())
+    }
+}
+
+/// The closed Fluent function surface that Heine registers and validates.
+/// Adding a formatter extends this enum, rather than separate registration and
+/// validation lists.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum FluentFunction {
+    Number,
+    DateTime,
+}
+
+impl FluentFunction {
+    const SUPPORTED: [Self; 2] = [Self::Number, Self::DateTime];
+
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "NUMBER" => Some(Self::Number),
+            "DATETIME" => Some(Self::DateTime),
+            _ => None,
+        }
+    }
+
+    fn install(
+        bundle: &mut FluentBundle<FluentResource>,
+        locale: Locale,
+        editorial_time_zone: Option<crate::config::EditorialTimeZone>,
+    ) -> Result<(), fluent_bundle::FluentError> {
+        for function in Self::SUPPORTED {
+            function.register(bundle, locale.clone(), editorial_time_zone.clone())?;
+        }
+        Ok(())
+    }
+
+    fn register(
+        self,
+        bundle: &mut FluentBundle<FluentResource>,
+        locale: Locale,
+        editorial_time_zone: Option<crate::config::EditorialTimeZone>,
+    ) -> Result<(), fluent_bundle::FluentError> {
+        match self {
+            // fluent-bundle 0.16 registers only NUMBER through this API.
+            Self::Number => bundle.add_builtins(),
+            Self::DateTime => bundle.add_function("DATETIME", move |positional, named| {
+                temporal::format_fluent(&locale, editorial_time_zone.as_ref(), positional, named)
+                    .map(Into::into)
+                    .unwrap_or(fluent_bundle::FluentValue::Error)
+            }),
+        }
+    }
+}
+
+/// Fluent provides the resolved bundle language through its memoizer. The
+/// marker lets Heine retain that language without tying locale formatting to
+/// process-global state.
+struct FluentLocale(unic_langid::LanguageIdentifier);
+
+impl Memoizable for FluentLocale {
+    type Args = ();
+    type Error = Infallible;
+
+    fn construct(
+        language: unic_langid::LanguageIdentifier,
+        (): Self::Args,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self(language))
+    }
+}
+
+fn format_fluent_number(value: &FluentValue<'_>, memoizer: &IntlLangMemoizer) -> Option<String> {
+    let FluentValue::Number(value) = value else {
+        return None;
+    };
+    memoizer
+        .with_try_get::<FluentLocale, _, _>((), |locale| {
+            let locale = locale.0.to_string().parse::<Locale>().ok()?;
+            let number = number::LocalizedNumber::from_f64(value.value).ok()?;
+            let minimum = value.options.minimum_fraction_digits.unwrap_or(0);
+            let maximum = value.options.maximum_fraction_digits.unwrap_or(3);
+            let minimum = u16::try_from(minimum).ok()?;
+            let maximum = u16::try_from(maximum).ok()?;
+            let options =
+                number::Options::new(value.options.use_grouping, minimum, maximum).ok()?;
+            number::format(&locale, &number, options).ok()
+        })
+        .ok()
+        .flatten()
+}
+
+/// Template values remain checked until Heine has resolved the Fluent message
+/// that will consume them. Fluent itself uses `f64` selectors, so selector and
+/// display values deliberately cross that boundary at different points.
+#[derive(Default)]
+pub(crate) struct Arguments {
+    values: BTreeMap<String, Argument>,
+}
+
+pub(crate) enum Argument {
+    Text(String),
+    Number(number::LocalizedNumber),
+}
+
+impl Arguments {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn set<V>(&mut self, key: impl Into<String>, value: V)
+    where
+        V: Into<Argument>,
+    {
+        self.values.insert(key.into(), value.into());
+    }
+
+    pub(crate) fn set_number(&mut self, key: impl Into<String>, value: number::LocalizedNumber) {
+        self.values.insert(key.into(), Argument::Number(value));
+    }
+
+    fn fluent(
+        &self,
+        selectors: &BTreeSet<String>,
+        temporal_presentations: &TemporalPresentations,
+        editorial_time_zone: Option<&crate::config::EditorialTimeZone>,
+    ) -> Result<FluentArgs<'static>, String> {
+        self.validate_temporal(temporal_presentations, editorial_time_zone)?;
+        let mut arguments = FluentArgs::with_capacity(self.values.len());
+        for (key, value) in &self.values {
+            match value {
+                Argument::Text(value) => arguments.set(key.clone(), value.clone()),
+                Argument::Number(value) => {
+                    let value = if selectors.contains(key) {
+                        value.normalized(number::Options::default())
+                    } else {
+                        value.clone()
+                    };
+                    arguments.set(
+                        key.clone(),
+                        value.fluent_value().map_err(|error| error.to_string())?,
+                    );
+                }
+            }
+        }
+        Ok(arguments)
+    }
+
+    fn validate_temporal(
+        &self,
+        presentations: &TemporalPresentations,
+        editorial_time_zone: Option<&crate::config::EditorialTimeZone>,
+    ) -> Result<(), String> {
+        for (name, presentations) in presentations {
+            let Some(value) = self.values.get(name) else {
+                continue;
+            };
+            let Argument::Text(value) = value else {
+                return Err(format!(
+                    "DATETIME() argument {name:?} must be an RFC 3339 instant or ISO calendar date string"
+                ));
+            };
+            for presentation in presentations {
+                presentation
+                    .validate(editorial_time_zone, value)
+                    .map_err(|error| format!("DATETIME() argument {name:?}: {error}"))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl From<String> for Argument {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for Argument {
+    fn from(value: &str) -> Self {
+        Self::Text(value.into())
+    }
+}
+
+impl From<i64> for Argument {
+    fn from(value: i64) -> Self {
+        Self::Number(number::LocalizedNumber::from_i64(value))
+    }
+}
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
@@ -36,6 +267,8 @@ pub(crate) enum Error {
     MissingKitDirectory { path: PathBuf },
     #[error("localization inventory did not contain configured locale {locale}")]
     MissingResolvedLocale { locale: Locale },
+    #[error("could not register Fluent built-in formatting functions: {message}")]
+    FluentSetup { message: String },
     #[error("localization file {path} is outside localization directory {root}")]
     OutsideDirectory { root: PathBuf, path: PathBuf },
     #[error(transparent)]
@@ -72,7 +305,7 @@ pub(crate) struct FluentDiagnostic {
     message: String,
     #[source_code]
     source_code: NamedSource<String>,
-    #[label("invalid Fluent syntax here")]
+    #[label("problem in this Fluent source")]
     span: SourceSpan,
 }
 
@@ -103,6 +336,7 @@ struct FirstMessage {
 struct MessageSource {
     path: PathBuf,
     source: Arc<String>,
+    parsed: Arc<Resource<String>>,
     span: SourceSpan,
 }
 
@@ -144,8 +378,10 @@ struct FluentEntry {
 pub(crate) struct Localization {
     bundles: BTreeMap<Locale, FluentBundle<FluentResource>>,
     message_sources: BTreeMap<Locale, BTreeMap<String, MessageSource>>,
+    message_owners: BTreeMap<Locale, BTreeMap<String, Locale>>,
     latest_inputs: BTreeMap<Locale, SystemTime>,
     default_locale: Locale,
+    editorial_time_zone: Option<crate::config::EditorialTimeZone>,
 }
 
 impl std::fmt::Debug for Localization {
@@ -164,6 +400,7 @@ impl Localization {
         selected_kit: Option<&crate::kit::Selected>,
         locales: impl IntoIterator<Item = &'a Locale>,
         default_locale: Locale,
+        editorial_time_zone: Option<crate::config::EditorialTimeZone>,
         diagnostics: &crate::source_diagnostic::DiagnosticPaths,
     ) -> Result<Self, Error> {
         let locales = locales.into_iter().cloned().collect::<Vec<_>>();
@@ -198,6 +435,7 @@ impl Localization {
 
         let mut bundles = BTreeMap::new();
         let mut message_sources = BTreeMap::new();
+        let mut message_owners = BTreeMap::new();
         let mut latest_inputs = BTreeMap::new();
         for locale in locales {
             let kit = kit_resources
@@ -227,6 +465,11 @@ impl Localization {
                 }))
             })?;
             let mut bundle = FluentBundle::new_concurrent(vec![language]);
+            bundle.set_formatter(Some(format_fluent_number));
+            FluentFunction::install(&mut bundle, locale.clone(), editorial_time_zone.clone())
+                .map_err(|error| Error::FluentSetup {
+                    message: error.to_string(),
+                })?;
             let default_kit =
                 kit_resources
                     .get(&default_locale)
@@ -258,18 +501,33 @@ impl Localization {
             }
             let mut messages = default_kit.messages.clone();
             messages.extend(default_root.messages.clone());
+            let mut owners = messages
+                .keys()
+                .cloned()
+                .map(|id| (id, default_locale.clone()))
+                .collect::<BTreeMap<_, _>>();
             if locale != default_locale {
                 messages.extend(kit.messages.clone());
                 messages.extend(root_layer.messages.clone());
+                owners.extend(
+                    kit.messages
+                        .keys()
+                        .chain(root_layer.messages.keys())
+                        .cloned()
+                        .map(|id| (id, locale.clone())),
+                );
             }
             bundles.insert(locale.clone(), bundle);
-            message_sources.insert(locale, messages);
+            message_sources.insert(locale.clone(), messages);
+            message_owners.insert(locale, owners);
         }
         Ok(Self {
             bundles,
             message_sources,
+            message_owners,
             latest_inputs,
             default_locale,
+            editorial_time_zone,
         })
     }
 
@@ -278,16 +536,25 @@ impl Localization {
         locale: &Locale,
         id: &str,
         attribute: Option<&str>,
-        args: &Arguments<'_>,
+        args: &Arguments,
     ) -> Result<String, String> {
-        match self.format_in(locale, id, attribute, args) {
+        let owner = self.format_owner(locale, id, attribute);
+        let analysis = self.formatting_analysis(&owner, id, attribute)?;
+        let args = args
+            .fluent(
+                &analysis.selectors,
+                &analysis.temporal_presentations,
+                self.editorial_time_zone.as_ref(),
+            )
+            .map_err(|error| error.to_string())?;
+        match self.format_in(&owner, id, attribute, &args) {
             Ok(value) => Ok(value),
             Err(FormatError::Invalid(message)) => Err(message),
-            Err(FormatError::Missing) if locale == &self.default_locale => {
+            Err(FormatError::Missing) if owner == self.default_locale => {
                 Err(format!("message {id:?} is not defined for locale {locale}"))
             }
             Err(FormatError::Missing) => self
-                .format_in(&self.default_locale, id, attribute, args)
+                .format_in(&self.default_locale, id, attribute, &args)
                 .map_err(|error| match error {
                     FormatError::Missing => format!(
                         "message {id:?} is not defined for locale {locale} or fallback locale {}",
@@ -340,7 +607,7 @@ impl Localization {
         locale: &Locale,
         id: &str,
         attribute: Option<&str>,
-        args: &Arguments<'_>,
+        args: &FluentArgs<'_>,
     ) -> Result<String, FormatError> {
         let bundle = &self.bundles[locale];
         let message = bundle.get_message(id).ok_or(FormatError::Missing)?;
@@ -367,6 +634,274 @@ impl Localization {
             ))
         }
     }
+
+    fn formatting_analysis(
+        &self,
+        locale: &Locale,
+        id: &str,
+        attribute: Option<&str>,
+    ) -> Result<SelectorAnalysis, String> {
+        let mut analysis = SelectorAnalysis::default();
+        self.collect_selector_variables(
+            locale,
+            SelectorTarget { id, attribute },
+            &BTreeMap::new(),
+            &mut analysis,
+        );
+        if let Some(presentation) =
+            analysis
+                .presentations
+                .iter()
+                .find_map(|(variable, presentation)| {
+                    analysis
+                        .selectors
+                        .contains(variable)
+                        .then_some(presentation)
+                })
+        {
+            return Err(format!(
+                "NUMBER() for a plural selector must use the default fraction-digit policy; the referenced Fluent message {:?} declares a conflicting presentation at {}",
+                presentation.message,
+                presentation.location(),
+            ));
+        }
+        Ok(analysis)
+    }
+
+    fn format_owner(&self, locale: &Locale, id: &str, attribute: Option<&str>) -> Locale {
+        let owner = self
+            .message_owners
+            .get(locale)
+            .and_then(|owners| owners.get(id))
+            .unwrap_or(&self.default_locale);
+        if attribute.is_none() || self.has_message_pattern(owner, id, attribute) {
+            owner.clone()
+        } else {
+            self.default_locale.clone()
+        }
+    }
+
+    fn has_message_pattern(&self, locale: &Locale, id: &str, attribute: Option<&str>) -> bool {
+        let Some(source) = self
+            .message_sources
+            .get(locale)
+            .and_then(|messages| messages.get(id))
+        else {
+            return false;
+        };
+        fluent_pattern(&source.parsed.body, id, attribute).is_some()
+    }
+
+    fn collect_selector_variables(
+        &self,
+        locale: &Locale,
+        target: SelectorTarget<'_>,
+        bindings: &SelectorBindings,
+        analysis: &mut SelectorAnalysis,
+    ) {
+        let key = (
+            locale.clone(),
+            target.id.to_owned(),
+            target.attribute.map(str::to_owned),
+            bindings.clone(),
+        );
+        if !analysis.stack.insert(key.clone()) {
+            return;
+        }
+
+        let Some(source) = self
+            .message_sources
+            .get(locale)
+            .and_then(|messages| messages.get(target.id))
+        else {
+            return;
+        };
+        let presentation = FluentPresentation {
+            message: target.id.to_owned(),
+            path: source.path.clone(),
+            source: source.source.clone(),
+            span: source.span,
+        };
+        if let Some(pattern) = fluent_pattern(&source.parsed.body, target.id, target.attribute) {
+            self.collect_selector_pattern(locale, pattern, bindings, analysis, &presentation);
+        }
+        analysis.stack.remove(&key);
+    }
+
+    fn collect_selector_pattern(
+        &self,
+        locale: &Locale,
+        pattern: &Pattern<String>,
+        bindings: &SelectorBindings,
+        analysis: &mut SelectorAnalysis,
+        presentation: &FluentPresentation,
+    ) {
+        for element in &pattern.elements {
+            let PatternElement::Placeable { expression } = element else {
+                continue;
+            };
+            self.collect_selector_expression(locale, expression, bindings, analysis, presentation);
+        }
+    }
+
+    fn collect_selector_expression(
+        &self,
+        locale: &Locale,
+        expression: &Expression<String>,
+        bindings: &SelectorBindings,
+        analysis: &mut SelectorAnalysis,
+        presentation: &FluentPresentation,
+    ) {
+        match expression {
+            Expression::Inline(expression) => {
+                self.collect_selector_inline(locale, expression, bindings, analysis, presentation)
+            }
+            Expression::Select { selector, variants } => {
+                if let InlineExpression::VariableReference { id } = selector {
+                    if let Some(variable) = resolve_binding(bindings, id.name.as_ref()) {
+                        analysis.selectors.insert(variable);
+                    }
+                }
+                self.collect_selector_inline(locale, selector, bindings, analysis, presentation);
+                for variant in variants {
+                    self.collect_selector_pattern(
+                        locale,
+                        &variant.value,
+                        bindings,
+                        analysis,
+                        presentation,
+                    );
+                }
+            }
+        }
+    }
+
+    fn collect_selector_inline(
+        &self,
+        locale: &Locale,
+        expression: &InlineExpression<String>,
+        bindings: &SelectorBindings,
+        analysis: &mut SelectorAnalysis,
+        presentation: &FluentPresentation,
+    ) {
+        match expression {
+            InlineExpression::MessageReference { id, attribute } => self
+                .collect_selector_variables(
+                    locale,
+                    SelectorTarget {
+                        id: id.name.as_ref(),
+                        attribute: attribute.as_ref().map(|attribute| attribute.name.as_ref()),
+                    },
+                    bindings,
+                    analysis,
+                ),
+            InlineExpression::TermReference {
+                id,
+                attribute,
+                arguments,
+            } => {
+                let mut term_bindings = bindings.clone();
+                if let Some(arguments) = arguments {
+                    for argument in &arguments.named {
+                        let binding = match &argument.value {
+                            InlineExpression::VariableReference { id } => {
+                                resolve_binding(bindings, id.name.as_ref())
+                            }
+                            _ => None,
+                        };
+                        term_bindings.insert(argument.name.name.to_string(), binding);
+                    }
+                    self.collect_selector_arguments(
+                        locale,
+                        arguments,
+                        bindings,
+                        analysis,
+                        presentation,
+                    );
+                }
+                self.collect_selector_variables(
+                    locale,
+                    SelectorTarget {
+                        id: &format!("-{}", id.name),
+                        attribute: attribute.as_ref().map(|attribute| attribute.name.as_ref()),
+                    },
+                    &term_bindings,
+                    analysis,
+                );
+            }
+            InlineExpression::FunctionReference { id, arguments } => {
+                if id.name == "NUMBER"
+                    && let [InlineExpression::VariableReference { id }] =
+                        arguments.positional.as_slice()
+                    && let Some(variable) = resolve_binding(bindings, id.name.as_ref())
+                    && !number_arguments_use_default_precision(arguments)
+                {
+                    analysis
+                        .presentations
+                        .entry(variable)
+                        .or_insert_with(|| presentation.clone());
+                }
+                if id.name == "DATETIME"
+                    && let [InlineExpression::VariableReference { id }] =
+                        arguments.positional.as_slice()
+                    && let Some(variable) = resolve_binding(bindings, id.name.as_ref())
+                    && let Some(presentation) = datetime_presentation(arguments)
+                {
+                    analysis
+                        .temporal_presentations
+                        .entry(variable)
+                        .or_default()
+                        .insert(presentation);
+                }
+                self.collect_selector_arguments(locale, arguments, bindings, analysis, presentation)
+            }
+            InlineExpression::Placeable { expression } => self.collect_selector_expression(
+                locale,
+                expression,
+                bindings,
+                analysis,
+                presentation,
+            ),
+            InlineExpression::StringLiteral { .. }
+            | InlineExpression::NumberLiteral { .. }
+            | InlineExpression::VariableReference { .. } => {}
+        }
+    }
+
+    fn collect_selector_arguments(
+        &self,
+        locale: &Locale,
+        arguments: &CallArguments<String>,
+        bindings: &SelectorBindings,
+        analysis: &mut SelectorAnalysis,
+        presentation: &FluentPresentation,
+    ) {
+        for argument in &arguments.positional {
+            self.collect_selector_inline(locale, argument, bindings, analysis, presentation);
+        }
+        for argument in &arguments.named {
+            self.collect_selector_inline(locale, &argument.value, bindings, analysis, presentation);
+        }
+    }
+}
+
+fn datetime_presentation<S: AsRef<str>>(
+    arguments: &CallArguments<S>,
+) -> Option<temporal::Presentation> {
+    let mut date_style = None;
+    let mut time_style = None;
+    for argument in &arguments.named {
+        let InlineExpression::StringLiteral { value } = &argument.value else {
+            return None;
+        };
+        let style = temporal::Style::parse(value.as_ref(), argument.name.name.as_ref()).ok()?;
+        match argument.name.name.as_ref() {
+            "dateStyle" => date_style = Some(style),
+            "timeStyle" => time_style = Some(style),
+            _ => return None,
+        }
+    }
+    temporal::fluent_presentation(date_style, time_style).ok()
 }
 
 fn ensure_root_directory(root: &Path) -> Result<(), Error> {
@@ -491,7 +1026,7 @@ fn load_locale_resources(
                 .latest_input
                 .map_or(modified, |latest| latest.max(modified)),
         );
-        let entries = message_entries(path, source.as_ref(), diagnostics)?;
+        let (entries, parsed) = message_entries(path, source.as_ref(), diagnostics)?;
         for entry in &entries {
             if let Some(first) = loaded.messages.get(&entry.bundle_id) {
                 return Err(Error::Duplicate(Box::new(DuplicateDiagnostic {
@@ -513,6 +1048,7 @@ fn load_locale_resources(
                 MessageSource {
                     path: diagnostics.display_path(path),
                     source: source.clone(),
+                    parsed: parsed.clone(),
                     span: entry.span,
                 },
             );
@@ -601,7 +1137,7 @@ fn message_entries(
     path: &Path,
     source: &str,
     diagnostics: &crate::source_diagnostic::DiagnosticPaths,
-) -> Result<Vec<FluentEntry>, Error> {
+) -> Result<(Vec<FluentEntry>, Arc<Resource<String>>), Error> {
     let resource = parser::parse(source).map_err(|(_, errors)| {
         let error = errors.first();
         Error::Parse(Box::new(FluentDiagnostic {
@@ -614,6 +1150,19 @@ fn message_entries(
             span: error.map_or((0, 0).into(), |error| error.pos.clone().into()),
         }))
     })?;
+    validate_fluent_function_calls(&resource.body, path, source, diagnostics)?;
+    let parsed = Arc::new(parser::parse(source.to_owned()).map_err(|(_, errors)| {
+        let error = errors.first();
+        Error::Parse(Box::new(FluentDiagnostic {
+            path: diagnostics.display_path(path),
+            message: error.map_or_else(
+                || "Fluent parser rejected this resource".to_owned(),
+                ToString::to_string,
+            ),
+            source_code: diagnostics.named_source(path, source, "Fluent"),
+            span: error.map_or((0, 0).into(), |error| error.pos.clone().into()),
+        }))
+    })?);
     let identifiers = resource
         .body
         .into_iter()
@@ -626,7 +1175,7 @@ fn message_entries(
         })
         .collect::<Vec<_>>();
     let mut offset = 0;
-    identifiers
+    let entries = identifiers
         .into_iter()
         .map(|(id, bundle_id)| {
             let (span, next_offset) = message_span(source, offset, &id).ok_or_else(|| {
@@ -644,7 +1193,543 @@ fn message_entries(
                 span,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, Error>>()?;
+    Ok((entries, parsed))
+}
+
+/// Heine deliberately accepts only the decimal `NUMBER()` options that its
+/// shared formatter implements. Fluent otherwise ignores unsupported named
+/// options, which would turn a misspelling into silently different output.
+fn validate_fluent_function_calls(
+    entries: &[Entry<&str>],
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+) -> Result<(), Error> {
+    let mut calls = FluentCallCursor::new(source);
+    for entry in entries {
+        match entry {
+            Entry::Message(message) => {
+                validate_fluent_function_pattern(
+                    message.value.as_ref(),
+                    path,
+                    source,
+                    diagnostics,
+                    &mut calls,
+                    None,
+                )?;
+                for attribute in &message.attributes {
+                    validate_fluent_function_pattern(
+                        Some(&attribute.value),
+                        path,
+                        source,
+                        diagnostics,
+                        &mut calls,
+                        None,
+                    )?;
+                }
+            }
+            Entry::Term(term) => {
+                validate_fluent_function_pattern(
+                    Some(&term.value),
+                    path,
+                    source,
+                    diagnostics,
+                    &mut calls,
+                    None,
+                )?;
+                for attribute in &term.attributes {
+                    validate_fluent_function_pattern(
+                        Some(&attribute.value),
+                        path,
+                        source,
+                        diagnostics,
+                        &mut calls,
+                        None,
+                    )?;
+                }
+            }
+            Entry::Junk { .. }
+            | Entry::Comment(_)
+            | Entry::GroupComment(_)
+            | Entry::ResourceComment(_) => {}
+        }
+    }
+    Ok(())
+}
+
+fn fluent_pattern<'a>(
+    entries: &'a [Entry<String>],
+    id: &str,
+    attribute: Option<&str>,
+) -> Option<&'a Pattern<String>> {
+    entries.iter().find_map(|entry| match entry {
+        Entry::Message(message) if message.id.name == id => match attribute {
+            Some(attribute) => message
+                .attributes
+                .iter()
+                .find(|candidate| candidate.id.name == attribute)
+                .map(|attribute| &attribute.value),
+            None => message.value.as_ref(),
+        },
+        Entry::Term(term) if id.strip_prefix('-') == Some(term.id.name.as_ref()) => match attribute
+        {
+            Some(attribute) => term
+                .attributes
+                .iter()
+                .find(|candidate| candidate.id.name == attribute)
+                .map(|attribute| &attribute.value),
+            None => Some(&term.value),
+        },
+        _ => None,
+    })
+}
+
+fn resolve_binding(bindings: &BTreeMap<String, Option<String>>, variable: &str) -> Option<String> {
+    bindings
+        .get(variable)
+        .cloned()
+        .unwrap_or_else(|| Some(variable.to_owned()))
+}
+
+fn validate_fluent_function_pattern(
+    pattern: Option<&Pattern<&str>>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    calls: &mut FluentCallCursor,
+    selector: Option<&str>,
+) -> Result<(), Error> {
+    let Some(pattern) = pattern else {
+        return Ok(());
+    };
+    for element in &pattern.elements {
+        if let PatternElement::Placeable { expression } = element {
+            validate_fluent_function_expression(
+                expression,
+                path,
+                source,
+                diagnostics,
+                calls,
+                selector,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_fluent_function_expression(
+    expression: &Expression<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    calls: &mut FluentCallCursor,
+    selector: Option<&str>,
+) -> Result<(), Error> {
+    match expression {
+        Expression::Inline(expression) => {
+            validate_fluent_function_inline(expression, path, source, diagnostics, calls, selector)
+        }
+        Expression::Select { selector, variants } => {
+            validate_fluent_function_inline(selector, path, source, diagnostics, calls, None)?;
+            let nested_selector = match selector {
+                InlineExpression::VariableReference { id } => Some(id.name),
+                _ => None,
+            };
+            for variant in variants {
+                validate_fluent_function_pattern(
+                    Some(&variant.value),
+                    path,
+                    source,
+                    diagnostics,
+                    calls,
+                    nested_selector,
+                )?;
+            }
+            Ok(())
+        }
+    }
+}
+
+fn number_arguments_use_default_precision<S: AsRef<str>>(arguments: &CallArguments<S>) -> bool {
+    arguments.named.iter().all(|argument| match argument.name.name.as_ref() {
+        "minimumFractionDigits" => matches!(&argument.value, InlineExpression::NumberLiteral { value } if value.as_ref() == "0"),
+        "maximumFractionDigits" => matches!(&argument.value, InlineExpression::NumberLiteral { value } if value.as_ref() == "3"),
+        _ => true,
+    })
+}
+
+fn validate_fluent_function_inline(
+    expression: &InlineExpression<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    calls: &mut FluentCallCursor,
+    selector: Option<&str>,
+) -> Result<(), Error> {
+    match expression {
+        InlineExpression::FunctionReference { id, arguments } => {
+            let span = calls.next(id.name);
+            match FluentFunction::parse(id.name) {
+                Some(FluentFunction::Number) => {
+                    validate_number_arguments(arguments, path, source, diagnostics, calls, span)?;
+                    let selected = matches!(
+                        arguments.positional.as_slice(),
+                        [InlineExpression::VariableReference { id }] if Some(id.name) == selector
+                    );
+                    if selected && !number_arguments_use_default_precision(arguments) {
+                        return Err(invalid_number_call(
+                            path,
+                            source,
+                            diagnostics,
+                            "NUMBER() for a plural selector must use the default fraction-digit policy",
+                            span,
+                        ));
+                    }
+                    Ok(())
+                }
+                Some(FluentFunction::DateTime) => {
+                    validate_datetime_arguments(arguments, path, source, diagnostics, calls, span)
+                }
+                None => Err(unknown_fluent_function(
+                    path,
+                    source,
+                    diagnostics,
+                    id.name,
+                    span,
+                )),
+            }
+        }
+        InlineExpression::TermReference {
+            arguments: Some(arguments),
+            ..
+        } => validate_fluent_function_arguments(
+            arguments,
+            path,
+            source,
+            diagnostics,
+            calls,
+            selector,
+        ),
+        InlineExpression::Placeable { expression } => validate_fluent_function_expression(
+            expression,
+            path,
+            source,
+            diagnostics,
+            calls,
+            selector,
+        ),
+        _ => Ok(()),
+    }
+}
+
+fn validate_fluent_function_arguments(
+    arguments: &CallArguments<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    calls: &mut FluentCallCursor,
+    selector: Option<&str>,
+) -> Result<(), Error> {
+    for argument in &arguments.positional {
+        validate_fluent_function_inline(argument, path, source, diagnostics, calls, selector)?;
+    }
+    for argument in &arguments.named {
+        validate_fluent_function_inline(
+            &argument.value,
+            path,
+            source,
+            diagnostics,
+            calls,
+            selector,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_number_arguments(
+    arguments: &CallArguments<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    calls: &mut FluentCallCursor,
+    span: SourceSpan,
+) -> Result<(), Error> {
+    let invalid = || invalid_number_call(path, source, diagnostics, "invalid NUMBER() call", span);
+    if arguments.positional.len() != 1 {
+        return Err(invalid());
+    }
+    let mut minimum = 0;
+    let mut maximum = 3;
+    for argument in &arguments.named {
+        match argument.name.name {
+            "useGrouping" => match &argument.value {
+                InlineExpression::StringLiteral { value } if matches!(*value, "true" | "false") => {
+                }
+                _ => {
+                    return Err(invalid_number_call(
+                        path,
+                        source,
+                        diagnostics,
+                        "useGrouping must be the string literal \"true\" or \"false\"",
+                        span,
+                    ));
+                }
+            },
+            "minimumFractionDigits" => {
+                minimum = number_option(&argument.value).ok_or_else(|| {
+                    invalid_number_call(
+                        path,
+                        source,
+                        diagnostics,
+                        "minimumFractionDigits must be a supported non-negative integer",
+                        span,
+                    )
+                })?;
+            }
+            "maximumFractionDigits" => {
+                maximum = number_option(&argument.value).ok_or_else(|| {
+                    invalid_number_call(
+                        path,
+                        source,
+                        diagnostics,
+                        "maximumFractionDigits must be a supported non-negative integer",
+                        span,
+                    )
+                })?;
+            }
+            _ => {
+                return Err(invalid_number_call(
+                    path,
+                    source,
+                    diagnostics,
+                    "NUMBER() supports only useGrouping, minimumFractionDigits, and maximumFractionDigits",
+                    span,
+                ));
+            }
+        }
+    }
+    number::Options::new(true, minimum, maximum).map_err(|_| {
+        invalid_number_call(
+            path,
+            source,
+            diagnostics,
+            "minimumFractionDigits cannot exceed maximumFractionDigits",
+            span,
+        )
+    })?;
+    validate_fluent_function_arguments(arguments, path, source, diagnostics, calls, None)
+}
+
+/// `DATETIME()` deliberately exposes only date and time field-set lengths.
+/// Fluent otherwise accepts arbitrary named options and silently ignores them.
+fn validate_datetime_arguments(
+    arguments: &CallArguments<&str>,
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    calls: &mut FluentCallCursor,
+    span: SourceSpan,
+) -> Result<(), Error> {
+    let invalid = |message| invalid_datetime_call(path, source, diagnostics, message, span);
+    if arguments.positional.len() != 1 {
+        return Err(invalid("DATETIME() requires exactly one value argument"));
+    }
+    if !matches!(
+        arguments.positional.as_slice(),
+        [InlineExpression::VariableReference { .. }]
+    ) {
+        return Err(invalid("DATETIME() requires a variable value argument"));
+    }
+    let mut styles = BTreeSet::new();
+    for argument in &arguments.named {
+        let name = argument.name.name;
+        if !matches!(name, "dateStyle" | "timeStyle") {
+            return Err(invalid(
+                "DATETIME() supports only dateStyle and timeStyle options",
+            ));
+        }
+        if !styles.insert(name) {
+            return Err(invalid("DATETIME() cannot repeat a style option"));
+        }
+        match &argument.value {
+            InlineExpression::StringLiteral { value }
+                if matches!(*value, "short" | "medium" | "long") => {}
+            _ => {
+                return Err(invalid(
+                    "DATETIME() styles must be the string literal \"short\", \"medium\", or \"long\"",
+                ));
+            }
+        }
+    }
+    if styles.is_empty() {
+        return Err(invalid("DATETIME() requires dateStyle or timeStyle"));
+    }
+    validate_fluent_function_arguments(arguments, path, source, diagnostics, calls, None)
+}
+
+fn invalid_number_call(
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    message: &str,
+    span: SourceSpan,
+) -> Error {
+    Error::Parse(Box::new(FluentDiagnostic {
+        path: diagnostics.display_path(path),
+        message: message.into(),
+        source_code: diagnostics.named_source(path, source, "Fluent"),
+        span,
+    }))
+}
+
+fn invalid_datetime_call(
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    message: &str,
+    span: SourceSpan,
+) -> Error {
+    Error::Parse(Box::new(FluentDiagnostic {
+        path: diagnostics.display_path(path),
+        message: message.into(),
+        source_code: diagnostics.named_source(path, source, "Fluent"),
+        span,
+    }))
+}
+
+/// Fluent-bundle registers one function for Heine. Checking every function
+/// reference while loading a resource keeps a typo in a translation from
+/// becoming a later, unrelated template-rendering error.
+fn unknown_fluent_function(
+    path: &Path,
+    source: &str,
+    diagnostics: &crate::source_diagnostic::DiagnosticPaths,
+    function: &str,
+    span: SourceSpan,
+) -> Error {
+    Error::Parse(Box::new(FluentDiagnostic {
+        path: diagnostics.display_path(path),
+        message: format!(
+            "unknown Fluent function {function:?}; Heine currently provides NUMBER() and DATETIME()"
+        ),
+        source_code: diagnostics.named_source(path, source, "Fluent"),
+        span,
+    }))
+}
+
+/// Fluent's AST intentionally does not retain source spans. This narrow lexer
+/// recovers function-name spans without mistaking ordinary resource text or a
+/// string literal for a call. Validation visits expressions in source order,
+/// so the cursor connects each validated call to its own source span.
+struct FluentCallCursor {
+    calls: Vec<(String, SourceSpan)>,
+    next: usize,
+}
+
+impl FluentCallCursor {
+    fn new(source: &str) -> Self {
+        let mut calls = Vec::new();
+        let mut offset = 0;
+        let mut placeables = 0usize;
+        let mut quoted = false;
+        let mut line_start = true;
+
+        while offset < source.len() {
+            let Some(character) = source[offset..].chars().next() else {
+                break;
+            };
+            if quoted {
+                if character == '\\' {
+                    offset += 1;
+                    if let Some(next) = source[offset..].chars().next() {
+                        offset += next.len_utf8();
+                    }
+                    continue;
+                }
+                if character == '"' {
+                    quoted = false;
+                }
+                offset += character.len_utf8();
+                continue;
+            }
+
+            if line_start && character.is_ascii_whitespace() && character != '\n' {
+                offset += character.len_utf8();
+                continue;
+            }
+            if line_start && character == '#' {
+                let line_end = source[offset..]
+                    .find('\n')
+                    .map_or(source.len(), |length| offset + length);
+                offset = line_end;
+                continue;
+            }
+
+            line_start = character == '\n';
+            match character {
+                '"' if placeables > 0 => quoted = true,
+                '{' => placeables += 1,
+                '}' => placeables = placeables.saturating_sub(1),
+                _ if placeables > 0 && fluent_identifier_character(character) => {
+                    let start = offset;
+                    offset += character.len_utf8();
+                    while source[offset..]
+                        .chars()
+                        .next()
+                        .is_some_and(fluent_identifier_character)
+                    {
+                        offset += source[offset..].chars().next().map_or(0, char::len_utf8);
+                    }
+                    let name = &source[start..offset];
+                    let mut next = offset;
+                    while source[next..]
+                        .chars()
+                        .next()
+                        .is_some_and(|character| character.is_ascii_whitespace())
+                    {
+                        next += source[next..].chars().next().map_or(0, char::len_utf8);
+                    }
+                    if source[next..].starts_with('(') {
+                        calls.push((name.to_owned(), (start, name.len()).into()));
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+            offset += character.len_utf8();
+        }
+
+        Self { calls, next: 0 }
+    }
+
+    fn next(&mut self, name: &str) -> SourceSpan {
+        let Some((position, (_, span))) = self
+            .calls
+            .iter()
+            .enumerate()
+            .skip(self.next)
+            .find(|(_, (candidate, _))| candidate == name)
+        else {
+            return (0, name.len()).into();
+        };
+        self.next = position + 1;
+        *span
+    }
+}
+
+fn fluent_identifier_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
+}
+
+fn number_option(value: &InlineExpression<&str>) -> Option<u16> {
+    let InlineExpression::NumberLiteral { value } = value else {
+        return None;
+    };
+    value
+        .parse::<u16>()
+        .ok()
+        .filter(|value| *value <= number::MAX_FRACTION_DIGITS)
 }
 
 /// Finds each parsed top-level entry after its predecessor. `split_inclusive`

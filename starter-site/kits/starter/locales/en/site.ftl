@@ -26,18 +26,18 @@ starter-post-dates = Publication dates
 starter-post-reading-facts = Word count and reading time
 starter-word-count = { $words ->
    [one] One word
-  *[other] { $words } words
+  *[other] { NUMBER($words) } words
 }
 starter-reading-time = about { $minutes ->
    [one] one minute
-  *[other] { $minutes } minutes
+  *[other] { NUMBER($minutes) } minutes
 } read
 starter-reading-facts = { $words ->
    [one] One word
-  *[other] { $words } words
+  *[other] { NUMBER($words) } words
 } · about { $minutes ->
    [one] one minute
-  *[other] { $minutes } minutes
+  *[other] { NUMBER($minutes) } minutes
 } read
 
 # Labels for page-local navigation and margin-footnote controls.
@@ -64,7 +64,7 @@ starter-authors = { $count ->
 }
 starter-blog-post-summary = { $count ->
    [one] So far there is one post.
-   *[other] So far there are { $count } posts.
+   *[other] So far there are { NUMBER($count) } posts.
 }
 starter-tags-index-description = Browse the tags used by posts in this Heine starter site.
 starter-tags-term-description = Posts filed under { $term } in this Heine starter site.

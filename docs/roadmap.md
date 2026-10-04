@@ -24,6 +24,17 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Under consideration
 
+### Localized value formatting
+
+[Localized values](localized-values.md) now give Tera and Fluent one
+deterministic presentation path for decimal numbers, calendar dates, and
+editorial-zone times and date-times. The
+[localized-value-formatting design](design/localized-value-formatting.md)
+still excludes units, relative time, browser-selected time zones, and
+per-event time zones. The separate [percentage and currency
+design](design/percentage-and-currency-formatting.md) preserves those
+deliberate later extensions until ICU4X provides stable APIs.
+
 ### Redirect aliases
 
 A host-level redirect is preferable whenever the deployment platform supports

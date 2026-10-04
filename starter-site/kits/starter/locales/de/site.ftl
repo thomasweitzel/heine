@@ -25,18 +25,18 @@ starter-post-dates = Datumsangaben zum Beitrag
 starter-post-reading-facts = Wortzahl und Lesezeit
 starter-word-count = { $words ->
    [one] Ein Wort
-  *[other] { $words } Wörter
+  *[other] { NUMBER($words) } Wörter
 }
 starter-reading-time = etwa { $minutes ->
    [one] eine Minute
-  *[other] { $minutes } Minuten
+  *[other] { NUMBER($minutes) } Minuten
 } Lesezeit
 starter-reading-facts = { $words ->
    [one] Ein Wort
-  *[other] { $words } Wörter
+  *[other] { NUMBER($words) } Wörter
 } · etwa { $minutes ->
    [one] eine Minute
-  *[other] { $minutes } Minuten
+  *[other] { NUMBER($minutes) } Minuten
 } Lesezeit
 
 # Beschriftungen für lokale Navigation und Fußnotensteuerungen.
@@ -64,7 +64,7 @@ starter-authors = { $count ->
 }
 starter-blog-post-summary = { $count ->
    [one] Bisher gibt es einen Beitrag auf Deutsch.
-   *[other] Bisher gibt es { $count } Beiträge auf Deutsch.
+   *[other] Bisher gibt es { NUMBER($count) } Beiträge auf Deutsch.
 }
 starter-tags-index-description = Durchsuche die Schlagwörter der Beiträge in dieser Heine-Starter-Site.
 starter-tags-term-description = Beiträge mit dem Schlagwort { $term } in dieser Heine-Starter-Site.

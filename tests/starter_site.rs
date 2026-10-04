@@ -45,6 +45,7 @@ fn builds_the_documented_starter_site() {
         "{sitemap}"
     );
     assert!(!sitemap.contains("/404.html"), "{sitemap}");
+    assert!(!sitemap.contains("/blog/page/"), "{sitemap}");
     let not_found = fs::read_to_string(output.join("404.html")).expect("English 404 page");
     assert!(not_found.contains("<h1>Page not found</h1>"), "{not_found}");
     assert!(

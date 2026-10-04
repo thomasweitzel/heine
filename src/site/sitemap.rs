@@ -9,7 +9,7 @@ use crate::{
 };
 
 use super::{
-    page::{Page, PageId, Task, TranslationId},
+    page::{Page, PageId, Pager, Task, TranslationId},
     series, taxonomy,
 };
 
@@ -54,7 +54,9 @@ impl Sitemap {
         let alternates = alternate_catalog(config, urls, pages, tasks)?;
         let mut entries = tasks
             .iter()
-            .filter(|task| task.sitemap_include)
+            .filter(|task| {
+                sitemap_task_included(config, task.sitemap_include, task.pagination.as_deref())
+            })
             .map(|task| {
                 Ok(Entry {
                     url: canonical(urls, &task.output_path)?,
@@ -66,14 +68,18 @@ impl Sitemap {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        for task in taxonomy_tasks {
+        for task in taxonomy_tasks.iter().filter(|task| {
+            sitemap_task_included(config, task.sitemap_include, task.pagination.as_deref())
+        }) {
             entries.push(Entry {
                 url: canonical(urls, &task.output_path)?,
                 lastmod: None,
                 alternates: Vec::new(),
             });
         }
-        for task in series_tasks {
+        for task in series_tasks.iter().filter(|task| {
+            sitemap_task_included(config, task.sitemap_include, task.pagination.as_deref())
+        }) {
             entries.push(Entry {
                 url: canonical(urls, &task.output_path)?,
                 lastmod: None,
@@ -320,11 +326,15 @@ fn alternate_catalog(
 /// Later pagination tasks are generated views and do not name independently
 /// translatable authored output.
 fn is_authored_sitemap_task(task: &Task) -> bool {
-    task.sitemap_include
-        && task
-            .pagination
-            .as_ref()
-            .is_none_or(|pager| pager.page_number == 1)
+    task.sitemap_include && task.pagination.as_deref().is_none_or(Pager::is_first)
+}
+
+fn sitemap_task_included(
+    config: &SitemapConfig,
+    sitemap_include: bool,
+    pagination: Option<&Pager>,
+) -> bool {
+    sitemap_include && (config.include_pagers() || pagination.is_none_or(Pager::is_first))
 }
 
 fn escaped_len(value: &str) -> usize {

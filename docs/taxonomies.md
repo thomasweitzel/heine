@@ -39,7 +39,9 @@ per_page = 20
 ```
 
 The five fields are required; optional `counterparts` groups declare explicit
-cross-locale term counterparts. Taxonomy pages always use the HTML `.html`
+cross-locale term counterparts. Optional `sitemap = false` excludes this
+taxonomy's complete generated listing family from a configured sitemap.
+Taxonomy pages always use the HTML `.html`
 suffix; a taxonomy is an HTML listing feature rather than a second general
 output-format mechanism.
 
@@ -54,6 +56,7 @@ the literal terms that correspond across those locales.
 | `index_template` | Template for the term index                 | A checked template name                 |
 | `term_template`  | Template for term listings and later pagers | A checked template name                 |
 | `per_page`       | Members on each term-listing page           | A positive integer                      |
+| `sitemap`        | Sitemap membership for generated listings   | Only `false`; requires `[sitemap]`      |
 
 The taxonomy name (`tags` above) is a simple identifier. It is available as a
 template-map key and identifies the taxonomy in page metadata. `path` is

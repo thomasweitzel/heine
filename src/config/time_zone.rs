@@ -29,6 +29,13 @@ impl EditorialTimeZone {
         timestamp.to_zoned(self.zone.clone()).date().to_string()
     }
 
+    /// Returns the local civil date-time for an instant in the editorial zone.
+    /// Formatting code consumes this display value only after the timestamp has
+    /// been resolved through the site's bundled zone database.
+    pub(crate) fn civil_datetime(&self, timestamp: Timestamp) -> jiff::civil::DateTime {
+        timestamp.to_zoned(self.zone.clone()).datetime()
+    }
+
     /// Resolves an authored offsetless TOML date-time without consulting host
     /// timezone data. Callers retain their own source span and field context.
     pub(crate) fn resolve_local(

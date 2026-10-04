@@ -9,6 +9,7 @@
   const labels = form.dataset;
   const pageSize = 10;
   const windowSize = 1;
+  const locale = document.documentElement.lang;
   let documentsPromise;
   let documentsLoading = false;
   let debounce;
@@ -22,9 +23,10 @@
       : character
   )).join("");
   const normalize = (value) => joinUnspacedLineBreaks(value.normalize("NFC")
-      .toLocaleLowerCase(document.documentElement.lang)
+      .toLocaleLowerCase(locale)
   ).replace(/\s+/gu, " ").trim();
-  const pluralRules = new Intl.PluralRules(document.documentElement.lang);
+  const pluralRules = new Intl.PluralRules(locale);
+  const numberFormatter = new Intl.NumberFormat(locale);
   const queryState = () => new URLSearchParams(window.location.search);
   const pageNumber = (value, total) => Math.min(Math.max(Number.parseInt(value, 10) || 1, 1), total || 1);
 
@@ -99,7 +101,7 @@
     const category = pluralRules.select(count);
     const name = `results${category[0].toUpperCase()}${category.slice(1)}`;
     const template = labels[name] || labels.resultsOther;
-    return template.replace("__count__", String(count));
+    return template.replace("__count__", numberFormatter.format(count));
   }
 
   function link(result) {

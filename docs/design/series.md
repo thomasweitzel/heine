@@ -193,7 +193,9 @@ inventory rules apply unchanged.
 Series output is independent of collections, taxonomies, feeds, and search
 indexes. It does not add members to a collection, make feed entries, or add
 terms to a taxonomy. Generated Series index and listing pages participate in a
-sitemap exactly as other rendered generated pages do. Page-level `sitemap =
+sitemap unless `[series] sitemap = false` excludes the complete generated
+family. `sitemap.include_pagers = false` instead retains the index and first
+listing page while excluding only derived pager URLs. Page-level `sitemap =
 false` does not suppress a generated Series output: it has no one authored
 page owner, just as a generated taxonomy output has none.
 

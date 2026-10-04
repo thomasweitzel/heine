@@ -71,6 +71,7 @@ pub(super) struct Task {
     pub(super) output_source: Arc<NamedSource<String>>,
     pub(super) output_span: SourceSpan,
     pub(super) latest_input: SystemTime,
+    pub(super) sitemap_include: bool,
     pub(super) series_id: Option<SeriesName>,
     pub(super) pagination: Option<Arc<Pager>>,
 }
@@ -399,6 +400,7 @@ pub(super) fn resolve(
             output_source: source,
             output_span: span,
             latest_input: SystemTime::UNIX_EPOCH,
+            sitemap_include: config.sitemap_include(),
             series_id: None,
             pagination: None,
         });
@@ -425,6 +427,7 @@ pub(super) fn resolve(
                     output_source: source,
                     output_span: span,
                     latest_input: SystemTime::UNIX_EPOCH,
+                    sitemap_include: config.sitemap_include(),
                     series_id: Some(series.name.clone()),
                     pagination: Some(Arc::new(Pager {
                         collection: series.name.to_string(),

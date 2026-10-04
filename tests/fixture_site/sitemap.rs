@@ -180,6 +180,133 @@ fn sitemap_includes_generated_taxonomy_pages_without_authored_lastmod() {
 }
 
 #[test]
+fn taxonomy_sitemap_boundary_excludes_its_index_terms_and_pagers() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\norigin = 'https://example.org'\n\n[sitemap]\n\n[collections.posts]\norder = 'title-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 1\nsitemap = false\n",
+    );
+    for (name, title) in [("one", "One"), ("two", "Two")] {
+        fixture.write(
+            format!("content/en/{name}.page"),
+            &format!(
+                "template = 'page.tera'\ntitle = '{title}'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rust']\n"
+            ),
+        );
+    }
+    fixture.write("templates/page.tera", "page");
+    fixture.write("templates/taxonomy-index.tera", "index");
+    fixture.write("templates/taxonomy-term.tera", "term");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    for path in [
+        "public/tags/index.html",
+        "public/tags/Rust.html",
+        "public/tags/Rust/page/2.html",
+    ] {
+        assert!(fixture.path().join(path).is_file(), "{path}");
+    }
+    let sitemap =
+        fs::read_to_string(fixture.path().join("public/sitemap.xml")).expect("sitemap output");
+    assert!(
+        sitemap.contains("https://example.org/one.html"),
+        "{sitemap}"
+    );
+    assert!(
+        sitemap.contains("https://example.org/two.html"),
+        "{sitemap}"
+    );
+    assert!(!sitemap.contains("/tags/"), "{sitemap}");
+}
+
+#[test]
+fn generated_listing_sitemap_settings_require_sitemap_and_accept_only_false() {
+    let cases = [
+        (
+            "[collections.posts]\norder = 'title-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 10\nsitemap = false\n",
+            "taxonomy tags sitemap requires [sitemap]",
+        ),
+        (
+            "[series]\npath = 'series'\nindex_template = 'series-index.tera'\nlisting_template = 'series.tera'\nindex_title_key = 'series-index-title'\nper_page = 10\nsitemap = false\n\n[series.definitions.guide]\ntitle_key = 'series-guide-title'\n",
+            "series sitemap requires [sitemap]",
+        ),
+        (
+            "[site]\norigin = 'https://example.org'\n\n[sitemap]\n\n[collections.posts]\norder = 'title-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 10\nsitemap = true\n",
+            "taxonomy tags sitemap accepts only false",
+        ),
+        (
+            "[site]\norigin = 'https://example.org'\n\n[sitemap]\n\n[series]\npath = 'series'\nindex_template = 'series-index.tera'\nlisting_template = 'series.tera'\nindex_title_key = 'series-index-title'\nper_page = 10\nsitemap = true\n\n[series.definitions.guide]\ntitle_key = 'series-guide-title'\n",
+            "series sitemap accepts only false",
+        ),
+        (
+            "[site]\norigin = 'https://example.org'\n\n[sitemap]\ninclude_pagers = true\n",
+            "sitemap.include_pagers accepts only false",
+        ),
+    ];
+
+    for (config, message) in cases {
+        let fixture = Fixture::new();
+        fixture.write("heine.toml", config);
+        let error = build_at(fixture.path(), BuildMode::Full).expect_err("configuration fails");
+        let report = format!("{error:?}");
+        assert!(report.contains(message), "{report}");
+    }
+}
+
+#[test]
+fn sitemap_can_exclude_derived_pagers_without_excluding_listing_families() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\norigin = 'https://example.org'\n\n[sitemap]\ninclude_pagers = false\n\n[collections.posts]\norder = 'title-asc'\n\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 1\n\n[series]\npath = 'series'\nindex_template = 'series-index.tera'\nlisting_template = 'series.tera'\nindex_title_key = 'series-index-title'\nper_page = 1\n\n[series.definitions.guide]\ntitle_key = 'series-guide-title'\n",
+    );
+    fixture.write(
+        "content/en/blog/index.page",
+        "template = 'listing.tera'\ntitle = 'Blog'\ncollections = []\n\n[pagination]\ncollection = 'posts'\nper_page = 1\n",
+    );
+    for (name, title, position) in [("one", "One", 10), ("two", "Two", 20)] {
+        fixture.write(
+            format!("content/en/{name}.page"),
+            &format!(
+                "template = 'page.tera'\ntitle = '{title}'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rust']\n\n[[series]]\nid = 'guide'\nposition = {position}\n"
+            ),
+        );
+    }
+    fixture.write(
+        "locales/en/site.ftl",
+        "series-index-title = Series\nseries-guide-title = Guide\n",
+    );
+    fixture.write("templates/page.tera", "page");
+    fixture.write("templates/listing.tera", "listing");
+    fixture.write("templates/taxonomy-index.tera", "taxonomy index");
+    fixture.write("templates/taxonomy-term.tera", "taxonomy term");
+    fixture.write("templates/series-index.tera", "series index");
+    fixture.write("templates/series.tera", "series listing");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+
+    let sitemap =
+        fs::read_to_string(fixture.path().join("public/sitemap.xml")).expect("sitemap output");
+    for url in [
+        "https://example.org/blog/index.html",
+        "https://example.org/tags/index.html",
+        "https://example.org/tags/Rust.html",
+        "https://example.org/series/index.html",
+        "https://example.org/series/guide/index.html",
+    ] {
+        assert!(sitemap.contains(url), "{url}: {sitemap}");
+    }
+    for url in [
+        "https://example.org/blog/page/2.html",
+        "https://example.org/tags/Rust/page/2.html",
+        "https://example.org/series/guide/page/2.html",
+    ] {
+        assert!(!sitemap.contains(url), "{url}: {sitemap}");
+    }
+}
+
+#[test]
 fn directory_sitemap_boundary_excludes_descendants_and_their_pagers() {
     let fixture = Fixture::new();
     fixture.write(

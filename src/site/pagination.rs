@@ -232,6 +232,10 @@ pub(crate) enum NavigationItem {
 }
 
 impl Pager {
+    pub(crate) fn is_first(&self) -> bool {
+        self.page_number == 1
+    }
+
     pub(crate) fn view<'a>(
         &self,
         catalog: &'a PageCatalog,

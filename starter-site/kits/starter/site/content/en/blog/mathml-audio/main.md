@@ -10,6 +10,35 @@ $$
 \sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}
 $$
 
+## Localized values
+
+Templates can present a number with the page locale without turning the value
+into hand-written punctuation. The visible text changes with the locale while
+the template keeps one numeric value:
+
+```
+{{ format_number(value=1234567.89, maximum_fraction_digits=2) }}
+```
+
+Fluent messages can format the same kind of value with `NUMBER($value)`. The
+post metadata uses that form for word counts and reading-time estimates.
+
+Dates and times follow the same locale-aware boundary. A template keeps an
+instant machine-readable in `datetime`, then presents it through the site's
+editorial time zone:
+
+```
+{{ format_datetime(
+  value=page.published,
+  date_style="long",
+  time_style="short",
+) }}
+```
+
+Fluent uses `DATETIME($value, dateStyle: "long", timeStyle: "short")` when a
+translation owns the surrounding sentence. Calendar dates remain date-only;
+Heine never assumes midnight to produce a time.
+
 ## Audio
 
 The short spoken introduction below is a local audio asset. Its relative URL

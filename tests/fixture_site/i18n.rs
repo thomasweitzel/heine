@@ -546,6 +546,369 @@ fn formats_page_dates_for_the_locale_being_rendered() {
 }
 
 #[test]
+fn formats_times_and_datetimes_consistently_in_templates_and_fluent() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_date(value=page.published, style='long') }}|{{ t(id='date', value=page.published) }}|{{ format_time(value=page.published, style='short') }}|{{ format_datetime(value=page.published, date_style='long', time_style='short') }}|{{ t(id='time', value=page.published) }}|{{ t(id='datetime', value=page.published) }}",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "date = { DATETIME($value, dateStyle: \"long\") }\ntime = { DATETIME($value, timeStyle: \"short\") }\ndatetime = { DATETIME($value, dateStyle: \"long\", timeStyle: \"short\") }\n",
+    );
+    fixture.write(
+        "locales/de/site.ftl",
+        "date = { DATETIME($value, dateStyle: \"long\") }\ntime = { DATETIME($value, timeStyle: \"short\") }\ndatetime = { DATETIME($value, dateStyle: \"long\", timeStyle: \"short\") }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T03:30:00\n",
+    );
+    fixture.write(
+        "content/de/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T03:30:00\n",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("localized temporal build");
+    let english = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    let german = fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap();
+    assert_eq!(
+        english,
+        "March 29, 2026|March 29, 2026|3:30\u{202f}AM|March 29, 2026 at 3:30\u{202f}AM|3:30\u{202f}AM|March 29, 2026 at 3:30\u{202f}AM"
+    );
+    assert_eq!(
+        german,
+        "29. März 2026|29. März 2026|03:30|29. März 2026 um 03:30|03:30|29. März 2026 um 03:30"
+    );
+}
+
+#[test]
+fn rejects_invalid_datetime_calls_while_loading_fluent_resources() {
+    for (call, expected) in [
+        ("DATETIME($value)", "requires dateStyle"),
+        (
+            "DATETIME($value, dateStyle: \"long\", dateStyle: \"short\")",
+            "appears twice",
+        ),
+        ("DATETIME($value, timeStyle: \"full\")", "styles must be"),
+        (
+            "DATETIME($value, calendar: \"gregory\")",
+            "DATETIME() supports only",
+        ),
+    ] {
+        let fixture = multilingual_fixture();
+        let source = format!("time = {{ {call} }}\n");
+        fixture.write("locales/en/site.ftl", &source);
+        fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+        fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+        fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+        let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid DATETIME call");
+        let diagnostic = format!("{error:?}");
+        assert!(
+            diagnostic.contains(expected)
+                && diagnostic.contains("locales/en/site.ftl")
+                && diagnostic.contains("DATETIME"),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn rejects_literal_datetime_values_while_loading_fluent_resources() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "time = { DATETIME(\"2026-08-14T09:30:00Z\", timeStyle: \"short\") }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("literal DATETIME value");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("DATETIME()")
+            && diagnostic.contains("variable value argument")
+            && diagnostic.contains("locales/en/site.ftl"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_datetime_value_kind_errors_at_the_template_call_site() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ t(id='time', value='2026-08-14') }}",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "time = { DATETIME($value, timeStyle: \"short\") }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("calendar date has no time");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("templates/page.tera:1:4")
+            && diagnostic.contains("DATETIME() argument")
+            && diagnostic.contains("calendar dates"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_direct_time_value_errors_at_the_template_call_site() {
+    for (configuration, template, expected) in [
+        (
+            "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
+            "{{ format_time(value='2026-08-14') }}",
+            "calendar dates do not have a time",
+        ),
+        (
+            "[site]\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n",
+            "{{ format_time(value='2026-08-14T09:30:00Z') }}",
+            "time formatting requires",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        fixture.write("heine.toml", configuration);
+        fixture.write("templates/page.tera", template);
+        fixture.write("content/en/index.page", "template = 'page.tera'\n");
+
+        let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid time value");
+        let diagnostic = format!("{error:?}");
+        assert!(
+            diagnostic.contains("templates/page.tera:1:4") && diagnostic.contains(expected),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn fallback_datetime_messages_use_the_locale_that_supplies_the_message() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "heine.toml",
+        "[site]\ntime_zone = 'Europe/Berlin'\n\n[i18n]\ndefault_locale = 'en'\n\n[i18n.locales.en]\ndirection = 'ltr'\n\n[i18n.locales.de]\ndirection = 'ltr'\n\n[i18n.locales.pl]\ndirection = 'ltr'\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_datetime(value=page.published, date_style='long', time_style='short') }}|{{ t(id='event-time', when=page.published) }}",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "event-time = Starts at { DATETIME($when, dateStyle: \"long\", timeStyle: \"short\") }.\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T03:30:00\n",
+    );
+    fixture.write(
+        "content/de/index.page",
+        "template = 'page.tera'\npublished = 2026-03-29T03:30:00\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    build_at(fixture.path(), BuildMode::Full).expect("localized fallback temporal build");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap(),
+        "29. März 2026 um 03:30|Starts at \u{2068}March 29, 2026 at 3:30\u{202f}AM\u{2069}."
+    );
+}
+
+#[test]
+fn formats_decimal_values_consistently_in_templates_and_fluent() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_number(value=1234567.895, maximum_fraction_digits=2) }}|{{ t(id='number', value=1234567.895) }}|{{ t(id='bare', value=1234567.895) }}|{{ t(id='ungrouped', value=1234567.895) }}|{{ t(id='selector', count=1.0004) }}|{{ t(id='indirect', count=1.0004) }}",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "number = { NUMBER($value, maximumFractionDigits: 2) }\nbare = { $value }\nungrouped = { NUMBER($value, useGrouping: \"false\", maximumFractionDigits: 1) }\nselector = { $count ->\n    [one] one\n   *[other] other\n}\nindirect = { selector }\n",
+    );
+    fixture.write(
+        "locales/de/site.ftl",
+        "number = { NUMBER($value, maximumFractionDigits: 2) }\nbare = { $value }\nungrouped = { NUMBER($value, useGrouping: \"false\", maximumFractionDigits: 1) }\nselector = { $count ->\n    [one] one\n   *[other] other\n}\nindirect = { selector }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/de/index.page", "template = 'page.tera'\n");
+    fixture.write("content/pl/index.page", "template = 'page.tera'\n");
+
+    build_at(fixture.path(), BuildMode::Full).expect("localized decimal build");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).unwrap(),
+        "1,234,567.9|1,234,567.9|1,234,567.895|1234567.9|one|one"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap(),
+        "1.234.567,9|1.234.567,9|1.234.567,895|1234567,9|one|one"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/pl/index.html")).unwrap(),
+        "1\u{a0}234\u{a0}567,9|1,234,567.9|1,234,567.895|1234567.9|one|one"
+    );
+}
+
+#[test]
+fn rejects_inexact_fluent_translation_arguments() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "templates/page.tera",
+        "{{ t(id='items', count=9007199254740993) }}",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsafe Fluent integer");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("cannot distinguish this") && diagnostic.contains("format_number"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_incompatible_decimal_precision_at_the_template_call_site() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_number(value=1, minimum_fraction_digits=3, maximum_fraction_digits=2) }}",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("incompatible precision");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("minimum_fraction_digits")
+            && diagnostic.contains("maximum_fraction_digits")
+            && diagnostic.contains("templates/page.tera:1"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_unsupported_fluent_number_options_at_the_resource_call() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { NUMBER($count, maximumFractionDigits: 2, currency: \"EUR\") }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsupported NUMBER option");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("NUMBER() supports only")
+            && diagnostic.contains("locales/en/site.ftl")
+            && diagnostic.contains("NUMBER"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_the_second_invalid_number_call_at_its_own_source_span() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { NUMBER($first) } { NUMBER($second, currency: \"EUR\") }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsupported NUMBER option");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("locales/en/site.ftl:1:30")
+            && diagnostic.contains("NUMBER() supports only"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reports_unknown_fluent_functions_at_the_resource_call() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { \"NUMBERS(\" } { NUMBERS($count) }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown Fluent function");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("unknown Fluent function")
+            && diagnostic.contains("\"NUMBERS\"")
+            && diagnostic.contains("Heine currently provides NUMBER()")
+            && diagnostic.contains("locales/en/site.ftl:1:26"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_a_plural_selector_with_incompatible_number_precision() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { $count ->\n    [one] { NUMBER($count, minimumFractionDigits: 1) } item\n   *[other] { NUMBER($count, minimumFractionDigits: 1) } items\n}\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("incompatible selector precision");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("default fraction") && diagnostic.contains("locales/en/site.ftl"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_incompatible_number_precision_through_a_message_reference() {
+    let fixture = multilingual_fixture();
+    fixture.write("templates/page.tera", "{{ t(id='items', count=1) }}");
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { $count ->\n    [one] { display } item\n   *[other] { display } items\n}\ndisplay = { NUMBER($count, maximumFractionDigits: 2) } { NUMBER($count) }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("incompatible referenced selector precision");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("default fraction-digit policy")
+            && diagnostic.contains("templates/page.tera:1")
+            && diagnostic.contains("locales/en/site.ftl:5:1")
+            && diagnostic.contains("referenced Fluent message")
+            && diagnostic.contains("\"display\""),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn reports_invalid_date_formatting_options_at_the_template_call_site() {
     let fixture = multilingual_fixture();
     fixture.write(

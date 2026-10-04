@@ -309,6 +309,7 @@ impl Site {
             selected_kit,
             i18n.locales(),
             i18n.default_locale().clone(),
+            site_settings.time_zone().cloned(),
             diagnostics,
         )?);
         let locales = locales::load(locales::Inputs {

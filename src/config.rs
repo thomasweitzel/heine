@@ -259,6 +259,7 @@ pub(crate) struct SeriesConfig {
     index_title_key: String,
     index_description_key: Option<String>,
     per_page: usize,
+    sitemap_include: bool,
     definitions: BTreeMap<SeriesName, SeriesDefinition>,
     source: Option<Arc<NamedSource<String>>>,
     path_span: SourceSpan,
@@ -287,6 +288,9 @@ impl SeriesConfig {
     }
     pub(crate) fn per_page(&self) -> usize {
         self.per_page
+    }
+    pub(crate) fn sitemap_include(&self) -> bool {
+        self.sitemap_include
     }
     pub(crate) fn definitions(&self) -> &BTreeMap<SeriesName, SeriesDefinition> {
         &self.definitions
@@ -549,6 +553,7 @@ pub(crate) struct TaxonomyDefinition {
     index_template: TemplateName,
     term_template: TemplateName,
     per_page: usize,
+    sitemap_include: bool,
     counterparts: BTreeMap<String, TermCounterpartGroup>,
     source: Option<Arc<NamedSource<String>>>,
     collection_span: SourceSpan,
@@ -573,6 +578,9 @@ impl TaxonomyDefinition {
     }
     pub(crate) fn per_page(&self) -> usize {
         self.per_page
+    }
+    pub(crate) fn sitemap_include(&self) -> bool {
+        self.sitemap_include
     }
     pub(crate) fn counterparts(&self) -> &BTreeMap<String, TermCounterpartGroup> {
         &self.counterparts
@@ -739,6 +747,7 @@ impl SiteSettings {
 #[derive(Debug, Clone)]
 pub(crate) struct SitemapConfig {
     hreflang: bool,
+    include_pagers: bool,
     span: SourceSpan,
     source: Option<Arc<NamedSource<String>>>,
 }
@@ -746,6 +755,10 @@ pub(crate) struct SitemapConfig {
 impl SitemapConfig {
     pub(crate) fn hreflang(&self) -> bool {
         self.hreflang
+    }
+
+    pub(crate) fn include_pagers(&self) -> bool {
+        self.include_pagers
     }
 
     pub(crate) fn output_claim(&self, path: OutputPath) -> Option<OutputClaim> {
@@ -1056,6 +1069,7 @@ struct RawReadingTimeConfig {
 #[serde(deny_unknown_fields)]
 struct RawSitemapConfig {
     hreflang: Option<toml::Spanned<bool>>,
+    include_pagers: Option<toml::Spanned<bool>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1072,6 +1086,7 @@ struct RawTaxonomyDefinition {
     index_template: toml::Spanned<String>,
     term_template: toml::Spanned<String>,
     per_page: toml::Spanned<usize>,
+    sitemap: Option<toml::Spanned<bool>>,
     #[serde(default)]
     counterparts:
         BTreeMap<toml::Spanned<String>, BTreeMap<toml::Spanned<String>, toml::Spanned<String>>>,
@@ -1086,6 +1101,7 @@ struct RawSeriesConfig {
     index_title_key: toml::Spanned<String>,
     index_description_key: Option<toml::Spanned<String>>,
     per_page: toml::Spanned<usize>,
+    sitemap: Option<toml::Spanned<bool>>,
     definitions: BTreeMap<toml::Spanned<String>, RawSeriesDefinition>,
 }
 
@@ -1373,7 +1389,10 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                                 .into(),
                     });
                 }
-                let RawSitemapConfig { hreflang } = value.into_inner();
+                let RawSitemapConfig {
+                    hreflang,
+                    include_pagers,
+                } = value.into_inner();
                 let hreflang = match hreflang {
                     None => false,
                     Some(value) => {
@@ -1388,8 +1407,22 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                         }
                     }
                 };
+                let include_pagers = match include_pagers {
+                    None => true,
+                    Some(value) => {
+                        let value_span: SourceSpan = value.span().into();
+                        if value.into_inner() {
+                            return Err(ConfigValueError {
+                                span: value_span,
+                                message: "sitemap.include_pagers accepts only false; omit it to include derived pager pages".into(),
+                            });
+                        }
+                        false
+                    }
+                };
                 Ok(SitemapConfig {
                     hreflang,
+                    include_pagers,
                     span,
                     source: None,
                 })
@@ -1693,9 +1726,10 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 },
             );
         }
+        let sitemap_enabled = sitemap.is_some();
         let series = raw
             .series
-            .map(|raw| parse_series_config(raw.into_inner()))
+            .map(|raw| parse_series_config(raw.into_inner(), sitemap_enabled))
             .transpose()?;
         let mut taxonomies = BTreeMap::new();
         for (name, definition) in raw.taxonomies {
@@ -1756,6 +1790,11 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     message: format!("taxonomy {name} per_page must be a positive integer"),
                 });
             }
+            let sitemap_include = generated_sitemap_include(
+                definition.sitemap,
+                sitemap_enabled,
+                &format!("taxonomy {name} sitemap"),
+            )?;
             let mut counterparts = BTreeMap::new();
             for (group, members) in definition.counterparts {
                 let group_span: SourceSpan = group.span().into();
@@ -1833,6 +1872,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                     index_template,
                     term_template,
                     per_page,
+                    sitemap_include,
                     counterparts,
                     source: None,
                     collection_span,
@@ -2003,7 +2043,12 @@ impl SiteConfig {
     }
 }
 
-fn parse_series_config(raw: RawSeriesConfig) -> Result<SeriesConfig, ConfigValueError> {
+fn parse_series_config(
+    raw: RawSeriesConfig,
+    sitemap_enabled: bool,
+) -> Result<SeriesConfig, ConfigValueError> {
+    let sitemap_include =
+        generated_sitemap_include(raw.sitemap, sitemap_enabled, "series sitemap")?;
     let path_span: SourceSpan = raw.path.span().into();
     let path = OutputPath::try_new(PathBuf::from(raw.path.into_inner())).map_err(|message| {
         ConfigValueError {
@@ -2097,6 +2142,7 @@ fn parse_series_config(raw: RawSeriesConfig) -> Result<SeriesConfig, ConfigValue
         index_title_key,
         index_description_key,
         per_page,
+        sitemap_include,
         definitions,
         source: None,
         path_span,
@@ -2106,6 +2152,32 @@ fn parse_series_config(raw: RawSeriesConfig) -> Result<SeriesConfig, ConfigValue
         index_description_key_span,
         per_page_span,
     })
+}
+
+fn generated_sitemap_include(
+    value: Option<toml::Spanned<bool>>,
+    sitemap_enabled: bool,
+    field: &str,
+) -> Result<bool, ConfigValueError> {
+    let Some(value) = value else {
+        return Ok(true);
+    };
+    let span: SourceSpan = value.span().into();
+    if !sitemap_enabled {
+        return Err(ConfigValueError {
+            span,
+            message: format!("{field} requires [sitemap] in heine.toml"),
+        });
+    }
+    if value.into_inner() {
+        return Err(ConfigValueError {
+            span,
+            message: format!(
+                "{field} accepts only false; omit it to include its generated listing family"
+            ),
+        });
+    }
+    Ok(false)
 }
 
 fn nonempty_series_key(

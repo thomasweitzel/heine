@@ -31,6 +31,38 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-10-04
+
+### Added
+
+- **Generated-listing sitemap boundaries.** Taxonomy definitions and the
+  global Series configuration can now use `sitemap = false` to exclude their
+  complete generated listing families, including every derived pager, from a
+  configured sitemap. Sitemap configuration can also use
+  `include_pagers = false` to omit only derived pager pages while retaining
+  every listing's first page.
+
+- **Localized dates and times.** Templates can now use `format_time()` and
+  `format_datetime()`, while Fluent messages can use `DATETIME()`. They format
+  RFC 3339 instants with the configured editorial time zone and bundled ICU
+  data; calendar dates remain deliberately date-only values.
+
+- **Localized decimal numbers.** Templates can now use `format_number()` and
+  Fluent messages can use bare numeric placeables or `NUMBER()`. Both use the
+  supplying locale and bundled ICU data, while checked diagnostics reject a
+  numeric argument that Fluent cannot represent without changing its value.
+
+### Fixed
+
+- **Fluent function diagnostics.** Misspelled Fluent functions now fail while
+  Heine loads the resource and identify the function in the `.ftl` source,
+  rather than failing later at an unrelated `t()` template call.
+
+- **Editorial time-zone data.** Builds now always use Heine's bundled IANA
+  time-zone database. A machine's `TZDIR` or installed zoneinfo files can no
+  longer change publication-date resolution or other editorial-time-zone
+  output.
+
 ## [0.9.4] - 2026-09-30
 
 ### Changed
