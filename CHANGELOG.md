@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-10-04
+
 ### Added
 
 - **Generated-listing sitemap boundaries.** Taxonomy definitions and the
