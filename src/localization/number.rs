@@ -38,6 +38,10 @@ pub(crate) enum Error {
     FractionDigits { name: &'static str },
     #[error("minimum_fraction_digits must not exceed maximum_fraction_digits")]
     IncompatibleFractionDigits,
+    #[error(
+        "minimum_fraction_digits={minimum} requires maximum_fraction_digits of at least {minimum}; the omitted maximum defaults to {default_maximum}"
+    )]
+    ImplicitMaximumTooSmall { minimum: u16, default_maximum: u16 },
     #[error("could not load decimal formatting data for locale {locale:?}: {message}")]
     Locale { locale: String, message: String },
     #[error(
@@ -103,6 +107,31 @@ impl Options {
             grouping: true,
             minimum_fraction_digits: 0,
             maximum_fraction_digits: 3,
+        }
+    }
+
+    /// Builds options from the public arguments, whose maximum is optional.
+    /// Keeping that distinction here lets diagnostics explain the otherwise
+    /// surprising interaction between a larger minimum and the default maximum.
+    pub(crate) fn with_optional_maximum(
+        grouping: bool,
+        minimum_fraction_digits: u16,
+        maximum_fraction_digits: Option<u16>,
+    ) -> Result<Self, Error> {
+        match maximum_fraction_digits {
+            Some(maximum_fraction_digits) => {
+                Self::new(grouping, minimum_fraction_digits, maximum_fraction_digits)
+            }
+            None => {
+                let default_maximum = Self::defaults().maximum_fraction_digits;
+                if minimum_fraction_digits > default_maximum {
+                    return Err(Error::ImplicitMaximumTooSmall {
+                        minimum: minimum_fraction_digits,
+                        default_maximum,
+                    });
+                }
+                Self::new(grouping, minimum_fraction_digits, default_maximum)
+            }
         }
     }
 
@@ -240,6 +269,43 @@ mod tests {
             format(&"en".parse().unwrap(), &value, options).unwrap(),
             "2.36"
         );
+    }
+
+    #[test]
+    fn preserves_a_negative_zero_from_a_template_float() {
+        let value = LocalizedNumber::from_f64(-0.0).unwrap();
+        assert_eq!(
+            format(&"en".parse().unwrap(), &value, Options::default()).unwrap(),
+            "-0"
+        );
+        let value = LocalizedNumber::from_f64(-42.5).unwrap();
+        assert_eq!(
+            format(&"en".parse().unwrap(), &value, Options::default()).unwrap(),
+            "-42.5"
+        );
+    }
+
+    #[test]
+    fn rejects_non_finite_template_floats() {
+        assert!(matches!(
+            LocalizedNumber::from_f64(f64::NAN),
+            Err(Error::NonFinite)
+        ));
+        assert!(matches!(
+            LocalizedNumber::from_f64(f64::INFINITY),
+            Err(Error::NonFinite)
+        ));
+    }
+
+    #[test]
+    fn explains_when_an_omitted_maximum_conflicts_with_the_minimum() {
+        assert!(matches!(
+            Options::with_optional_maximum(true, 5, None),
+            Err(Error::ImplicitMaximumTooSmall {
+                minimum: 5,
+                default_maximum: 3,
+            })
+        ));
     }
 
     #[test]

@@ -30,12 +30,37 @@ arguments:
 
 Grouping defaults to `true`. The minimum defaults to `0`; the maximum defaults
 to `3`. Heine rounds to the requested maximum with round-half-to-even and then
-pads to the requested minimum. Both fraction-digit values must be integers
-from `0` through `32768`, and the minimum must not exceed the maximum.
+pads to the requested minimum. For example, at two fraction digits, `2.345`
+renders as `2.34` and `2.355` as `2.36`. This deliberately differs from the
+half-expand behavior many authors know from JavaScript formatting.
+
+Both fraction-digit values must be integers from `0` through `32768`, which is
+the precision limit of Heine's checked decimal representation. The minimum
+must not exceed the maximum. If a requested minimum exceeds the default
+maximum of `3`, set `maximum_fraction_digits` explicitly to at least that
+minimum. A single request can deliberately produce 32,768 fractional digit
+positions, so avoid gratuitous padding in repeated template output. Heine
+never allocates output from an unchecked template value.
 
 Heine converts floating-point inputs through their shortest round-trippable
 decimal text before it rounds them. It does not multiply a binary float to
 implement decimal precision. Integers remain exact at the template boundary.
+Numbers must be finite: a `NaN` or infinity input fails with `number must be
+finite`. Negative values retain their sign, including `-0` from a template
+float.
+
+## Locale ownership
+
+The two rendering boundaries deliberately choose their locale from different
+sources:
+
+| Where a value is formatted | Locale Heine uses |
+|---|---|
+| `format_number()`, `format_date()`, `format_time()`, or `format_datetime()` in a template | The locale of the page being rendered |
+| A Fluent placeable, `NUMBER()`, or `DATETIME()` inside `t()` | The locale of the bundle that supplied the resolved message |
+
+The second rule keeps a fallback message coherent. An English fallback message
+on a German page retains English prose, grammar, digits, and date conventions.
 
 ## Fluent messages
 
@@ -70,17 +95,17 @@ to Fluent, Heine verifies that the number survives that conversion exactly. A
 large integer that Fluent cannot distinguish from a neighboring integer is a
 template error. Format such a value directly with `format_number()` instead.
 
-When a message falls back to the default locale, its numbers follow that
-message's locale as well. An English fallback message therefore does not gain
-German separators merely because the page is German.
-
 ## Plural messages
 
-Fluent selects plural variants from its numeric value before it writes locale
-digits or separators. Keep a selector's numeric presentation at the default
-policy when the same value appears through `NUMBER()`. If a message needs a
-differently rounded display value, the template author should pass that value
-as a separate argument with the intended meaning.
+Fluent selects plural variants from Heine's checked default decimal before it
+writes locale digits or separators. That policy rounds half to even with at
+most three fractional digits and no forced trailing zeros, so `1.0004` selects
+as `1`. Keep a selector's numeric presentation at that default policy when the
+same value appears through `NUMBER()`. Heine rejects a different fraction-digit
+policy in the same message closure, because it could display a plural operand
+that disagrees with the selector. If a message needs a differently rounded
+display value, the template author must pass a separate argument with that
+intended meaning.
 
 For numeric values, Heine currently formats decimal values only. Percentages,
 currencies, units, compact notation, and relative dates have distinct semantics
@@ -116,8 +141,8 @@ Every style is `short`, `medium`, or `long`; `medium` is the default. A
 combined value chooses its date and time styles separately. Heine uses the
 ordinary ICU date and time field sets, which do not add a time-zone label. A
 rendered time therefore implies the site's configured editorial time zone.
-Write an event's zone in surrounding localized prose when it differs from that
-editorial policy.
+Per-event time zones are not supported: write an event's zone in surrounding
+localized prose when it differs from that editorial policy.
 
 Fluent messages use `DATETIME()` with the equivalent camel-case option names:
 
@@ -137,3 +162,7 @@ Like numeric values, dates and times follow the locale of the Fluent message
 that supplies them after fallback. An English fallback message on a German page
 therefore keeps English date and time conventions. Heine never uses the host
 time zone, a browser setting, or the current clock.
+
+Heine accepts ISO calendar dates and formats them through its ISO/Gregorian
+calendar model. Alternative calendars and locale extensions that select them
+remain outside this formatter contract.

@@ -130,9 +130,9 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             })?;
             let number = localized_number(value)?;
             let grouping = kwargs.get::<bool>("grouping")?.unwrap_or(true);
-            let minimum = fraction_digits(&kwargs, "minimum_fraction_digits", 0)?;
-            let maximum = fraction_digits(&kwargs, "maximum_fraction_digits", 3)?;
-            let options = NumberOptions::new(grouping, minimum, maximum)
+            let minimum = fraction_digits(&kwargs, "minimum_fraction_digits")?.unwrap_or(0);
+            let maximum = fraction_digits(&kwargs, "maximum_fraction_digits")?;
+            let options = NumberOptions::with_optional_maximum(grouping, minimum, maximum)
                 .map_err(|error| tera::Error::message(error.to_string()))?;
             number::format(&number_runtime.locale(state)?, &number, options)
                 .map(Into::into)
@@ -154,15 +154,11 @@ fn localized_number(value: &tera::Value) -> tera::TeraResult<LocalizedNumber> {
     }
 }
 
-fn fraction_digits(
-    kwargs: &tera::Kwargs,
-    name: &'static str,
-    default: u16,
-) -> tera::TeraResult<u16> {
+fn fraction_digits(kwargs: &tera::Kwargs, name: &'static str) -> tera::TeraResult<Option<u16>> {
     match kwargs.get::<u64>(name)? {
-        Some(value) => u16::try_from(value).map_err(|_| {
+        Some(value) => u16::try_from(value).map(Some).map_err(|_| {
             tera::Error::message(format!("{name} must be an integer from 0 through 32768"))
         }),
-        None => Ok(default),
+        None => Ok(None),
     }
 }
