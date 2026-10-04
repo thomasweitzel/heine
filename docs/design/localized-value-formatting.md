@@ -116,6 +116,11 @@ output from an unchecked template integer. All rounding happens on that fixed
 decimal. Heine never rescales a template float, for example by computing
 `value * 1000.0`, before it rounds.
 
+The implicit maximum remains three when an author supplies only a larger
+minimum. Heine rejects that incompatible request and names the explicit maximum
+that would make it valid, rather than silently raising the maximum or producing
+an unexpected number of padded digits.
+
 Half-even rounding is deliberate. JavaScript's `Intl.NumberFormat` commonly
 uses half-expand rounding, so a translator familiar with that API might expect
 `2.5` at zero fractional digits to become `3`. Heine instead renders `2`, and

@@ -801,6 +801,28 @@ fn rejects_incompatible_decimal_precision_at_the_template_call_site() {
 }
 
 #[test]
+fn explains_when_a_template_minimum_exceeds_the_implicit_maximum() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "templates/page.tera",
+        "{{ format_number(value=1, minimum_fraction_digits=5) }}",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("implicit maximum");
+    let message = error.to_string();
+    let diagnostic = format!("{error:?}");
+    assert!(
+        message.contains("omitted maximum defaults to 3")
+            && message.contains("maximum_fraction_digits of at least 5"),
+        "{message}"
+    );
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+}
+
+#[test]
 fn rejects_unsupported_fluent_number_options_at_the_resource_call() {
     let fixture = multilingual_fixture();
     fixture.write(
@@ -819,6 +841,28 @@ fn rejects_unsupported_fluent_number_options_at_the_resource_call() {
             && diagnostic.contains("NUMBER"),
         "{diagnostic}"
     );
+}
+
+#[test]
+fn explains_when_a_fluent_minimum_exceeds_the_implicit_maximum() {
+    let fixture = multilingual_fixture();
+    fixture.write(
+        "locales/en/site.ftl",
+        "items = { NUMBER($count, minimumFractionDigits: 5) }\n",
+    );
+    fs::create_dir_all(fixture.path().join("content/en")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/de")).unwrap();
+    fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("implicit maximum");
+    let message = error.to_string();
+    let diagnostic = format!("{error:?}");
+    assert!(
+        message.contains("omitted maximum defaults to 3")
+            && message.contains("maximumFractionDigits"),
+        "{message}"
+    );
+    assert!(diagnostic.contains("locales/en/site.ftl:1"), "{diagnostic}");
 }
 
 #[test]

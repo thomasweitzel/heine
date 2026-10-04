@@ -140,11 +140,15 @@ fn format_fluent_number(value: &FluentValue<'_>, memoizer: &IntlLangMemoizer) ->
             let locale = locale.0.to_string().parse::<Locale>().ok()?;
             let number = number::LocalizedNumber::from_f64(value.value).ok()?;
             let minimum = value.options.minimum_fraction_digits.unwrap_or(0);
-            let maximum = value.options.maximum_fraction_digits.unwrap_or(3);
+            let maximum = value.options.maximum_fraction_digits;
             let minimum = u16::try_from(minimum).ok()?;
-            let maximum = u16::try_from(maximum).ok()?;
-            let options =
-                number::Options::new(value.options.use_grouping, minimum, maximum).ok()?;
+            let maximum = maximum.map(u16::try_from).transpose().ok()?;
+            let options = number::Options::with_optional_maximum(
+                value.options.use_grouping,
+                minimum,
+                maximum,
+            )
+            .ok()?;
             number::format(&locale, &number, options).ok()
         })
         .ok()
@@ -1460,7 +1464,7 @@ fn validate_number_arguments(
         return Err(invalid());
     }
     let mut minimum = 0;
-    let mut maximum = 3;
+    let mut maximum = None;
     for argument in &arguments.named {
         match argument.name.name {
             "useGrouping" => match &argument.value {
@@ -1488,7 +1492,7 @@ fn validate_number_arguments(
                 })?;
             }
             "maximumFractionDigits" => {
-                maximum = number_option(&argument.value).ok_or_else(|| {
+                maximum = Some(number_option(&argument.value).ok_or_else(|| {
                     invalid_number_call(
                         path,
                         source,
@@ -1496,7 +1500,7 @@ fn validate_number_arguments(
                         "maximumFractionDigits must be a supported non-negative integer",
                         span,
                     )
-                })?;
+                })?);
             }
             _ => {
                 return Err(invalid_number_call(
@@ -1509,14 +1513,17 @@ fn validate_number_arguments(
             }
         }
     }
-    number::Options::new(true, minimum, maximum).map_err(|_| {
-        invalid_number_call(
-            path,
-            source,
-            diagnostics,
-            "minimumFractionDigits cannot exceed maximumFractionDigits",
-            span,
-        )
+    number::Options::with_optional_maximum(true, minimum, maximum).map_err(|error| {
+        let message = match error {
+            number::Error::ImplicitMaximumTooSmall {
+                minimum,
+                default_maximum,
+            } => format!(
+                "minimumFractionDigits={minimum} requires maximumFractionDigits of at least {minimum}; the omitted maximum defaults to {default_maximum}"
+            ),
+            _ => error.to_string(),
+        };
+        invalid_number_call(path, source, diagnostics, &message, span)
     })?;
     validate_fluent_function_arguments(arguments, path, source, diagnostics, calls, None)
 }
