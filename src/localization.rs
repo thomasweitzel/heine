@@ -2,7 +2,6 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    convert::Infallible,
     fs, io,
     path::{Path, PathBuf},
     sync::Arc,
@@ -29,12 +28,34 @@ type SelectorStack = BTreeSet<(Locale, String, Option<String>, SelectorBindings)
 type SelectorPresentations = BTreeMap<String, FluentPresentation>;
 type TemporalPresentations = BTreeMap<String, BTreeSet<temporal::Presentation>>;
 
+/// Rendering needs only these checked facts from a Fluent message closure.
+/// Loading computes them once so repeated template calls do not walk Fluent's
+/// syntax tree again.
+#[derive(Default)]
+struct FormattingRequirements {
+    selectors: BTreeSet<String>,
+    temporal_presentations: TemporalPresentations,
+}
+
 #[derive(Default)]
 struct SelectorAnalysis {
     stack: SelectorStack,
     selectors: BTreeSet<String>,
     presentations: SelectorPresentations,
     temporal_presentations: TemporalPresentations,
+}
+
+#[derive(Default)]
+struct MessageFormattingPlans {
+    value: Option<Result<FormattingRequirements, String>>,
+    attributes: BTreeMap<String, Result<FormattingRequirements, String>>,
+}
+
+/// One page locale's resolved message supplier and its already checked
+/// formatting requirements. Fallback messages share the supplier's plan.
+struct ResolvedFormattingPlan {
+    owner: Locale,
+    requirements: Arc<MessageFormattingPlans>,
 }
 
 #[derive(Clone, Copy)]
@@ -117,17 +138,17 @@ impl FluentFunction {
 /// Fluent provides the resolved bundle language through its memoizer. The
 /// marker lets Heine retain that language without tying locale formatting to
 /// process-global state.
-struct FluentLocale(unic_langid::LanguageIdentifier);
+struct FluentLocale(Locale);
 
 impl Memoizable for FluentLocale {
     type Args = ();
-    type Error = Infallible;
+    type Error = unic_langid::LanguageIdentifierError;
 
     fn construct(
         language: unic_langid::LanguageIdentifier,
         (): Self::Args,
     ) -> Result<Self, Self::Error> {
-        Ok(Self(language))
+        language.to_string().parse().map(Self)
     }
 }
 
@@ -137,7 +158,6 @@ fn format_fluent_number(value: &FluentValue<'_>, memoizer: &IntlLangMemoizer) ->
     };
     memoizer
         .with_try_get::<FluentLocale, _, _>((), |locale| {
-            let locale = locale.0.to_string().parse::<Locale>().ok()?;
             let number = number::LocalizedNumber::from_f64(value.value).ok()?;
             let minimum = value.options.minimum_fraction_digits.unwrap_or(0);
             let maximum = value.options.maximum_fraction_digits;
@@ -149,7 +169,7 @@ fn format_fluent_number(value: &FluentValue<'_>, memoizer: &IntlLangMemoizer) ->
                 maximum,
             )
             .ok()?;
-            number::format(&locale, &number, options).ok()
+            number::format(&locale.0, &number, options).ok()
         })
         .ok()
         .flatten()
@@ -383,6 +403,7 @@ pub(crate) struct Localization {
     bundles: BTreeMap<Locale, FluentBundle<FluentResource>>,
     message_sources: BTreeMap<Locale, BTreeMap<String, MessageSource>>,
     message_owners: BTreeMap<Locale, BTreeMap<String, Locale>>,
+    formatting_plans: BTreeMap<Locale, BTreeMap<String, ResolvedFormattingPlan>>,
     latest_inputs: BTreeMap<Locale, SystemTime>,
     default_locale: Locale,
     editorial_time_zone: Option<crate::config::EditorialTimeZone>,
@@ -525,14 +546,17 @@ impl Localization {
             message_sources.insert(locale.clone(), messages);
             message_owners.insert(locale, owners);
         }
-        Ok(Self {
+        let mut localization = Self {
             bundles,
             message_sources,
             message_owners,
+            formatting_plans: BTreeMap::new(),
             latest_inputs,
             default_locale,
             editorial_time_zone,
-        })
+        };
+        localization.build_formatting_plans();
+        Ok(localization)
     }
 
     pub(crate) fn format(
@@ -542,19 +566,21 @@ impl Localization {
         attribute: Option<&str>,
         args: &Arguments,
     ) -> Result<String, String> {
-        let owner = self.format_owner(locale, id, attribute);
-        let analysis = self.formatting_analysis(&owner, id, attribute)?;
+        let plan = self.formatting_plan(locale, id, attribute)?;
+        let empty_requirements = FormattingRequirements::default();
+        let requirements =
+            Self::formatting_requirements(plan, attribute)?.unwrap_or(&empty_requirements);
         let args = args
             .fluent(
-                &analysis.selectors,
-                &analysis.temporal_presentations,
+                &requirements.selectors,
+                &requirements.temporal_presentations,
                 self.editorial_time_zone.as_ref(),
             )
             .map_err(|error| error.to_string())?;
-        match self.format_in(&owner, id, attribute, &args) {
+        match self.format_in(&plan.owner, id, attribute, &args) {
             Ok(value) => Ok(value),
             Err(FormatError::Invalid(message)) => Err(message),
-            Err(FormatError::Missing) if owner == self.default_locale => {
+            Err(FormatError::Missing) if plan.owner == self.default_locale => {
                 Err(format!("message {id:?} is not defined for locale {locale}"))
             }
             Err(FormatError::Missing) => self
@@ -639,12 +665,96 @@ impl Localization {
         }
     }
 
-    fn formatting_analysis(
+    fn build_formatting_plans(&mut self) {
+        let mut owner_plans = BTreeMap::new();
+        for (lookup_locale, messages) in &self.message_sources {
+            for (id, source) in messages {
+                let owner = &self.message_owners[lookup_locale][id];
+                let locale_plans = owner_plans
+                    .entry(owner.clone())
+                    .or_insert_with(BTreeMap::new);
+                if locale_plans.contains_key(id) {
+                    continue;
+                }
+                let mut message_plans = MessageFormattingPlans::default();
+                for attribute in fluent_pattern_targets(&source.parsed.body, id) {
+                    let plan = self.formatting_requirements_for(owner, id, attribute.as_deref());
+                    match attribute {
+                        Some(attribute) => {
+                            message_plans.attributes.insert(attribute, plan);
+                        }
+                        None => message_plans.value = Some(plan),
+                    }
+                }
+                locale_plans.insert(id.clone(), Arc::new(message_plans));
+            }
+        }
+        self.formatting_plans = self
+            .message_sources
+            .iter()
+            .map(|(locale, messages)| {
+                let plans = messages
+                    .keys()
+                    .map(|id| {
+                        let owner = self.message_owners[locale][id].clone();
+                        let requirements = owner_plans[&owner][id].clone();
+                        (
+                            id.clone(),
+                            ResolvedFormattingPlan {
+                                owner,
+                                requirements,
+                            },
+                        )
+                    })
+                    .collect();
+                (locale.clone(), plans)
+            })
+            .collect();
+    }
+
+    fn formatting_plan(
         &self,
         locale: &Locale,
         id: &str,
         attribute: Option<&str>,
-    ) -> Result<SelectorAnalysis, String> {
+    ) -> Result<&ResolvedFormattingPlan, String> {
+        let plan = self
+            .formatting_plans
+            .get(locale)
+            .and_then(|messages| messages.get(id))
+            .ok_or_else(|| format!("message {id:?} is not defined for locale {locale}"))?;
+        let pattern_exists = match attribute {
+            Some(attribute) => plan.requirements.attributes.contains_key(attribute),
+            None => plan.requirements.value.is_some(),
+        };
+        if pattern_exists || locale == &self.default_locale {
+            return Ok(plan);
+        }
+        self.formatting_plans
+            .get(&self.default_locale)
+            .and_then(|messages| messages.get(id))
+            .ok_or_else(|| format!("message {id:?} is not defined for locale {locale}"))
+    }
+
+    fn formatting_requirements<'a>(
+        plan: &'a ResolvedFormattingPlan,
+        attribute: Option<&str>,
+    ) -> Result<Option<&'a FormattingRequirements>, String> {
+        let requirements = match attribute {
+            Some(attribute) => plan.requirements.attributes.get(attribute),
+            None => plan.requirements.value.as_ref(),
+        };
+        requirements
+            .map(|requirements| requirements.as_ref().map_err(Clone::clone))
+            .transpose()
+    }
+
+    fn formatting_requirements_for(
+        &self,
+        locale: &Locale,
+        id: &str,
+        attribute: Option<&str>,
+    ) -> Result<FormattingRequirements, String> {
         let mut analysis = SelectorAnalysis::default();
         self.collect_selector_variables(
             locale,
@@ -669,31 +779,10 @@ impl Localization {
                 presentation.location(),
             ));
         }
-        Ok(analysis)
-    }
-
-    fn format_owner(&self, locale: &Locale, id: &str, attribute: Option<&str>) -> Locale {
-        let owner = self
-            .message_owners
-            .get(locale)
-            .and_then(|owners| owners.get(id))
-            .unwrap_or(&self.default_locale);
-        if attribute.is_none() || self.has_message_pattern(owner, id, attribute) {
-            owner.clone()
-        } else {
-            self.default_locale.clone()
-        }
-    }
-
-    fn has_message_pattern(&self, locale: &Locale, id: &str, attribute: Option<&str>) -> bool {
-        let Some(source) = self
-            .message_sources
-            .get(locale)
-            .and_then(|messages| messages.get(id))
-        else {
-            return false;
-        };
-        fluent_pattern(&source.parsed.body, id, attribute).is_some()
+        Ok(FormattingRequirements {
+            selectors: analysis.selectors,
+            temporal_presentations: analysis.temporal_presentations,
+        })
     }
 
     fn collect_selector_variables(
@@ -1287,6 +1376,49 @@ fn fluent_pattern<'a>(
         },
         _ => None,
     })
+}
+
+/// Lists the concrete patterns that a message or term exposes. A missing
+/// message value is distinct from an attribute and must not be treated as a
+/// callable formatting target.
+fn fluent_pattern_targets(entries: &[Entry<String>], id: &str) -> Vec<Option<String>> {
+    let entry = entries.iter().find(|entry| match entry {
+        Entry::Message(message) => message.id.name == id,
+        Entry::Term(term) => id.strip_prefix('-') == Some(term.id.name.as_ref()),
+        Entry::Junk { .. }
+        | Entry::Comment(_)
+        | Entry::GroupComment(_)
+        | Entry::ResourceComment(_) => false,
+    });
+    let Some(entry) = entry else {
+        return Vec::new();
+    };
+    let (value, attributes) = match entry {
+        Entry::Message(message) => (
+            message.value.is_some(),
+            message
+                .attributes
+                .iter()
+                .map(|attribute| attribute.id.name.to_string())
+                .collect::<Vec<_>>(),
+        ),
+        Entry::Term(term) => (
+            true,
+            term.attributes
+                .iter()
+                .map(|attribute| attribute.id.name.to_string())
+                .collect(),
+        ),
+        Entry::Junk { .. }
+        | Entry::Comment(_)
+        | Entry::GroupComment(_)
+        | Entry::ResourceComment(_) => return Vec::new(),
+    };
+    value
+        .then_some(None)
+        .into_iter()
+        .chain(attributes.into_iter().map(Some))
+        .collect()
 }
 
 fn resolve_binding(bindings: &BTreeMap<String, Option<String>>, variable: &str) -> Option<String> {

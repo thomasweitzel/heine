@@ -3,7 +3,7 @@
 //! This module owns the render-facing boundary. The parent module retains
 //! resolved-site construction and the stable `Site` model.
 
-use std::{path::Path, time::SystemTime};
+use std::{collections::BTreeSet, path::Path, time::SystemTime};
 
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error as ThisError;
@@ -375,7 +375,14 @@ impl Site {
     }
 
     fn validate_templates(&self, engine: &TemplateEngine) -> Result<(), Error> {
+        // A template declaration is a site-wide fact. Rechecking a shared
+        // template for every page only repeats work and cannot improve the
+        // first-reference diagnostic.
+        let mut checked = BTreeSet::new();
         for task in &self.tasks {
+            if !checked.insert(task.template.clone()) {
+                continue;
+            }
             validate_template_reference(
                 engine,
                 &task.template,
@@ -384,6 +391,9 @@ impl Site {
             )?;
         }
         for reference in self.taxonomies.template_references() {
+            if !checked.insert(reference.template.clone()) {
+                continue;
+            }
             validate_template_reference(
                 engine,
                 &reference.template,
@@ -392,6 +402,9 @@ impl Site {
             )?;
         }
         for reference in self.series.template_references() {
+            if !checked.insert(reference.template.clone()) {
+                continue;
+            }
             validate_template_reference(
                 engine,
                 &reference.template,

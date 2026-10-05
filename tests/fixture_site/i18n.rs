@@ -703,11 +703,15 @@ fn fallback_datetime_messages_use_the_locale_that_supplies_the_message() {
     );
     fixture.write(
         "templates/page.tera",
-        "{{ format_datetime(value=page.published, date_style='long', time_style='short') }}|{{ t(id='event-time', when=page.published) }}",
+        "{{ format_datetime(value=page.published, date_style='long', time_style='short') }}|{{ t(id='event-time', when=page.published) }}|{{ t(id='event-time', attribute='time', when=page.published) }}",
     );
     fixture.write(
         "locales/en/site.ftl",
-        "event-time = Starts at { DATETIME($when, dateStyle: \"long\", timeStyle: \"short\") }.\n",
+        "event-time = Starts at { DATETIME($when, dateStyle: \"long\", timeStyle: \"short\") }.\n    .time = At { DATETIME($when, timeStyle: \"short\") }.\n",
+    );
+    fixture.write(
+        "locales/de/site.ftl",
+        "event-time = Beginnt am { DATETIME($when, dateStyle: \"long\", timeStyle: \"short\") }.\n",
     );
     fixture.write(
         "content/en/index.page",
@@ -722,7 +726,7 @@ fn fallback_datetime_messages_use_the_locale_that_supplies_the_message() {
     build_at(fixture.path(), BuildMode::Full).expect("localized fallback temporal build");
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/de/index.html")).unwrap(),
-        "29. März 2026 um 03:30|Starts at \u{2068}March 29, 2026 at 3:30\u{202f}AM\u{2069}."
+        "29. März 2026 um 03:30|Beginnt am \u{2068}29. März 2026 um 03:30\u{2069}.|At \u{2068}3:30\u{202f}AM\u{2069}."
     );
 }
 
