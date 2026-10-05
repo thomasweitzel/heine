@@ -33,6 +33,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Localized-value rendering performance.** Heine now analyzes each Fluent
+  message's number and date-time requirements while it loads localization
+  resources, rather than repeating that analysis for every `t()` call. Large
+  sites therefore avoid redundant Fluent syntax-tree walks while rendering.
+
 - **Decimal precision diagnostics.** `format_number()` and Fluent `NUMBER()`
   now explain when a requested minimum fraction precision exceeds the implicit
   default maximum of three, including the explicit maximum that resolves it.

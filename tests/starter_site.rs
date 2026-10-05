@@ -17,7 +17,12 @@ fn builds_the_documented_starter_site() {
     let root = temporary.path();
 
     copy_file(&source.join("heine.toml"), &root.join("heine.toml"));
-    for directory in ["content", "data", "deploy", "LICENSES", "templates", "kits"] {
+    copy_tree_except(
+        &source.join("content"),
+        &root.join("content"),
+        Some(&source.join("content/en/performance-posts")),
+    );
+    for directory in ["data", "deploy", "LICENSES", "templates", "kits"] {
         copy_tree(&source.join(directory), &root.join(directory));
     }
 
@@ -662,12 +667,21 @@ fn generated_file_with_extension(directory: &Path, extension: &str) -> std::path
 }
 
 fn copy_tree(source: &Path, destination: &Path) {
+    copy_tree_except(source, destination, None);
+}
+
+/// Copies one source tree while excluding the one ignored profiling subtree.
+/// The fixture is intentionally outside the starter site's tested contract.
+fn copy_tree_except(source: &Path, destination: &Path, excluded: Option<&Path>) {
     for entry in fs::read_dir(source).expect("source directory") {
         let entry = entry.expect("source entry");
         let source_path = entry.path();
+        if excluded.is_some_and(|excluded| source_path == excluded) {
+            continue;
+        }
         let destination_path = destination.join(entry.file_name());
         if source_path.is_dir() {
-            copy_tree(&source_path, &destination_path);
+            copy_tree_except(&source_path, &destination_path, excluded);
         } else {
             copy_file(&source_path, &destination_path);
         }
