@@ -102,6 +102,12 @@ features and deferred proposals.
 - [Renderer output dependencies](design/renderer-output-dependencies.md): a
   future typed resource-manifest boundary for embedded renderer results.
 
+### Exploratory records
+
+- [External asset manifests](design/external-asset-manifests.md): why a
+  per-URL cache-busting helper is insufficient, and the boundary a future
+  external asset-manifest integration would need.
+
 ## Reference material
 
 The [reference](reference.md) is the complete current contract. It lists every
