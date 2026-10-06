@@ -46,3 +46,13 @@ HTML redirect pages work more widely but cannot provide an HTTP `301` or
 Heine therefore does not yet own redirects. A future feature must preserve a
 checked old-route-to-rendered-target relationship without assuming a hosting
 format or treating a browser-level redirect as equivalent to a server redirect.
+
+### External asset manifests
+
+A per-URL cache-busting helper cannot update the CSS, JavaScript, font, image,
+and split-bundle references that form an external asset graph. Heine therefore
+does not yet fingerprint copied assets or rewrite asset URLs. A future feature
+needs a concrete external-builder use case and must preserve the boundary in
+the [external-asset-manifest record](design/external-asset-manifests.md): the
+builder owns graph rewriting and final fingerprinted files, while Heine may
+validate a narrow manifest-to-checked-asset relationship.
