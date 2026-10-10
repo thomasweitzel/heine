@@ -473,7 +473,7 @@ light and dark dimensions must have an exact matching aspect ratio.
 protocol = "stream"
 program = "katex"
 timeout_seconds = 10
-cache_identity = "katex-0.16.27"
+cache_identity = "katex-0.19.0"
 inputs = ["body"]
 result = "html"
 
