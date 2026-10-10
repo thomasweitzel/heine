@@ -199,7 +199,7 @@ that a rendered time implies the configured editorial time zone. Authors with
 events in another zone must write that zone in their message until a later
 event-time design introduces a checked zone label.
 
-The two public surfaces use the same three style values but name their
+The two public formatting APIs use the same three style values but name their
 arguments according to their host language:
 
 | Presentation  | Tera function                                      | Fluent function                                  |
@@ -214,7 +214,7 @@ through `site.time_zone` exactly as `format_date()` does.
 An RFC 3339 instant maps to exactly one local time in a named IANA zone,
 including across daylight-saving transitions. Jiff applies the offset that was
 in force at that instant. Heine therefore needs no ambiguity policy while it
-formats instants. A future local-wall-time input surface would need its own
+formats instants. A future local-wall-time input type would need its own
 separate policy for gaps and overlaps.
 
 Heine does not yet support per-event time zones. An event zone without a

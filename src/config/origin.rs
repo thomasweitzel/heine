@@ -18,7 +18,7 @@ impl SiteOrigin {
 
 /// Canonical URL construction for one configured deployment.
 ///
-/// Keeping the origin and deployment path together prevents consumers from
+/// Keeping the origin and deployment path together prevents callers from
 /// accidentally treating an origin as the site root when the site lives below
 /// a subpath.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -12,9 +12,8 @@ and a cohesive starter-site example where one fits naturally.
   repositories. Heine's checked kit contract does not require a central
   registry or package resolver.
 
-- **Calendar archives:** add a narrow generated-resource consumer of one
-  resolved collection when a concrete site establishes its bucket and route
-  contract.
+- **Calendar archives:** add a narrow generated-output feature for one resolved
+  collection when a concrete site establishes its bucket and route contract.
 - **Collection-specific membership weights:** model a page's distinct curated
   position in more than one weight-ordered collection without overloading its
   directory sibling weight.

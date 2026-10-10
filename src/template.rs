@@ -165,7 +165,7 @@ pub(crate) struct TemplateRelationships {
 /// Resolved indexes exposed through checked template resource functions.
 ///
 /// Grouping them keeps relationship construction aligned with the rendering
-/// boundary as generated-resource consumers are added.
+/// boundary as generated-resource features are added.
 pub(crate) struct TemplateIndexes {
     pub(crate) collections:
         std::sync::Arc<BTreeMap<Locale, BTreeMap<String, crate::site::collection::CollectionView>>>,

@@ -146,10 +146,11 @@ so a site decides its route, language, and presentation:
 </ul>
 ```
 
-A central inventory serves a site-wide attribution page. Some licenses
-or a work’s provenance may require attribution near a particular use; render
-that asset’s `licensing` view there as well. Heine records the
-declared facts and links, rather than guessing legal presentation requirements.
+A central inventory serves a site-wide attribution page. Some licenses or
+information about a work's origin or authorship may require attribution near a
+particular use; render that asset’s `licensing` view there as well. Heine
+records the declared facts and links, rather than guessing legal presentation
+requirements.
 The stable published `output_path` also lets a localized template select its
 own locale-specific presentation text while retaining the canonical declaration.
 

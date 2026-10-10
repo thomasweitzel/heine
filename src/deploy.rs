@@ -1,4 +1,5 @@
-//! Discovery of opaque deployment files copied to the generated site's root.
+//! Discovery of deployment files that Heine copies to the generated site's root
+//! without parsing.
 //!
 //! `deploy/` is intentionally separate from content assets: its files are not
 //! addressable from templates, versioned, localized, or interpreted by Heine.

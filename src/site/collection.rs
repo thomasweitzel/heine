@@ -2,7 +2,7 @@
 //!
 //! This module resolves authored membership before rendering. It deliberately
 //! does not create output: pagination and other generated-resource features
-//! are separate consumers of this stable relationship.
+//! use this stable relationship separately.
 
 use std::{cmp::Ordering, collections::BTreeMap, sync::Arc};
 

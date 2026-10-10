@@ -2,7 +2,7 @@
 //!
 //! A base path is both interpolated into generated URLs and used to route
 //! development-server requests. Keeping its grammar here gives those separate
-//! consumers one trusted, canonical configuration value.
+//! callers one trusted, canonical configuration value.
 
 /// A URL path prefix under which the generated site is deployed.
 ///

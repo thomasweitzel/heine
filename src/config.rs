@@ -609,8 +609,8 @@ impl TaxonomyDefinition {
 }
 
 /// One explicit, potentially partial set of equivalent literal taxonomy terms.
-/// The group name is opaque; locale members are validated later against the
-/// resolved locale-local taxonomy terms.
+/// Heine uses the group name only to connect locale members. It validates those
+/// members later against the resolved locale-local taxonomy terms.
 #[derive(Debug, Clone)]
 pub(crate) struct TermCounterpartGroup {
     terms: BTreeMap<Locale, TermCounterpart>,

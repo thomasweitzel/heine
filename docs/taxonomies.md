@@ -46,8 +46,8 @@ suffix; a taxonomy is an HTML listing feature rather than a second general
 output-format mechanism.
 
 A counterpart group is taxonomy structure, not a Fluent resource or a display
-translation. Its name is an opaque local identifier; its locale values name
-the literal terms that correspond across those locales.
+translation. Its name is a local label that Heine uses only to connect the
+literal terms that correspond across those locales.
 
 | Field            | Meaning                                     | Constraint                              |
 |------------------|---------------------------------------------|-----------------------------------------|
@@ -184,11 +184,12 @@ en = "Static sites"
 de = "Statische Seiten"
 ```
 
-The final component (`rust`, `static-sites`) is an opaque, non-empty group
-name. Each group has at least two configured locales. Every listed term must
-exist literally in that locale's taxonomy, and a locale-term pair may belong
-to only one group. Groups may be partial: a term such as `MathML` that exists
-only in English simply has no group and therefore no language counterpart.
+The final component (`rust`, `static-sites`) is a non-empty group name. Heine
+does not interpret it. Each group has at least two configured locales. Every
+listed term must exist literally in that locale's taxonomy, and a locale-term
+pair may belong to only one group. Groups may be partial: a term such as
+`MathML` that exists only in English simply has no group and therefore no
+language counterpart.
 
 The generated term views expose the declared relationships:
 

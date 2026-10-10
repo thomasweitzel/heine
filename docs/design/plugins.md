@@ -40,9 +40,9 @@ to be copied, commented out, or manually synchronized.
 
 Generic command hooks would solve that narrow problem by granting far more
 authority than it needs. They would blur output ownership, make watch behavior
-opaque, and allow a project configuration to execute arbitrary commands merely
-because it was built. Renderer adapters instead describe one checked request
-and one checked result.
+hard to predict, and allow a project configuration to execute arbitrary
+commands merely because it was built. Renderer adapters instead describe one
+checked request and one checked result.
 
 ## Terms
 
@@ -53,9 +53,9 @@ and one checked result.
   Rhai is one possible future choice, not a current dependency or
   contract.
 - **Renderer adapter**: a content-transformation capability that accepts one
-  explicit renderer request and returns one typed replacement and, when
-  materialized, one primary generated resource. The first implementation uses
-  configured external renderer profiles only.
+  explicit renderer request and returns one typed replacement and, when it
+  publishes a resource, the bytes for one primary generated resource. The
+  first implementation uses configured external renderer profiles only.
 - **Renderer profile**: one named, site-owned renderer configuration. Its name
   selects a checked adapter request and fixes the external bridge's process
   protocol, arguments, result shape, limits, and cache identity.
@@ -65,8 +65,8 @@ and one checked result.
   permission.
 - **Placement**: whether a rendered replacement participates in prose or
   occupies its own Markdown block.
-- **Materialization**: whether rendered output is embedded in HTML or
-  published as a generated resource.
+- **Output form**: whether rendered output is embedded in HTML or published as
+  a generated resource.
 - **Result shape**: the semantic replacement that a renderer profile may
   return: an embedded HTML, SVG, or MathML fragment; a generated image; or a
   generated linked resource.
@@ -156,7 +156,7 @@ arguments = ["compile", "{input_file}", "{output_file}"]
 `inputs` is a non-empty set drawn from `"body"`, `"file"`, and `"bundle"`.
 A stream profile may accept only `"body"` and `"file"`; a workspace profile
 may accept all three. A workspace profile that accepts `"body"` declares the
-safe, unprefixed `input_extension` used for its materialized input file. A
+safe, unprefixed `input_extension` used for its staged body input file. A
 workspace profile that does not accept `"body"` must not declare
 `input_extension`. A request that supplies an unsupported input form is a
 checked error at the request.
@@ -307,10 +307,10 @@ checked error at the header span.
 `source` and `label` are non-empty strings. `source` names one declared
 renderer input and is valid only in a block request. `alt` is a string and may
 be empty when an image is intentionally decorative. `output` is a string with
-one of the values below. Image resources, including a resource-materialized
-SVG, require `alt`; linked resources require `label`.
+one of the values below. Image resources, including an SVG published as a
+resource, require `alt`; linked resources require `label`.
 
-`output` is the common materialization option:
+`output` selects the common output form:
 
 | Value        | Meaning                                                                                  |
 |--------------|------------------------------------------------------------------------------------------|
@@ -319,14 +319,14 @@ SVG, require `alt`; linked resources require `label`.
 
 A profile declares supported output values and may declare a documented
 default. HTML and MathML default to `"embedded"`; image and link results
-default to `"resource"`; an SVG profile with both materializations declares
+default to `"resource"`; an SVG profile with both output forms declares
 `default_output`. An image resource requires page-authored accessibility text
 such as `alt="Request and response sequence"`. A linked resource requires
 page-authored visible text such as
 `label="Download the architecture report (PDF)"`. Both values are content,
 not template interface text.
 
-Placement and materialization are independent. A PlantUML diagram can be a
+Placement and output form are independent. A PlantUML diagram can be a
 block in both cases: either an embedded `<svg>` or a generated SVG resource
 represented by an image. An HTML or MathML fragment supports only
 `output="embedded"`. A PDF is a linked resource with media type
@@ -418,7 +418,7 @@ trusted HTML or inspect arbitrary resource formats.
 
 For embedded SVG and MathML, Heine parses the XML and emits only its document
 element. It drops an XML declaration and doctype rather than inserting a whole
-XML document into HTML. For resource materialization, Heine publishes the
+XML document into HTML. For output that becomes a resource, Heine writes the
 validated bytes unchanged. Heine does not rewrite element IDs, URL references,
 CSS, scripts, or HTML markup. An embedded profile must therefore produce a
 fragment that is safe for its declared placement and does not conflict with
@@ -474,9 +474,9 @@ collector.
 A generated renderer resource is not a copied asset. It has no adjacent
 licensing sidecar and is outside the current `[licensing].required` coverage
 contract, which applies to copied assets only. A future policy for generated
-resource licensing needs a separate provenance design: relevant facts may come
-from the authored renderer source, the renderer, bundled fonts, or other tool
-inputs. Heine does not infer those facts.
+resource licensing needs a separate design for tracking its source and
+licensing facts: relevant facts may come from the authored renderer source, the
+renderer, bundled fonts, or other tool inputs. Heine does not infer those facts.
 
 The host retains the originating page, content file, directive span, and
 renderer-profile name for every derived resource. An attempted authored claim
@@ -553,12 +553,12 @@ not build shell command strings. Program and argument vector entries stay
 separate. A workspace variant may use only these complete argument
 placeholders:
 
-| Placeholder     | Value                                                              |
-|-----------------|--------------------------------------------------------------------|
-| `{input_file}`  | The checked named file, bundle entry, or materialized inline body. |
-| `{input_dir}`   | The root of the checked input file or source bundle.               |
-| `{output_file}` | The host-allocated primary result file.                            |
-| `{work_dir}`    | The request-local working directory.                               |
+| Placeholder     | Value                                                                  |
+|-----------------|------------------------------------------------------------------------|
+| `{input_file}`  | The checked named file, bundle entry, or inline body staged as a file. |
+| `{input_dir}`   | The root of the checked input file or source bundle.                   |
+| `{output_file}` | The host-allocated primary result file.                                |
+| `{work_dir}`    | The request-local working directory.                                   |
 
 Placeholders never expand inside another argument. A workspace variant uses
 `{output_file}` exactly once and may use every other placeholder at most once.
@@ -619,7 +619,7 @@ The cache applies to every successful renderer result. Its key includes:
 
 - renderer-profile name, `cache_identity`, and normalized configuration;
 - the selected placement variant and normalized directive options;
-- materialization;
+- output form;
 - the input form and its checked representation: inline or block body bytes;
   a named file's bytes; or every checked relative path and byte sequence in a
   named source bundle.

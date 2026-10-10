@@ -1,4 +1,4 @@
-//! Kit manifest loading and compatibility-surface parsing.
+//! Kit manifest loading and checks for public compatibility.
 
 use std::{collections::BTreeSet, fs, io, path::Path};
 

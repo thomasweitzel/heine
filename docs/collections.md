@@ -214,9 +214,9 @@ without hidden fallback or invented translations.
 
 ## Pagination
 
-Pagination is the first generated-output consumer of a resolved collection,
-not an alternative collection mechanism. It attaches to an ordinary authored
-listing page, which supplies page-one metadata, template, and canonical route.
+Pagination is the first way to create pages from a resolved collection, not an
+alternative collection mechanism. It attaches to an ordinary authored listing
+page, which supplies page-one metadata, template, and canonical route.
 Later pagers are generated render tasks without authored page identities. The
 [pagination guide](pagination.md) documents its syntax, routes, template
 contract, navigation policy, diagnostics, and quick-build behavior.

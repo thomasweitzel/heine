@@ -201,7 +201,7 @@ belongs in separate ordinary images or separate renderer requests.
 
 Heine runs the light and dark variants separately from the same checked input.
 Each cache key includes the appearance role, selected placement, fixed variant
-arguments, profile identity, requested materialization, and complete checked
+arguments, profile identity, requested output form, and complete checked
 input. `--refresh-renderers` refreshes both variants. A cache hit for one
 appearance does not excuse a failed or missing other appearance.
 

@@ -137,7 +137,7 @@ impl OrderedPages {
         })
     }
 
-    /// Lets relationship consumers reuse the retained order for compact
+    /// Lets relationship features reuse the retained order for compact
     /// ordinal views instead of rescanning every member.
     pub(crate) fn position(&self, page: &PageId) -> Option<usize> {
         self.positions.get(page).copied()

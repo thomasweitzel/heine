@@ -118,7 +118,7 @@ configuration, never built-in defaults or a complete list of languages.
 ## Resolution and template model
 
 During page loading, Heine retains each original declared Markdown source for
-existing source-level consumers. The Markdown domain derives one immutable
+existing source-level features. The Markdown domain derives one immutable
 fact record for each such input. A rendered `PageView` serializes those records
 through a separate `markdown` map, while `content` keeps its current rendering
 contract unchanged.

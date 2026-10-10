@@ -87,7 +87,7 @@ impl FluentPresentation {
     }
 }
 
-/// The closed Fluent function surface that Heine registers and validates.
+/// The closed Fluent function set that Heine registers and validates.
 /// Adding a formatter extends this enum, rather than separate registration and
 /// validation lists.
 #[derive(Clone, Copy, Eq, PartialEq)]

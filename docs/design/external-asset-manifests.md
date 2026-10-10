@@ -112,9 +112,9 @@ depend on another server and a browser runtime rather than the files it checks.
 ### Ordinary copied assets
 
 A PDF, image, archive, media file, or other binary remains at its stable copied
-URL unless an external graph-aware builder owns it. Opaque means only that Heine
-does not need to parse the file's bytes. It does not mean that its URL is safe
-to rename: downloads and images can have inbound links, citations, bookmarks,
+URL unless an external graph-aware builder owns it. Heine does not need to
+parse the file's bytes. That does not make its URL safe to rename: downloads
+and images can have inbound links, citations, bookmarks,
 email references, or deployment configuration just as pages do.
 
 Raw HTML, literal CSS URLs, literal JavaScript strings, and externally

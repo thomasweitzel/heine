@@ -72,7 +72,7 @@ render-facing fields and function behavior are in the
 [reference](../reference.md#template-contract); the
 [guide](../table-of-contents.md) shows the complete template pattern.
 
-Tera passes the filter a string rather than its authored provenance. Heine can
+Tera passes a string to the filter rather than its source identity. Heine can
 therefore reject only an exact selected-source match passed through the filter.
 A transformed selected source has changed the input from which the ToC was
 derived and must not use that ToC.
@@ -83,7 +83,7 @@ derived and must not use that ToC.
 The source must be rendered exactly once per output document through
 `markdown(content="…")`. Zero or repeated calls are template errors: generated
 heading and local-note identifiers need one rendered source occurrence. One
-call satisfies both consumers when they select the same source.
+call satisfies both features when they select the same source.
 
 A Markdown heading inside a margin-footnote definition is ancillary note
 content. It does not enter `page.toc` or receive a generated ToC anchor. This

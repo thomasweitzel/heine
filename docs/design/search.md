@@ -505,8 +505,9 @@ section-text payload grows linearly with declared Markdown source, and a
 browser must fetch and parse that JSON document before a local engine can
 search it. Collection selection is the first size control. Heine does not add
 per-field omission or silent text truncation until
-a concrete use case defines their semantics. A chunked full-text consumer is a
-separate future design, not a reason to weaken this source-derived contract.
+a concrete use case defines their semantics. A chunked full-text search feature
+is a separate future design, not a reason to weaken this source-derived
+contract.
 
 Pagefind-style chunked full-text search may later be justified for very large
 sites, but it needs a separate design for staging, publication, development

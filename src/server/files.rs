@@ -39,7 +39,7 @@ struct RequestError {
     source: io::Error,
 }
 
-/// The complete development-server routing surface. Keeping it beside the
+/// The complete development-server route set. Keeping it beside the
 /// request handlers lets tests exercise the same URI extraction path as the
 /// running server without opening a network listener.
 pub(crate) fn router(state: std::sync::Arc<ServerState>) -> Router {
