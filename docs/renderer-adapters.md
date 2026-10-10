@@ -5,18 +5,48 @@ external program and return either checked embedded markup or one generated
 resource. Heine owns the request syntax, input boundary, timeout, cache, and
 published output. The external program remains a tool you install and choose.
 
-An embedded SVG request may add a normalized `class` list to its checked root
-element. This lets site CSS style an inline SVG without a wrapper. HTML and
-MathML results remain renderer-owned fragments, so they do not accept `class`.
+This guide assumes that you already have a working Heine site. For complete
+Typst SVG and KaTeX HTML walkthroughs, including installation, stylesheets,
+accessibility, and verification, read the [reproducible renderer
+examples](renderer-examples.md). That guide is the maintained source for those
+external-tool recipes.
 
-This guide starts with three working profile shapes. Each example assumes its
-program is already available on `PATH`, except PlantUML, whose JAR path must
-be replaced with the local absolute path. First add the profile to the root
-`heine.toml`, then add the Markdown request, and build with explicit
-permission:
+## Requests, profiles, and trust
+
+An inline request has the form ``:render[profile]`body` `` and stays on one
+Markdown line. A block request begins with `:::render[profile]` and ends with
+`:::`. Each selects one profile from the root `heine.toml`.
+
+A profile's `protocol` controls how Heine supplies the checked input. A
+`stream` profile receives one input on standard input and writes one result to
+standard output. A `workspace` profile receives staged files in a temporary
+directory and writes its declared primary result file there. `inputs` lists the
+forms a profile accepts: an authored body, a named file, or a named source
+bundle. `result` declares what the renderer returns, such as embedded
+HTML, SVG, or MathML, an image, a link, or a light and dark picture. Only an
+SVG profile uses `materializations` to choose whether it embeds SVG or
+publishes it as a resource.
+
+External renderers are a trust boundary. A permitted program and any wrapper
+script run with the operating-system authority of the account that starts
+Heine. A workspace restricts the files that Heine supplies and receives; it is
+not a sandbox against a malicious executable. Embedded HTML, SVG, and MathML
+also have the browser-output authority of trusted project templates. Review the
+program, every fixed argument, and every declared file or bundle input before
+you grant permission.
+
+Every build that selects a renderer request needs explicit permission:
 
 ```bash
 heine --allow-external-renderers
+```
+
+Without that flag, Heine stops at the request before reading a cache entry or
+starting a process:
+
+```text
+external renderer permission is required here
+help: rerun with --allow-external-renderers after reviewing the selected renderer profile
 ```
 
 Heine does not discover or install a renderer. Check the program yourself
@@ -30,40 +60,9 @@ the program's diagnostic output separately. Heine preserves that output as the
 renderer emitted it. For a workspace request with a body, paths and line
 numbers in that output refer to the isolated staged input.
 
-## KaTeX embedded mathematics
-
-Install the KaTeX command-line program so `katex` is available on `PATH`.
-This profile fixes all tool options and accepts only authored TeX bodies:
-
-```toml
-[renderers.katex]
-protocol = "stream"
-program = "katex"
-timeout_seconds = 10
-cache_identity = "katex-0.16.27"
-inputs = ["body"]
-result = "html"
-
-[renderers.katex.inline]
-arguments = ["--format", "htmlAndMathml"]
-
-[renderers.katex.block]
-arguments = ["--display-mode", "--format", "htmlAndMathml"]
-```
-
-Use it inline or as a block:
-
-```markdown
-The area of a circle is :render[katex]`\pi r^2`.
-
-:::render[katex]
-\int_0^1 x^2\,dx = \frac{1}{3}
-:::
-```
-
-KaTeX writes HTML to standard output. Heine checks UTF-8, replaces the request
-with that trusted embedded HTML, and caches the checked result below
-`.heine/cache/renderers/v1/`.
+An embedded SVG request may add a normalized `class` list to its checked root
+element. This lets site CSS style the SVG without a wrapper. HTML and MathML
+results remain renderer-owned fragments, so they do not accept `class`.
 
 ## PlantUML SVG image
 
@@ -76,13 +75,13 @@ the Markdown request must provide alternative text:
 protocol = "stream"
 program = "java"
 timeout_seconds = 20
-cache_identity = "plantuml-1.2025.7"
+cache_identity = "plantuml-1.2026.8"
 inputs = ["body", "file"]
 result = "svg"
 materializations = ["resource"]
 
 [renderers.plantuml.block]
-arguments = ["-jar", "/absolute/path/plantuml.jar", "-tsvg", "-pipe"]
+arguments = ["-jar", "/absolute/path/plantuml.jar", "--svg", "-pipe"]
 ```
 
 ```markdown
@@ -127,7 +126,7 @@ the format from its destination filename:
 protocol = "workspace"
 program = "typst"
 timeout_seconds = 30
-cache_identity = "typst-0.15.0"
+cache_identity = "typst-0.15.1"
 inputs = ["body", "file", "bundle"]
 input_extension = "typ"
 result = "link"
@@ -180,8 +179,7 @@ the complete contract.
 
 For complete local Typst SVG and KaTeX HTML walkthroughs, including
 installation, profiles, stylesheets, accessibility, and test commands, see
-[reproducible renderer examples](renderer-examples.md). That guide is the
-single maintained source for those external-tool recipes.
+[reproducible renderer examples](renderer-examples.md).
 
 ## Build and development behavior
 
@@ -210,24 +208,6 @@ When identical renderer bytes produce the same digest-addressed resource,
 Heine publishes that resource once. If another producer claims its path,
 Heine's collision report identifies every Markdown request that contributed to
 the shared resource.
-
-## Checking local renderer installations
-
-Heine's ordinary test suite does not require an external renderer. This keeps
-a source checkout testable on systems that have only Rust installed. The
-repository also includes one ignored integration test that runs the locally
-installed `pandoc` and `typst` programs. It checks Pandoc HTML replacements
-and Typst PDF, SVG, and PNG resources through the same public build boundary
-that a site uses:
-
-```bash
-cargo +1.88.0 test --test external_renderers -- --ignored
-```
-
-Run that command deliberately after installing both programs. It fails when a
-selected program is absent or does not produce its checked result. A published
-source checkout therefore retains the examples and test without silently
-skipping a requested external-tool check.
 
 Read the [reference](reference.md#renderer-adapters) for every field and the
 [renderer-adapter design](design/plugins.md) for the trust and output-ownership

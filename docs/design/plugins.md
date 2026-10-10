@@ -4,11 +4,11 @@
 
 This is the accepted design for Heine's first extension boundary,
 Markdown-aware renderer adapters and configured external renderer profiles.
-The stream-protocol, workspace-backed embedded-result, generated-resource,
-and renderer-cache slices are implemented. Renderer source files and bundles
-already live below the watched content tree. Other extension kinds remain
-undecided until a separate concrete use case requires them. Package discovery,
-installation, and distribution are likewise undecided.
+Stream and workspace profiles, embedded results, generated resources,
+light-and-dark pictures, renderer caching, and renderer source files and
+bundles are implemented. Other extension kinds remain undecided until a
+separate concrete use case requires them. Package discovery, installation, and
+distribution are likewise undecided.
 
 ## Decision
 
@@ -115,7 +115,7 @@ placement:
 protocol = "stream"
 program = "java"
 timeout_seconds = 20
-cache_identity = "plantuml-1.2025.7"
+cache_identity = "plantuml-1.2026.8"
 inputs = ["body", "file"]
 result = "svg"
 materializations = ["embedded", "resource"]
@@ -128,7 +128,7 @@ arguments = ["-jar", "/opt/plantuml.jar", "--svg", "-pipe"]
 protocol = "stream"
 program = "katex"
 timeout_seconds = 10
-cache_identity = "katex-0.16.27"
+cache_identity = "katex-0.19.0"
 inputs = ["body", "file"]
 result = "html"
 
@@ -142,7 +142,7 @@ arguments = ["--display-mode", "--format", "htmlAndMathml"]
 protocol = "workspace"
 program = "typst"
 timeout_seconds = 30
-cache_identity = "typst-0.15.0"
+cache_identity = "typst-0.15.1"
 inputs = ["body", "file", "bundle"]
 input_extension = "typ"
 result = "link"
@@ -298,17 +298,24 @@ adapter-name (space option-name "=" TOML-scalar)*
 
 Renderer and option names are simple identifiers. Option values use TOML scalar
 literals, allowing strings, booleans, and numbers without inventing another
-value grammar. The first version recognizes only `source`, `output`, `alt`,
-and `label`. Tool-specific switches stay fixed in the named renderer profile;
-an author selects a separately configured profile when a different tool mode
-is needed. A malformed header, duplicate option, or unsupported option is a
-checked error at the header span.
+value grammar. The current version recognizes `source`, `output`, `alt`,
+`label`, `caption`, `class`, `width`, and `height`. Tool-specific switches stay
+fixed in the named renderer profile; an author selects a separately configured
+profile when a different tool mode is needed. A malformed header, duplicate
+option, or unsupported option is a checked error at the header span.
 
 `source` and `label` are non-empty strings. `source` names one declared
 renderer input and is valid only in a block request. `alt` is a string and may
 be empty when an image is intentionally decorative. `output` is a string with
 one of the values below. Image resources, including an SVG published as a
 resource, require `alt`; linked resources require `label`.
+
+`caption`, `class`, `width`, and `height` follow the [color-scheme renderer
+picture contract](renderer-pictures.md) for a `picture` result. An embedded SVG
+may use only `class`, which Heine adds to the checked root SVG element. Other
+embedded results and ordinary resource results reject those presentation
+options because the renderer owns their markup or because the host has no
+structural element to decorate.
 
 `output` selects the common output form:
 
@@ -354,7 +361,7 @@ A renderer request consumes exactly one of these checked input forms:
 Named sources are declared in the owning `.page` file and resolved relative to
 that file. A file is one non-published renderer input. A bundle has a checked
 root directory and entry file, preserving relative imports for tools such as
-Typst without exposing the entire project tree. The proposed shape is:
+Typst without exposing the entire project tree. A named source uses this shape:
 
 ```toml
 [render.architecture]
@@ -437,9 +444,9 @@ SVG export, a PlantUML input containing several diagrams, or a Pandoc
 conversion with extracted media. Those modes fail as unsupported until a later
 resource-set contract can define their page replacement and ownership.
 
-One planned exception is a checked light and dark pair for one semantic image.
-It remains distinct from a general resource set because the host can replace
-it with native `picture` markup. See [generated color-scheme
+One implemented exception is a checked light and dark pair for one semantic
+image. It remains distinct from a general resource set because the host can
+replace it with native `picture` markup. See [generated color-scheme
 pictures](renderer-pictures.md).
 
 Heine allocates safe deterministic output paths for generated resources, checks
@@ -501,8 +508,8 @@ arbitrary markup, including active content. Do not configure a renderer
 program, wrapper, or embedded-result profile that the site owner would not
 trust with those respective authorities.
 
-Heine must therefore require an explicit command-line opt-in before it starts
-an external bridge, conceptually `--allow-external-renderers`. A site
+Heine therefore requires the explicit `--allow-external-renderers` command-line
+flag before it starts an external bridge. A site
 configuration alone must never execute a command from an unfamiliar checkout.
 The opt-in applies to `heine` and `heine serve` separately.
 
