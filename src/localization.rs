@@ -28,7 +28,8 @@ type SelectorStack = BTreeSet<(Locale, String, Option<String>, SelectorBindings)
 type SelectorPresentations = BTreeMap<String, FluentPresentation>;
 type TemporalPresentations = BTreeMap<String, BTreeSet<temporal::Presentation>>;
 
-/// Rendering needs only these checked facts from a Fluent message closure.
+/// Rendering needs only these checked facts from a Fluent message and everything
+/// it references.
 /// Loading computes them once so repeated template calls do not walk Fluent's
 /// syntax tree again.
 #[derive(Default)]
