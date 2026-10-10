@@ -21,9 +21,9 @@ Heine does not invent a primary
 Series, infer visitor state from a referrer, or make one page URL vary by the
 path used to reach it.
 
-Series are generated-resource consumers. They generate a locale-local index
-and paginated listing pages, but they neither select a source collection nor
-change page rendering. Collections, taxonomies, and Series are separate
+Series generate a locale-local index and paginated listing pages, but they
+neither select a source collection nor change page rendering. Collections,
+taxonomies, and Series are separate
 relationships with distinct purposes.
 
 ## Motivation

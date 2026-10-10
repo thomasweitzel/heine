@@ -626,7 +626,7 @@ fn validate_svg_result(
         return Err(ConfigError {
             span,
             message: format!(
-                "SVG renderer profile {name} must omit default_output when it supports one materialization"
+                "SVG renderer profile {name} must omit default_output when it supports one output form"
             ),
         });
     }
@@ -675,7 +675,7 @@ fn validate_resource_result(
         return Err(ConfigError {
             span,
             message: format!(
-                "resource renderer profile {name} must not declare SVG materialization options"
+                "resource renderer profile {name} must not declare SVG output-form options"
             ),
         });
     }

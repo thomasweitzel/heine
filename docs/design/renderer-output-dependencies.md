@@ -91,9 +91,9 @@ for that manifest pattern.
 ### Typed, bounded facts
 
 The adapter would return a finite list of structured dependency descriptions.
-Heine would materialize their bytes below its generated-resource ownership
-domain, validate media type and extension for the declared operation, assign
-digest-addressed URLs, and reject unsupported operation and scope combinations.
+Heine would write their bytes as generated resources, validate media type and
+extension for the declared operation, assign digest-addressed URLs, and reject
+unsupported operation and scope combinations.
 
 The protocol must not become an arbitrary-files channel. In particular, a
 renderer must not select a template, write output directly, name an arbitrary
@@ -131,8 +131,8 @@ required dependency but its selected template did not invoke the slot.
 
 The exact Tera2 spelling remains undecided. It might be a named function or a
 dedicated render-facing value, but it must be observable by the host so the
-missing-slot error is checked. It must not be an opaque raw-HTML value that a
-renderer supplies. The design must cover every comparable template boundary
+missing-slot error is checked. It must not be raw HTML whose contents Heine
+cannot inspect. The design must cover every comparable template boundary
 that renders an authored page. A feature that works only in one starter-kit
 template would not meet Heine's template contract.
 
@@ -174,9 +174,9 @@ would bypass the template boundary that owns document structure.
 
 ### A generic renderer-owned head fragment
 
-An opaque head fragment would make ordering, escaping, integrity, CSP policy,
-and output ownership impossible for Heine to check. It is a broader hook
-system, not a renderer-adapter result.
+A raw head fragment that Heine cannot inspect would make ordering, escaping,
+integrity, CSP policy, and output ownership impossible to check. It is a
+broader hook system, not a renderer-adapter result.
 
 ### Implementing this for MathJax alone
 

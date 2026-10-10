@@ -27,7 +27,7 @@ use super::{PageId, collection::ResolvedCollection, page::Page};
 
 /// Version of Heine's public search-document JSON contract.
 ///
-/// Consumers use this to reject a document shape they do not understand.
+/// Search clients use this to reject a document shape they do not understand.
 const SEARCH_DOCUMENT_FORMAT: u8 = 3;
 
 /// Locale-local page membership for every configured search index. It is

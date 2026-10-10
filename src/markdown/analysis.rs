@@ -28,7 +28,8 @@ pub(crate) struct MarkdownFacts {
     reading_time: Option<u64>,
 }
 
-/// Source-derived values used by independent consumers of declared Markdown.
+/// Source-derived values used by independent features that read declared
+/// Markdown.
 /// One parser walk keeps word-count and search contracts independent of
 /// template rendering without paying for the same structural traversal twice.
 #[derive(Debug)]

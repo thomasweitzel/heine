@@ -28,7 +28,8 @@ type SelectorStack = BTreeSet<(Locale, String, Option<String>, SelectorBindings)
 type SelectorPresentations = BTreeMap<String, FluentPresentation>;
 type TemporalPresentations = BTreeMap<String, BTreeSet<temporal::Presentation>>;
 
-/// Rendering needs only these checked facts from a Fluent message closure.
+/// Rendering needs only these checked facts from a Fluent message and everything
+/// it references.
 /// Loading computes them once so repeated template calls do not walk Fluent's
 /// syntax tree again.
 #[derive(Default)]
@@ -86,7 +87,7 @@ impl FluentPresentation {
     }
 }
 
-/// The closed Fluent function surface that Heine registers and validates.
+/// The closed Fluent function set that Heine registers and validates.
 /// Adding a formatter extends this enum, rather than separate registration and
 /// validation lists.
 #[derive(Clone, Copy, Eq, PartialEq)]

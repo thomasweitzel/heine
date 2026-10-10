@@ -102,10 +102,10 @@ writes locale digits or separators. That policy rounds half to even with at
 most three fractional digits and no forced trailing zeros, so `1.0004` selects
 as `1`. Keep a selector's numeric presentation at that default policy when the
 same value appears through `NUMBER()`. Heine rejects a different fraction-digit
-policy in the same message closure, because it could display a plural operand
-that disagrees with the selector. If a message needs a differently rounded
-display value, the template author must pass a separate argument with that
-intended meaning.
+policy in that message or in any message or term it references, because it
+could display a plural operand that disagrees with the selector. If a message
+needs a differently rounded display value, the template author must pass a
+separate argument with that intended meaning.
 
 For numeric values, Heine currently formats decimal values only. Percentages,
 currencies, units, compact notation, and relative dates have distinct semantics

@@ -332,9 +332,9 @@ tree.
 
 ### Translation ID
 
-An opaque page metadata value, `translationid`, that explicitly groups known
-counterpart pages across locales. A group may be partial but contains at most
-one page for each locale.
+The `translationid` page metadata value explicitly groups known counterpart
+pages across locales. Heine uses it only for that relationship. A group may be
+partial but contains at most one page for each locale.
 
 ### Hreflang sitemap alternate
 

@@ -564,7 +564,7 @@ pub(crate) fn is_renderer_output_path(path: &Path) -> bool {
         .is_some_and(|component| component.as_os_str() == RENDERER_DIRECTORY)
 }
 
-/// Whether one user-authored path component can be materialized portably in
+/// Whether Heine can write one user-authored path component portably in
 /// Heine's output tree. URL-facing generated names must satisfy this in
 /// addition to their URL grammar: characters such as `:` and `*` are legal in
 /// some URLs but not in Windows filenames.

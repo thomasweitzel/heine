@@ -122,9 +122,9 @@ That build writes `public/guide/sitemap.xml`, which the host serves as
 only setting that determines its filesystem location.
 
 Quick builds do not update the sitemap. They do not resolve the
-complete output topology, so regenerating it could make the sitemap disagree
-with stale generated output. Run a full build after changes that affect site
-structure.
+complete set of output paths, so regenerating it could make the sitemap
+disagree with stale generated output. Run a full build after changes that affect
+site structure.
 
 ## Sitemap size
 

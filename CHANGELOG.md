@@ -99,7 +99,7 @@ are corrected only to repair an error or explain a missed material migration.
 
 - **Plain code highlighting.** Unlabelled fenced and indented Markdown code
   blocks now use the configured plain-code highlighter. They therefore receive
-  the same generated light and dark code surface as named language blocks,
+  the same generated light and dark code styling as named language blocks,
   while explicitly unknown language names retain the configured diagnostic or
   plain fallback policy.
 
@@ -153,7 +153,7 @@ are corrected only to repair an error or explain a missed material migration.
 
 - **Checked kits.** A site may select one local kit with a manifest-declared
   public template, asset, component, message, and presentation-settings
-  surface. Kits include copyable reference sites, while the consuming root
+  interface. Kits include copyable reference sites, while the consuming root
   retains content and configuration ownership. This makes a complete design
   reusable without treating unrelated site structures as interchangeable
   themes.

@@ -9,8 +9,8 @@ contract yet.
 ## Why these packages wait
 
 ICU4X currently exposes locale-aware percentage and currency formatting through
-experimental APIs. Heine will not make an experimental dependency surface part
-of its public template contract. It also will not reconstruct CLDR patterns
+experimental APIs. Heine will not make an experimental API part of its public
+template interface. It also will not reconstruct CLDR patterns
 from decimal formatting and hard-coded symbols: percentage placement and
 spacing, currency symbols, default fraction digits, and localized names belong
 to locale data. The [ICU4X 2.3 changelog](https://github.com/unicode-org/icu4x/blob/main/CHANGELOG.md)
@@ -27,9 +27,9 @@ A future `format_percent()` accepts a checked numeric ratio. For example,
 sign placement, and spacing through CLDR data. It does not concatenate a
 decimal result with a percent sign.
 
-The Fluent surface, plural behavior after scaling, and accepted options remain
-undecided until the stable formatter determines what Heine can support as one
-checked contract.
+The Fluent formatting API, plural behavior after scaling, and accepted options
+remain undecided until the stable formatter determines what Heine can support
+as one checked contract.
 
 ## Currency
 
@@ -45,7 +45,7 @@ rounding or padding. Heine uses half-even rounding unless the stable formatter
 makes a stronger currency-specific rule necessary.
 
 Tera values are JSON-like, so a future Fluent monetary argument uses one
-documented map rather than an opaque Rust value:
+documented map rather than a Rust-only value:
 
 ```tera
 {{ t(id="price", price={"amount": data.product.price, "currency": "EUR"}) }}

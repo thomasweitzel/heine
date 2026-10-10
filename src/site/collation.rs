@@ -1,6 +1,7 @@
 //! Locale-aware, deterministic ordering for authored human-language text.
 //!
-//! The localized site model gives every consumer a configured BCP-47 locale.
+//! Every feature that reads the localized site model receives a configured
+//! BCP-47 locale.
 //! This module keeps ICU collation and Heine's literal tie-breaker in one
 //! place, so collections and taxonomies cannot accidentally adopt different
 //! ordering contracts.

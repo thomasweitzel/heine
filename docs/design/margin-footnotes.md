@@ -148,7 +148,7 @@ template error at that call site. A string filter has no declared-content
 identity, so it cannot apply the precomputed footnote plan reliably. This is
 the same source-aware rendering boundary used by the table of contents.
 
-Other Markdown consumers retain their own contracts. Search extracts the
+Other Markdown features retain their own contracts. Search extracts the
 original source-level text, including definition text, and never receives a
 margin-presented HTML variant. Atom feeds use their authored summaries rather
 than page-body Markdown. No other source-aware HTML renderer exists.

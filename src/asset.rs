@@ -840,9 +840,9 @@ impl AssetLinks {
         }
     }
 
-    /// Resolves the public asset surface shared by Markdown and root
-    /// templates. Private kit assets retain output identities, but only the
-    /// kit's rewritten `asset()` calls may use the wider resolver below.
+    /// Resolves copied assets that Markdown and root templates may use. Private
+    /// kit assets retain output identities, but only the kit's rewritten
+    /// `asset()` calls may use the wider resolver below.
     pub(crate) fn resolve(&self, id: &str) -> Result<AssetLink, ResolveError> {
         self.resolve_with_private_assets(id, false)
     }

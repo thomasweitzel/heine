@@ -46,8 +46,8 @@ impl PageId {
     }
 }
 
-/// An explicit, nonblank identity relating corresponding pages across
-/// locales. Its value is intentionally otherwise opaque to Heine.
+/// An explicit, nonblank identity relating corresponding pages across locales.
+/// Heine uses its value only for that relationship.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct TranslationId(String);
 
@@ -254,7 +254,7 @@ pub(super) struct Metadata {
 
 /// Page authors with the authored location that supplied the resolved list.
 /// A directory default retains its own source; a page list uses the page
-/// source supplied by the eventual diagnostic consumer.
+/// source that a later diagnostic identifies.
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedAuthors {
     names: Vec<AuthorName>,
@@ -362,7 +362,7 @@ pub(super) struct Page {
     pub(super) content: BTreeMap<String, Value>,
     pub(super) markdown_content: BTreeSet<String>,
     /// Original declared Markdown inputs are retained for source-derived
-    /// generated-resource consumers such as search, not for template rendering.
+    /// generated resources such as search, not for template rendering.
     pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
     pub(super) renderer_sources: BTreeMap<String, crate::renderer::Source>,
     pub(super) renderer_requests: BTreeMap<String, Vec<crate::markdown::ResolvedRequest>>,
@@ -440,7 +440,7 @@ pub(super) struct Pagination {
 
 /// A compact pager retains fixed first and last anchors plus a bounded number
 /// of neighbors around its current page. Keeping the bound here prevents
-/// generated-resource consumers from drifting into different navigation rules.
+/// generated-resource features from drifting into different navigation rules.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct NavigationWindow(usize);
 

@@ -112,9 +112,9 @@ depend on another server and a browser runtime rather than the files it checks.
 ### Ordinary copied assets
 
 A PDF, image, archive, media file, or other binary remains at its stable copied
-URL unless an external graph-aware builder owns it. Opaque means only that Heine
-does not need to parse the file's bytes. It does not mean that its URL is safe
-to rename: downloads and images can have inbound links, citations, bookmarks,
+URL unless an external graph-aware builder owns it. Heine does not need to
+parse the file's bytes. That does not make its URL safe to rename: downloads
+and images can have inbound links, citations, bookmarks,
 email references, or deployment configuration just as pages do.
 
 Raw HTML, literal CSS URLs, literal JavaScript strings, and externally
@@ -161,10 +161,10 @@ external builder's claim: Heine cannot prove that a builder's filename digest
 represents those bytes, or that a manifest is current when its target file
 still exists.
 
-The manifest's checked dependency closure must name every builder output that
-Heine publishes for an entry point. Heine must not copy a builder-output root
+The manifest must name the complete checked set of builder outputs that Heine
+publishes for an entry point. Heine must not copy a builder-output root
 wholesale: watch builds and non-cleaning builders can leave stale fingerprints,
-source maps, or partial artifacts there. The closure must therefore include the
+source maps, or partial artifacts there. That set must therefore include the
 entry resource and every required stylesheet, module preload, image, font, or
 other final dependency.
 
@@ -218,7 +218,7 @@ questions:
   final assets come from the same completed build?
 - How does a template request all required stylesheets, scripts, and preloads
   for an entry without receiving arbitrary HTML from the manifest?
-- How does the manifest express the complete dependency closure that Heine may
+- How does the manifest express the complete dependency set that Heine may
   publish for each entry point?
 - Can the site's development workflow use a disk-backed builder watch mode,
   without a Heine proxy or Hot Module Replacement integration?
@@ -237,5 +237,5 @@ that Heine derives it from the final bytes it reads, not a manifest claim. They
 must not claim that Heine can verify an external builder's filename fingerprint
 or detect an existing but outdated manifest target. They must also show that an
 entry-point ID cannot collide with a plain asset ID, an unreferenced stale file
-below the builder-output root is not published, and every declared dependency
-in an entry point's closure is published.
+below the builder-output root is not published, and Heine publishes every
+dependency that an entry point declares.

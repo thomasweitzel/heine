@@ -365,8 +365,8 @@ impl Selected {
 }
 
 /// Only the reference site's own kit selection matters while the package is
-/// validated. Its other root-owned configuration remains opaque until a user
-/// copies the site and builds it as an ordinary project.
+/// validated. Heine does not read its other root-owned configuration until a
+/// user copies the site and builds it as an ordinary project.
 #[derive(Deserialize)]
 struct RawReferenceSite {
     kit: Option<RawReferenceKit>,

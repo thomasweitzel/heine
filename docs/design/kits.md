@@ -162,13 +162,13 @@ and license texts already remain in their final kit locations, so their
 references do not need to change during packaging.
 
 `site/` is a release snapshot, not a live mirror of the authoring root. Kit
-tests materialize its inputs into a temporary ordinary site root, install the
+tests copy its inputs into a temporary ordinary site root, install the
 kit at that root's `kits/<name>/` path, and build the result. This checks that
 the copied reference site is complete without giving `site/` runtime-input
 status or introducing a special development mode. When a kit changes its
 assumed site structure, configuration, or reference example, its author
 updates the snapshot in the same change. Heine cannot compare an authoring
-root with `site/`: a normal consumer root is expected to diverge from its
+root with `site/`: an ordinary site root is expected to diverge from its
 starting point.
 
 When a reference site exercises an external renderer, its kit test installs
@@ -228,11 +228,12 @@ version as related context.
 
 The kit's supported integration API consists of the manifest's `[public]`
 members, every prefixed kit Fluent message and term, and the `[extra]` schema.
-A kit author uses semantic versioning for this surface: removing or renaming a
-public template, asset, component, kit message or term, or extra setting
-requires a major version increment. The message prefix and every kit-defined
-message or term using it are part of that surface: a root site may override a
-specific existing entry, so removing or renaming that entry is breaking.
+A kit author uses semantic versioning for this public interface. Removing or
+renaming a public template, asset, component, kit message or term, or extra
+setting requires a major version increment. The message prefix and every
+kit-defined message or term using it are part of that interface: a root site
+may override a specific existing entry, so removing or renaming that entry is
+breaking.
 Adding a public member is a minor version change. Adding an optional extra
 setting with a manifest default is also a minor version change: sites that do
 not override it receive that default. Correcting behavior without changing the
@@ -280,7 +281,7 @@ definition in the selected kit's component namespace is a build error, so
 invocation can never quietly become replacement.
 
 Public template and asset paths are literal logical paths in the first version.
-Glob patterns are unsupported: the compatibility surface must remain visible,
+Glob patterns are unsupported: the public interface must remain visible,
 and a newly added file must not become public merely because it
 matches a broad pattern.
 
@@ -290,7 +291,7 @@ The asset rule promotes a manifest-declared kit asset such as
 A root `content/<locale>/assets/css/paper.css` file retains its ordinary
 locale-local behavior: it publishes at `<locale>/assets/css/paper.css` and that
 locale's asset lookup finds it before the shared public kit asset. A public kit
-asset is otherwise available to every ordinary root asset consumer, including
+asset is otherwise available through ordinary root asset lookups, including
 `asset()`, Markdown `asset:` URLs, and `:::picture` sources.
 A private kit asset such as `kits/paper/assets/images/mark.svg` instead has the
 logical ID and published path `kit/paper/assets/images/mark.svg`. Root
@@ -489,7 +490,7 @@ Explicit Tera composition remains the escape hatch for site-specific needs.
 
 Letting an ordinary root name fall back to a kit template would make deleting a
 root adapter silently change a page's rendering contract. Separate root and
-kit template namespaces keep source provenance visible and turn a missing root
+kit template namespaces make template ownership visible and turn a missing root
 entry point into a checked error at its authored selection.
 
 ### Components and site-owned adapters as the whole feature
@@ -507,7 +508,7 @@ precedence layer. Revisit composition only after a concrete use case justifies i
 ### Glob-based public declarations
 
 Globs would shorten a large manifest, but they would also expose future files
-accidentally and make the kit's compatibility surface less visible. Literal
+accidentally and make the kit's public interface less visible. Literal
 paths make each public member visible and make semantic-version changes
 auditable.
 

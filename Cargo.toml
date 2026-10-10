@@ -18,8 +18,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 semver = "1.0.28"
 thiserror = "2.0.21"
-toml = "1.1.6"
-toml_edit = "0.25.15"
+toml = "1.1.8"
+toml_edit = "0.25.17"
 tera = { version = "2.4.0", features = ["glob_fs"] }
 walkdir = "2.5.0"
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
@@ -38,7 +38,7 @@ notify = "8.2.0"
 percent-encoding = "2.3.2"
 tokio = { version = "1.53.2", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
-tokio-util = { version = "0.7.19", features = ["io"] }
+tokio-util = { version = "0.7.20", features = ["io"] }
 fluent-bundle = "0.16.0"
 fluent-syntax = "0.12.0"
 fixed_decimal = { version = "0.7.2", features = ["ryu"] }
@@ -52,7 +52,7 @@ icu_calendar = "2.3.0"
 icu_locale = "2.3.1"
 icu_collator = { version = "2.3.1", features = ["compiled_data"] }
 spdx = "0.13.6"
-jiff = { version = "0.2.37", default-features = false, features = ["std", "tzdb-bundle-always"] }
+jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
 url = "2.5.8"
 
 [dev-dependencies]

@@ -1,4 +1,4 @@
-//! Output-tree materialization for full and quick builds.
+//! Output-tree writing for full and quick builds.
 
 use super::{
     Error, GeneratedFile, is_internal_output_path,
@@ -11,7 +11,7 @@ use std::{fs, io, path::Path};
 /// A validated inventory of source files copied verbatim into the output tree.
 ///
 /// Assets, deployment files, and license texts differ in their source and
-/// template semantics, but output materialization treats them as ordinary
+/// template semantics, but output writing treats them as ordinary
 /// claimed files.
 pub(crate) trait CopiedFiles {
     fn paths(&self) -> &[OutputPath];

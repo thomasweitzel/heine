@@ -49,9 +49,9 @@ or leak into any relationship derived from it.
 
 Filtering only rendering is insufficient. It would leave a draft in a post
 index, a taxonomy term count, an Atom feed, a sitemap, or a search document.
-Filtering each consumer separately would duplicate policy and eventually miss
-one. Heine instead resolves one active page set for the selected build mode.
-All existing consumers continue to operate only on that set.
+Filtering each relationship and generated output separately would duplicate
+policy and eventually miss one. Heine instead resolves one active page set for
+the selected build mode. All existing features use only that set.
 
 Drafts are not scheduled publication. Heine does not compare a wall clock to a
 date, infer publication from a filename, or provide a generic visibility
@@ -152,8 +152,8 @@ preview needs a visible cue.
 
 ## Relationship and generated-output effects
 
-The resolved page catalog is the only source for page links and relationship
-consumers. Therefore an ordinary build treats a draft exactly as a page that
+The resolved page catalog is the only source for page links and derived
+relationships. Therefore an ordinary build treats a draft exactly as a page that
 does not exist in its locale:
 
 - `page()` and Markdown `page:` links to it are checked missing-page errors;
@@ -280,7 +280,7 @@ The public documentation needs:
 - An ordinary build exposes no draft output or page view, and drafts are
   absent from links, `page_exists()`, translation navigation, sibling and
   collection navigation, taxonomies, Series, pagination, feeds, sitemaps, and
-  search indexes, while each configured consumer retains its established
+  search indexes, while each configured feature retains its established
   empty-output behavior.
 - A configured empty feed, search document, taxonomy index, Series index, or
   authored paginated listing remains present after drafts remove its final

@@ -55,7 +55,7 @@ any root template that extends a kit template then fails at that reference.
 
 Each kit has a `kit.toml` manifest beside its runtime directories. It identifies
 the package, states which Heine releases may load it, reserves its Fluent
-message prefix, and declares its public integration surface.
+message prefix, and declares its public interface.
 
 ```toml
 # kits/paper/kit.toml
@@ -148,7 +148,7 @@ merging arbitrary site configuration into a kit.
 
 ## Assets, messages, and components
 
-The manifest's `[public]` table states a kit's supported integration surface.
+The manifest's `[public]` table states a kit's supported public interface.
 It can declare templates, copied assets, and Tera components.
 
 ```toml
