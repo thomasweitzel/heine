@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-10-11
+
 ### Added
 
 - **Template relationship catalogs.** Templates can now use `collections()`
