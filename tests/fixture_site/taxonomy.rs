@@ -146,26 +146,39 @@ fn quick_build_rerenders_the_affected_taxonomy_listing_for_a_member_change() {
 }
 
 #[test]
-fn taxonomy_function_resolves_the_locale_local_index_and_reports_invalid_lookups() {
+fn taxonomy_functions_expose_resolved_terms_and_locale_local_catalogs() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
         &format!(
-            "[site]\norigin = 'https://example.org'\n\n{}",
+            "[site]\norigin = 'https://example.org'\n\n{}\n[taxonomies.categories]\ncollection = 'posts'\npath = 'categories'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n",
             taxonomy_config()
         ),
     );
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "content/en/blog/article/index.page",
+        "template = 'page.tera'\n",
+    );
+    fixture.write(
+        "content/en/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rust']\n",
+    );
     templates(&fixture);
     fixture.write(
         "templates/page.tera",
-        "{% set tags = taxonomy(name='tags') %}{{ tags.name }}|{{ tags.url }}|{{ tags.relative_url }}|{{ tags.absolute_url }}",
+        "{% set tags = taxonomy(name='tags') %}{% if page.id == 'blog/article/index' %}{{ tags.terms[0].relative_url }}{% else %}{{ tags.name }}|{{ tags.url }}|{{ tags.relative_url }}|{{ tags.absolute_url }}|{{ tags.term is defined }}|{{ tags.terms[0].name }}:{{ tags.terms[0].count }}:{{ tags.terms[0].url }}:{{ tags.terms[0].absolute_url }}|{% for taxonomy in taxonomies() %}{{ taxonomy.name }}:{{ taxonomy.terms | length }};{% endfor %}{% endif %}",
     );
 
-    build_at(fixture.path(), BuildMode::Full).expect("taxonomy index lookup builds");
+    build_at(fixture.path(), BuildMode::Full).expect("taxonomy catalog builds");
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).expect("page output"),
-        "tags|/tags/index.html|./tags/index.html|https://example.org/tags/index.html"
+        "tags|/tags/index.html|./tags/index.html|https://example.org/tags/index.html|false|Rust:1:/tags/Rust.html:https://example.org/tags/Rust.html|categories:0;tags:1;"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/blog/article/index.html"))
+            .expect("nested page output"),
+        "../../tags/Rust.html"
     );
 
     fixture.write("templates/page.tera", "{{ taxonomy(name='unknown') }}");
@@ -174,7 +187,7 @@ fn taxonomy_function_resolves_the_locale_local_index_and_reports_invalid_lookups
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
     assert!(diagnostic.contains("unknown"), "{diagnostic}");
     assert!(
-        diagnostic.contains("available taxonomies: tags"),
+        diagnostic.contains("available taxonomies: categories, tags"),
         "{diagnostic}"
     );
 
@@ -185,6 +198,19 @@ fn taxonomy_function_resolves_the_locale_local_index_and_reports_invalid_lookups
     assert!(
         diagnostic.contains("simple template identifier"),
         "{diagnostic}"
+    );
+}
+
+#[test]
+fn taxonomies_returns_an_empty_catalog_when_none_are_configured() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "{{ taxonomies() | length }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("empty taxonomy catalog builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("page output"),
+        "0"
     );
 }
 
@@ -204,19 +230,26 @@ fn taxonomy_function_resolves_an_explicit_configured_locale() {
     templates(&fixture);
     fixture.write(
         "templates/page.tera",
-        "{% set tags = taxonomy(name='tags', locale='de') %}{{ tags.name }}|{{ tags.url }}|{{ tags.relative_url }}",
+        "{% set tags = taxonomy(name='tags', locale='de') %}{{ tags.name }}|{{ tags.url }}|{{ tags.relative_url }}|{% for taxonomy in taxonomies(locale='de') %}{{ taxonomy.name }}:{{ taxonomy.terms[0].name }}{% endfor %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("explicit locale lookup builds");
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).expect("page output"),
-        "tags|/de/tags/index.html|./de/tags/index.html"
+        "tags|/de/tags/index.html|./de/tags/index.html|tags:Rust"
     );
 
     fixture.write(
         "templates/page.tera",
         "{{ taxonomy(name='tags', locale='fr') }}",
     );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown locale fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("fr"), "{diagnostic}");
+    assert!(diagnostic.contains("not configured"), "{diagnostic}");
+
+    fixture.write("templates/page.tera", "{{ taxonomies(locale='fr') }}");
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown locale fails");
     let diagnostic = format!("{error:?}");
     assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
@@ -239,7 +272,10 @@ fn exposes_only_configured_taxonomy_term_counterparts() {
         "content/de/post.page",
         "template = 'page.tera'\ncollections = ['posts']\n[taxonomies]\ntags = ['Rost']\n",
     );
-    fixture.write("templates/page.tera", "page");
+    fixture.write(
+        "templates/page.tera",
+        "{% if locale.code == 'en' %}{% set tags = taxonomy(name='tags') %}{{ tags.terms[1].counterparts.de.name }}|{{ tags.terms[0].counterparts | length }}{% endif %}",
+    );
     fixture.write(
         "templates/taxonomy-index.tera",
         "{% if locale.code == 'en' %}{{ taxonomy.terms[0].counterparts | length }}|{{ taxonomy.terms[1].counterparts | length }}{% endif %}",
@@ -254,6 +290,10 @@ fn exposes_only_configured_taxonomy_term_counterparts() {
         fs::read_to_string(fixture.path().join("public/tags/index.html"))
             .expect("taxonomy index output"),
         "0|1"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/post.html")).expect("page output"),
+        "Rost|0"
     );
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/tags/Rust.html"))

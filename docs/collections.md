@@ -143,7 +143,7 @@ content-discovery mechanism.
 
 ## Template contract
 
-Use `collection()` to read a current-locale collection:
+Use `collection()` to read a collection in the current locale:
 
 ```tera
 {% set posts = collection(name="posts") %}
@@ -174,6 +174,29 @@ Every configured collection is present for every locale, including when it has
 no members. After `{% set posts = collection(name="posts") %}`, a template can
 therefore rely on `posts.count` being zero rather than needing to distinguish
 an empty collection from a missing definition.
+
+Pass an exact configured locale when a template needs another locale's
+collection. Heine does not infer a translation relationship from collection
+membership:
+
+```tera
+{% set german_posts = collection(name="posts", locale="de") %}
+<p>{{ german_posts.count }} Beiträge</p>
+```
+
+Use `collections()` when a template needs every configured collection for one
+locale. The array is ordered by collection name and includes empty collections:
+
+```tera
+{% for collection in collections() %}
+  <a href="#{{ collection.name }}">{{ collection.name }}</a>
+  <span>{{ collection.count }}</span>
+{% endfor %}
+```
+
+`collections(locale="de")` selects an exact configured locale. An unknown
+collection name or locale fails at the template call site. `collections()`
+returns an empty array when the site configures no collections.
 
 ## Collection neighbors
 

@@ -73,8 +73,9 @@ The existing fields keep their meanings:
 
 - the current authored `page`, and `page()` results;
 - `asset()` results, attributions, and referenced license texts;
-- page translations, taxonomy indexes and terms, taxonomy counterparts, and
-  page-local taxonomy memberships;
+- page translations, ordinary-template `taxonomy()` and `taxonomies()` views,
+  generated taxonomy indexes and terms, taxonomy counterparts, and page-local
+  taxonomy memberships;
 - collection and sibling neighbor links, paginated listings and navigation;
 - Series indexes, listings, memberships, and their page links; and
 - configured search-index and Atom-feed views.

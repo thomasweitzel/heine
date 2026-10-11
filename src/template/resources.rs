@@ -81,11 +81,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
             arguments::only("feed", &kwargs, &["name", "locale"])?;
             let name = kwargs.must_get::<&str>("name")?;
-            let locale = feed_runtime
-                .pages()
-                .with_locale(feed_runtime.locale(state)?)
-                .resolve_locale(kwargs.get::<&str>("locale")?)
-                .map_err(|error| tera::Error::message(error.to_string()))?;
+            let locale = feed_runtime.requested_locale(state, kwargs.get::<&str>("locale")?)?;
             let root = feed_runtime.root(state)?;
             feed_runtime
                 .feed(&locale, name, &root)
@@ -108,11 +104,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
             arguments::only("search", &kwargs, &["name", "locale"])?;
             let name = kwargs.must_get::<&str>("name")?;
-            let locale = search_runtime
-                .pages()
-                .with_locale(search_runtime.locale(state)?)
-                .resolve_locale(kwargs.get::<&str>("locale")?)
-                .map_err(|error| tera::Error::message(error.to_string()))?;
+            let locale = search_runtime.requested_locale(state, kwargs.get::<&str>("locale")?)?;
             let root = search_runtime.root(state)?;
             search_runtime
                 .search(&locale, name, &root)
@@ -137,9 +129,10 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
     tera.register_function(
         "collection",
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
-            arguments::only("collection", &kwargs, &["name"])?;
+            arguments::only("collection", &kwargs, &["name", "locale"])?;
             let name = kwargs.must_get::<&str>("name")?;
-            let locale = collection_runtime.locale(state)?;
+            let locale =
+                collection_runtime.requested_locale(state, kwargs.get::<&str>("locale")?)?;
             collection_runtime
                 .collection(&locale, name)
                 .map(|collection| {
@@ -157,6 +150,18 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         },
     );
 
+    let collections_runtime = runtime.clone();
+    tera.register_function(
+        "collections",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("collections", &kwargs, &["locale"])?;
+            let locale =
+                collections_runtime.requested_locale(state, kwargs.get::<&str>("locale")?)?;
+            tera::Value::try_from_serializable(&collections_runtime.collections(&locale))
+                .map_err(|_| tera::Error::message("Heine collection catalog is not serializable"))
+        },
+    );
+
     let series_runtime = runtime.clone();
     tera.register_function(
         "series",
@@ -167,11 +172,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                     "series() requires a [series] table in heine.toml",
                 ));
             }
-            let locale = series_runtime
-                .pages()
-                .with_locale(series_runtime.locale(state)?)
-                .resolve_locale(kwargs.get::<&str>("locale")?)
-                .map_err(|error| tera::Error::message(error.to_string()))?;
+            let locale = series_runtime.requested_locale(state, kwargs.get::<&str>("locale")?)?;
             let root = series_runtime.root(state)?;
             match kwargs.get::<&str>("id")? {
                 None => series_runtime.series_index(&locale, &root),
@@ -219,10 +220,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
             let name =
                 crate::config::SeriesName::parse(id.to_owned()).map_err(tera::Error::message)?;
             let locale = series_has_members_runtime
-                .pages()
-                .with_locale(series_has_members_runtime.locale(state)?)
-                .resolve_locale(kwargs.get::<&str>("locale")?)
-                .map_err(|error| tera::Error::message(error.to_string()))?;
+                .requested_locale(state, kwargs.get::<&str>("locale")?)?;
             if !series_has_members_runtime.series().definition_exists(&name) {
                 return Err(tera::Error::message(format!(
                     "series {id:?} is not configured"
@@ -241,18 +239,14 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
             arguments::only("taxonomy", &kwargs, &["name", "locale"])?;
             let name = kwargs.must_get::<&str>("name")?;
-            let locale = taxonomy_runtime
-                .pages()
-                .with_locale(taxonomy_runtime.locale(state)?)
-                .resolve_locale(kwargs.get::<&str>("locale")?)
-                .map_err(|error| tera::Error::message(error.to_string()))?;
+            let locale = taxonomy_runtime.requested_locale(state, kwargs.get::<&str>("locale")?)?;
             let root = taxonomy_runtime.root(state)?;
             taxonomy_runtime
-                .taxonomy_index(&locale, name, &root)
+                .taxonomy(&locale, name, &root)
                 .map_err(tera::Error::message)?
                 .map(|taxonomy| {
                     tera::Value::try_from_serializable(&taxonomy).map_err(|_| {
-                        tera::Error::message("Heine taxonomy index view is not serializable")
+                        tera::Error::message("Heine taxonomy view is not serializable")
                     })
                 })
                 .transpose()?
@@ -262,6 +256,19 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
                         available_names("no taxonomies are configured", "taxonomies", &available);
                     tera::Error::message(format!("taxonomy {name:?} was not found; {detail}"))
                 })
+        },
+    );
+
+    let taxonomies_runtime = runtime.clone();
+    tera.register_function(
+        "taxonomies",
+        move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("taxonomies", &kwargs, &["locale"])?;
+            let locale =
+                taxonomies_runtime.requested_locale(state, kwargs.get::<&str>("locale")?)?;
+            let root = taxonomies_runtime.root(state)?;
+            tera::Value::try_from_serializable(&taxonomies_runtime.taxonomies(&locale, &root))
+                .map_err(|_| tera::Error::message("Heine taxonomy catalog is not serializable"))
         },
     );
 

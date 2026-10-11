@@ -38,7 +38,9 @@ fn rejects_unknown_keywords_for_fixed_template_function_contracts() {
             false,
         ),
         ("{{ collection(name='news', unknown=true) }}", false),
+        ("{{ collections(unknown=true) }}", false),
         ("{{ taxonomy(name='tags', unknown=true) }}", false),
+        ("{{ taxonomies(unknown=true) }}", false),
     ];
 
     for (template, highlighting) in cases {

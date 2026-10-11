@@ -399,6 +399,6 @@ state or arbitrary filesystem access.
 ### Template function
 
 A named Heine operation called from a Tera template, such as `asset()`,
-`page()`, `collection()`, `t()`, `format_date()`, `format_time()`,
-`format_datetime()`, or `format_number()`. Fixed arguments are checked at the
-template call site.
+`page()`, `collection()`, `collections()`, `taxonomy()`, `taxonomies()`,
+`t()`, `format_date()`, `format_time()`, `format_datetime()`, or
+`format_number()`. Fixed arguments are checked at the template call site.

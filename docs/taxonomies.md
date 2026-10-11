@@ -150,29 +150,34 @@ An ordinary page exposes its assigned term links directly:
 {% endfor %}
 ```
 
-Any template can resolve its current locale's taxonomy index through the
-checked `taxonomy()` function. A shared navigation template can use it without
-duplicating a generated route:
+Any template can resolve one taxonomy in the current locale through the
+checked `taxonomy()` function. The returned view has index URL fields and the
+same locale-aware ordered term catalog that a taxonomy index receives. A shared
+navigation template can use its index URL without duplicating a generated
+route:
 
 ```tera
 {% set tags = taxonomy(name="tags") %}
 <a href="{{ tags.url }}">Tags</a>
 ```
 
-The returned view has `name`, base-path-aware `url`, and
-current-output-relative `relative_url`. A malformed or unknown taxonomy name
-fails at the template call site and names the available configured taxonomies.
+Each term has literal `name`, `count`, base-path-aware `url`,
+current-output-relative `relative_url`, `absolute_url` when `site.origin` is
+configured, and declared `counterparts`. `taxonomy()` has no current `term`:
+only a generated term listing has that contextual value. A malformed or
+unknown taxonomy name fails at the template call site and names the available
+configured taxonomies.
 
-Pass an exact configured locale when a template needs another locale's index:
+Pass an exact configured locale when a template needs another locale's taxonomy:
 
 ```tera
 {% set german_tags = taxonomy(name="tags", locale="de") %}
 <a href="{{ german_tags.url }}">Schlagwörter</a>
 ```
 
-This selects only the taxonomy index. It never infers that a literal term in
-one locale corresponds to a term in another. Declare known counterparts in
-the taxonomy configuration instead:
+This selects the German taxonomy and its German terms. It never infers that a
+literal term in one locale corresponds to a term in another. Declare known
+counterparts in the taxonomy configuration instead:
 
 ```toml
 [taxonomies.tags.counterparts.rust]
@@ -190,6 +195,22 @@ listed term must exist literally in that locale's taxonomy, and a locale-term
 pair may belong to only one group. Groups may be partial: a term such as
 `MathML` that exists only in English simply has no group and therefore no
 language counterpart.
+
+Use `taxonomies()` when a template needs every configured taxonomy for one
+locale. The array is ordered by taxonomy name and each entry has the same index
+and term fields as `taxonomy()`:
+
+```tera
+{% for taxonomy in taxonomies() %}
+  <a href="{{ taxonomy.relative_url }}">{{ taxonomy.name }}</a>
+  <span>{{ taxonomy.terms | length }}</span>
+{% endfor %}
+```
+
+`taxonomies(locale="de")` selects an exact configured locale. Both
+`taxonomy()` and `taxonomies()` include configured taxonomies with no terms;
+the latter returns an empty array when the site configures no taxonomies. An
+unknown locale fails at the template call site.
 
 The generated term views expose the declared relationships:
 
