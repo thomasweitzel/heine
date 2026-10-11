@@ -351,6 +351,61 @@ fn exposes_empty_collections_in_every_locale() {
 }
 
 #[test]
+fn collection_functions_expose_deterministic_catalogs_and_explicit_locales() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n[collections.archive]\norder = 'id-asc'\n[collections.posts]\norder = 'id-asc'\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/de/index.page", "template = 'page.tera'\n");
+    fixture.write(
+        "content/de/post.page",
+        "template = 'page.tera'\ncollections = ['posts']\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{% for collection in collections() %}{{ collection.name }}:{{ collection.count }};{% endfor %}|{% set german_posts = collection(name='posts', locale='de') %}{{ german_posts.count }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("collection catalog builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("English output"),
+        "archive:0;posts:0;|1"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/de/index.html")).expect("German output"),
+        "archive:0;posts:1;|1"
+    );
+}
+
+#[test]
+fn collection_catalog_rejects_an_unknown_locale_at_the_template_call_site() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "{{ collections(locale='de') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown locale fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("templates/page.tera:1"), "{diagnostic}");
+    assert!(diagnostic.contains("de"), "{diagnostic}");
+    assert!(diagnostic.contains("not configured"), "{diagnostic}");
+}
+
+#[test]
+fn collections_returns_an_empty_catalog_when_none_are_configured() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "{{ collections() | length }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("empty collection catalog builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("page output"),
+        "0"
+    );
+}
+
+#[test]
 fn reports_an_unknown_collection_at_the_template_call_site() {
     let fixture = Fixture::new();
     fixture.write("content/en/index.page", "template = 'page.tera'\n");

@@ -50,7 +50,7 @@ direction = "ltr"
 ```toml
 # content/en/index.page
 template = "page.tera"
-title = "Hello, Heine"
+title = "My site"
 ```
 
 ```tera

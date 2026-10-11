@@ -542,26 +542,60 @@ impl Catalog {
         &self.template_references
     }
 
-    /// Resolves a configured taxonomy's locale-local index as a small,
-    /// render-facing link. Unlike a term listing, an index exists even when
-    /// the taxonomy currently has no terms.
-    pub(crate) fn index(
+    /// Resolves a configured taxonomy's locale-local catalog view. The index
+    /// exists even when the taxonomy has no terms.
+    pub(crate) fn view(
         &self,
         locale: &Locale,
         name: &TaxonomyName,
         base_path: &BasePath,
         canonical_urls: Option<&CanonicalUrls>,
         root: &str,
-    ) -> Option<IndexView> {
+    ) -> Option<View> {
         let taxonomy = self.locales.get(locale)?.get(name)?;
         let root_path = localized_root(&self.prefixes, locale, &taxonomy.root);
-        let output_path = index_output_path(&root_path);
-        Some(IndexView {
-            name: taxonomy.name.to_string(),
-            url: base_path.join(&output_path.url_path()),
-            absolute_url: canonical_urls.map(|urls| urls.output_url(&output_path)),
-            relative_url: format!("{root}{}", output_path.url_path().as_str()),
-        })
+        let term_counterparts = &self.term_counterparts[locale][name];
+        Some(catalog_view(
+            taxonomy,
+            &root_path,
+            term_counterparts,
+            base_path,
+            canonical_urls,
+            root,
+        ))
+    }
+
+    pub(crate) fn views(
+        &self,
+        locale: &Locale,
+        base_path: &BasePath,
+        canonical_urls: Option<&CanonicalUrls>,
+        root: &str,
+    ) -> Vec<View> {
+        let Some(taxonomies) = self.locales.get(locale) else {
+            return Vec::new();
+        };
+        if taxonomies.is_empty() {
+            return Vec::new();
+        }
+        let counterparts = self
+            .term_counterparts
+            .get(locale)
+            .expect("resolved taxonomies retain counterpart entries for their locale");
+        taxonomies
+            .iter()
+            .map(|(name, taxonomy)| {
+                let root_path = localized_root(&self.prefixes, locale, &taxonomy.root);
+                catalog_view(
+                    taxonomy,
+                    &root_path,
+                    &counterparts[name],
+                    base_path,
+                    canonical_urls,
+                    root,
+                )
+            })
+            .collect()
     }
 
     pub(crate) fn names(&self, locale: &Locale) -> Vec<String> {
@@ -660,18 +694,6 @@ impl Catalog {
         }
         tasks
     }
-}
-
-/// A taxonomy index link resolved for the current template locale and output
-/// directory. It deliberately mirrors the URL shape of `page()` and `asset()`
-/// without exposing the taxonomy's internal resolved model.
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct IndexView {
-    name: String,
-    url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    absolute_url: Option<String>,
-    relative_url: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -776,35 +798,114 @@ impl Task {
         view.url = Some(base_path.join(&self.output_path.url_path()));
         view.absolute_url = canonical_urls.map(|urls| urls.output_url(&self.output_path));
         view.relative_url = Some(format!("{root}{}", self.output_path.url_path().as_str()));
-        for term in view.terms.iter_mut().chain(view.term.iter_mut()) {
-            let path = &self.term_paths[&term.name];
-            term.url = Some(base_path.join(&path.url_path()));
-            term.absolute_url = canonical_urls.map(|urls| urls.output_url(path));
-            term.relative_url = Some(format!("{root}{}", path.url_path().as_str()));
-            term.counterparts = self
-                .term_counterparts
-                .get(&term.name)
-                .into_iter()
-                .flat_map(|targets| targets.iter())
-                .map(|(locale, target)| {
-                    (
-                        locale.to_string(),
-                        TermLinkView {
-                            name: target.name.clone(),
-                            url: base_path.join(&target.output_path.url_path()),
-                            absolute_url: canonical_urls
-                                .map(|urls| urls.output_url(&target.output_path)),
-                            relative_url: format!(
-                                "{root}{}",
-                                target.output_path.url_path().as_str()
-                            ),
-                        },
-                    )
-                })
-                .collect();
-        }
+        populate_term_links(
+            view.terms.iter_mut().chain(view.term.iter_mut()),
+            &self.term_paths,
+            &self.term_counterparts,
+            base_path,
+            canonical_urls,
+            root,
+        );
         view
     }
+}
+
+fn catalog_view(
+    taxonomy: &ResolvedTaxonomy,
+    root_path: &OutputPath,
+    term_counterparts: &CounterpartPaths,
+    base_path: &BasePath,
+    canonical_urls: Option<&CanonicalUrls>,
+    root: &str,
+) -> View {
+    let output_path = index_output_path(root_path);
+    let mut view = View {
+        name: taxonomy.name.to_string(),
+        url: Some(base_path.join(&output_path.url_path())),
+        absolute_url: canonical_urls.map(|urls| urls.output_url(&output_path)),
+        relative_url: Some(format!("{root}{}", output_path.url_path().as_str())),
+        term: None,
+        terms: taxonomy.terms.iter().map(term_view).collect(),
+    };
+    populate_catalog_term_links(
+        view.terms.iter_mut(),
+        root_path,
+        term_counterparts,
+        base_path,
+        canonical_urls,
+        root,
+    );
+    view
+}
+
+fn populate_term_links<'a>(
+    terms: impl Iterator<Item = &'a mut TermView>,
+    term_paths: &BTreeMap<String, OutputPath>,
+    term_counterparts: &CounterpartPaths,
+    base_path: &BasePath,
+    canonical_urls: Option<&CanonicalUrls>,
+    root: &str,
+) {
+    for term in terms {
+        populate_term_link(
+            term,
+            &term_paths[&term.name],
+            term_counterparts,
+            base_path,
+            canonical_urls,
+            root,
+        );
+    }
+}
+
+fn populate_catalog_term_links<'a>(
+    terms: impl Iterator<Item = &'a mut TermView>,
+    root_path: &OutputPath,
+    term_counterparts: &CounterpartPaths,
+    base_path: &BasePath,
+    canonical_urls: Option<&CanonicalUrls>,
+    root: &str,
+) {
+    for term in terms {
+        let path = term_output_path(root_path, &term.name, 1);
+        populate_term_link(
+            term,
+            &path,
+            term_counterparts,
+            base_path,
+            canonical_urls,
+            root,
+        );
+    }
+}
+
+fn populate_term_link(
+    term: &mut TermView,
+    path: &OutputPath,
+    term_counterparts: &CounterpartPaths,
+    base_path: &BasePath,
+    canonical_urls: Option<&CanonicalUrls>,
+    root: &str,
+) {
+    term.url = Some(base_path.join(&path.url_path()));
+    term.absolute_url = canonical_urls.map(|urls| urls.output_url(path));
+    term.relative_url = Some(format!("{root}{}", path.url_path().as_str()));
+    term.counterparts = term_counterparts
+        .get(&term.name)
+        .into_iter()
+        .flat_map(|targets| targets.iter())
+        .map(|(locale, target)| {
+            (
+                locale.to_string(),
+                TermLinkView {
+                    name: target.name.clone(),
+                    url: base_path.join(&target.output_path.url_path()),
+                    absolute_url: canonical_urls.map(|urls| urls.output_url(&target.output_path)),
+                    relative_url: format!("{root}{}", target.output_path.url_path().as_str()),
+                },
+            )
+        })
+        .collect();
 }
 
 fn term_output_path(root: &OutputPath, term: &str, page_number: usize) -> OutputPath {

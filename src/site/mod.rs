@@ -59,9 +59,7 @@ pub(crate) use series::{
     Catalog as SeriesCatalog, MembershipView as SeriesMembershipView, View as SeriesView,
 };
 pub(crate) use taxonomy::View as TaxonomyView;
-pub(crate) use taxonomy::{
-    Catalog as TaxonomyCatalog, IndexView as TaxonomyIndexView, PageTermView,
-};
+pub(crate) use taxonomy::{Catalog as TaxonomyCatalog, PageTermView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildMode {

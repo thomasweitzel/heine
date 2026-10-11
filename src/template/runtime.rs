@@ -13,7 +13,7 @@ use crate::{
     site::{
         FeedCatalog, FeedView, PageCatalog, PageId, PageLinks, PageTermView, PageView, Pager,
         PaginationCatalog, SearchCatalog, SearchView, SeriesCatalog, SeriesView, SiblingIndex,
-        TaxonomyCatalog, TaxonomyIndexView, collection::CollectionView,
+        TaxonomyCatalog, TaxonomyView, collection::CollectionView,
     },
 };
 
@@ -173,14 +173,14 @@ impl TemplateRuntime {
         )
     }
 
-    pub(super) fn taxonomy_index(
+    pub(super) fn taxonomy(
         &self,
         locale: &Locale,
         name: &str,
         root: &str,
-    ) -> Result<Option<TaxonomyIndexView>, String> {
+    ) -> Result<Option<TaxonomyView>, String> {
         let name = crate::config::TaxonomyName::parse(name.to_owned())?;
-        Ok(self.taxonomies.index(
+        Ok(self.taxonomies.view(
             locale,
             &name,
             self.page_links.base_path(),
@@ -193,6 +193,15 @@ impl TemplateRuntime {
         self.taxonomies.names(locale)
     }
 
+    pub(super) fn taxonomies(&self, locale: &Locale, root: &str) -> Vec<TaxonomyView> {
+        self.taxonomies.views(
+            locale,
+            self.page_links.base_path(),
+            self.page_links.canonical_urls(),
+            root,
+        )
+    }
+
     pub(super) fn collection(&self, locale: &Locale, name: &str) -> Option<&CollectionView> {
         self.collections.get(locale)?.get(name)
     }
@@ -201,6 +210,13 @@ impl TemplateRuntime {
         self.collections
             .get(locale)
             .map(|collections| collections.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn collections(&self, locale: &Locale) -> Vec<&CollectionView> {
+        self.collections
+            .get(locale)
+            .map(|collections| collections.values().collect())
             .unwrap_or_default()
     }
 
@@ -313,6 +329,19 @@ impl TemplateRuntime {
         let code = self.runtime_string(state, "locale")?;
         code.parse()
             .map_err(|_| tera::Error::message("Heine render context has an invalid locale code"))
+    }
+
+    /// Resolves a resource helper's optional locale against the render locale
+    /// and the finite configured locale set.
+    pub(super) fn requested_locale(
+        &self,
+        state: &tera::State,
+        requested: Option<&str>,
+    ) -> tera::TeraResult<Locale> {
+        let current = self.locale(state)?;
+        self.page_links
+            .resolve_locale_for(&current, requested)
+            .map_err(|error| tera::Error::message(error.to_string()))
     }
 
     pub(super) fn page_dir(&self, state: &tera::State) -> tera::TeraResult<String> {

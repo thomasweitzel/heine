@@ -233,13 +233,23 @@ impl PageLinks {
     /// locale set. Resource helpers use this shared validation before looking
     /// up their own locale-local values.
     pub(crate) fn resolve_locale(&self, locale: Option<&str>) -> Result<Locale, PageResolveError> {
+        self.resolve_locale_for(&self.current_locale, locale)
+    }
+
+    /// Resolves an optional template locale against the configured locale set
+    /// without constructing a locale-specialized link view.
+    pub(crate) fn resolve_locale_for(
+        &self,
+        current_locale: &Locale,
+        locale: Option<&str>,
+    ) -> Result<Locale, PageResolveError> {
         let locale = match locale {
             Some(locale) => locale
                 .parse()
                 .map_err(|_| PageResolveError::InvalidLocale {
                     locale: locale.into(),
                 })?,
-            None => self.current_locale.clone(),
+            None => current_locale.clone(),
         };
         if self.targets.contains_key(&locale) {
             Ok(locale)

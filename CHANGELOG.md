@@ -31,6 +31,16 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-10-11
+
+### Added
+
+- **Template relationship catalogs.** Templates can now use `collections()`
+  and `taxonomies()` to inspect every configured relationship in the current
+  or an exact locale. `collection()` now accepts `locale=`, while `taxonomy()`
+  exposes the resolved ordered term catalog that generated taxonomy indexes
+  already receive.
+
 ### Fixed
 
 - **Localized-value rendering performance.** Heine now analyzes each Fluent
