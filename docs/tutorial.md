@@ -5,6 +5,10 @@ previous one and leaves the site usable. It introduces Heine's main public
 concepts; focused guides and the [reference](reference.md) provide the complete
 rules when you need them.
 
+If you completed [First site](../README.md#first-site), your site already
+matches step 1. Read that step as a recap, then begin applying changes at step
+2.
+
 The final site has Markdown posts, copied assets, shared data, English and
 German pages, localized UI text, a post collection, pagination, and tags.
 For a larger working example, see [`starter-site/`](../starter-site/).
