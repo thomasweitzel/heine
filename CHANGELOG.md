@@ -31,6 +31,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Nested margin-footnote diagnostics.** Heine now explains that a footnote
+  definition cannot contain another footnote reference, instead of suggesting
+  that links in definitions are unsupported.
+
 ## [0.9.6] - 2026-10-11
 
 ### Added

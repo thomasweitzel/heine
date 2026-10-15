@@ -1434,7 +1434,7 @@ fn margin_footnotes_render_local_checked_note_instances() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[markdown]\nextensions = ['footnotes', 'tables']\n\n[markdown.tables]\nscroll_message = 'table-scroll'\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+        "[markdown]\nextensions = ['footnotes', 'tables']\nmath = 'mathml'\n\n[markdown.tables]\nscroll_message = 'table-scroll'\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
     );
     fixture.write(
         "locales/en/site.ftl",
@@ -1446,8 +1446,9 @@ fn margin_footnotes_render_local_checked_note_instances() {
     );
     fixture.write(
         "content/en/index.md",
-        "## Heine footnote note 1\n\n| Term | Meaning |\n| --- | --- |\n| Note | Local |\n\nA locally explained claim.[^one] Another claim.[^two] The first claim again.[^one]\n\n[^one]: Its local explanation.\n\n[^two]: A second explanation.\n",
+        "## Heine footnote note 1\n\nA locally explained claim.[^one] Another claim.[^two] The first claim again.[^one]\n\n[^one]: Its local explanation with a [checked page](page:index).\n\n    A second paragraph has inline math $x^2$, an ![asset](asset:assets/images/note.svg), and a list:\n\n    - a local item\n    - another item\n\n    | Term | Meaning |\n    | --- | --- |\n    | Note | Local |\n\n    ```rust\n    let note = true;\n    ```\n\n[^two]: A second explanation.\n",
     );
+    fixture.write("content/assets/images/note.svg", "<svg></svg>");
     fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
@@ -1467,7 +1468,30 @@ fn margin_footnotes_render_local_checked_note_instances() {
     );
     assert!(output.contains("aria-label=\"Footnote"), "{output}");
     assert!(
-        output.contains("<aside class=\"heine-footnote\" id=\"__heine-footnote-note-1\" role=\"doc-footnote\"><span class=\"heine-footnote-number\" aria-hidden=\"true\">1</span><p>Its local explanation.</p>"),
+        output.contains(
+            "<aside class=\"heine-footnote\" id=\"__heine-footnote-note-1\" role=\"doc-footnote\">"
+        ),
+        "{output}"
+    );
+    assert!(
+        output.contains("<a href=\"/index.html\">checked page</a>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<p>A second paragraph has inline math <math display=\"inline\">"),
+        "{output}"
+    );
+    assert!(
+        output.contains("src=\"/assets/images/note.svg\" alt=\"asset\""),
+        "{output}"
+    );
+    assert!(output.contains("<ul>\n<li>a local item</li>"), "{output}");
+    assert!(
+        output.contains("<div class=\"heine-table-scroll\" tabindex=\"0\" role=\"region\" aria-label=\"Scrollable table\"><table>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<pre><code class=\"language-rust\">let note = true;"),
         "{output}"
     );
     assert!(
@@ -1595,7 +1619,7 @@ fn margin_footnote_relationships_and_placement_are_checked_at_markdown() {
     assert!(
         nested_missing
             .to_string()
-            .contains("need an ordinary paragraph or heading"),
+            .contains("cannot contain another footnote reference"),
         "{nested_missing:?}"
     );
 

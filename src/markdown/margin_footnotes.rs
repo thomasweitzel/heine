@@ -84,6 +84,8 @@ enum PlanError {
         span: Range<usize>,
         first_span: Range<usize>,
     },
+    #[error("a margin footnote definition cannot contain another footnote reference")]
+    NestedReference { span: Range<usize> },
     #[error("margin footnote references need an ordinary paragraph or heading")]
     UnsupportedPlacement { span: Range<usize> },
     #[error("a margin footnote paragraph or heading cannot contain raw HTML")]
@@ -199,10 +201,13 @@ fn plan_inner(
                 }
             }
             Event::FootnoteReference(label) => {
+                if definition_depth > 0 {
+                    return Err(PlanError::NestedReference { span });
+                }
                 let Some(block_start) = active_block else {
                     return Err(PlanError::UnsupportedPlacement { span });
                 };
-                if definition_depth > 0 || prohibited_depth > 0 {
+                if prohibited_depth > 0 {
                     return Err(PlanError::UnsupportedPlacement { span });
                 }
                 let reference_index = references.len();
@@ -219,7 +224,10 @@ fn plan_inner(
                     unresolved.escape_next();
                 }
                 for (label, range) in unresolved.push(&input[span.clone()], span.start) {
-                    if definition_depth > 0 || prohibited_depth > 0 {
+                    if definition_depth > 0 {
+                        return Err(PlanError::NestedReference { span: range });
+                    }
+                    if prohibited_depth > 0 {
                         return Err(PlanError::UnsupportedPlacement { span: range });
                     }
                     let Some(block_start) = active_block else {
@@ -369,12 +377,21 @@ impl MarginFootnoteDiagnostic {
                     span: first_span.into(),
                 }],
             },
+            PlanError::NestedReference { span } => Self {
+                message: "a margin footnote definition cannot contain another footnote reference"
+                    .into(),
+                source_code,
+                span: span.into(),
+                label: "nested footnote reference".into(),
+                help: "write the explanation directly in this note, or move the nested reference into an ordinary paragraph or heading".into(),
+                related: Vec::new(),
+            },
             PlanError::UnsupportedPlacement { span } => Self {
                 message: "margin footnote references need an ordinary paragraph or heading".into(),
                 source_code,
                 span: span.into(),
                 label: "this reference has no valid local prose wrapper".into(),
-                help: "move it to an ordinary paragraph or Markdown heading; lists, quotes, tables, links, images, code, and footnotes are not supported yet".into(),
+                help: "move it to an ordinary paragraph or Markdown heading; a reference inside a list, quote, table, link, image, or code cannot receive a local note wrapper".into(),
                 related: Vec::new(),
             },
             PlanError::RawHtml { span } => Self {

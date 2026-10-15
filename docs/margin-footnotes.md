@@ -179,7 +179,8 @@ arbitrary HTML nesting into the local wrapper.
 Definition bodies may contain normal block Markdown, including links, lists,
 code blocks, math, and copied-asset references. Their headings are ancillary
 note content, so they do not appear in a table of contents and receive no
-generated heading anchor.
+generated heading anchor. A definition cannot contain another footnote
+reference, because that reference would have no separate local prose block.
 
 The selected input must be rendered once with `markdown(content="…")`. A
 missing call leaves no promised local-note structure; two calls duplicate
