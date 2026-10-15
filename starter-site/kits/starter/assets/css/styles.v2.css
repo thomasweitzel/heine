@@ -834,30 +834,56 @@ a:focus-visible {
         background-color: var(--badge-bg);
         color: var(--color-2);
     }
+}
 
-    @media (min-width: 84rem) {
-        .has-margin-footnotes .prose .heine-annotated-block {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(14rem, 20rem);
-            column-gap: var(--spacing-l);
-            width: calc(100% + 22rem);
-        }
-
-        .has-margin-footnotes .prose .heine-annotated-block > p,
-        .has-margin-footnotes .prose .heine-annotated-block > h1,
-        .has-margin-footnotes .prose .heine-annotated-block > h2,
-        .has-margin-footnotes .prose .heine-annotated-block > h3,
-        .has-margin-footnotes .prose .heine-annotated-block > h4,
-        .has-margin-footnotes .prose .heine-annotated-block > h5,
-        .has-margin-footnotes .prose .heine-annotated-block > h6 {
-            grid-column: 1;
-        }
-
-        .has-margin-footnotes .prose .heine-footnote-toggle:checked + .heine-footnote {
-            grid-column: 2;
-            margin-top: 0;
-        }
+@media (min-width: 84rem) {
+    .has-margin-footnotes .prose .heine-annotated-block {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(14rem, 20rem);
+        column-gap: var(--spacing-l);
+        width: calc(100% + 22rem);
     }
+
+    .has-margin-footnotes .prose .heine-annotated-block > p,
+    .has-margin-footnotes .prose .heine-annotated-block > h1,
+    .has-margin-footnotes .prose .heine-annotated-block > h2,
+    .has-margin-footnotes .prose .heine-annotated-block > h3,
+    .has-margin-footnotes .prose .heine-annotated-block > h4,
+    .has-margin-footnotes .prose .heine-annotated-block > h5,
+    .has-margin-footnotes .prose .heine-annotated-block > h6 {
+        grid-column: 1;
+    }
+
+    /*
+     * Active wide-layout policy: show every note in the margin. On narrower
+     * screens, the rule above keeps notes collapsed until their marker opens
+     * them below the annotated prose.
+     */
+
+    .has-margin-footnotes .prose .heine-footnote {
+        display: block;
+        grid-column: 2;
+        margin-top: 0;
+    }
+
+    .has-margin-footnotes .prose .heine-footnote-toggle {
+        display: none;
+    }
+
+    .has-margin-footnotes .prose .heine-footnote-marker label {
+        pointer-events: none;
+    }
+
+    /*
+     * Alternative wide-layout policy: leave notes collapsed until their
+     * markers open them, as they do on narrow screens.
+     *
+     * .has-margin-footnotes .prose .heine-footnote-toggle:checked
+     *   + .heine-footnote {
+     *     grid-column: 2;
+     *     margin-top: 0;
+     * }
+     */
 }
 
 @media print {
