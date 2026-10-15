@@ -29,6 +29,16 @@ fn builds_the_documented_starter_site() {
     build_at(root, BuildMode::Full).expect("starter site builds");
 
     let output = root.join("public/my-project");
+    assert_site_shell_and_search(&output);
+
+    assert_localized_indexes_and_catalogs(&output);
+
+    assert_authored_pages_and_legal_output(&output);
+
+    assert_draft_preview(root, &output);
+}
+
+fn assert_site_shell_and_search(output: &Path) {
     assert!(output.join(".htaccess").is_file());
     assert_eq!(
         fs::read_to_string(output.join("robots.txt")).expect("robots.txt"),
@@ -189,7 +199,9 @@ fn builds_the_documented_starter_site() {
         search_json.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."),
         "{search_json}"
     );
+}
 
+fn assert_localized_indexes_and_catalogs(output: &Path) {
     let german_home = fs::read_to_string(output.join("de/index.html")).expect("German home");
     assert!(
         german_home
@@ -377,7 +389,9 @@ fn builds_the_documented_starter_site() {
         german_static_tag.contains("href=\"/my-project/tags/Static%20sites.html\" hreflang=\"en\""),
         "{german_static_tag}"
     );
+}
 
+fn assert_authored_pages_and_legal_output(output: &Path) {
     let german_post = fs::read_to_string(output.join("de/blog/explicit-composition/index.html"))
         .expect("German post");
     assert!(
@@ -614,7 +628,9 @@ fn builds_the_documented_starter_site() {
     );
     assert!(output.join("authors/index.html").is_file());
     assert!(!output.join("quiz").exists());
+}
 
+fn assert_draft_preview(root: &Path, output: &Path) {
     build_at_with_options(root, BuildOptions::new(BuildMode::Full).preview_drafts())
         .expect("starter-site draft preview builds");
     let draft = fs::read_to_string(output.join("blog/draft-publication/index.html"))
