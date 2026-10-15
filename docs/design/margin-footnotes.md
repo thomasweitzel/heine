@@ -418,9 +418,10 @@ inherited to suppress is likewise reported at its authored setting.
 Footnote-graph and placement errors identify the original Markdown source.
 Missing definitions name the reference. Duplicate definitions name the later
 definition and related earlier definition. An unused definition identifies its
-definition. Unsupported placement identifies the reference, explains that a
-margin footnote needs a valid locally placeable prose wrapper, and names the
-supported paragraph and heading contexts.
+definition. A nested reference identifies the definition that cannot contain
+it. Unsupported placement identifies the reference, explains that a margin
+footnote needs a valid locally placeable prose wrapper, and names the supported
+paragraph and heading contexts.
 
 Template errors identify an invalid `markdown(content="…")` call, an omitted or
 repeated selected-content rendering, or the accidental raw-filter rendering of
