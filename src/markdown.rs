@@ -975,11 +975,16 @@ pub(super) fn transform_event(
                 .flatten(),
             classes: classes
                 .into_iter()
-                .map(|value| value.into_static())
+                .map(pulldown_cmark::CowStr::into_static)
                 .collect(),
             attrs: attrs
                 .into_iter()
-                .map(|(name, value)| (name.into_static(), value.map(|value| value.into_static())))
+                .map(|(name, value)| {
+                    (
+                        name.into_static(),
+                        value.map(pulldown_cmark::CowStr::into_static),
+                    )
+                })
                 .collect(),
         })),
         Event::InlineMath(tex) => match links.math {

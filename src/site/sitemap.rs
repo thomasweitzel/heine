@@ -60,7 +60,10 @@ impl Sitemap {
             .map(|task| {
                 Ok(Entry {
                     url: canonical(urls, &task.output_path)?,
-                    lastmod: task.sitemap_lastmod.as_ref().map(|time| time.render()),
+                    lastmod: task
+                        .sitemap_lastmod
+                        .as_ref()
+                        .map(super::page::PublicationTime::render),
                     alternates: alternates
                         .get(&(task.locale.clone(), task.output_path.clone()))
                         .cloned()

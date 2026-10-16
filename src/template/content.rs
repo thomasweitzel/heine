@@ -75,7 +75,7 @@ pub(super) fn register(
                         renderer: &markdown_renderer,
                         assets: Some(&asset_links),
                         pages: Some(&page_links),
-                        anchors: content.toc.map(|toc| toc.anchors()),
+                        anchors: content.toc.map(crate::markdown::TocPlan::anchors),
                         table_scroll_label: table_scroll_label.as_deref(),
                         replacements: content.replacements,
                     },
@@ -88,7 +88,7 @@ pub(super) fn register(
                     &markdown_renderer,
                     Some(&asset_links),
                     Some(&page_links),
-                    content.toc.map(|toc| toc.anchors()),
+                    content.toc.map(crate::markdown::TocPlan::anchors),
                     table_scroll_label.as_deref(),
                     content.replacements,
                 )

@@ -149,7 +149,7 @@ fn watch_loop(
         match build_at_with_publication_in_runtime(&root, build, Some(&renderer_runtime)) {
             Ok((build, _)) => {
                 generation = next_generation(generation);
-                kit_paths = build.kit_paths.clone();
+                kit_paths.clone_from(&build.kit_paths);
                 let _ = published.send(PublishedSite::from_build(build, generation));
                 println!("{}", rebuild_message(Timestamp::now(), &changed_paths));
             }

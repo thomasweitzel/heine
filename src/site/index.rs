@@ -55,10 +55,10 @@ pub(super) fn resolve_translations(
                     translationid: translationid.to_string(),
                     locale: locale.clone(),
                     source_code: page.source.clone(),
-                    span: page.translationid_span.unwrap_or((0, 0).into()),
+                    span: page.translationid_span.unwrap_or_else(|| (0, 0).into()),
                     first: vec![FirstTranslation {
                         source_code: first.source.clone(),
-                        span: first.translationid_span.unwrap_or((0, 0).into()),
+                        span: first.translationid_span.unwrap_or_else(|| (0, 0).into()),
                     }],
                 }));
             }
