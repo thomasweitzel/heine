@@ -210,28 +210,31 @@ pub(crate) fn run_workspace(
         return Ok(result);
     }
     let variant = profile.variant(placement, appearance)?;
-    let mut manager = runtime
-        .manager
-        .lock()
-        .map_err(|_| "renderer workspace runtime is unavailable".to_owned())?;
-    if manager.is_none() {
-        *manager = Some(WorkspaceManager::new()?);
-    }
-    let manager = manager
-        .as_mut()
-        .expect("workspace manager is initialized before use");
-    let workspace = manager.prepare(profile_name)?;
-    let result = (|| -> Result<RendererOutput, RendererError> {
-        let layout = WorkspaceLayout::create(&workspace, profile, input)?;
-        let arguments = expand_workspace_arguments(&variant.arguments, &layout);
-        execute_workspace_process(profile, &arguments, &layout)?;
-        Ok(validate_renderer_output(
-            profile,
-            output,
-            validate_workspace_output(&layout)?,
-        )?)
-    })();
-    let cleanup = manager.clean(profile_name);
+    let (result, cleanup) = {
+        let mut workspace_manager = runtime
+            .manager
+            .lock()
+            .map_err(|_| "renderer workspace runtime is unavailable".to_owned())?;
+        if workspace_manager.is_none() {
+            *workspace_manager = Some(WorkspaceManager::new()?);
+        }
+        let manager = workspace_manager
+            .as_mut()
+            .expect("workspace manager is initialized before use");
+        let workspace = manager.prepare(profile_name)?;
+        let result = (|| -> Result<RendererOutput, RendererError> {
+            let layout = WorkspaceLayout::create(&workspace, profile, input)?;
+            let arguments = expand_workspace_arguments(&variant.arguments, &layout);
+            execute_workspace_process(profile, &arguments, &layout)?;
+            Ok(validate_renderer_output(
+                profile,
+                output,
+                validate_workspace_output(&layout)?,
+            )?)
+        })();
+        let cleanup = manager.clean(profile_name);
+        (result, cleanup)
+    };
     let result = match (result, cleanup) {
         (Ok(result), Ok(())) => result,
         (Ok(result), Err(cleanup)) => {
@@ -487,7 +490,7 @@ fn read_process_output(
 ) -> Result<Vec<u8>, String> {
     reader
         .join()
-        .map_err(|_| format!("renderer {kind} reader panicked").to_owned())
+        .map_err(|_| format!("renderer {kind} reader panicked"))
         .and_then(|result| {
             result.map_err(|error| format!("could not read renderer {kind}: {error}"))
         })

@@ -1,6 +1,7 @@
 //! Persistent renderer-result cache and deterministic cache keys.
 
 use std::{
+    fmt::Write,
     fs,
     io::Read,
     path::{Path, PathBuf},
@@ -203,7 +204,11 @@ fn cache_result_kind(result: &ResultCapabilities) -> &'static str {
 }
 
 pub(super) fn hex_digest(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    let mut digest = String::with_capacity(bytes.len().saturating_mul(2));
+    for byte in bytes {
+        write!(digest, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    digest
 }
 
 fn write_cache_file(path: &Path, bytes: &[u8]) -> Result<(), String> {

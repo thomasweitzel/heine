@@ -10,7 +10,7 @@ use crate::{locale::Locale, source_path};
 
 use super::{
     DuplicateDiagnostic, Error, FirstMessage, KitMessageDiagnostic, LoadedResource,
-    LocaleResources, MessageSource, message_entries,
+    LocaleResources, MessageSource, fluent::message_entries,
 };
 
 pub(super) fn ensure_root_directory(root: &Path) -> Result<(), Error> {

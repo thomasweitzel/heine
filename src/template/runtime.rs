@@ -466,6 +466,7 @@ impl TemplateRuntime {
                 calls: 0,
             });
         }
+        drop(current);
         Ok(())
     }
 
@@ -479,6 +480,7 @@ impl TemplateRuntime {
         {
             selected.calls += 1;
         }
+        drop(current);
         Ok(())
     }
 

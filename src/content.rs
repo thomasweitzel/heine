@@ -121,7 +121,7 @@ fn process_text(
                 .or_insert_with(|| (Vec::new(), current_span))
                 .0
                 .push(body.trim().to_owned());
-            current = next.to_owned();
+            next.clone_into(&mut current);
             current_span = (offset, line.len()).into();
             body.clear();
         } else {

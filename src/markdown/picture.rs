@@ -5,7 +5,7 @@
 //! original Markdown offsets available to diagnostics and avoids introducing a
 //! second block parser beside the Markdown parser Heine already uses.
 
-use std::ops::Range;
+use std::{fmt::Write, ops::Range};
 
 use pulldown_cmark::Event;
 use serde::Deserialize;
@@ -272,7 +272,8 @@ pub(crate) fn generated_html(
     push_html_attribute(light, &mut html);
     html.push('"');
     if let Some((width, height)) = dimensions {
-        html.push_str(&format!(" width=\"{width}\" height=\"{height}\""));
+        write!(html, " width=\"{width}\" height=\"{height}\"")
+            .expect("writing to a String cannot fail");
     }
     html.push_str(" alt=\"");
     push_html_attribute(alt, &mut html);

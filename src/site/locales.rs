@@ -308,7 +308,7 @@ fn validate_root(content_root: &Path, i18n: &I18nConfig) -> Result<(), Error> {
             path: content_root.into(),
             source,
         })?;
-    entries.sort_by_key(|entry| entry.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
     for entry in entries {
         let name = entry.file_name();
         if name == "assets"

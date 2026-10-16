@@ -657,8 +657,8 @@ impl Page {
                         execute(Some(crate::renderer::Appearance::Dark)).map_err(|error| {
                             process_error(error.for_appearance(crate::renderer::Appearance::Dark))
                         })?;
-                    let (light_path, light_bytes) = resource_output(light)?;
-                    let (dark_path, dark_bytes) = resource_output(dark)?;
+                    let (light_path, light_bytes) = resource_output(light);
+                    let (dark_path, dark_bytes) = resource_output(dark);
                     let dimensions = crate::markdown::picture::dimensions_for_picture(
                         request.width,
                         request.height,
@@ -848,13 +848,9 @@ fn resource_replacement(
     }
 }
 
-fn resource_output(
-    output: crate::renderer::RendererOutput,
-) -> Result<(OutputPath, Vec<u8>), Box<crate::markdown::SourceError>> {
+fn resource_output(output: crate::renderer::RendererOutput) -> (OutputPath, Vec<u8>) {
     match output {
-        crate::renderer::RendererOutput::Resource { output_path, bytes } => {
-            Ok((output_path, bytes))
-        }
+        crate::renderer::RendererOutput::Resource { output_path, bytes } => (output_path, bytes),
         crate::renderer::RendererOutput::Embedded(_) => {
             unreachable!("picture profiles produce resources")
         }

@@ -282,8 +282,16 @@ fn document(page: &mut Page, base_path: &BasePath, taxonomy_config: &TaxonomiesC
         title: page.metadata.title.clone(),
         description: page.metadata.description.clone(),
         summary: page.metadata.summary.clone(),
-        published: page.metadata.published.as_ref().map(|value| value.render()),
-        updated: page.metadata.updated.as_ref().map(|value| value.render()),
+        published: page
+            .metadata
+            .published
+            .as_ref()
+            .map(super::page::PublicationTime::render),
+        updated: page
+            .metadata
+            .updated
+            .as_ref()
+            .map(super::page::PublicationTime::render),
         taxonomies: taxonomy_config
             .definitions()
             .keys()

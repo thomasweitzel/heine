@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-10-16
+
 ### Fixed
 
 - **Nested margin-footnote diagnostics.** Heine now explains that a footnote
