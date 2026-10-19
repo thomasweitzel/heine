@@ -107,6 +107,15 @@ features and deferred proposals.
 - [External asset manifests](design/external-asset-manifests.md): why a
   per-URL cache-busting helper is insufficient, and the boundary a future
   external asset-manifest integration would need.
+- [Markdown block components](design/markdown-block-components.md): a possible
+  structural component form that wraps authored Markdown without weakening
+  Markdown analysis or the resolved Site model.
+
+### Rejected proposals
+
+- [Markdown template fragments](design/markdown-template-fragments.md): an
+  investigated Tera2-in-Markdown proposal that conflicts with Heine's existing
+  content-and-template composition boundary.
 
 ## Reference material
 

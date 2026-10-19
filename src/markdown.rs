@@ -35,6 +35,8 @@ use std::path::PathBuf;
 
 mod analysis;
 mod class_list;
+#[cfg(test)]
+mod component_feasibility;
 mod highlighting;
 pub(crate) mod margin_footnotes;
 pub(crate) mod picture;

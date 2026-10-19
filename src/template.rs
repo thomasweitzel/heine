@@ -653,6 +653,76 @@ fn quoted_template_string(value: &str) -> Option<(&str, usize)> {
 #[cfg(test)]
 mod tests {
     use super::TemplateName;
+    use tera::Context;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ComponentBodyVisibility {
+        Visible,
+        MayHide,
+    }
+
+    fn component_body_visibility(
+        component: &tera::ComponentInfo,
+    ) -> Result<ComponentBodyVisibility, &'static str> {
+        match component
+            .metadata()
+            .get("heine.body_visibility")
+            .and_then(tera::Value::as_str)
+        {
+            Some("visible") => Ok(ComponentBodyVisibility::Visible),
+            Some("may-hide") => Ok(ComponentBodyVisibility::MayHide),
+            Some(_) => Err("the component has an unsupported body visibility contract"),
+            None => Err("the component does not declare a body visibility contract"),
+        }
+    }
+
+    fn check_component_body_headings(
+        visibility: ComponentBodyVisibility,
+        has_headings: bool,
+    ) -> Result<(), &'static str> {
+        match (visibility, has_headings) {
+            (ComponentBodyVisibility::MayHide, true) => {
+                Err("this component may hide its body, which cannot contain Markdown headings")
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn is_host_owned_component_value(component: &tera::ComponentInfo, name: &str) -> bool {
+        name == "body"
+            || component
+                .args()
+                .iter()
+                .any(|argument| argument.is_implicit() && argument.name() == name)
+    }
+
+    fn remove_one_body_marker(
+        rendered: &str,
+        opening: &str,
+        body: &str,
+        closing: &str,
+    ) -> Result<String, &'static str> {
+        if rendered.matches(opening).count() != 1 || rendered.matches(closing).count() != 1 {
+            return Err("the component did not preserve the body exactly once");
+        }
+        let opening_start = rendered
+            .find(opening)
+            .ok_or("the component did not preserve the body opening marker")?;
+        let body_start = opening_start + opening.len();
+        let closing_offset = rendered[body_start..]
+            .find(closing)
+            .ok_or("the component did not preserve the body closing marker")?;
+        let closing_start = body_start + closing_offset;
+        if &rendered[body_start..closing_start] != body {
+            return Err("the component changed the rendered body");
+        }
+        Ok(format!(
+            "{}{}{}",
+            &rendered[..opening_start],
+            &rendered[body_start..closing_start],
+            &rendered[closing_start + closing.len()..]
+        ))
+    }
 
     #[test]
     fn template_names_are_logical_template_paths() {
@@ -664,5 +734,190 @@ mod tests {
         );
         assert!(TemplateName::parse("../item.tera".into()).is_err());
         assert!(TemplateName::parse("posts\\item.tera".into()).is_err());
+    }
+
+    #[test]
+    fn tera_component_bodies_preserve_rendered_markdown_and_checked_context() {
+        let source = "## Read this first\n\nA note with **authored Markdown**.";
+        let renderer = crate::markdown::Renderer::new(crate::config::MarkdownConfig::default())
+            .expect("default Markdown renderer is valid");
+        let toc = crate::markdown::toc_plan(
+            "main".into(),
+            source,
+            &crate::config::MarkdownConfig::default(),
+            2,
+            3,
+        );
+        let body = crate::markdown::render_with_links_anchors(
+            source,
+            &renderer,
+            None,
+            None,
+            Some(toc.anchors()),
+            None,
+            &[],
+        )
+        .expect("ordinary Markdown body renders before component presentation");
+
+        let mut tera = tera::Tera::default();
+        tera.add_raw_template(
+            "components.tera",
+            r#"
+{% component site.note(kind: string, @page: string) {"heine.body_visibility": "visible"} %}<aside class="note-{{ kind }}" data-page="{{ page }}">{{ body }}</aside>{% endcomponent %}
+{% component site.disclosure(kind: string) {"heine.body_visibility": "may-hide"} %}<details class="note-{{ kind }}">{{ body }}</details>{% endcomponent %}
+{% component site.omit(kind: string) {"heine.body_visibility": "visible"} %}<aside class="note-{{ kind }}"></aside>{% endcomponent %}
+{% component site.duplicate(kind: string) {"heine.body_visibility": "visible"} %}<aside class="note-{{ kind }}">{{ body }}{{ body }}</aside>{% endcomponent %}
+{% component site.filtered(kind: string) {"heine.body_visibility": "visible"} %}<aside class="note-{{ kind }}">{{ body | upper }}</aside>{% endcomponent %}
+{% component site.rewritten(kind: string) {"heine.body_visibility": "visible"} %}<aside class="note-{{ kind }}">{{ body | replace(from="Markdown", to="replacement") }}</aside>{% endcomponent %}
+{% component site.attribute(kind: string) {"heine.body_visibility": "visible"} %}<aside class="note-{{ kind }}" data-body="{{ body }}"></aside>{% endcomponent %}
+{% component site.no_visibility(kind: string) {} %}<aside class="note-{{ kind }}">{{ body }}</aside>{% endcomponent %}
+"#,
+        )
+        .expect("component definition is valid");
+
+        let mut arguments = Context::new();
+        arguments.insert("kind", "warning");
+        let mut implicits = Context::new();
+        implicits.insert("page", "guide/install");
+
+        let opening = "<!-- heine-component-body-open -->";
+        let closing = "<!-- heine-component-body-close -->";
+        let marked_body = format!("{opening}{body}{closing}");
+        let rendered = tera
+            .render_component_with_implicits(
+                "site.note",
+                &arguments,
+                &implicits,
+                Some(&marked_body),
+                true,
+            )
+            .expect("known component accepts its typed argument and rendered body");
+
+        let rendered = remove_one_body_marker(&rendered, opening, &body, closing)
+            .expect("the note component preserves its body exactly once");
+
+        assert!(rendered.starts_with(r#"<aside class="note-warning" data-page="guide/install"><h2 id="read-this-first">Read this first</h2>"#), "{rendered}");
+        assert!(
+            rendered.contains("<strong>authored Markdown</strong>"),
+            "{rendered}"
+        );
+        assert!(rendered.ends_with("</aside>"), "{rendered}");
+
+        let note_definition = tera
+            .get_component_definition("site.note")
+            .expect("component definition is available");
+        let note_visibility = component_body_visibility(&note_definition)
+            .expect("the note visibility contract is readable");
+        let disclosure_visibility = component_body_visibility(
+            &tera
+                .get_component_definition("site.disclosure")
+                .expect("component definition is available"),
+        )
+        .expect("the disclosure visibility contract is readable");
+        assert_eq!(note_visibility, ComponentBodyVisibility::Visible);
+        assert_eq!(disclosure_visibility, ComponentBodyVisibility::MayHide);
+        assert!(check_component_body_headings(note_visibility, true).is_ok());
+        assert!(check_component_body_headings(disclosure_visibility, false).is_ok());
+        assert!(check_component_body_headings(disclosure_visibility, true).is_err());
+        assert!(
+            component_body_visibility(
+                &tera
+                    .get_component_definition("site.no_visibility")
+                    .expect("component definition is available"),
+            )
+            .is_err()
+        );
+        assert!(is_host_owned_component_value(&note_definition, "body"));
+        assert!(!is_host_owned_component_value(&note_definition, "kind"));
+
+        let note_with_page = tera
+            .get_component_definition("site.note")
+            .expect("component definition is available");
+        assert!(is_host_owned_component_value(&note_with_page, "page"));
+
+        let mut shadowing_arguments = arguments.clone();
+        shadowing_arguments.insert("page", "shadowed");
+        let shadowed = tera
+            .render_component_with_implicits(
+                "site.note",
+                &shadowing_arguments,
+                &implicits,
+                Some(&marked_body),
+                true,
+            )
+            .expect("Tera permits an explicit value to override an implicit one");
+        assert!(
+            shadowed.contains(r#"data-page="shadowed""#),
+            "the host must reject this directive argument before calling Tera"
+        );
+
+        let mut escaped_arguments = Context::new();
+        escaped_arguments.insert("kind", "<unsafe>");
+        let escaped = tera
+            .render_component_with_implicits(
+                "site.note",
+                &escaped_arguments,
+                &implicits,
+                Some(&marked_body),
+                true,
+            )
+            .expect("the component renders with host-selected autoescaping");
+        let escaped = remove_one_body_marker(&escaped, opening, &body, closing)
+            .expect("autoescaping keeps the safe Markdown body intact");
+        assert!(
+            escaped.contains(r#"class="note-&lt;unsafe&gt;""#),
+            "{escaped}"
+        );
+        assert!(
+            escaped.contains(r#"<h2 id="read-this-first">"#),
+            "{escaped}"
+        );
+
+        for component in [
+            "site.omit",
+            "site.duplicate",
+            "site.filtered",
+            "site.rewritten",
+        ] {
+            let output = tera
+                .render_component_with_implicits(
+                    component,
+                    &arguments,
+                    &implicits,
+                    Some(&marked_body),
+                    true,
+                )
+                .expect("the probe component itself renders");
+            assert!(
+                remove_one_body_marker(&output, opening, &body, closing).is_err(),
+                "{component} must fail the body-preservation check"
+            );
+        }
+
+        let attribute_output = tera
+            .render_component_with_implicits(
+                "site.attribute",
+                &arguments,
+                &implicits,
+                Some(&marked_body),
+                true,
+            )
+            .expect("the probe component itself renders");
+        assert!(
+            remove_one_body_marker(&attribute_output, opening, &body, closing).is_ok(),
+            "a marker count alone does not prove that the body became element content"
+        );
+
+        arguments.insert("kind", &true);
+        assert!(
+            tera.render_component_with_implicits(
+                "site.note",
+                &arguments,
+                &implicits,
+                Some("<p>body</p>"),
+                true,
+            )
+            .is_err()
+        );
     }
 }
