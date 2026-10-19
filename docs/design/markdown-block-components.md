@@ -3,8 +3,8 @@
 ## Status
 
 Exploratory. This record investigates a narrow alternative to templating whole
-Markdown files. It does not add a directive, a component contract, or a
-roadmap commitment.
+Markdown files. It does not add a directive or a public component contract
+yet.
 
 The [rejected Tera-fragment design](markdown-template-fragments.md) explains
 why a Tera program embedded in Markdown is not suitable for Heine. This record
@@ -19,9 +19,10 @@ Heine still analyzes that body once as authored Markdown and keeps the resolved
 Site model stable?
 
 Zola 0.23 demonstrates that Markdown-wrapping components are useful. It
-enables them by templating content before Markdown parsing. That is supporting
-evidence, not enough to accept a Heine feature. Heine still needs concrete
-cases that its existing composition cannot express cleanly.
+enables them by templating content before Markdown parsing. That established
+use is enough reason to pursue this narrow Heine design. It does not establish
+that broad content templating, arbitrary Tera programs in Markdown, or every
+kind of Zola component fits Heine.
 
 ## Candidate goal
 
@@ -130,6 +131,21 @@ IDs, and footnote numbering. It does not parse Markdown a second time. A
 component can read only the same deliberate render context that an ordinary
 Tera component can read. A directive cannot inject values from a
 template-local loop or assignment.
+
+## Performance boundary
+
+The document plan may retain spans and component-call facts, but it must not
+copy or reparse the complete Markdown document for every component. Rendering
+a component necessarily holds its rendered body and wrapper result while it
+constructs the page output. Those bounded values are acceptable. Repeated
+whole-document parsing or copying is not.
+
+Before Heine accepts a public contract, benchmarks must compare a
+no-component baseline with pages that contain one small component and several
+large component bodies. The benchmark should use a representative multi-page
+site and report both elapsed build time and peak memory. This establishes the
+cost of the structural integration rather than assuming that the feature is
+free.
 
 ## What prior art teaches
 
@@ -352,21 +368,23 @@ empty block can gain that meaning or Heine can add a self-closing form. Empty
 blocks are errors in this candidate, so either extension would remain
 backwards-compatible.
 
-## Evidence and feasibility test
+## Use cases and feasibility test
 
-Zola establishes that block components are useful, but not that this Heine
-contract is needed. Before choosing a public contract, the design needs at
-least two concrete cases from different sites or documents that distinguish a
-component from raw HTML or segments:
+Zola establishes that Markdown-body components solve a recurring authoring
+need. The cases below identify the part Heine should support: a reusable
+presentation around authored Markdown that raw HTML or segments plus a
+template component express poorly.
 
 | Case                                                           | Current approach                                         | Why it may be insufficient                                                                                                                               |
 |----------------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Note or disclosure with links, a list, or a footnote reference | Ordinary Markdown, raw HTML, or a page-specific template | Raw HTML loses Markdown structure. A template moves the surrounding prose and its order out of the source.                                               |
 | Reusable figure with a Markdown caption or explanation         | `:::picture`, raw HTML, or a page-specific template      | The existing picture directive remains better for an image-only case. The candidate matters only when the authored body has ordinary Markdown structure. |
 
-These are hypotheses to test with real sites, not sufficient evidence by
-themselves. If a case has no meaningful advantage over its current approach,
-it does not justify the candidate.
+These cases guide the public examples and acceptance tests. The candidate does
+not need an arbitrary number of Heine sites before implementation. Its
+acceptance instead depends on whether Heine can establish the structural
+properties below without weakening Markdown analysis or the resolved Site
+model.
 
 A small feasibility test must then demonstrate that Heine can:
 
