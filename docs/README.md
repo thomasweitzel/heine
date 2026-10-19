@@ -7,6 +7,7 @@ matches what you need now.
 |-----------------------------------------------------------|-----------------------------------------------|
 | Build a first working site                                | [First site](../README.md#first-site)         |
 | Learn how the pieces compose                              | [Tutorial](tutorial.md)                       |
+| Understand how Heine builds and checks a site             | [Architecture](architecture.md)               |
 | Understand a named Heine concept                          | [Glossary](glossary.md)                       |
 | Add one capability to an existing site                    | The focused guides below                      |
 | Check an exact option, field, template value, or function | [Reference](reference.md)                     |
