@@ -12,7 +12,9 @@ use serde::Deserialize;
 
 use crate::asset::AssetLinks;
 
-use super::{HtmlClassList, RenderError, push_html_attribute, push_html_text};
+use super::{
+    HtmlClassList, RenderError, closing_colon_fence_run, push_html_attribute, push_html_text,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -448,7 +450,10 @@ fn value_span<T>(value: &toml::Spanned<T>, offset: usize) -> Range<usize> {
 
 fn body(source: &str) -> Option<(&str, usize)> {
     let lines = lines(source);
-    if lines.len() < 2 || lines.first()?.1 != ":::picture" || lines.last()?.1 != ":::" {
+    if lines.len() < 2
+        || lines.first()?.1 != ":::picture"
+        || closing_colon_fence_run(lines.last()?.1) != Some(3)
+    {
         return None;
     }
     let body_start = lines.first()?.0 + lines.first()?.2;

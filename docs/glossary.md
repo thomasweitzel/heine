@@ -385,6 +385,12 @@ display name and one route component; Heine does not silently slugify it.
 
 ## Template boundary
 
+### Markdown block component
+
+A named Tera component that wraps one authored Markdown block through
+`:::component[...]`. Heine analyzes the body with surrounding prose before the
+component presents its rendered HTML. See [Markdown block components](markdown-components.md).
+
 ### Filter
 
 A Tera operation applied with `|`, such as `value | markdown`. Heine provides

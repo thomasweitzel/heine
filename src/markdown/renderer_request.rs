@@ -8,7 +8,7 @@ use std::{collections::BTreeMap, ops::Range};
 
 use crate::renderer::{NamedInput, Output, Placement, Profiles, Source};
 
-use super::HtmlClassList;
+use super::{HtmlClassList, closing_colon_fence_run};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Request {
@@ -454,8 +454,7 @@ fn parse_block(input: &str, start: usize, line_end: usize) -> Result<Option<Requ
             .find('\n')
             .map_or(input.len(), |index| cursor + index);
         let close_line = &input[cursor..close_end];
-        let close_run = close_line.bytes().take_while(|byte| *byte == b':').count();
-        if close_run >= run && close_line[close_run..].trim().is_empty() {
+        if closing_colon_fence_run(close_line).is_some_and(|close_run| close_run >= run) {
             let body_end = if cursor == body_start {
                 cursor
             } else {
@@ -782,6 +781,13 @@ arguments = ["--format", "htmlAndMathml"]
         assert!(error.message.contains("name = value"));
         let error = parse(":::render[plantuml]\nsource\n").expect_err("block lacks close");
         assert!(error.message.contains("closing colon"));
+
+        let source = ":::render[plantuml]\nA -> B\n::: not a close\n:::\n";
+        let request = parse(source).expect("only an otherwise empty colon line closes the block");
+        assert_eq!(
+            &source[request[0].body_span.clone()],
+            "A -> B\n::: not a close"
+        );
     }
 
     #[test]

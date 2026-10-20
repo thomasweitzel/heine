@@ -33,6 +33,7 @@ components = [
   "starter.draft_marker",
   "starter.language_link",
   "starter.meta_description",
+  "starter.note",
   "starter.page_label",
   "starter.page_list_item",
   "starter.page_title",

@@ -147,6 +147,7 @@ impl Catalog {
                     label: "reserved function call here".into(),
                     span,
                     help: Some("use asset() for a public copied asset".into()),
+                    related: Vec::new(),
                 })));
             }
             for reference in template_references(source.inner()) {
@@ -310,6 +311,29 @@ impl Catalog {
         }
         Ok(())
     }
+
+    pub(super) fn markdown_accessible_components(
+        &self,
+        selected_kit: Option<&kit::Selected>,
+    ) -> BTreeSet<String> {
+        let public_kit = selected_kit.map_or_else(BTreeSet::new, |kit| {
+            kit.manifest()
+                .public()
+                .components()
+                .iter()
+                .map(|declaration| declaration.value().as_str().to_owned())
+                .collect()
+        });
+        let mut accessible = BTreeSet::new();
+        for (template, source) in &self.sources {
+            for definition in component_definitions(source.inner()) {
+                if self.origins[template] == Origin::Root || public_kit.contains(definition.name) {
+                    accessible.insert(definition.name.to_owned());
+                }
+            }
+        }
+        accessible
+    }
 }
 
 #[derive(Debug)]
@@ -417,6 +441,7 @@ fn validate_public_templates(
                 label: "declared public template here".into(),
                 span: declaration.span(),
                 help: None,
+                related: Vec::new(),
             })));
         }
     }
@@ -468,6 +493,7 @@ fn reference_error(
         label: "template reference here".into(),
         span: reference.span,
         help: Some(help.into()),
+        related: Vec::new(),
     }))
 }
 
@@ -487,6 +513,7 @@ fn component_error(
         label: "component declaration or call here".into(),
         span,
         help: Some(help.into()),
+        related: Vec::new(),
     }))
 }
 
@@ -506,5 +533,6 @@ fn manifest_component_error(
         label: "public component declaration here".into(),
         span,
         help: Some(help.into()),
+        related: Vec::new(),
     }))
 }

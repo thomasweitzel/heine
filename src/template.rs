@@ -11,6 +11,7 @@ mod sources;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use crate::{
@@ -130,6 +131,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Detailed(#[from] Box<TemplateDiagnostic>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Markdown(#[from] Box<crate::markdown::SourceError>),
 }
 
 /// Template-only data derived from the resolved site and asset catalog.
@@ -311,12 +315,25 @@ pub(crate) struct TemplateDiagnostic {
     span: miette::SourceSpan,
     #[help]
     help: Option<String>,
+    #[related]
+    related: Vec<MarkdownComponentCall>,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error("Markdown component call")]
+struct MarkdownComponentCall {
+    #[source_code]
+    source_code: miette::NamedSource<String>,
+    #[label("component used here")]
+    span: miette::SourceSpan,
 }
 
 pub(crate) struct TemplateEngine {
     tera: tera::Tera,
     sources: BTreeMap<TemplateName, miette::NamedSource<String>>,
     runtime: runtime::TemplateRuntime,
+    markdown_renderer: crate::markdown::Renderer,
+    markdown_components: std::collections::BTreeSet<String>,
     canonical_urls_configured: bool,
 }
 
@@ -332,7 +349,7 @@ impl TemplateEngine {
         let canonical_urls_configured = resources.asset_links.canonical_urls().is_some();
         let runtime = runtime::TemplateRuntime::from(resources);
         resources::register(&mut tera, &runtime);
-        content::register(&mut tera, &runtime, markdown_renderer);
+        content::register(&mut tera, &runtime, markdown_renderer.clone());
         localization::register(&mut tera, &runtime);
         let catalog = sources::Catalog::load(templates, selected_kit, diagnostics)?;
         let template_directory = diagnostics.display_path(templates);
@@ -348,10 +365,13 @@ impl TemplateEngine {
             )
         })?;
         catalog.validate_components(selected_kit)?;
+        let markdown_components = catalog.markdown_accessible_components(selected_kit);
         Ok(Self {
             tera,
             sources: catalog.into_sources(),
             runtime,
+            markdown_renderer,
+            markdown_components,
             canonical_urls_configured,
         })
     }
@@ -366,12 +386,31 @@ impl TemplateEngine {
             .begin_source_aware_renders(
                 context.page.as_ref().and_then(|page| page.page.toc()),
                 context.page.as_ref().and_then(|page| page.page.footnotes()),
+                context
+                    .page
+                    .as_ref()
+                    .map(|page| {
+                        page.page
+                            .component_markdown_names()
+                            .map(str::to_owned)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
             )
             .map_err(|message| {
                 Error::source_aware_render_error(template, rendering, &self.sources, None, message)
             })?;
+        self.runtime.begin_prepared_markdown().map_err(|message| {
+            Error::source_aware_render_error(template, rendering, &self.sources, None, message)
+        })?;
         let context =
             tera::Context::from_serialize(&context).expect("render context is serializable");
+        let prepared = self.prepare_component_markdown(&context, rendering);
+        if let Err(error) = prepared {
+            let _ = self.runtime.finish_prepared_markdown();
+            let _ = self.runtime.finish_source_aware_renders();
+            return Err(error);
+        }
         let rendered = self
             .tera
             .render(template.as_str(), &context)
@@ -397,6 +436,9 @@ impl TemplateEngine {
                         message,
                     )
                 })?;
+        self.runtime.finish_prepared_markdown().map_err(|message| {
+            Error::source_aware_render_error(template, rendering, &self.sources, None, message)
+        })?;
         let rendered = rendered?;
         let unmatched = source_aware_renders
             .into_iter()
@@ -428,12 +470,292 @@ impl TemplateEngine {
         Ok(rendered)
     }
 
+    fn prepare_component_markdown(
+        &self,
+        context: &tera::Context,
+        rendering: &str,
+    ) -> Result<(), Error> {
+        let locale = context
+            .get("locale")
+            .and_then(|value| value.get_from_path("code"))
+            .and_then(tera::Value::as_str)
+            .and_then(|value| crate::locale::Locale::from_str(value).ok())
+            .ok_or_else(|| Error::Render {
+                template: "Markdown block component".into(),
+                rendering: format!(" (while {rendering})"),
+                source: tera::Error::message("Heine render context has an invalid locale"),
+            })?;
+        let page_id = context
+            .get("__heine_runtime")
+            .and_then(|value| value.get_from_path("page_id"))
+            .and_then(tera::Value::as_str)
+            .and_then(crate::site::PageId::parse);
+        let Some(page_id) = page_id else {
+            return Ok(());
+        };
+        let Some(page) = self.runtime.page_view(&locale, &page_id) else {
+            return Err(Error::Render {
+                template: "Markdown block component".into(),
+                rendering: format!(" (while {rendering})"),
+                source: tera::Error::message("Heine render context has no current authored page"),
+            });
+        };
+        let assets = self.runtime.assets().with_locale(locale.clone());
+        let pages = self.runtime.pages().with_locale(locale.clone());
+        for name in page.component_markdown_names() {
+            let Some((source, replacements, plan)) = page.content_markdown(name) else {
+                continue;
+            };
+            let Some(plan) = plan else { continue };
+            let anchors = page
+                .toc()
+                .filter(|toc| toc.content() == name)
+                .map(crate::markdown::TocPlan::anchors);
+            let rendered = if let Some(footnotes) = page
+                .footnotes()
+                .filter(|footnotes| footnotes.content() == name)
+            {
+                let labels = self
+                    .runtime
+                    .margin_footnote_labels_for_locale(&locale, footnotes.plan())
+                    .map_err(|message| Error::Render {
+                        template: "Markdown block component".into(),
+                        rendering: format!(" (while {rendering})"),
+                        source: tera::Error::message(message),
+                    })?;
+                crate::markdown::margin_footnotes::render_with_components(
+                    source,
+                    crate::markdown::margin_footnotes::RenderContext {
+                        renderer: &self.markdown_renderer,
+                        assets: Some(&assets),
+                        pages: Some(&pages),
+                        anchors,
+                        table_scroll_label: None,
+                        replacements,
+                    },
+                    footnotes.plan(),
+                    &labels,
+                    plan.calls(),
+                    |call, body| self.render_markdown_component(call, &body, context),
+                )
+            } else {
+                crate::markdown::render::render_with_components(
+                    source,
+                    crate::markdown::render::ComponentRenderContext {
+                        renderer: &self.markdown_renderer,
+                        assets: Some(&assets),
+                        pages: Some(&pages),
+                        anchors,
+                        table_scroll_label: None,
+                        replacements,
+                    },
+                    plan.calls(),
+                    |call, body| self.render_markdown_component(call, body, context),
+                )
+            }
+            .map_err(|error| {
+                let source = page
+                    .component_source(name)
+                    .expect("component plan retains its source");
+                Error::component_render_error(
+                    source,
+                    rendering,
+                    error,
+                    &self.sources,
+                    self.canonical_urls_configured,
+                )
+            })?;
+            self.runtime
+                .prepare_markdown(name.to_owned(), rendered)
+                .map_err(|message| Error::Render {
+                    template: "Markdown block component".into(),
+                    rendering: format!(" (while {rendering})"),
+                    source: tera::Error::message(message),
+                })?;
+        }
+        Ok(())
+    }
+
+    fn render_markdown_component(
+        &self,
+        call: &crate::markdown::component::ComponentCall,
+        body: &str,
+        implicits: &tera::Context,
+    ) -> Result<String, crate::markdown::component::ComponentRenderFailure> {
+        if !self.markdown_components.contains(&call.name) {
+            return Err(
+                crate::markdown::component::ComponentRenderFailure::Contract(format!(
+                    "component {:?} is not available to Markdown content; root Markdown can call root components and manifest-declared public kit components",
+                    call.name
+                )),
+            );
+        }
+        let definition = self
+            .tera
+            .get_component_definition(&call.name)
+            .ok_or_else(|| {
+                crate::markdown::component::ComponentRenderFailure::Contract(format!(
+                    "component {:?} is not defined",
+                    call.name
+                ))
+            })?;
+        let may_hide = component_body_may_hide(&definition).map_err(|message| {
+            crate::markdown::component::ComponentRenderFailure::Contract(format!(
+                "component {:?} {message}",
+                call.name
+            ))
+        })?;
+        if may_hide && call.body_has_headings {
+            return Err(
+                crate::markdown::component::ComponentRenderFailure::Contract(format!(
+                    "component {:?} may hide its body, which cannot contain Markdown headings",
+                    call.name
+                )),
+            );
+        }
+        if call.arguments.contains_key("body")
+            || definition.args().iter().any(|argument| {
+                argument.is_implicit() && call.arguments.contains_key(argument.name())
+            })
+        {
+            return Err(
+                crate::markdown::component::ComponentRenderFailure::Contract(
+                    "component arguments cannot override the body or an implicit component value"
+                        .into(),
+                ),
+            );
+        }
+        let arguments = tera::Context::from_serialize(&call.arguments).map_err(|error| {
+            crate::markdown::component::ComponentRenderFailure::Contract(error.to_string())
+        })?;
+        let (opening, closing) = body_markers(body);
+        let marked_body = format!("{opening}{body}{closing}");
+        let rendered = self
+            .tera
+            .render_component_with_implicits(
+                &call.name,
+                &arguments,
+                implicits,
+                Some(&marked_body),
+                true,
+            )
+            .map_err(crate::markdown::component::ComponentRenderFailure::Tera)?;
+        remove_component_body_marker(&rendered, &opening, body, &closing)
+            .map_err(crate::markdown::component::ComponentRenderFailure::Contract)
+    }
+
     pub(crate) fn contains(&self, template: &TemplateName) -> bool {
         !template.is_kit_namespace() && self.tera.contains_template(template.as_str())
     }
 }
 
+fn component_body_may_hide(component: &tera::ComponentInfo) -> Result<bool, &'static str> {
+    match component.metadata().get("heine.body_may_hide") {
+        None => Ok(false),
+        Some(value) if value.as_bool() == Some(true) => Ok(true),
+        Some(_) => Err("must declare heine.body_may_hide = true when it may hide its body"),
+    }
+}
+
+fn body_markers(body: &str) -> (String, String) {
+    for nonce in 0_u64.. {
+        let opening = format!("<!--heine-component-body-open-{nonce}-->");
+        let closing = format!("<!--heine-component-body-close-{nonce}-->");
+        if !body.contains(&opening) && !body.contains(&closing) {
+            return (opening, closing);
+        }
+    }
+    unreachable!("a finite component body cannot contain every numbered marker")
+}
+
+fn remove_component_body_marker(
+    rendered: &str,
+    opening: &str,
+    body: &str,
+    closing: &str,
+) -> Result<String, String> {
+    if rendered.matches(opening).count() != 1 || rendered.matches(closing).count() != 1 {
+        return Err("the component must preserve its Markdown body exactly once".into());
+    }
+    let start = rendered
+        .find(opening)
+        .expect("marker count found the opening marker");
+    let body_start = start + opening.len();
+    let Some(closing_offset) = rendered[body_start..].find(closing) else {
+        return Err("the component must preserve its Markdown body exactly once".into());
+    };
+    let end = body_start + closing_offset;
+    if &rendered[body_start..end] != body {
+        return Err("the component changed its rendered Markdown body".into());
+    }
+    Ok(format!(
+        "{}{}{}",
+        &rendered[..start],
+        body,
+        &rendered[end + closing.len()..]
+    ))
+}
+
 impl Error {
+    fn component_render_error(
+        source: &crate::content::MarkdownSource,
+        rendering: &str,
+        error: crate::markdown::component::ComponentRenderError,
+        templates: &BTreeMap<TemplateName, miette::NamedSource<String>>,
+        canonical_urls_configured: bool,
+    ) -> Self {
+        match error {
+            crate::markdown::component::ComponentRenderError::Markdown(error) => {
+                Self::Markdown(Box::new(crate::markdown::source_error(
+                    &source.display_path,
+                    &source.source,
+                    error,
+                )))
+            }
+            crate::markdown::component::ComponentRenderError::Component { call, failure } => {
+                let call_location = MarkdownComponentCall {
+                    source_code: miette::NamedSource::new(
+                        source.display_path.display().to_string(),
+                        source.source.clone(),
+                    ),
+                    span: call.header_span.into(),
+                };
+                match *failure {
+                    crate::markdown::component::ComponentRenderFailure::Contract(message) => {
+                        Self::Detailed(Box::new(TemplateDiagnostic {
+                            stage: "render",
+                            rendering: format!(" (while rendering {rendering})"),
+                            template: source.display_path.display().to_string(),
+                            message,
+                            source_code: call_location.source_code.clone(),
+                            label: "Markdown component used here".into(),
+                            span: call_location.span,
+                            help: Some(
+                                "correct this component call or its declared component contract"
+                                    .into(),
+                            ),
+                            related: Vec::new(),
+                        }))
+                    }
+                    crate::markdown::component::ComponentRenderFailure::Tera(error) => {
+                        let mut diagnostic = Self::from_tera(
+                            "render",
+                            Path::new("Markdown block component"),
+                            templates,
+                            error,
+                            Some(rendering),
+                            canonical_urls_configured,
+                        );
+                        if let Self::Detailed(template) = &mut diagnostic {
+                            template.related.push(call_location);
+                        }
+                        diagnostic
+                    }
+                }
+            }
+        }
+    }
+
     fn source_aware_render_error(
         template: &TemplateName,
         rendering: &str,
@@ -462,6 +784,7 @@ impl Error {
             ),
             span: (0, 0).into(),
             help: None,
+            related: Vec::new(),
         }))
     }
 
@@ -557,6 +880,7 @@ impl Error {
             label,
             span: (range.start, range.len()).into(),
             help: None,
+            related: Vec::new(),
         }))
     }
 
@@ -580,6 +904,7 @@ impl Error {
             label: "referenced parent template here".into(),
             span: parent_reference_span(source_code.inner(), reference),
             help: None,
+            related: Vec::new(),
         })))
     }
 }
@@ -652,7 +977,16 @@ fn quoted_template_string(value: &str) -> Option<(&str, usize)> {
 
 #[cfg(test)]
 mod tests {
-    use super::TemplateName;
+    use super::{TemplateName, component_body_may_hide, remove_component_body_marker};
+    use tera::Context;
+
+    fn is_host_owned_component_value(component: &tera::ComponentInfo, name: &str) -> bool {
+        name == "body"
+            || component
+                .args()
+                .iter()
+                .any(|argument| argument.is_implicit() && argument.name() == name)
+    }
 
     #[test]
     fn template_names_are_logical_template_paths() {
@@ -664,5 +998,193 @@ mod tests {
         );
         assert!(TemplateName::parse("../item.tera".into()).is_err());
         assert!(TemplateName::parse("posts\\item.tera".into()).is_err());
+    }
+
+    #[test]
+    fn tera_component_bodies_preserve_rendered_markdown_and_checked_context() {
+        let source = "## Read this first\n\nA note with **authored Markdown**.";
+        let renderer = crate::markdown::Renderer::new(crate::config::MarkdownConfig::default())
+            .expect("default Markdown renderer is valid");
+        let toc = crate::markdown::toc_plan(
+            "main".into(),
+            source,
+            &crate::config::MarkdownConfig::default(),
+            2,
+            3,
+        );
+        let body = crate::markdown::render_with_links_anchors(
+            source,
+            &renderer,
+            None,
+            None,
+            Some(toc.anchors()),
+            None,
+            &[],
+        )
+        .expect("ordinary Markdown body renders before component presentation");
+
+        let mut tera = tera::Tera::default();
+        tera.add_raw_template(
+            "components.tera",
+            r#"
+{% component site.note(kind: string, @page: string) %}<aside class="note-{{ kind }}" data-page="{{ page }}">{{ body }}</aside>{% endcomponent %}
+{% component site.disclosure(kind: string) {"heine.body_may_hide": true} %}<details class="note-{{ kind }}">{{ body }}</details>{% endcomponent %}
+{% component site.omit(kind: string) %}<aside class="note-{{ kind }}"></aside>{% endcomponent %}
+{% component site.duplicate(kind: string) %}<aside class="note-{{ kind }}">{{ body }}{{ body }}</aside>{% endcomponent %}
+{% component site.filtered(kind: string) %}<aside class="note-{{ kind }}">{{ body | upper }}</aside>{% endcomponent %}
+{% component site.rewritten(kind: string) %}<aside class="note-{{ kind }}">{{ body | replace(from="Markdown", to="replacement") }}</aside>{% endcomponent %}
+{% component site.attribute(kind: string) %}<aside class="note-{{ kind }}" data-body="{{ body }}"></aside>{% endcomponent %}
+{% component site.invalid_visibility(kind: string) {"heine.body_may_hide": false} %}<aside class="note-{{ kind }}">{{ body }}</aside>{% endcomponent %}
+"#,
+        )
+        .expect("component definition is valid");
+
+        let mut arguments = Context::new();
+        arguments.insert("kind", "warning");
+        let mut implicits = Context::new();
+        implicits.insert("page", "guide/install");
+
+        let opening = "<!-- heine-component-body-open -->";
+        let closing = "<!-- heine-component-body-close -->";
+        let marked_body = format!("{opening}{body}{closing}");
+        let rendered = tera
+            .render_component_with_implicits(
+                "site.note",
+                &arguments,
+                &implicits,
+                Some(&marked_body),
+                true,
+            )
+            .expect("known component accepts its typed argument and rendered body");
+
+        let rendered = remove_component_body_marker(&rendered, opening, &body, closing)
+            .expect("the note component preserves its body exactly once");
+
+        assert!(rendered.starts_with(r#"<aside class="note-warning" data-page="guide/install"><h2 id="read-this-first">Read this first</h2>"#), "{rendered}");
+        assert!(
+            rendered.contains("<strong>authored Markdown</strong>"),
+            "{rendered}"
+        );
+        assert!(rendered.ends_with("</aside>"), "{rendered}");
+
+        let note_definition = tera
+            .get_component_definition("site.note")
+            .expect("component definition is available");
+        let note_may_hide = component_body_may_hide(&note_definition)
+            .expect("a component without the declaration keeps its body visible");
+        let disclosure_may_hide = component_body_may_hide(
+            &tera
+                .get_component_definition("site.disclosure")
+                .expect("component definition is available"),
+        )
+        .expect("the disclosure declaration is readable");
+        assert!(!note_may_hide);
+        assert!(disclosure_may_hide);
+        assert!(
+            component_body_may_hide(
+                &tera
+                    .get_component_definition("site.invalid_visibility")
+                    .expect("component definition is available"),
+            )
+            .is_err()
+        );
+        assert!(is_host_owned_component_value(&note_definition, "body"));
+        assert!(!is_host_owned_component_value(&note_definition, "kind"));
+
+        let note_with_page = tera
+            .get_component_definition("site.note")
+            .expect("component definition is available");
+        assert!(is_host_owned_component_value(&note_with_page, "page"));
+
+        let mut shadowing_arguments = arguments.clone();
+        shadowing_arguments.insert("page", "shadowed");
+        let shadowed = tera
+            .render_component_with_implicits(
+                "site.note",
+                &shadowing_arguments,
+                &implicits,
+                Some(&marked_body),
+                true,
+            )
+            .expect("Tera permits an explicit value to override an implicit one");
+        assert!(
+            shadowed.contains(r#"data-page="shadowed""#),
+            "the host must reject this directive argument before calling Tera"
+        );
+
+        let mut escaped_arguments = Context::new();
+        escaped_arguments.insert("kind", "<unsafe>");
+        let escaped = tera
+            .render_component_with_implicits(
+                "site.note",
+                &escaped_arguments,
+                &implicits,
+                Some(&marked_body),
+                true,
+            )
+            .expect("the component renders with host-selected autoescaping");
+        let escaped = remove_component_body_marker(&escaped, opening, &body, closing)
+            .expect("autoescaping keeps the safe Markdown body intact");
+        assert!(
+            escaped.contains(r#"class="note-&lt;unsafe&gt;""#),
+            "{escaped}"
+        );
+        assert!(
+            escaped.contains(r#"<h2 id="read-this-first">"#),
+            "{escaped}"
+        );
+
+        for component in [
+            "site.omit",
+            "site.duplicate",
+            "site.filtered",
+            "site.rewritten",
+        ] {
+            let output = tera
+                .render_component_with_implicits(
+                    component,
+                    &arguments,
+                    &implicits,
+                    Some(&marked_body),
+                    true,
+                )
+                .expect("the probe component itself renders");
+            assert!(
+                remove_component_body_marker(&output, opening, &body, closing).is_err(),
+                "{component} must fail the body-preservation check"
+            );
+        }
+
+        let attribute_output = tera
+            .render_component_with_implicits(
+                "site.attribute",
+                &arguments,
+                &implicits,
+                Some(&marked_body),
+                true,
+            )
+            .expect("the probe component itself renders");
+        assert!(
+            remove_component_body_marker(&attribute_output, opening, &body, closing).is_ok(),
+            "a marker count alone does not prove that the body became element content"
+        );
+
+        let reordered = format!("{closing}{opening}");
+        assert!(
+            remove_component_body_marker(&reordered, opening, &body, closing).is_err(),
+            "a component must not reverse the body markers"
+        );
+
+        arguments.insert("kind", &true);
+        assert!(
+            tera.render_component_with_implicits(
+                "site.note",
+                &arguments,
+                &implicits,
+                Some("<p>body</p>"),
+                true,
+            )
+            .is_err()
+        );
     }
 }

@@ -7,6 +7,7 @@ matches what you need now.
 |-----------------------------------------------------------|-----------------------------------------------|
 | Build a first working site                                | [First site](../README.md#first-site)         |
 | Learn how the pieces compose                              | [Tutorial](tutorial.md)                       |
+| Understand how Heine builds and checks a site             | [Architecture](architecture.md)               |
 | Understand a named Heine concept                          | [Glossary](glossary.md)                       |
 | Add one capability to an existing site                    | The focused guides below                      |
 | Check an exact option, field, template value, or function | [Reference](reference.md)                     |
@@ -19,7 +20,7 @@ data, listings, pagination, and tags. The tutorial links to a focused guide
 whenever a feature needs more explanation.
 
 For a complete working site rather than a teaching-sized example, inspect and
-build [`starter-site/`](../starter-site/). It is a cohesive example, not a
+build [`starter-site/`](../starter-site). It is a cohesive example, not a
 required prerequisite for the guides.
 
 ## Build site structure
@@ -53,6 +54,8 @@ required prerequisite for the guides.
   navigation.
 - [Margin footnotes](margin-footnotes.md): local presentation of ordinary
   Markdown footnotes.
+- [Markdown block components](markdown-components.md): wrap authored Markdown
+  in a site or kit component without templating the whole document.
 - [Color-scheme Markdown pictures](markdown-pictures.md): light and dark
   variants of one authored image.
 - [Word counts and reading time](markdown-facts.md): deterministic Markdown
@@ -86,6 +89,7 @@ features and deferred proposals.
 - [Draft publication](design/drafts.md)
 - [Kits](design/kits.md)
 - [Localized value formatting](design/localized-value-formatting.md)
+- [Markdown block components](design/markdown-block-components.md)
 - [Markdown facts](design/markdown-facts.md)
 - [Multilingual sitemap alternates](design/multilingual-sitemap-alternates.md)
 - [Margin footnotes](design/margin-footnotes.md)
@@ -107,6 +111,12 @@ features and deferred proposals.
 - [External asset manifests](design/external-asset-manifests.md): why a
   per-URL cache-busting helper is insufficient, and the boundary a future
   external asset-manifest integration would need.
+
+### Rejected proposals
+
+- [Markdown template fragments](design/markdown-template-fragments.md): an
+  investigated Tera2-in-Markdown proposal that conflicts with Heine's existing
+  content-and-template composition boundary.
 
 ## Reference material
 

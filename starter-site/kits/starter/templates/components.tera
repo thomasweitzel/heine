@@ -18,6 +18,12 @@
   <meta name="description" content="{{ value }}">
 {% endcomponent starter.meta_description %}
 
+{% component starter.note(kind: string) %}
+  <aside class="content-note content-note-{{ kind }}">
+    {{ body }}
+  </aside>
+{% endcomponent starter.note %}
+
 {% component starter.language_link(locale: string, target, flag, label: string) %}
   <a href="{{ target.url }}" hreflang="{{ locale }}" aria-label="{{ label }}">
     <img src="{{ flag.url }}"{% if flag.width %} width="{{ flag.width }}" height="{{ flag.height }}"{% endif %} alt="">

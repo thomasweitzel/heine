@@ -62,8 +62,14 @@ pub(super) fn register(
                 .with_locale(locale.clone());
             let page_links = markdown_content_runtime.pages().with_locale(locale);
             let content = markdown_content_runtime.markdown_content(state, name)?;
+            if let Some(prepared) = markdown_content_runtime.prepared_markdown(name)? {
+                if content.toc.is_some() || content.footnotes.is_some() || content.has_components {
+                    markdown_content_runtime.record_source_aware_render(name)?;
+                }
+                return Ok(tera::Value::safe_string(&prepared));
+            }
             let table_scroll_label = markdown_content_runtime.table_scroll_label(state)?;
-            if content.toc.is_some() || content.footnotes.is_some() {
+            if content.toc.is_some() || content.footnotes.is_some() || content.has_components {
                 markdown_content_runtime.record_source_aware_render(name)?;
             }
             let rendered = if let Some(footnotes) = content.footnotes {

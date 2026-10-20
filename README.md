@@ -102,7 +102,7 @@ task. Use the [glossary](docs/glossary.md) for Heine terms, the
 
 ## Starter site
 
-The [downloadable starter site](starter-site/) is a complete, working
+The [downloadable starter site](starter-site) is a complete, working
 multilingual example. Use it after the tutorial when you want to see several
 features composed in one site rather than introduced one at a time. Extract the
 archive, change into its top-level directory, and run the executable downloaded
@@ -154,13 +154,15 @@ changes.
 
 Run the full local quality check before contributing changes:
 
-These commands use Rustup to select Heine's supported compiler. Install it once
-with `rustup toolchain install 1.88.0`.
+The checked-in `rust-toolchain.toml` selects Heine's supported compiler and
+adds the required lint and formatting components. Rustup installs it
+automatically when needed. To install it before running a check, use
+`rustup toolchain install` from the repository root.
 
 ```bash
-cargo +1.88.0 fmt --check
-cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
-cargo +1.88.0 test --all-targets --all-features
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
 ```
 
 ## License

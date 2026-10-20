@@ -11,7 +11,7 @@ matches step 1. Read that step as a recap, then begin applying changes at step
 
 The final site has Markdown posts, copied assets, shared data, English and
 German pages, localized UI text, a post collection, pagination, and tags.
-For a larger working example, see [`starter-site/`](../starter-site/).
+For a larger working example, see [`starter-site/`](../starter-site).
 
 ## 1. Start with one page
 
@@ -522,6 +522,24 @@ pagination-label = Seitennavigation
 Components are Tera2's reusable template
 mechanism; Heine supplies the values passed to them but does not add a second
 component system.
+
+### Wrap Markdown with a component
+
+When a component needs to wrap prose at one point in a Markdown source, use a
+Markdown block component. The body remains ordinary Markdown, so its headings,
+links, and footnotes stay checked with the surrounding document:
+
+```markdown
+:::component[ui.note kind = "warning"]
+Back up the existing site before you publish the new version.
+:::
+```
+
+The named Tera2 component declares whether it keeps its body visible and
+receives the rendered HTML through `body`. This is different from a component
+called by a page template: the Markdown directive cannot run Tera expressions
+or select a component dynamically. The [Markdown block components](markdown-components.md)
+guide explains the component contract and its limits.
 
 ## 8. Add tags
 

@@ -683,6 +683,27 @@ a:focus-visible {
     margin-bottom: 0;
 }
 
+.prose .content-note {
+    margin-block: var(--spacing-m);
+    padding: var(--spacing-s) var(--spacing-m);
+    border-inline-start: 0.25rem solid var(--color-2);
+    border-radius: var(--radius);
+    background-color: var(--color-1);
+}
+
+.prose .content-note > :first-child {
+    margin-top: 0;
+}
+
+.prose .content-note > :last-child {
+    margin-bottom: 0;
+}
+
+/* A note followed by an image needs the same visual separation as a section. */
+.prose .content-note + figure {
+    margin-top: var(--spacing-l);
+}
+
 .prose sup.footnote-reference {
     margin-inline: 0.1em;
     font-size: 0.75rem;
