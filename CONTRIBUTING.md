@@ -86,17 +86,19 @@ maintainer does.
 Run the full local quality check:
 
 ```bash
-cargo +1.88.0 fmt --check
-cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
-cargo +1.88.0 test --all-targets --all-features
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
 ```
 
-Install the supported compiler once with `rustup toolchain install 1.88.0`.
+The checked-in `rust-toolchain.toml` selects the supported compiler and its
+required components. Rustup installs it automatically when needed, or run
+`rustup toolchain install` from the repository root first.
 The opt-in external-renderer integration test additionally requires `pandoc`
 and `typst` on `PATH`:
 
 ```bash
-cargo +1.88.0 test --test external_renderers -- --ignored
+cargo test --test external_renderers -- --ignored
 ```
 
 Keep a pull request focused. A user-visible behavior change needs focused

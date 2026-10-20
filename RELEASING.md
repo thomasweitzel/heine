@@ -40,9 +40,9 @@ promise. Users whose systems cannot run that artifact should use the musl
 archive.
 
 The GNU build downloads a versioned `rustup-init` bootstrap binary and verifies
-its SHA-256 checksum before it installs Rust 1.88.0. This keeps the container
-and executable bootstrap inputs reviewable; the Cargo lockfile then fixes the
-crate dependency resolution.
+its SHA-256 checksum before Rustup installs the compiler pinned in
+`rust-toolchain.toml`. This keeps the container and executable bootstrap inputs
+reviewable; the Cargo lockfile then fixes the crate dependency resolution.
 
 Windows and macOS artifacts are unsigned direct downloads. They remain useful,
 but SmartScreen, Gatekeeper, or an organization policy can warn about or block
@@ -54,13 +54,14 @@ origin and contents; they do not replace platform code signing.
 
 Before a change is considered complete, run:
 
-These commands use Rustup to select Heine's supported compiler. Install it once
-with `rustup toolchain install 1.88.0`.
+The checked-in `rust-toolchain.toml` selects Heine's supported compiler and
+its required components. Rustup installs it automatically when needed, or run
+`rustup toolchain install` from the repository root first.
 
 ```bash
-cargo +1.88.0 fmt --check
-cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
-cargo +1.88.0 test --all-targets --all-features
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
 ```
 
 Record a user-visible change in `CHANGELOG.md` under `Unreleased` as part of

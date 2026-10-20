@@ -154,13 +154,15 @@ changes.
 
 Run the full local quality check before contributing changes:
 
-These commands use Rustup to select Heine's supported compiler. Install it once
-with `rustup toolchain install 1.88.0`.
+The checked-in `rust-toolchain.toml` selects Heine's supported compiler and
+adds the required lint and formatting components. Rustup installs it
+automatically when needed. To install it before running a check, use
+`rustup toolchain install` from the repository root.
 
 ```bash
-cargo +1.88.0 fmt --check
-cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
-cargo +1.88.0 test --all-targets --all-features
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
 ```
 
 ## License

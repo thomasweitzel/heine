@@ -37,9 +37,7 @@ jobs:
           ref: ${{ inputs.source_ref || github.ref }}
 
       - name: Install the supported Rust toolchain
-        run: |
-          rustup toolchain install 1.88.0 --profile minimal \
-            --component clippy --component rustfmt
+        run: rustup toolchain install
 
       - name: Identify checked source
         id: source
@@ -48,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="$(cargo +1.88.0 metadata --locked --no-deps --format-version 1 \
+          version="$(cargo metadata --locked --no-deps --format-version 1 \
             | jq -r '.packages[] | select(.name == "heine") | .version')"
           test -n "$version"
 
@@ -61,19 +59,19 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Check formatting
-        run: cargo +1.88.0 fmt --check
+        run: cargo fmt --check
 
       - name: Run Clippy
-        run: cargo +1.88.0 clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo +1.88.0 test --all-targets --all-features
+        run: cargo test --all-targets --all-features
 
       - name: Verify bundled editorial time-zone data
         run: |
           set -euo pipefail
 
-          features="$(cargo +1.88.0 tree --locked -e features -i jiff)"
+          features="$(cargo tree --locked -e features -i jiff)"
           printf '%s\n' "$features"
           grep --fixed-strings --quiet 'jiff feature "tzdb-bundle-always"' <<<"$features"
 
@@ -86,13 +84,13 @@ jobs:
 
       - name: Check the crate package
         run: |
-          cargo +1.88.0 package --locked
-          cargo +1.88.0 package --list
+          cargo package --locked
+          cargo package --list
 
       - name: Build and check the starter site
         run: |
-          cargo +1.88.0 run --release --locked -- --help
-          cargo +1.88.0 run --release --locked -- --root starter-site
+          cargo run --release --locked -- --help
+          cargo run --release --locked -- --root starter-site
 
   linux-musl:
     needs: quality
@@ -108,14 +106,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends musl-tools
-          rustup toolchain install 1.88.0 --profile minimal
-          rustup target add --toolchain 1.88.0 x86_64-unknown-linux-musl
+          rustup toolchain install
+          rustup target add x86_64-unknown-linux-musl
 
       - name: Build and run the musl executable
         run: |
           set -euo pipefail
 
-          cargo +1.88.0 build --release --locked \
+          cargo build --release --locked \
             --target x86_64-unknown-linux-musl
           executable=target/x86_64-unknown-linux-musl/release/heine
           "$executable" --help
@@ -163,8 +161,9 @@ jobs:
                 dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71 \
                 rustup-init | sha256sum --check
               chmod +x rustup-init
-              ./rustup-init -y --profile minimal --default-toolchain 1.88.0
+              ./rustup-init -y --profile minimal --default-toolchain none
               . "$HOME/.cargo/env"
+              rustup toolchain install
               cargo build --release --locked --target x86_64-unknown-linux-gnu
               executable=target/x86_64-unknown-linux-gnu/release/heine
               "$executable" --help
@@ -198,12 +197,12 @@ jobs:
 
       - name: Install the supported Rust toolchain
         shell: bash
-        run: rustup toolchain install 1.88.0 --profile minimal
+        run: rustup toolchain install
 
       - name: Build and run the Windows executable
         shell: bash
         run: |
-          cargo +1.88.0 build --release --locked \
+          cargo build --release --locked \
             --target x86_64-pc-windows-msvc
           target/x86_64-pc-windows-msvc/release/heine.exe --help
 
@@ -236,11 +235,11 @@ jobs:
           ref: ${{ needs.quality.outputs.commit }}
 
       - name: Install the supported Rust toolchain
-        run: rustup toolchain install 1.88.0 --profile minimal
+        run: rustup toolchain install
 
       - name: Build and run the macOS executable
         run: |
-          cargo +1.88.0 build --release --locked --target "${{ matrix.target }}"
+          cargo build --release --locked --target "${{ matrix.target }}"
           "target/${{ matrix.target }}/release/heine" --help
 
       - name: Upload the macOS executable
