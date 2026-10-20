@@ -35,16 +35,16 @@ use std::path::PathBuf;
 
 mod analysis;
 mod class_list;
-#[cfg(test)]
-mod component_feasibility;
+pub(crate) mod component;
 mod highlighting;
 pub(crate) mod margin_footnotes;
 pub(crate) mod picture;
-mod render;
+pub(crate) mod render;
 mod renderer_request;
 mod search_text;
 pub(crate) use analysis::MarkdownFacts;
 pub(crate) use class_list::HtmlClassList;
+pub(crate) use component::ComponentPlan;
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 #[cfg(test)]
@@ -53,6 +53,13 @@ pub(crate) use render::{render_with_links, render_with_links_anchors};
 pub(crate) use renderer_request::{ResolvedInput, ResolvedRequest};
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
+
+/// Returns a colon-fence length only when the line contains no content after
+/// the fence. Block directives share this closing-fence rule.
+pub(crate) fn closing_colon_fence_run(line: &str) -> Option<usize> {
+    let length = line.bytes().take_while(|byte| *byte == b':').count();
+    (length > 0 && line[length..].trim().is_empty()).then_some(length)
+}
 
 /// One checked renderer replacement held outside the Markdown source until
 /// Markdown has determined the authored document structure.
@@ -561,6 +568,8 @@ pub(crate) enum RenderError {
     RendererRequest(#[from] renderer_request::Error),
     #[error("external renderer permission is required")]
     RendererPermission { span: Range<usize> },
+    #[error("Markdown block component error: {message}")]
+    Component { message: String, span: Range<usize> },
     #[error("renderer failed: {message}")]
     RendererProcess {
         message: String,
@@ -732,6 +741,12 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
             "external renderer permission is required here".into(),
             "rerun with --allow-external-renderers after reviewing the selected renderer profile"
                 .into(),
+            span.clone(),
+        ),
+        RenderError::Component { message, span } => (
+            "Markdown block component",
+            message.clone(),
+            "use a top-level :::component[name key = value] block with a non-empty Markdown body".into(),
             span.clone(),
         ),
         RenderError::RendererProcess {

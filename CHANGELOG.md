@@ -31,6 +31,13 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Added
+
+- **Markdown block components.** Authored Markdown can now use a checked
+  `:::component[...]` block to pass one analyzed Markdown body to a named Tera
+  component. Headings, checked links, search text, and footnotes remain part
+  of the page while the component controls only presentation around its body.
+
 ## [0.9.7] - 2026-10-16
 
 ### Fixed

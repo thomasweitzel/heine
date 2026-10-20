@@ -705,6 +705,8 @@ pub(super) fn load_page(
         renderer_sources,
         renderer_requests: BTreeMap::new(),
         renderer_replacements: BTreeMap::new(),
+        component_plans: BTreeMap::new(),
+        component_sources: BTreeMap::new(),
         renderer_resources: Vec::new(),
         markdown_facts: BTreeMap::new(),
         markdown_search_sections: None,

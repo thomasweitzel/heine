@@ -414,6 +414,14 @@ pub(crate) fn render(
     plan: &MarginFootnotePlan,
     labels: &[String],
 ) -> Result<String, RenderError> {
+    let events = transformed_events(input, context)?;
+    render_events(events, plan, labels)
+}
+
+fn transformed_events(
+    input: &str,
+    context: RenderContext<'_>,
+) -> Result<Vec<(Event<'static>, Range<usize>)>, RenderError> {
     let mut anchors = context.anchors.unwrap_or_default().iter();
     let task_labels = task_labels(input, context.renderer.config());
     let mut task_labels = task_labels.iter();
@@ -452,7 +460,7 @@ pub(crate) fn render(
         Some(label) => wrap_tables(events, label),
         None => events,
     };
-    render_events(events, plan, labels)
+    Ok(events)
 }
 
 fn render_events(
@@ -460,8 +468,183 @@ fn render_events(
     plan: &MarginFootnotePlan,
     labels: &[String],
 ) -> Result<String, RenderError> {
+    render_events_into(events, plan, labels, PlainOutput::default())
+        .map_err(component_error_into_markdown)
+}
+
+trait OutputSink {
+    fn for_event(
+        &mut self,
+        span: &Range<usize>,
+    ) -> Result<&mut String, super::component::ComponentRenderError>;
+
+    fn finish(self) -> Result<String, super::component::ComponentRenderError>;
+}
+
+fn component_error_into_markdown(error: super::component::ComponentRenderError) -> RenderError {
+    match error {
+        super::component::ComponentRenderError::Markdown(error) => error,
+        super::component::ComponentRenderError::Component { .. } => {
+            unreachable!("plain margin-footnote rendering has no components")
+        }
+    }
+}
+
+#[derive(Default)]
+struct PlainOutput {
+    html: String,
+}
+
+impl OutputSink for PlainOutput {
+    fn for_event(
+        &mut self,
+        _span: &Range<usize>,
+    ) -> Result<&mut String, super::component::ComponentRenderError> {
+        Ok(&mut self.html)
+    }
+
+    fn finish(self) -> Result<String, super::component::ComponentRenderError> {
+        Ok(self.html)
+    }
+}
+
+pub(crate) fn render_with_components<Wrap>(
+    input: &str,
+    context: RenderContext<'_>,
+    plan: &MarginFootnotePlan,
+    labels: &[String],
+    components: &[super::component::ComponentCall],
+    wrap: Wrap,
+) -> Result<String, super::component::ComponentRenderError>
+where
+    Wrap: FnMut(
+        &super::component::ComponentCall,
+        String,
+    ) -> Result<String, super::component::ComponentRenderFailure>,
+{
+    let events = transformed_events(input, context)
+        .map_err(super::component::ComponentRenderError::Markdown)?;
+    render_events_into(events, plan, labels, ComponentOutput::new(components, wrap))
+}
+
+struct ComponentOutput<Wrap> {
+    components: Vec<super::component::ComponentCall>,
+    wrap: Wrap,
+    html: String,
+    body: String,
+    started: bool,
+    current: usize,
+}
+
+impl<Wrap> ComponentOutput<Wrap> {
+    fn new(components: &[super::component::ComponentCall], wrap: Wrap) -> Self {
+        Self {
+            components: components.to_vec(),
+            wrap,
+            html: String::new(),
+            body: String::new(),
+            started: false,
+            current: 0,
+        }
+    }
+
+    fn finish_body(&mut self) -> Result<(), super::component::ComponentRenderError>
+    where
+        Wrap: FnMut(
+            &super::component::ComponentCall,
+            String,
+        ) -> Result<String, super::component::ComponentRenderFailure>,
+    {
+        let body = std::mem::take(&mut self.body);
+        let Some(component) = self.components.get(self.current) else {
+            return Err(super::component::ComponentRenderError::Markdown(
+                RenderError::MarginFootnote {
+                    message: "the planned component body has no matching component call".into(),
+                    span: 0..0,
+                },
+            ));
+        };
+        let wrapped = (self.wrap)(component, body).map_err(|failure| {
+            super::component::ComponentRenderError::Component {
+                call: Box::new(component.clone()),
+                failure: Box::new(failure),
+            }
+        })?;
+        self.html.push_str(&wrapped);
+        self.current += 1;
+        self.started = false;
+        Ok(())
+    }
+
+    fn body_relation(
+        &self,
+        span: &Range<usize>,
+    ) -> Result<bool, super::component::ComponentRenderError> {
+        let Some(component) = self.components.get(self.current) else {
+            return Ok(false);
+        };
+        let body_span = &component.body_span;
+        let body_end = body_span.end.saturating_add(1);
+        if span.start >= body_span.start && span.end <= body_end {
+            return Ok(true);
+        }
+        if span.end <= body_span.start || span.start >= body_end {
+            return Ok(false);
+        }
+        Err(super::component::ComponentRenderError::Markdown(
+            RenderError::MarginFootnote {
+                message: "a Markdown event crosses the planned component body boundary".into(),
+                span: span.clone(),
+            },
+        ))
+    }
+}
+
+impl<Wrap> OutputSink for ComponentOutput<Wrap>
+where
+    Wrap: FnMut(
+        &super::component::ComponentCall,
+        String,
+    ) -> Result<String, super::component::ComponentRenderFailure>,
+{
+    fn for_event(
+        &mut self,
+        span: &Range<usize>,
+    ) -> Result<&mut String, super::component::ComponentRenderError> {
+        if self.body_relation(span)? {
+            self.started = true;
+            return Ok(&mut self.body);
+        }
+
+        if self.started {
+            self.finish_body()?;
+        }
+        Ok(&mut self.html)
+    }
+
+    fn finish(mut self) -> Result<String, super::component::ComponentRenderError> {
+        if self.started {
+            self.finish_body()?;
+        }
+        if self.current != self.components.len() {
+            return Err(super::component::ComponentRenderError::Markdown(
+                RenderError::MarginFootnote {
+                    message: "the planned component body has no rendered Markdown events".into(),
+                    span: self.components[self.current].body_span.clone(),
+                },
+            ));
+        }
+        Ok(self.html)
+    }
+}
+
+fn render_events_into<Output: OutputSink>(
+    events: Vec<(Event<'static>, Range<usize>)>,
+    plan: &MarginFootnotePlan,
+    labels: &[String],
+    mut output: Output,
+) -> Result<String, super::component::ComponentRenderError> {
     let definitions = definition_bodies(&events);
-    let mut output = String::new();
     let mut active_block = None::<usize>;
     let mut definition_depth = 0usize;
 
@@ -479,59 +662,71 @@ fn render_events(
             Event::Start(Tag::Paragraph) | Event::Start(Tag::Heading { .. })
                 if plan.blocks.contains_key(&span.start) =>
             {
-                output.push_str("<div class=\"heine-annotated-block\">");
+                let html = output.for_event(&span)?;
+                html.push_str("<div class=\"heine-annotated-block\">");
                 active_block = Some(span.start);
-                push_event(&mut output, event);
+                push_event(html, event);
             }
             Event::FootnoteReference(_) => {
                 let reference = plan.references.get(&span.start).ok_or_else(|| {
-                    RenderError::MarginFootnote {
+                    super::component::ComponentRenderError::Markdown(RenderError::MarginFootnote {
                         message: "the resolved margin-footnote plan no longer matches its Markdown source".into(),
                         span: span.clone(),
-                    }
+                    })
                 })?;
-                push_marker(&mut output, reference);
+                push_marker(output.for_event(&span)?, reference);
             }
             Event::End(TagEnd::Paragraph) | Event::End(TagEnd::Heading(_))
                 if active_block.is_some() =>
             {
-                push_event(&mut output, event);
+                let html = output.for_event(&span)?;
+                push_event(html, event);
                 let Some(start) = active_block.take() else {
-                    return Err(RenderError::MarginFootnote {
-                        message: "an annotated prose block ended without a recorded start".into(),
-                        span: span.clone(),
-                    });
+                    return Err(super::component::ComponentRenderError::Markdown(
+                        RenderError::MarginFootnote {
+                            message: "an annotated prose block ended without a recorded start"
+                                .into(),
+                            span: span.clone(),
+                        },
+                    ));
                 };
                 let Some(block) = plan.blocks.get(&start) else {
-                    return Err(RenderError::MarginFootnote {
-                        message: "the resolved margin-footnote block is unavailable".into(),
-                        span: span.clone(),
-                    });
+                    return Err(super::component::ComponentRenderError::Markdown(
+                        RenderError::MarginFootnote {
+                            message: "the resolved margin-footnote block is unavailable".into(),
+                            span: span.clone(),
+                        },
+                    ));
                 };
                 for reference_start in &block.references {
                     let reference = &plan.references[reference_start];
                     let label = labels.get(reference.number - 1).ok_or_else(|| {
-                        RenderError::MarginFootnote {
-                            message: "the localized margin-footnote marker is unavailable".into(),
-                            span: span.clone(),
-                        }
+                        super::component::ComponentRenderError::Markdown(
+                            RenderError::MarginFootnote {
+                                message: "the localized margin-footnote marker is unavailable"
+                                    .into(),
+                                span: span.clone(),
+                            },
+                        )
                     })?;
                     let body = definitions.get(&reference.definition).ok_or_else(|| {
-                        RenderError::MarginFootnote {
-                            message: "the resolved margin-footnote definition is unavailable"
-                                .into(),
-                            span: span.clone(),
-                        }
+                        super::component::ComponentRenderError::Markdown(
+                            RenderError::MarginFootnote {
+                                message: "the resolved margin-footnote definition is unavailable"
+                                    .into(),
+                                span: span.clone(),
+                            },
+                        )
                     })?;
-                    push_toggle(&mut output, reference, label);
-                    push_note(&mut output, reference, body);
+                    push_toggle(html, reference, label);
+                    push_note(html, reference, body);
                 }
-                output.push_str("</div>");
+                html.push_str("</div>");
             }
-            event => push_event(&mut output, event),
+            event => push_event(output.for_event(&span)?, event),
         }
     }
-    Ok(output)
+    output.finish()
 }
 
 fn definition_bodies(events: &[(Event<'static>, Range<usize>)]) -> BTreeMap<String, String> {

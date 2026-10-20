@@ -367,6 +367,8 @@ pub(super) struct Page {
     pub(super) renderer_sources: BTreeMap<String, crate::renderer::Source>,
     pub(super) renderer_requests: BTreeMap<String, Vec<crate::markdown::ResolvedRequest>>,
     pub(super) renderer_replacements: BTreeMap<String, Vec<crate::markdown::RendererReplacement>>,
+    pub(super) component_plans: BTreeMap<String, crate::markdown::ComponentPlan>,
+    pub(super) component_sources: BTreeMap<String, MarkdownSource>,
     pub(super) renderer_resources: Vec<RendererResource>,
     pub(super) markdown_facts: BTreeMap<String, crate::markdown::MarkdownFacts>,
     /// Search owns these transient sections while it constructs its generated
@@ -547,10 +549,50 @@ impl Page {
         let mut facts = BTreeMap::new();
         let mut renderer_requests = BTreeMap::new();
         let mut renderer_replacements = BTreeMap::new();
+        let mut component_plans = BTreeMap::new();
+        let mut component_sources = BTreeMap::new();
         let mut rendered_content = BTreeMap::new();
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
         let mut renderer_resources = Vec::new();
         for (name, source) in &self.markdown_sources {
+            let component_plan =
+                crate::markdown::ComponentPlan::parse(&source.source).map_err(|error| {
+                    Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        &source.source,
+                        error,
+                    ))
+                })?;
+            let input = component_plan.as_ref().map_or(
+                source.source.as_str(),
+                crate::markdown::ComponentPlan::normalized,
+            );
+            if let Some(plan) = self
+                .footnotes
+                .as_ref()
+                .filter(|plan| plan.content() == name)
+                && component_plan.is_some()
+            {
+                self.footnotes = Some(
+                    crate::markdown::margin_footnotes::plan(
+                        &source.display_path,
+                        plan.content().to_owned(),
+                        input,
+                        renderer.config(),
+                        plan.marker_message().to_owned(),
+                    )
+                    .map_err(|error| {
+                        Box::new(crate::markdown::source_error(
+                            &source.display_path,
+                            &source.source,
+                            crate::markdown::RenderError::MarginFootnote {
+                                message: error.to_string(),
+                                span: 0..0,
+                            },
+                        ))
+                    })?,
+                );
+            }
             let fragments = self
                 .toc
                 .as_ref()
@@ -558,7 +600,7 @@ impl Page {
                 .map(TocPlan::anchors);
             let analysis = crate::markdown::analyze_source_with_links(SourceAnalysisInputs {
                 display_path: &source.display_path,
-                input: &source.source,
+                input,
                 renderer,
                 assets,
                 pages,
@@ -576,7 +618,7 @@ impl Page {
                     },
                 )));
             }
-            let mut transformed = source.source.clone();
+            let mut transformed = input.to_owned();
             let mut replacements = Vec::new();
             for request in analysis.renderer_requests.iter().rev() {
                 let profile = renderer
@@ -588,7 +630,7 @@ impl Page {
                         let input = match &request.input {
                             crate::markdown::ResolvedInput::Body => {
                                 crate::renderer::WorkspaceInput::Body(
-                                    source.source[request.body_span.clone()].as_bytes(),
+                                    input[request.body_span.clone()].as_bytes(),
                                 )
                             }
                             crate::markdown::ResolvedInput::Source(name) => {
@@ -610,7 +652,7 @@ impl Page {
                     } else {
                         let input = match &request.input {
                             crate::markdown::ResolvedInput::Body => {
-                                source.source[request.body_span.clone()].as_bytes().to_vec()
+                                input[request.body_span.clone()].as_bytes().to_vec()
                             }
                             crate::markdown::ResolvedInput::Source(name) => {
                                 let declared = &self.renderer_sources[name];
@@ -750,6 +792,10 @@ impl Page {
                 replacements.push(replacement);
             }
             rendered_content.insert(name.clone(), transformed);
+            if let Some(plan) = component_plan {
+                component_plans.insert(name.clone(), plan);
+                component_sources.insert(name.clone(), source.clone());
+            }
             facts.insert(name.clone(), analysis.facts);
             renderer_requests.insert(name.clone(), analysis.renderer_requests);
             renderer_replacements.insert(name.clone(), replacements);
@@ -760,6 +806,8 @@ impl Page {
         self.markdown_facts = facts;
         self.renderer_requests = renderer_requests;
         self.renderer_replacements = renderer_replacements;
+        self.component_plans = component_plans;
+        self.component_sources = component_sources;
         self.renderer_resources = renderer_resources;
         for (name, content) in rendered_content {
             self.content.insert(name, Value::String(content));
@@ -803,6 +851,8 @@ impl Page {
             content: self.content,
             markdown_content: self.markdown_content,
             renderer_replacements: self.renderer_replacements,
+            component_plans: self.component_plans,
+            component_sources: self.component_sources,
             markdown: self.markdown_facts,
             toc: self.toc,
             footnotes: self.footnotes.map(FootnotesView::from),
@@ -881,6 +931,10 @@ pub(crate) struct PageView {
     markdown_content: BTreeSet<String>,
     #[serde(skip)]
     renderer_replacements: BTreeMap<String, Vec<crate::markdown::RendererReplacement>>,
+    #[serde(skip)]
+    component_plans: BTreeMap<String, crate::markdown::ComponentPlan>,
+    #[serde(skip)]
+    component_sources: BTreeMap<String, MarkdownSource>,
     markdown: BTreeMap<String, crate::markdown::MarkdownFacts>,
     toc: Option<TocPlan>,
     footnotes: Option<FootnotesView>,
@@ -898,6 +952,14 @@ pub(crate) struct PageView {
 }
 
 impl PageView {
+    pub(crate) fn component_markdown_names(&self) -> impl Iterator<Item = &str> {
+        self.component_plans.keys().map(String::as_str)
+    }
+
+    pub(crate) fn component_source(&self, name: &str) -> Option<&MarkdownSource> {
+        self.component_sources.get(name)
+    }
+
     pub(crate) fn is_draft(&self) -> bool {
         self.draft
     }
@@ -921,7 +983,11 @@ impl PageView {
     pub(crate) fn content_markdown(
         &self,
         name: &str,
-    ) -> Option<(&str, &[crate::markdown::RendererReplacement])> {
+    ) -> Option<(
+        &str,
+        &[crate::markdown::RendererReplacement],
+        Option<&crate::markdown::ComponentPlan>,
+    )> {
         self.markdown_content.contains(name).then(|| {
             let content = self.content.get(name)?.as_str()?;
             let replacements = self
@@ -929,7 +995,7 @@ impl PageView {
                 .get(name)
                 .map(Vec::as_slice)
                 .unwrap_or_default();
-            Some((content, replacements))
+            Some((content, replacements, self.component_plans.get(name)))
         })?
     }
 }

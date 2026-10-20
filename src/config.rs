@@ -823,14 +823,6 @@ pub(crate) struct MarkdownConfig {
 }
 
 impl MarkdownConfig {
-    #[cfg(test)]
-    pub(crate) fn with_extensions(extensions: Vec<MarkdownExtension>) -> Self {
-        Self {
-            extensions,
-            ..Self::default()
-        }
-    }
-
     pub(crate) fn extensions(&self) -> &[MarkdownExtension] {
         &self.extensions
     }

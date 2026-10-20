@@ -2217,3 +2217,226 @@ fn reports_an_unknown_highlighting_theme_at_the_configuration_value() {
     assert!(diagnostic.contains("heine.toml:5"), "{diagnostic}");
     assert!(diagnostic.contains("not-a-theme"), "{diagnostic}");
 }
+
+#[test]
+fn renders_markdown_block_components_inside_the_checked_document_plan() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/_directory.toml",
+        "[pages.toc]\ncontent = 'main'\nmin_level = 2\nmax_level = 3\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "# Before\n\n:::component[site.note kind = \"warning\"]\n## Inside\n\nA [checked page](page:index).\n:::\n\n# After\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note(kind: string) %}<aside class=\"note-{{ kind }}\">{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("component body renders with its page");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("<h1 id=\"before\">Before</h1>"), "{output}");
+    assert!(
+        output.contains("<aside class=\"note-warning\"><h2 id=\"inside\">Inside</h2>"),
+        "{output}"
+    );
+    assert!(output.contains("href=\"/index.html\""), "{output}");
+    assert!(output.contains("<h1 id=\"after\">After</h1>"), "{output}");
+}
+
+#[test]
+fn renders_markdown_block_components_from_crlf_source() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note kind = \"warning\"]\r\nA checked note.\r\n:::\r\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note(kind: string) %}<aside class=\"note-{{ kind }}\">{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("CRLF component source builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<aside class=\"note-warning\"><p>A checked note.</p>"),
+        "{output}"
+    );
+}
+
+#[test]
+fn reports_an_invalid_markdown_component_contract_at_its_markdown_call() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA note.\n:::\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() {\"heine.body_may_hide\": false} %}<aside>{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid contract fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.body_may_hide"), "{diagnostic}");
+}
+
+#[test]
+fn rejects_headings_in_a_markdown_component_that_may_hide_its_body() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.disclosure]\n## Hidden heading\n:::\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.disclosure() {\"heine.body_may_hide\": true} %}<details>{{ body }}</details>{% endcomponent site.disclosure %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("hidden heading fails the component contract");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("cannot contain Markdown"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("headings"), "{diagnostic}");
+}
+
+#[test]
+fn reports_component_template_failures_with_the_markdown_call() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA note.\n:::\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() %}{{ missing }}{{ body }}{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("component failure fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("templates/components.tera"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+}
+
+#[test]
+fn rejects_a_markdown_component_that_does_not_preserve_its_body_once() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA note.\n:::\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() %}<aside>{{ body }}{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("duplicated body fails");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("preserve its Markdown body exactly once"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn rejects_the_markdown_filter_for_block_component_content() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA note.\n:::\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() %}<aside>{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("filter cannot use plan");
+    assert!(
+        error
+            .to_string()
+            .contains("must use markdown(content=\"…\")"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn keeps_margin_footnotes_local_when_a_component_wraps_their_prose() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n",
+    );
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA note.[^one]\n:::\n\n[^one]: Explanation.\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() %}<aside class=\"note\">{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("component preserves local notes");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    let note_start = output
+        .find("<aside class=\"note\">")
+        .expect("component output");
+    let marker = output
+        .find("heine-annotated-block")
+        .expect("local note output");
+    assert!(marker > note_start, "{output}");
+    assert!(output.contains("Explanation."), "{output}");
+}

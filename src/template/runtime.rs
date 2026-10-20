@@ -26,6 +26,7 @@ pub(super) struct MarkdownContent<'a> {
     pub(super) replacements: &'a [crate::markdown::RendererReplacement],
     pub(super) toc: Option<&'a crate::markdown::TocPlan>,
     pub(super) footnotes: Option<&'a crate::site::FootnotesView>,
+    pub(super) has_components: bool,
 }
 
 /// The only bridge from Tera's dynamic render state back to validated Heine
@@ -48,6 +49,7 @@ pub(super) struct TemplateRuntime {
     table_scroll_message: Option<String>,
     editorial_time_zone: Option<crate::config::EditorialTimeZone>,
     source_aware_renders: Arc<Mutex<Vec<SourceAwareRender>>>,
+    prepared_markdown: Arc<Mutex<BTreeMap<String, String>>>,
 }
 
 #[derive(Debug)]
@@ -61,6 +63,7 @@ pub(super) struct SourceAwareRender {
 pub(super) enum SourceAwareRenderKind {
     TableOfContents,
     MarginFootnotes,
+    MarkdownComponents,
 }
 
 impl SourceAwareRenderKind {
@@ -68,6 +71,7 @@ impl SourceAwareRenderKind {
         match self {
             Self::TableOfContents => "table-of-contents",
             Self::MarginFootnotes => "margin-footnote",
+            Self::MarkdownComponents => "block-component",
         }
     }
 }
@@ -123,11 +127,43 @@ impl From<TemplateResources> for TemplateRuntime {
             table_scroll_message: resources.table_scroll_message,
             editorial_time_zone: resources.editorial_time_zone,
             source_aware_renders: Arc::new(Mutex::new(Vec::new())),
+            prepared_markdown: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 }
 
 impl TemplateRuntime {
+    pub(super) fn begin_prepared_markdown(&self) -> Result<(), String> {
+        let mut prepared = self
+            .prepared_markdown
+            .lock()
+            .map_err(|_| "Markdown preparation state became unavailable".to_owned())?;
+        prepared.clear();
+        Ok(())
+    }
+
+    pub(super) fn prepare_markdown(&self, name: String, rendered: String) -> Result<(), String> {
+        self.prepared_markdown
+            .lock()
+            .map_err(|_| "Markdown preparation state became unavailable".to_owned())?
+            .insert(name, rendered);
+        Ok(())
+    }
+
+    pub(super) fn prepared_markdown(&self, name: &str) -> tera::TeraResult<Option<String>> {
+        self.prepared_markdown
+            .lock()
+            .map_err(|_| tera::Error::message("Markdown preparation state became unavailable"))
+            .map(|prepared| prepared.get(name).cloned())
+    }
+
+    pub(super) fn finish_prepared_markdown(&self) -> Result<(), String> {
+        self.prepared_markdown
+            .lock()
+            .map_err(|_| "Markdown preparation state became unavailable".to_owned())?
+            .clear();
+        Ok(())
+    }
     pub(super) fn editorial_time_zone(&self) -> Option<&crate::config::EditorialTimeZone> {
         self.editorial_time_zone.as_ref()
     }
@@ -393,12 +429,13 @@ impl TemplateRuntime {
         let footnotes = page
             .footnotes()
             .filter(|footnotes| footnotes.content() == name);
-        let (content, replacements) = content;
+        let (content, replacements, components) = content;
         Ok(MarkdownContent {
             source: content,
             replacements,
             toc,
             footnotes,
+            has_components: components.is_some(),
         })
     }
 
@@ -417,12 +454,16 @@ impl TemplateRuntime {
         let selected_toc = page
             .toc()
             .and_then(|toc| page.content_markdown(toc.content()))
-            .is_some_and(|(content, _)| content == input);
+            .is_some_and(|(content, _, _)| content == input);
         let selected_footnotes = page
             .footnotes()
             .and_then(|footnotes| page.content_markdown(footnotes.content()))
-            .is_some_and(|(content, _)| content == input);
-        Ok(selected_toc || selected_footnotes)
+            .is_some_and(|(content, _, _)| content == input);
+        let selected_component = page.component_markdown_names().any(|name| {
+            page.content_markdown(name)
+                .is_some_and(|(content, _, _)| content == input)
+        });
+        Ok(selected_toc || selected_footnotes || selected_component)
     }
 
     pub(super) fn margin_footnote_labels(
@@ -431,13 +472,22 @@ impl TemplateRuntime {
         plan: &crate::markdown::MarginFootnotePlan,
     ) -> tera::TeraResult<Vec<String>> {
         let locale = self.locale(state)?;
+        self.margin_footnote_labels_for_locale(&locale, plan)
+            .map_err(tera::Error::message)
+    }
+
+    pub(super) fn margin_footnote_labels_for_locale(
+        &self,
+        locale: &Locale,
+        plan: &crate::markdown::MarginFootnotePlan,
+    ) -> Result<Vec<String>, String> {
         (1..=plan.number_count())
             .map(|number| {
                 let mut arguments = Arguments::new();
                 arguments.set("number", number as i64);
                 self.localization
-                    .format(&locale, plan.marker_message(), None, &arguments)
-                    .map_err(tera::Error::message)
+                    .format(locale, plan.marker_message(), None, &arguments)
+                    .map_err(|error| error.to_string())
             })
             .collect()
     }
@@ -446,6 +496,7 @@ impl TemplateRuntime {
         &self,
         toc: Option<&crate::markdown::TocPlan>,
         footnotes: Option<&crate::site::FootnotesView>,
+        components: impl IntoIterator<Item = String>,
     ) -> Result<(), String> {
         let mut current = self
             .source_aware_renders
@@ -465,6 +516,15 @@ impl TemplateRuntime {
                 content: footnotes.content().to_owned(),
                 calls: 0,
             });
+        }
+        for content in components {
+            if current.iter().all(|selected| selected.content != content) {
+                current.push(SourceAwareRender {
+                    kind: SourceAwareRenderKind::MarkdownComponents,
+                    content,
+                    calls: 0,
+                });
+            }
         }
         drop(current);
         Ok(())
