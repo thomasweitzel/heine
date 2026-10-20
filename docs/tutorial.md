@@ -523,6 +523,24 @@ Components are Tera2's reusable template
 mechanism; Heine supplies the values passed to them but does not add a second
 component system.
 
+### Wrap Markdown with a component
+
+When a component needs to wrap prose at one point in a Markdown source, use a
+Markdown block component. The body remains ordinary Markdown, so its headings,
+links, and footnotes stay checked with the surrounding document:
+
+```markdown
+:::component[ui.note kind = "warning"]
+Back up the existing site before you publish the new version.
+:::
+```
+
+The named Tera2 component declares whether it keeps its body visible and
+receives the rendered HTML through `body`. This is different from a component
+called by a page template: the Markdown directive cannot run Tera expressions
+or select a component dynamically. The [Markdown block components](markdown-components.md)
+guide explains the component contract and its limits.
+
 ## 8. Add tags
 
 A [taxonomy](glossary.md#taxonomy) classifies the pages of one collection.

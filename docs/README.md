@@ -54,6 +54,8 @@ required prerequisite for the guides.
   navigation.
 - [Margin footnotes](margin-footnotes.md): local presentation of ordinary
   Markdown footnotes.
+- [Markdown block components](markdown-components.md): wrap authored Markdown
+  in a site or kit component without templating the whole document.
 - [Color-scheme Markdown pictures](markdown-pictures.md): light and dark
   variants of one authored image.
 - [Word counts and reading time](markdown-facts.md): deterministic Markdown
@@ -87,6 +89,7 @@ features and deferred proposals.
 - [Draft publication](design/drafts.md)
 - [Kits](design/kits.md)
 - [Localized value formatting](design/localized-value-formatting.md)
+- [Markdown block components](design/markdown-block-components.md)
 - [Markdown facts](design/markdown-facts.md)
 - [Multilingual sitemap alternates](design/multilingual-sitemap-alternates.md)
 - [Margin footnotes](design/margin-footnotes.md)
@@ -108,9 +111,6 @@ features and deferred proposals.
 - [External asset manifests](design/external-asset-manifests.md): why a
   per-URL cache-busting helper is insufficient, and the boundary a future
   external asset-manifest integration would need.
-- [Markdown block components](design/markdown-block-components.md): a possible
-  structural component form that wraps authored Markdown without weakening
-  Markdown analysis or the resolved Site model.
 
 ### Rejected proposals
 

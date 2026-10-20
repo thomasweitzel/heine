@@ -4,9 +4,11 @@ Heinrich Heine was a poet and prose writer born in Düsseldorf in 1797. He
 spent much of his later life in Paris, where distance did not soften his eye
 for German politics or literary pomposity.
 
+:::component[starter.note kind = "context"]
 This brief section is not a substitute for his writing. Its headings make the
 background material easier to navigate without requiring a second navigation
 system.
+:::
 
 :::picture
 alt = "Portrait of Heinrich Heine"

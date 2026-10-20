@@ -83,14 +83,14 @@ This covers the cases that motivated the proposal:
 - Use a template loop between named prose segments for a data-driven list or
   table.
 
-The exploratory block-component design does not initially combine with
-segments. See its [source-identity limit](markdown-block-components.md#proposed-first-version-limits-and-interactions)
+Markdown block components do not initially combine with segments. See their
+[source-identity limit](markdown-block-components.md#limits-and-interactions)
 before choosing segments as a workaround for a component-bearing page.
 
-Heine does not currently offer a component that wraps authored Markdown. A
+Heine offers a [Markdown block component](markdown-block-components.md) for a
 note, disclosure, or figure whose body contains Markdown links, lists, or
-footnotes must remain ordinary Markdown, use trusted raw HTML where that is
-appropriate, or use a page-specific template arrangement.
+footnotes. It is deliberately narrower than a Tera fragment: the body remains
+authored Markdown, and the component only presents its rendered HTML.
 
 This approach makes ordering visible in the template. Authors who only edit
 Markdown cannot reposition a dynamic block themselves, and a one-off layout
@@ -130,12 +130,11 @@ a component with an authored body must keep that body as authored Markdown in
 Heine's single analysis pass. It must not template the whole body before
 Markdown analysis.
 
-The [Markdown block components exploration](markdown-block-components.md)
-records one separate candidate. Its static component name, literal arguments,
-and source-aware body are materially narrower than an arbitrary Tera program in
-Markdown. It does not revive Tera fragments or weaken this decision. The
-candidate remains exploratory and does not make this rejected proposal a
-planned feature.
+The [Markdown block component](markdown-block-components.md) feature is the
+separate, narrow answer to this second case. Its static component name,
+literal arguments, and source-aware body are materially narrower than an
+arbitrary Tera program in Markdown. It does not revive Tera fragments or
+weaken this decision.
 
 ## Appendix: investigated HTML-fragment design
 

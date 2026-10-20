@@ -2,9 +2,8 @@
 
 ## Status
 
-Exploratory. This record investigates a narrow alternative to templating whole
-Markdown files. It does not add a directive or a public component contract
-yet.
+Accepted and implemented. This record defines a narrow alternative to
+templating whole Markdown files.
 
 The [rejected Tera-fragment design](markdown-template-fragments.md) explains
 why a Tera program embedded in Markdown is not suitable for Heine. This record
@@ -24,21 +23,21 @@ use is enough reason to pursue this narrow Heine design. It does not establish
 that broad content templating, arbitrary Tera programs in Markdown, or every
 kind of Zola component fits Heine.
 
-## Candidate goal
+## Goal
 
-A block component would let an author invoke a named component with checked
-literal arguments and authored Markdown. Heine would analyze that body as
-ordinary Markdown, then give the component its rendered HTML only to present
+A block component lets an author invoke a named component with checked
+literal arguments and authored Markdown. Heine analyzes that body as ordinary
+Markdown, then gives the component its rendered HTML only to present
 around it.
 
-When present, the body would remain part of the page's Markdown document. Its
+When present, the body remains part of the page's Markdown document. Its
 headings, links, ordinary footnotes, search text, word count, and reading time
-would come from the authored source, regardless of the component's
+come from the authored source, regardless of the component's
 presentation. A component could add surrounding HTML and presentation, but
 could not create Markdown facts or reparse the body. Page summaries remain
 authored metadata; they are never derived from Markdown.
 
-For example, this is a possible syntax sketch, not an accepted syntax:
+For example:
 
 ```markdown
 :::component[site.note kind="warning" title="Check the migration"]
@@ -49,12 +48,10 @@ and footnote[^migration] remain part of the page.
 [^migration]: Read the migration guide before publishing the new version.
 ```
 
-The directive would name one existing Tera2 component. Its arguments would be
-literal values, not Tera expressions. Its header would use the same form as a
-block renderer request: `:::component[name key="value"]`. The component name
-comes first inside the brackets; the remaining named values use `render`'s
-quoting, escaping, duplicate-name, and source-span rules wherever they apply.
-Arrays and maps should remain out of scope initially. A string argument is
+The directive names one existing Tera2 component. Its arguments are literal
+values, not Tera expressions. Its header uses
+`:::component[name key = "value"]`. The component name comes first inside the
+brackets. Arrays and maps remain out of scope. A string argument is
 plain text, not inline Markdown, so a title argument cannot contain emphasis
 or a checked link. Tera continues to validate the component's declared
 parameter names and types. A component with a declared rest parameter may
@@ -77,7 +74,7 @@ context.
 
 ## Boundaries
 
-The candidate would preserve these boundaries:
+The feature preserves these boundaries:
 
 - Markdown remains literal outside an explicit block directive. A code example
   containing `{{ ... }}` or `{% ... %}` remains ordinary text.
@@ -105,7 +102,7 @@ The candidate would preserve these boundaries:
   counts, reading time, or the table of contents.
 - The component receives the rendered body as trusted HTML through Tera's
   component-body mechanism. The pinned Tera version constructs a host-supplied
-  body as a safe value, which the feasibility test verifies. A component can
+  body as a safe value, which regression tests verify. A component can
   therefore use `{{ body }}` without asking an author to apply `safe`. Heine
   calls Tera's component renderer with autoescaping enabled, independent of
   the defining template's filename. This does not sanitize raw HTML authored
@@ -188,21 +185,20 @@ Every directive invocation has one rendered body value. Tera does not declare
 whether a component expects a body, so Heine must reject an empty or
 whitespace-only directive before it calls Tera.
 
-Heine needs one small, reserved component-metadata declaration. Its tentative
-flat metadata key `"heine.body_visibility"` has the literal value `visible` or
-`may-hide`. It is required only when a directive names that component. A
-missing or invalid value is an error at the directive, not at an unrelated
-component definition. The feasibility test verifies that Tera exposes literal
-metadata on a component definition to its host. `may-hide` is a trusted
-declaration of the component's intended presentation, not proof of what later
+Heine needs one small, reserved component-metadata declaration for the
+exceptional case. A component keeps its body visible when it omits metadata.
+One that may hide its body declares the flat key `"heine.body_may_hide"` with
+the literal Boolean value `true`. Any other value, including `false`, is an
+error at the directive. Regression tests verify that Tera exposes literal
+metadata on a component definition to its host. The declaration is a trusted
+statement of the component's intended presentation, not proof of what later
 site CSS does.
 
-The candidate must keep that declaration with the component rather than add a
+Heine keeps that declaration with the component rather than adding a
 separate manifest or naming convention. The existing kit declaration answers
 which components content may name; it does not describe their presentation.
 Reusing it for a second responsibility would make both contracts less clear.
-If Tera metadata cannot provide a stable host-visible declaration, this
-candidate has no fallback yet.
+Tera metadata provides the required stable host-visible declaration.
 
 A component must preserve the rendered body exactly once in its result. Heine
 can check this at render time with a private marker pair around the
@@ -224,7 +220,7 @@ security boundary against a malicious template.
 
 That check proves one preserved body serialization, not that CSS makes the
 body visible, accessible, or structurally useful. A trusted component template
-still owns those presentation choices. This candidate supplies a body rendered
+still owns those presentation choices. The feature supplies a body rendered
 as HTML, so it is suitable only where the surrounding template consumes that
 HTML. A future component contract that supplies XML or another representation
 would need its own rendering and preservation rules. Heine does not parse this
@@ -244,21 +240,21 @@ The component name is known while Heine analyzes Markdown, unlike the dynamic
 component calls in the rejected Tera-fragment design. A later feature could
 use that fact to model checked component-owned CSS or JavaScript resources.
 
-That resource contract is not part of this candidate. An initial block
+That resource contract is not part of this feature. A block
 component must work with resources that the page template or site already
 loads. It must not let a component mutate the page head during body rendering.
 A future resource declaration needs its own design for ownership, ordering,
 deduplication, kit visibility, and output relationships.
 
 Tera component metadata already provides a host-visible literal map. This
-candidate reserves the flat `heine.body_visibility` key for its own checked
+feature reserves the flat `heine.body_may_hide` key for its own checked
 contract. A future resource contract could use the same component-owned
 channel rather than a second manifest, but it needs separate keys and
 semantics.
 
-## Proposed first-version limits and interactions
+## Limits and interactions
 
-An initial public contract would make these proposed choices:
+The public contract has these limits:
 
 - **Placement and parsing:** A component directive is valid only at an ordinary top-level
   block boundary. It is inert in code fences and rejected inside paragraphs,
@@ -285,7 +281,7 @@ An initial public contract would make these proposed choices:
   must also link to this limit.
 - **Table of contents and headings:** A heading in the body remains an authored
   heading. The component cannot allocate headings of its own. A component that
-  declares `heine.body_visibility = "may-hide"` cannot wrap a body containing a
+  declares `heine.body_may_hide = true` cannot wrap a body containing a
   heading, because a table-of-contents or search-result anchor cannot open a
   closed disclosure or similar container. This declaration cannot prove what
   site CSS does later, but it makes the component's own intended presentation
@@ -296,10 +292,8 @@ An initial public contract would make these proposed choices:
   their current page-level placement and backlinks remain unchanged. Footnote
   numbering remains in source order across the boundary, and heading IDs remain
   unique before, inside, and after it. A source selected for margin-footnote
-  presentation may contain a component body only when the same source-aware
-  rendering path preserves the local note structure. The feasibility test must
-  also show where a margin footnote reference inside a `may-hide` component
-  renders when the component becomes visible.
+  presentation may contain a component body because the same source-aware
+  rendering path preserves the local note structure.
 - **Summaries, feeds, and search:** The body, but not the component markup or
   arguments, must remain the source of search text. Summaries and feeds keep
   their existing authored-summary contract. A component title and its literal
@@ -329,7 +323,7 @@ An initial public contract would make these proposed choices:
 
 ## Non-goals
 
-This candidate does not introduce:
+This feature does not introduce:
 
 - Tera templating for Markdown files;
 - expressions or control flow in Markdown directives;
@@ -361,14 +355,14 @@ footnote relationship, or a word-count contribution. Use a page template and
 declared-content segments when generated material belongs to the document
 model.
 
-Bodyless components are not part of this candidate. A site that needs one can
+Bodyless components are not part of this feature. A site that needs one can
 use trusted raw HTML or a template component between declared-content segments.
 If real evidence later justifies author-positioned bodyless components, an
 empty block can gain that meaning or Heine can add a self-closing form. Empty
-blocks are errors in this candidate, so either extension would remain
+blocks are errors in this feature, so either extension would remain
 backwards-compatible.
 
-## Use cases and feasibility test
+## Use cases and implementation evidence
 
 Zola establishes that Markdown-body components solve a recurring authoring
 need. The cases below identify the part Heine should support: a reusable
@@ -378,15 +372,13 @@ template component express poorly.
 | Case                                                           | Current approach                                         | Why it may be insufficient                                                                                                                               |
 |----------------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Note or disclosure with links, a list, or a footnote reference | Ordinary Markdown, raw HTML, or a page-specific template | Raw HTML loses Markdown structure. A template moves the surrounding prose and its order out of the source.                                               |
-| Reusable figure with a Markdown caption or explanation         | `:::picture`, raw HTML, or a page-specific template      | The existing picture directive remains better for an image-only case. The candidate matters only when the authored body has ordinary Markdown structure. |
+| Reusable figure with a Markdown caption or explanation         | `:::picture`, raw HTML, or a page-specific template      | The existing picture directive remains better for an image-only case. The feature matters only when the authored body has ordinary Markdown structure. |
 
-These cases guide the public examples and acceptance tests. The candidate does
-not need an arbitrary number of Heine sites before implementation. Its
-acceptance instead depends on whether Heine can establish the structural
-properties below without weakening Markdown analysis or the resolved Site
-model.
+These cases guide the public examples and acceptance tests. Zola establishes
+that this authoring need recurs, while the cases identify the narrow part that
+fits Heine.
 
-A small feasibility test must then demonstrate that Heine can:
+The implementation demonstrates that Heine can:
 
 1. recognize directives without weakening ordinary Markdown or code fences;
 2. preserve source order and source spans while it analyzes the component body
@@ -395,13 +387,13 @@ A small feasibility test must then demonstrate that Heine can:
    with HTML autoescaping enabled, passing rendered body HTML safely and
    preserving kit visibility;
 4. keep component markup and argument values out of Markdown-derived facts;
-5. read a component's required `heine.body_visibility` declaration and reject
-   an empty or whitespace-only body;
+5. read a component's optional `heine.body_may_hide = true` declaration and
+   reject an empty or whitespace-only body;
 6. reject a literal directive argument that would shadow a declared implicit
    component parameter or the host-owned `body` value;
 7. require a component to preserve its marked rendered body exactly once and
    byte-for-byte unchanged;
-8. diagnose a directive that crosses a segment boundary;
+8. keep directives out of segmented sources;
 9. render one complete source across component boundaries, including link
    reference definitions in either direction, unique heading IDs, and ordinary
    and selected margin-footnote numbering; and
@@ -414,34 +406,33 @@ the component places the body in visible element content, an attribute, a
 comment, or another presentation-specific location. That remains the
 responsibility of the trusted component template.
 
-If that feasibility test cannot establish those properties without a second
-Markdown pass or an unchecked document rewrite, Heine should reject this
-candidate too.
+## Implementation
 
-## Current state
+Heine masks directive fences without changing source offsets, then analyzes
+the complete remaining Markdown document. The page view retains the resulting
+component plan. Before the outer page template renders, Heine renders every
+component-bearing declared source with the page's deliberate Tera context and
+stores that prepared result for `markdown(content="…")`.
 
-Test-only feasibility work confirms that Tera's typed component API can render
-an autoescaped component around an HTML body that Tera treats as safe. The
-tests keep this behavior under regression coverage because it depends on the
-pinned Tera version. They also exercise source spans, rejected empty bodies,
-code fences, longer fences, a shared heading-ID plan, component metadata,
-argument shadowing, and ordinary and margin-footnote rendering.
+The ordinary renderer replaces planned event ranges before it serializes the
+document. The margin-footnote renderer captures the same ranges while it still
+processes each footnote-reference event, so a local note inside a component
+remains local to that component. Neither path reparses a component body or
+rewrites finished page HTML.
 
-The current test uses private location markers to demonstrate one complete
-Markdown pass and the body-integrity check. That is a test scaffold, not the
-proposed production architecture. The public feature needs a structural
-document plan and source-aware runtime integration, including real diagnostics
-for unsupported placement and segment boundaries.
+Regression coverage includes literal code fences, empty bodies, longer fences,
+heading IDs, checked links, component metadata, implicit-argument shadowing,
+body-integrity failures, source diagnostics, and ordinary and margin-footnote
+rendering.
 
-## Open questions
+## Future questions
 
-The feasibility work does not settle the final directive grammar, the complete
-metadata diagnostics, nested-component policy, support for segments, or
-placement inside lists and block quotes. It also does not support components
+The first version does not support nested components, segments, placement
+inside lists or block quotes, or components
 with several authored parts, such as tabs, step walkthroughs, or card grids.
-The candidate does not establish a component-resource contract, richer literal
+The feature does not establish a component-resource contract, richer literal
 argument types, or a bodyless form. Each needs a separate concrete use case
-before it expands this candidate.
+before Heine expands this contract.
 
 ## Alternatives
 
@@ -466,7 +457,7 @@ Heine could add built-in directives for notes, disclosures, or captions
 instead of exposing components. That would make Heine own their presentation,
 styling, arguments, and future variations. These concerns belong to a site or
 kit, which already owns Tera components and their public visibility boundary.
-The candidate therefore reuses that boundary while keeping the Markdown
+Heine therefore reuses that boundary while keeping the Markdown
 directive structural and checked. Built-in directives would give Heine tighter
 control over body placement and presentation, so they would not need this
 component metadata and integrity machinery. The generic design accepts those
@@ -485,5 +476,5 @@ that those tools cannot express cleanly.
 Tera components in content by templating the entire body before Markdown
 parsing. [Markdoc](https://markdoc.dev/docs/overview) and
 [MyST](https://mystmd.org/spec/overview) treat directives as structural
-document nodes. This candidate would borrow the structural-directive idea
+document nodes. Heine borrows the structural-directive idea
 while retaining Heine's model-first rendering order.
