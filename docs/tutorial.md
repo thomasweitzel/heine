@@ -11,7 +11,7 @@ matches step 1. Read that step as a recap, then begin applying changes at step
 
 The final site has Markdown posts, copied assets, shared data, English and
 German pages, localized UI text, a post collection, pagination, and tags.
-For a larger working example, see [`starter-site/`](../starter-site/).
+For a larger working example, see [`starter-site/`](../starter-site).
 
 ## 1. Start with one page
 

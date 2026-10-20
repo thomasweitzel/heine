@@ -20,7 +20,7 @@ data, listings, pagination, and tags. The tutorial links to a focused guide
 whenever a feature needs more explanation.
 
 For a complete working site rather than a teaching-sized example, inspect and
-build [`starter-site/`](../starter-site/). It is a cohesive example, not a
+build [`starter-site/`](../starter-site). It is a cohesive example, not a
 required prerequisite for the guides.
 
 ## Build site structure

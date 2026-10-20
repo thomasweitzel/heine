@@ -102,7 +102,7 @@ task. Use the [glossary](docs/glossary.md) for Heine terms, the
 
 ## Starter site
 
-The [downloadable starter site](starter-site/) is a complete, working
+The [downloadable starter site](starter-site) is a complete, working
 multilingual example. Use it after the tutorial when you want to see several
 features composed in one site rather than introduced one at a time. Extract the
 archive, change into its top-level directory, and run the executable downloaded
