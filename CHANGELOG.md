@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-10-20
+
 ### Added
 
 - **Markdown block components.** Authored Markdown can now use a checked
