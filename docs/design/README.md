@@ -20,6 +20,7 @@ guides and the [reference](../reference.md) instead.
 - [Series](series.md)
 - [Table of contents](table-of-contents.md)
 - [Plugins and renderer adapters](plugins.md)
+- [Published-artifact licensing](published-artifact-licensing.md)
 - [Generated color-scheme pictures](renderer-pictures.md)
 
 ## Deferred proposals

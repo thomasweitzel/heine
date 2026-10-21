@@ -29,7 +29,7 @@ use crate::{
 };
 pub(crate) use base_path::{BasePath, valid_url_segment};
 pub(crate) use licensing::{
-    LicensingConfig, LicensingCoverage, LicensingDeclaration, LicensingValue,
+    LicensingConfig, LicensingCoverage, LicensingDeclaration, LicensingRecord, LicensingValue,
 };
 pub(crate) use origin::CanonicalUrls;
 use origin::SiteOrigin;
@@ -1050,7 +1050,8 @@ impl SiteConfig {
             highlighting.stylesheet_source = Some(diagnostics.named_source(path, source, "TOML"));
         }
         let licensing_source = Arc::new(diagnostics.named_source(path, source, "TOML"));
-        self.licensing.attach_source(licensing_source);
+        self.licensing.attach_source(licensing_source.clone());
+        self.renderers.attach_source(licensing_source);
         let collection_source = Arc::new(diagnostics.named_source(path, source, "TOML"));
         for definition in self.collections.definitions.values_mut() {
             definition.source = Some(collection_source.clone());

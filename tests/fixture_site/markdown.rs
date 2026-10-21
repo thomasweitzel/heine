@@ -628,6 +628,102 @@ fn stream_renderer_rejects_an_invalid_typed_embedded_result() {
 #[test]
 fn stream_renderer_publishes_checked_svg_resources() {
     let fixture = Fixture::new();
+    let profile = stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+        "result = \"svg\"\n",
+        "result = \"svg\"\nmaterializations = [\"resource\"]\nlicensing_record = \"diagram\"\n",
+        1,
+    );
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "[licensing.records.diagram]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n{profile}"
+        ),
+    );
+    fixture.write("LICENSES/MIT.txt", "MIT text\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture overview\"]\n<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ markdown(content='main') }}|{% for item in attributions() %}{{ item.artifact.kind }}:{{ item.artifact.media_type }}:{{ item.licensing.record }}:{{ item.sources[0].kind }}:{{ item.sources[0].text }}{% endfor %}",
+    );
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("SVG resource renderer builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    let src = output
+        .split("src=\"")
+        .nth(1)
+        .and_then(|value| value.split('\"').next())
+        .expect("SVG image");
+    assert!(output.contains("alt=\"Architecture overview\""), "{output}");
+    assert!(
+        output.contains("renderer_resource:image/svg+xml:diagram:image:Architecture overview"),
+        "{output}"
+    );
+    assert_eq!(
+        fs::read_to_string(
+            fixture
+                .path()
+                .join("public")
+                .join(src.strip_prefix('/').expect("site-relative SVG URL")),
+        )
+        .expect("SVG resource"),
+        "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"
+    );
+}
+
+#[test]
+fn renderer_request_can_override_a_profile_licensing_record() {
+    let fixture = Fixture::new();
+    let profile = stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+        "result = \"svg\"\n",
+        "result = \"svg\"\nmaterializations = [\"resource\"]\nlicensing_record = \"default\"\n",
+        1,
+    );
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "[licensing.records.default]\nSPDX-FileCopyrightText = 'Default Authors'\nSPDX-License-Identifier = 'MIT'\n[licensing.records.partner]\nSPDX-FileCopyrightText = 'Partner Authors'\nSPDX-License-Identifier = 'MIT'\n\n{profile}"
+        ),
+    );
+    fixture.write("LICENSES/MIT.txt", "MIT text\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram licensing_record=\"partner\" alt=\"Partner diagram\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ markdown(content='main') }}{% for item in attributions() %}{{ item.licensing.record }}{% endfor %}",
+    );
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("request-level record overrides profile default");
+    assert!(
+        fs::read_to_string(fixture.path().join("public/index.html"))
+            .expect("output")
+            .ends_with("partner")
+    );
+}
+
+#[test]
+fn optional_coverage_omits_unlicensed_renderer_resources_from_attributions() {
+    let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
         &stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
@@ -642,32 +738,285 @@ fn stream_renderer_publishes_checked_svg_resources() {
     );
     fixture.write(
         "content/en/index.md",
-        ":::render[diagram alt=\"Architecture overview\"]\n<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+        ":::render[diagram alt=\"Unlicensed diagram\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
     );
-    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    fixture.write(
+        "templates/page.tera",
+        "{{ markdown(content='main') }}|{% for item in attributions() %}{{ item.artifact.output_path }}{% endfor %}",
+    );
 
     heine::build_at_with_options(
         fixture.path(),
         heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
     )
-    .expect("SVG resource renderer builds");
+    .expect("optional coverage permits the resource");
     let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
-    let src = output
-        .split("src=\"")
-        .nth(1)
-        .and_then(|value| value.split('\"').next())
-        .expect("SVG image");
-    assert!(output.contains("alt=\"Architecture overview\""), "{output}");
-    assert_eq!(
-        fs::read_to_string(
-            fixture
-                .path()
-                .join("public")
-                .join(src.strip_prefix('/').expect("site-relative SVG URL")),
-        )
-        .expect("SVG resource"),
-        "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"
+    assert!(output.ends_with("|"), "{output}");
+    assert!(output.contains("heine-renderers/sha256-"), "{output}");
+}
+
+#[test]
+fn required_licensing_rejects_an_unlicensed_resource_before_running_its_renderer() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        r#"
+[licensing]
+required = true
+
+[renderers.diagram]
+protocol = "stream"
+program = "missing-renderer"
+timeout_seconds = 10
+cache_identity = "diagram-1"
+inputs = ["body"]
+result = "svg"
+materializations = ["resource"]
+[renderers.diagram.block]
+arguments = []
+"#,
     );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture overview\"]\nignored\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("required coverage rejects the request before execution");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("resource request without a licensing declaration"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(!diagnostic.contains("missing-renderer"), "{diagnostic}");
+}
+
+#[test]
+fn resource_requests_without_page_output_report_their_structural_error_first() {
+    let fixture = Fixture::new();
+    let profile = stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+        "result = \"svg\"\n",
+        "result = \"svg\"\nmaterializations = [\"resource\"]\n",
+        1,
+    );
+    fixture.write(
+        "heine.toml",
+        &format!("[licensing]\nrequired = true\n\n{profile}"),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = false\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram alt=\"Architecture overview\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("resource output requires a rendered page");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("resource request on a page without rendered output"),
+        "{diagnostic}"
+    );
+    assert!(
+        !diagnostic.contains("resource request without a licensing declaration"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn identical_renderer_resources_require_one_licensing_record() {
+    let fixture = Fixture::new();
+    let resource_profile = |name: &str, record: &str| {
+        stream_copy_profile(name, "[\"body\"]", "svg").replacen(
+            "result = \"svg\"\n",
+            &format!(
+                "result = \"svg\"\nmaterializations = [\"resource\"]\nlicensing_record = \"{record}\"\n"
+            ),
+            1,
+        )
+    };
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "[licensing.records.first]\nSPDX-FileCopyrightText = 'First Authors'\nSPDX-License-Identifier = 'MIT'\n[licensing.records.second]\nSPDX-FileCopyrightText = 'Second Authors'\nSPDX-License-Identifier = 'MIT'\n\n{}\n{}",
+            resource_profile("first", "first"),
+            resource_profile("second", "second"),
+        ),
+    );
+    fixture.write("LICENSES/MIT.txt", "MIT text\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[first alt=\"First\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n\n:::render[second alt=\"Second\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("one resource cannot inherit a different request's licensing facts");
+    let diagnostic = format!("{error:?}");
+
+    assert!(
+        diagnostic.contains("conflicting licensing records"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("profile default selects a licensing record"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("heine.toml:"), "{diagnostic}");
+}
+
+#[test]
+fn identical_renderer_resources_reject_mixed_licensing_declarations() {
+    let fixture = Fixture::new();
+    let declared = stream_copy_profile("declared", "[\"body\"]", "svg").replacen(
+        "result = \"svg\"\n",
+        "result = \"svg\"\nmaterializations = [\"resource\"]\nlicensing_record = \"diagram\"\n",
+        1,
+    );
+    let undeclared = stream_copy_profile("undeclared", "[\"body\"]", "svg").replacen(
+        "result = \"svg\"\n",
+        "result = \"svg\"\nmaterializations = [\"resource\"]\n",
+        1,
+    );
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "[licensing.records.diagram]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n{declared}\n{undeclared}"
+        ),
+    );
+    fixture.write("LICENSES/MIT.txt", "MIT text\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[declared alt=\"Declared\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n\n:::render[undeclared alt=\"Undeclared\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("one request cannot make another request licensed");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        error
+            .to_string()
+            .contains("both declared and undeclared licensing requests"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn renderer_licensing_options_follow_the_resource_contract() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[licensing.records.diagram]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[renderers.html]\nprotocol = 'stream'\nprogram = 'cat'\ntimeout_seconds = 10\ncache_identity = 'html-1'\ninputs = ['body']\nresult = 'html'\nlicensing_record = 'diagram'\n[renderers.html.block]\narguments = []\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "site");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("embedded-only profile cannot select a record");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains(
+            "cannot declare licensing_record because it never produces a separate resource"
+        ),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+            "result = \"svg\"\n",
+            "result = \"svg\"\nmaterializations = [\"embedded\", \"resource\"]\ndefault_output = \"embedded\"\n",
+            1,
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[diagram output=\"embedded\" licensing_record=\"diagram\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("embedded request cannot select a record");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("licensing_record is allowed only when this renderer request produces a separate resource"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn draft_renderer_resources_are_checked_only_in_a_draft_preview() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "[licensing]\nrequired = true\n\n{}",
+            stream_copy_profile("diagram", "[\"body\"]", "svg").replacen(
+                "result = \"svg\"\n",
+                "result = \"svg\"\nmaterializations = [\"resource\"]\n",
+                1,
+            )
+        ),
+    );
+    fixture.write(
+        "content/en/draft.page",
+        "draft = true\ntemplate = 'page.tera'\ncontent.main = 'draft.md'\n",
+    );
+    fixture.write(
+        "content/en/draft.md",
+        ":::render[diagram alt=\"Draft diagram\"]\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("ordinary build excludes the draft");
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full)
+            .preview_drafts()
+            .allow_external_renderers(),
+    )
+    .expect_err("draft preview checks the resource it publishes");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("resource request without a licensing declaration"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("content/en/draft.md:1"), "{diagnostic}");
 }
 
 #[cfg(unix)]

@@ -17,7 +17,7 @@ fn publishes_license_texts_and_exposes_asset_licensing_to_templates() {
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
-        "{% set logo = asset(id='assets/logo.svg') %}{{ logo.licensing.copyrights[0] }}|{{ logo.licensing.expressions[0] }}|{{ logo.licensing.license_texts[0].url }}|{{ logo.licensing.license_texts[0].absolute_url }}|{% for item in attributions() %}{{ item.asset.output_path }}:{{ item.asset.url }}:{{ item.asset.absolute_url }}:{{ item.licensing.license_texts[0].absolute_url }}{% endfor %}",
+        "{% set logo = asset(id='assets/logo.svg') %}{{ logo.licensing.copyrights[0] }}|{{ logo.licensing.expressions[0] }}|{{ logo.licensing.license_texts[0].url }}|{{ logo.licensing.license_texts[0].absolute_url }}|{% for item in attributions() %}{{ item.artifact.output_path }}:{{ item.artifact.url }}:{{ item.artifact.absolute_url }}:{{ item.licensing.license_texts[0].absolute_url }}{% endfor %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
@@ -56,7 +56,7 @@ fn distinguishes_published_attribution_paths_from_locale_relative_asset_ids() {
     fixture.write("content/de/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
-        "{% if locale.code == 'de' %}{% set logo = asset(id='logo.svg') %}{{ logo.url }}|{% for item in attributions() %}{{ item.asset.output_path }}:{{ item.asset.url }}{% endfor %}{% endif %}",
+        "{% if locale.code == 'de' %}{% set logo = asset(id='logo.svg') %}{{ logo.url }}|{% for item in attributions() %}{{ item.artifact.output_path }}:{{ item.artifact.url }}{% endfor %}{% endif %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("site builds");
@@ -90,7 +90,7 @@ fn groups_attach_shared_facts_and_required_coverage_to_copied_assets() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[licensing]\nrequired = true\n\n[[licensing.groups]]\nassets = ['assets/fonts/roman.woff2', 'assets/fonts/bold.woff2']\nSPDX-FileCopyrightText = ['2000 Example Foundry', '2001 Example Contributors']\nSPDX-License-Identifier = ['OFL-1.1', 'MIT']\nSPDX-FileComment = ['https://example.test/fonts']\n",
+        "[licensing]\nrequired = true\n\n[licensing.records.example-fonts]\nSPDX-FileCopyrightText = ['2000 Example Foundry', '2001 Example Contributors']\nSPDX-License-Identifier = ['OFL-1.1', 'MIT']\nSPDX-FileComment = ['https://example.test/fonts']\n\n[[licensing.groups]]\nassets = ['assets/fonts/roman.woff2', 'assets/fonts/bold.woff2']\nlicensing_record = 'example-fonts'\n",
     );
     fixture.write("content/assets/fonts/roman.woff2", "roman");
     fixture.write("content/assets/fonts/bold.woff2", "bold");
@@ -99,14 +99,90 @@ fn groups_attach_shared_facts_and_required_coverage_to_copied_assets() {
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
-        "{% for item in attributions() %}{{ item.asset.output_path }}={{ item.licensing.copyrights | join(sep=',') }}:{{ item.licensing.expressions | join(sep=',') }};{% endfor %}",
+        "{% set font = asset(id='assets/fonts/roman.woff2') %}{{ font.licensing.record }}|{% for item in attributions() %}{{ item.artifact.output_path }}={{ item.licensing.record }}:{{ item.licensing.copyrights | join(sep=',') }}:{{ item.licensing.expressions | join(sep=',') }};{% endfor %}",
     );
 
     build_at(fixture.path(), BuildMode::Full).expect("grouped assets build");
 
     assert_eq!(
         fs::read_to_string(fixture.path().join("public/index.html")).expect("rendered page"),
-        "assets/fonts/bold.woff2=2000 Example Foundry,2001 Example Contributors:OFL-1.1,MIT;assets/fonts/roman.woff2=2000 Example Foundry,2001 Example Contributors:OFL-1.1,MIT;"
+        "example-fonts|assets/fonts/bold.woff2=example-fonts:2000 Example Foundry,2001 Example Contributors:OFL-1.1,MIT;assets/fonts/roman.woff2=example-fonts:2000 Example Foundry,2001 Example Contributors:OFL-1.1,MIT;"
+    );
+}
+
+#[test]
+fn unused_licensing_records_remain_valid_configuration() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[licensing.records.future-release]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "site");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("unused records still need their named license texts");
+    assert!(
+        format!("{error:?}").contains("LICENSES/MIT.txt"),
+        "{error:?}"
+    );
+
+    fixture.write("LICENSES/MIT.txt", "MIT text\n");
+    build_at(fixture.path(), BuildMode::Full).expect("unused record remains available");
+}
+
+#[test]
+fn groups_require_one_known_licensing_record() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'missing'\n",
+    );
+    fixture.write("content/assets/logo.svg", "<svg/>");
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("templates/page.tera", "site");
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown record fails");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("refers to unknown licensing record \"missing\""),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "heine.toml",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'example'\nSPDX-License-Identifier = 'MIT'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("groups no longer carry SPDX fields directly");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("unknown field `SPDX-License-Identifier`"),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "heine.toml",
+        "[licensing.records.Bad]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("record IDs follow one portable spelling rule");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("licensing record IDs must start with a lowercase ASCII letter"),
+        "{diagnostic}"
+    );
+
+    fixture.write(
+        "heine.toml",
+        "[[licensing.groups]]\nassets = ['assets/logo.svg']\n",
+    );
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("groups always select a record");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("missing field `licensing_record`"),
+        "{diagnostic}"
     );
 }
 
@@ -153,7 +229,7 @@ fn quick_build_checks_new_assets_against_required_coverage() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[licensing]\nrequired = true\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[licensing]\nrequired = true\n\n[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'example'\n",
     );
     fixture.write("content/assets/logo.svg", "<svg/>");
     fixture.write("LICENSES/MIT.txt", "MIT text\n");
@@ -173,7 +249,7 @@ fn groups_reject_duplicate_declaration_sources_with_both_locations() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = ['assets/logo.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'example'\n",
     );
     fixture.write("content/assets/logo.svg", "<svg/>");
     fixture.write(
@@ -193,7 +269,7 @@ fn groups_reject_duplicate_declaration_sources_with_both_locations() {
             .contains("more than one licensing declaration"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:6"), "{diagnostic}");
     assert!(diagnostic.contains("logo.svg.license:1"), "{diagnostic}");
 }
 
@@ -202,7 +278,7 @@ fn groups_use_published_locale_qualified_output_paths() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[licensing]\nrequired = true\n\n[[licensing.groups]]\nassets = ['assets/shared.svg', 'de/assets/local.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n\n[licensing]\nrequired = true\n\n[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/shared.svg', 'de/assets/local.svg']\nlicensing_record = 'example'\n",
     );
     fixture.write("content/assets/shared.svg", "<svg/>");
     fixture.write("content/de/assets/local.svg", "<svg/>");
@@ -215,11 +291,11 @@ fn groups_use_published_locale_qualified_output_paths() {
 }
 
 #[test]
-fn group_spdx_errors_point_to_the_authored_group_value() {
+fn record_spdx_errors_point_to_the_authored_record_value() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = ['assets/logo.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT OR'\n",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT OR'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'example'\n",
     );
     fixture.write("content/assets/logo.svg", "<svg/>");
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
@@ -231,10 +307,10 @@ fn group_spdx_errors_point_to_the_authored_group_value() {
     assert!(
         error
             .to_string()
-            .contains("invalid licensing group declaration"),
+            .contains("invalid licensing record declaration"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("heine.toml:4"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:3"), "{diagnostic}");
 }
 
 #[test]
@@ -242,7 +318,7 @@ fn group_spdx_array_errors_point_to_the_individual_value() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = ['assets/logo.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = [\n  'MIT',\n  'MadeUp-License',\n]\n",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = [\n  'MIT',\n  'MadeUp-License',\n]\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'example'\n",
     );
     fixture.write("content/assets/logo.svg", "<svg/>");
     fixture.write("LICENSES/MIT.txt", "MIT text\n");
@@ -252,8 +328,8 @@ fn group_spdx_array_errors_point_to_the_individual_value() {
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid SPDX must fail");
     let diagnostic = format!("{error:?}");
 
-    assert!(diagnostic.contains("heine.toml:6"), "{diagnostic}");
-    assert!(!diagnostic.contains("heine.toml:4"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:5"), "{diagnostic}");
+    assert!(!diagnostic.contains("heine.toml:3"), "{diagnostic}");
 }
 
 #[test]
@@ -261,7 +337,7 @@ fn group_missing_license_text_names_the_project_relative_text_path() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = ['assets/logo.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'example'\n",
     );
     fixture.write("content/assets/logo.svg", "<svg/>");
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
@@ -295,7 +371,7 @@ fn licensing_group_configuration_is_strict_and_source_aware() {
 
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = ['assets/missing.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\nprecedence = 'override'\n",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/missing.svg']\nlicensing_record = 'example'\nprecedence = 'override'\n",
     );
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown group field");
     let diagnostic = format!("{error:?}");
@@ -306,7 +382,7 @@ fn licensing_group_configuration_is_strict_and_source_aware() {
 
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = ['assets/missing.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/missing.svg']\nlicensing_record = 'example'\n",
     );
     fixture.write("LICENSES/MIT.txt", "MIT text\n");
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("missing asset");
@@ -315,7 +391,7 @@ fn licensing_group_configuration_is_strict_and_source_aware() {
         diagnostic.contains("does not resolve") && diagnostic.contains("copied asset"),
         "{diagnostic}"
     );
-    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:6"), "{diagnostic}");
 }
 
 #[test]
@@ -328,30 +404,30 @@ fn groups_reject_duplicate_unsafe_and_overlapping_members() {
 
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = [\n  'assets/logo.svg',\n  'assets/logo.svg',\n]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = [\n  'assets/logo.svg',\n  'assets/logo.svg',\n]\nlicensing_record = 'example'\n",
     );
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("duplicate member");
     let diagnostic = format!("{error:?}");
-    assert!(diagnostic.contains("heine.toml:4"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:8"), "{diagnostic}");
     assert!(diagnostic.contains("more than once"), "{diagnostic}");
 
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = ['../escape.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['../escape.svg']\nlicensing_record = 'example'\n",
     );
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("unsafe member");
     let diagnostic = format!("{error:?}");
-    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:6"), "{diagnostic}");
     assert!(diagnostic.contains("relative"), "{diagnostic}");
 
     fixture.write(
         "heine.toml",
-        "[[licensing.groups]]\nassets = ['assets/logo.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[licensing.records.first]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n[licensing.records.second]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'first'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'second'\n",
     );
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("overlapping groups");
     let diagnostic = format!("{error:?}");
-    assert!(diagnostic.contains("heine.toml:7"), "{diagnostic}");
-    assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:13"), "{diagnostic}");
+    assert!(diagnostic.contains("heine.toml:9"), "{diagnostic}");
     assert!(
         error
             .to_string()
@@ -370,10 +446,10 @@ fn group_order_does_not_change_resolved_attributions() {
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
         "templates/page.tera",
-        "{% for item in attributions() %}{{ item.asset.output_path }}={{ item.licensing.expressions | join(sep=',') }};{% endfor %}",
+        "{% for item in attributions() %}{{ item.artifact.output_path }}={{ item.licensing.expressions | join(sep=',') }};{% endfor %}",
     );
-    let first = "[[licensing.groups]]\nassets = ['assets/first.svg']\nSPDX-FileCopyrightText = 'First Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/second.svg']\nSPDX-FileCopyrightText = 'Second Authors'\nSPDX-License-Identifier = 'Apache-2.0'\n";
-    let second = "[[licensing.groups]]\nassets = ['assets/second.svg']\nSPDX-FileCopyrightText = 'Second Authors'\nSPDX-License-Identifier = 'Apache-2.0'\n\n[[licensing.groups]]\nassets = ['assets/first.svg']\nSPDX-FileCopyrightText = 'First Authors'\nSPDX-License-Identifier = 'MIT'\n";
+    let first = "[licensing.records.first]\nSPDX-FileCopyrightText = 'First Authors'\nSPDX-License-Identifier = 'MIT'\n[licensing.records.second]\nSPDX-FileCopyrightText = 'Second Authors'\nSPDX-License-Identifier = 'Apache-2.0'\n\n[[licensing.groups]]\nassets = ['assets/first.svg']\nlicensing_record = 'first'\n\n[[licensing.groups]]\nassets = ['assets/second.svg']\nlicensing_record = 'second'\n";
+    let second = "[licensing.records.first]\nSPDX-FileCopyrightText = 'First Authors'\nSPDX-License-Identifier = 'MIT'\n[licensing.records.second]\nSPDX-FileCopyrightText = 'Second Authors'\nSPDX-License-Identifier = 'Apache-2.0'\n\n[[licensing.groups]]\nassets = ['assets/second.svg']\nlicensing_record = 'second'\n\n[[licensing.groups]]\nassets = ['assets/first.svg']\nlicensing_record = 'first'\n";
 
     fixture.write("heine.toml", first);
     build_at(fixture.path(), BuildMode::Full).expect("first group order builds");
@@ -393,7 +469,7 @@ fn required_coverage_isolated_to_the_new_unrelated_asset() {
     let fixture = Fixture::new();
     fixture.write(
         "heine.toml",
-        "[licensing]\nrequired = true\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n",
+        "[licensing]\nrequired = true\n\n[licensing.records.example]\nSPDX-FileCopyrightText = 'Example Authors'\nSPDX-License-Identifier = 'MIT'\n\n[[licensing.groups]]\nassets = ['assets/logo.svg']\nlicensing_record = 'example'\n",
     );
     fixture.write("content/assets/logo.svg", "<svg/>");
     fixture.write("LICENSES/MIT.txt", "MIT text\n");

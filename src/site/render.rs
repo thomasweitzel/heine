@@ -57,6 +57,7 @@ impl Site {
                 canonical_urls.clone(),
                 integrities,
             ),
+            self.renderer_attributions(),
             TemplateRelationships::new(
                 self.pages.clone(),
                 self.i18n.default_locale().clone(),

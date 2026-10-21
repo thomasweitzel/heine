@@ -7,9 +7,10 @@ mod runner;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
-use miette::SourceSpan;
+use miette::{NamedSource, SourceSpan};
 use serde::Deserialize;
 
 use crate::source_path;
@@ -26,6 +27,7 @@ pub(crate) use runner::{
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Profiles {
     profiles: BTreeMap<String, Profile>,
+    licensing_records: BTreeSet<String>,
 }
 
 impl Profiles {
@@ -36,10 +38,21 @@ impl Profiles {
     pub(crate) fn uses_workspace(&self) -> bool {
         self.profiles.values().any(Profile::uses_workspace)
     }
+
+    pub(crate) fn has_licensing_record(&self, record: &str) -> bool {
+        self.licensing_records.contains(record)
+    }
+
+    pub(crate) fn attach_source(&mut self, source: Arc<NamedSource<String>>) {
+        for profile in self.profiles.values_mut() {
+            profile.attach_source(source.clone());
+        }
+    }
 }
 
 pub(crate) fn parse(
     profiles: BTreeMap<toml::Spanned<String>, RawProfile>,
+    licensing_records: &BTreeSet<String>,
 ) -> Result<Profiles, ConfigError> {
     let mut parsed = BTreeMap::new();
     for (raw_name, profile) in profiles {
@@ -51,12 +64,22 @@ pub(crate) fn parse(
                 message: format!("renderer profile name {name:?} must be a simple identifier"),
             });
         }
-        parsed.insert(name.clone(), validate_profile(&name, profile)?);
+        parsed.insert(
+            name.clone(),
+            validate_profile(&name, profile, licensing_records)?,
+        );
     }
-    Ok(Profiles { profiles: parsed })
+    Ok(Profiles {
+        profiles: parsed,
+        licensing_records: licensing_records.clone(),
+    })
 }
 
-fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigError> {
+fn validate_profile(
+    name: &str,
+    profile: RawProfile,
+    licensing_records: &BTreeSet<String>,
+) -> Result<Profile, ConfigError> {
     let RawProfile {
         protocol,
         program,
@@ -71,6 +94,7 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigEr
         default_output,
         inline,
         block,
+        licensing_record,
     } = profile;
     let program = validate_nonempty(program, &format!("renderer profile {name} program"))?;
     let cache_identity = validate_nonempty(
@@ -121,6 +145,9 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigEr
             ),
         });
     }
+    let licensing_record = licensing_record
+        .map(|value| validate_licensing_record(name, value, &result, licensing_records))
+        .transpose()?;
     Ok(Profile {
         protocol,
         program,
@@ -131,6 +158,7 @@ fn validate_profile(name: &str, profile: RawProfile) -> Result<Profile, ConfigEr
         result,
         inline,
         block,
+        licensing_record,
     })
 }
 
@@ -148,6 +176,7 @@ pub(crate) struct Profile {
     result: ResultCapabilities,
     inline: Option<PlacementVariants>,
     block: Option<PlacementVariants>,
+    licensing_record: Option<ProfileLicensingRecord>,
 }
 
 impl Profile {
@@ -180,10 +209,20 @@ impl Profile {
     pub(crate) fn resource_extension(&self) -> Option<&str> {
         match &self.result {
             ResultCapabilities::Svg { .. } => Some("svg"),
-            ResultCapabilities::Image { extension }
+            ResultCapabilities::Image { extension, .. }
             | ResultCapabilities::Picture { extension, .. }
-            | ResultCapabilities::Link { extension } => Some(extension),
+            | ResultCapabilities::Link { extension, .. } => Some(extension),
             ResultCapabilities::Html | ResultCapabilities::Mathml => None,
+        }
+    }
+
+    pub(crate) fn licensing_record(&self) -> Option<&ProfileLicensingRecord> {
+        self.licensing_record.as_ref()
+    }
+
+    fn attach_source(&mut self, source: Arc<NamedSource<String>>) {
+        if let Some(record) = &mut self.licensing_record {
+            record.source = Some(source);
         }
     }
 
@@ -546,9 +585,13 @@ fn validate_picture_result(
     options: ResultOptions,
 ) -> Result<ResultCapabilities, ConfigError> {
     validate_resource_result(name, result_span, options, true).map(|result| match result {
-        ResultCapabilities::Image { extension } => ResultCapabilities::Picture {
+        ResultCapabilities::Image {
+            extension,
+            media_type,
+        } => ResultCapabilities::Picture {
             svg: extension.eq_ignore_ascii_case("svg"),
             extension,
+            media_type,
         },
         _ => unreachable!("image resource validation always returns an image result"),
     })
@@ -707,10 +750,17 @@ fn validate_resource_result(
         extension,
         &format!("resource renderer profile {name} extension"),
     )?;
+    let media_type = media_type.to_string();
     Ok(if image {
-        ResultCapabilities::Image { extension }
+        ResultCapabilities::Image {
+            extension,
+            media_type,
+        }
     } else {
-        ResultCapabilities::Link { extension }
+        ResultCapabilities::Link {
+            extension,
+            media_type,
+        }
     })
 }
 
@@ -818,6 +868,72 @@ pub(crate) struct RawProfile {
     default_output: Option<toml::Spanned<SvgMaterialization>>,
     inline: Option<toml::Spanned<RawPlacement>>,
     block: Option<toml::Spanned<RawPlacement>>,
+    licensing_record: Option<toml::Spanned<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProfileLicensingRecord {
+    id: String,
+    span: SourceSpan,
+    source: Option<Arc<NamedSource<String>>>,
+}
+
+impl ProfileLicensingRecord {
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn span(&self) -> SourceSpan {
+        self.span
+    }
+
+    pub(crate) fn source(&self) -> Option<&Arc<NamedSource<String>>> {
+        self.source.as_ref()
+    }
+}
+
+fn validate_licensing_record(
+    profile: &str,
+    value: toml::Spanned<String>,
+    result: &ResultCapabilities,
+    records: &BTreeSet<String>,
+) -> Result<ProfileLicensingRecord, ConfigError> {
+    let span = value.span().into();
+    let value = value.into_inner();
+    if !result_can_publish_resource(result) {
+        return Err(ConfigError {
+            span,
+            message: format!(
+                "renderer profile {profile} cannot declare licensing_record because it never produces a separate resource"
+            ),
+        });
+    }
+    if !records.contains(&value) {
+        return Err(ConfigError {
+            span,
+            message: format!(
+                "renderer profile {profile} refers to unknown licensing record {value:?}"
+            ),
+        });
+    }
+    Ok(ProfileLicensingRecord {
+        id: value,
+        span,
+        source: None,
+    })
+}
+
+fn result_can_publish_resource(result: &ResultCapabilities) -> bool {
+    matches!(
+        result,
+        ResultCapabilities::Svg { materializations, .. }
+            if materializations.contains(&Output::Resource)
+    ) || matches!(
+        result,
+        ResultCapabilities::Image { .. }
+            | ResultCapabilities::Picture { .. }
+            | ResultCapabilities::Link { .. }
+    )
 }
 
 #[derive(Debug, Deserialize)]

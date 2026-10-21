@@ -108,6 +108,7 @@ pub(super) fn resolve(
         }
     }
     Ok(AssetLicensing {
+        record: None,
         copyrights: fields
             .copyrights
             .into_iter()

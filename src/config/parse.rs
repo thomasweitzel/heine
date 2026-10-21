@@ -336,10 +336,14 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             });
         }
         let reading_time = parse_reading_time(raw.reading_time, &locales)?;
-        let renderers = renderer::parse(raw.renderers).map_err(|error| ConfigValueError {
-            span: error.span,
-            message: error.message,
-        })?;
+        let licensing = licensing::parse(raw.licensing)?;
+        let renderers =
+            renderer::parse(raw.renderers, &licensing.record_names()).map_err(|error| {
+                ConfigValueError {
+                    span: error.span,
+                    message: error.message,
+                }
+            })?;
         let kit = raw
             .kit
             .map(|raw| {
@@ -469,7 +473,6 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
                 message: "build.output_dir must not be content/, data/, deploy/, templates/, locales/, or LICENSES/, or a directory beneath an input directory".into(),
             });
         }
-        let licensing = licensing::parse(raw.licensing)?;
         let extensions_span = raw.markdown.extensions.span();
         let mut extensions = raw.markdown.extensions.into_inner();
         extensions.sort_by_key(|extension| match extension {

@@ -1,11 +1,16 @@
-//! Source-aware copied-asset licensing configuration.
+//! Source-aware published-artifact licensing configuration.
 //!
 //! Group membership cannot be checked while TOML is parsed: it names published
 //! output paths, which exist only after copied assets have been discovered.
-//! This module therefore preserves the validated authored facts and spans for
-//! the licensing resolver.
+//! Renderer resources later select the same records through their checked
+//! request path. This module preserves the authored facts and spans for both
+//! resolution paths.
 
-use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use miette::{NamedSource, SourceSpan};
 use serde::{Deserialize, de};
@@ -14,7 +19,7 @@ use crate::output::OutputPath;
 
 use super::ConfigValueError;
 
-/// The site-wide policy for declarations attached to copied assets.
+/// The site-wide policy for declarations attached to published artifacts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum LicensingCoverage {
     #[default]
@@ -22,11 +27,12 @@ pub(crate) enum LicensingCoverage {
     Required,
 }
 
-/// Configuration that remains source-aware until it can be resolved against
-/// copied assets and local license texts.
+/// Configuration that remains source-aware until copied assets, renderer
+/// resources, and local license texts resolve it.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct LicensingConfig {
     coverage: LicensingCoverage,
+    records: BTreeMap<LicensingRecordId, LicensingRecord>,
     groups: Vec<LicensingGroup>,
 }
 
@@ -39,17 +45,57 @@ impl LicensingConfig {
         &self.groups
     }
 
+    pub(crate) fn record_names(&self) -> BTreeSet<String> {
+        self.records
+            .keys()
+            .map(|record| record.as_str().to_owned())
+            .collect()
+    }
+
+    pub(crate) fn records(&self) -> impl Iterator<Item = (&LicensingRecordId, &LicensingRecord)> {
+        self.records.iter()
+    }
+
     pub(crate) fn attach_source(&mut self, source: Arc<NamedSource<String>>) {
         for group in &mut self.groups {
             group.source = Some(source.clone());
         }
+        for record in self.records.values_mut() {
+            record.source = Some(source.clone());
+        }
+    }
+}
+
+/// A stable author-chosen name for reusable licensing facts.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct LicensingRecordId(String);
+
+impl LicensingRecordId {
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LicensingRecord {
+    declaration: LicensingDeclaration,
+    source: Option<Arc<NamedSource<String>>>,
+}
+
+impl LicensingRecord {
+    pub(crate) fn declaration(&self) -> &LicensingDeclaration {
+        &self.declaration
+    }
+
+    pub(crate) fn source(&self) -> Option<&Arc<NamedSource<String>>> {
+        self.source.as_ref()
     }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct LicensingGroup {
     assets: Vec<LicensingGroupAsset>,
-    declaration: LicensingDeclaration,
+    record: LicensingRecordId,
     source: Option<Arc<NamedSource<String>>>,
 }
 
@@ -58,8 +104,8 @@ impl LicensingGroup {
         &self.assets
     }
 
-    pub(crate) fn declaration(&self) -> &LicensingDeclaration {
-        &self.declaration
+    pub(crate) fn record(&self) -> &LicensingRecordId {
+        &self.record
     }
 
     pub(crate) fn source(&self) -> Option<&Arc<NamedSource<String>>> {
@@ -125,6 +171,8 @@ impl LicensingValue {
 pub(super) struct RawLicensingConfig {
     required: Option<toml::Spanned<bool>>,
     #[serde(default)]
+    records: BTreeMap<toml::Spanned<String>, RawLicensingDeclaration>,
+    #[serde(default)]
     groups: Vec<toml::Spanned<RawLicensingGroup>>,
 }
 
@@ -132,6 +180,12 @@ pub(super) struct RawLicensingConfig {
 #[serde(deny_unknown_fields)]
 struct RawLicensingGroup {
     assets: toml::Spanned<Vec<toml::Spanned<String>>>,
+    licensing_record: toml::Spanned<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLicensingDeclaration {
     #[serde(rename = "SPDX-FileCopyrightText")]
     copyrights: Option<toml::Spanned<RawLicensingValues>>,
     #[serde(rename = "SPDX-License-Identifier")]
@@ -206,14 +260,27 @@ pub(super) fn parse(raw: RawLicensingConfig) -> Result<LicensingConfig, ConfigVa
         Some(value) => {
             return Err(ConfigValueError {
                 span: value.span().into(),
-                message: "licensing.required = false is redundant; omit required to allow undeclared copied assets".into(),
+                message: "licensing.required = false is redundant; omit required to allow undeclared published artifacts".into(),
             });
         }
         None => LicensingCoverage::Optional,
     };
+    let mut records = BTreeMap::new();
+    for (raw_id, declaration) in raw.records {
+        let span: SourceSpan = raw_id.span().into();
+        let spelling = raw_id.into_inner();
+        let id = record_id(spelling, span)?;
+        let declaration = declaration_from_raw(declaration, span, "licensing record")?;
+        records.insert(
+            id,
+            LicensingRecord {
+                declaration,
+                source: None,
+            },
+        );
+    }
     let mut groups = Vec::with_capacity(raw.groups.len());
     for group in raw.groups {
-        let group_span: SourceSpan = group.span().into();
         let group = group.into_inner();
         let assets_span: SourceSpan = group.assets.span().into();
         let asset_values = group.assets.into_inner();
@@ -248,47 +315,109 @@ pub(super) fn parse(raw: RawLicensingConfig) -> Result<LicensingConfig, ConfigVa
             }
             assets.push(LicensingGroupAsset { output, span });
         }
-        let copyrights = required_values(group.copyrights, group_span, "SPDX-FileCopyrightText")?;
-        let expressions =
-            required_values(group.expressions, group_span, "SPDX-License-Identifier")?;
-        let comments = optional_values(group.comments, "SPDX-FileComment")?;
+        let record_span: SourceSpan = group.licensing_record.span().into();
+        let record = record_id(group.licensing_record.into_inner(), record_span)?;
+        if !records.contains_key(&record) {
+            return Err(ConfigValueError {
+                span: record_span,
+                message: format!(
+                    "licensing group refers to unknown licensing record {:?}",
+                    record.as_str()
+                ),
+            });
+        }
         groups.push(LicensingGroup {
             assets,
-            declaration: LicensingDeclaration {
-                copyrights,
-                expressions,
-                comments,
-            },
+            record,
             source: None,
         });
     }
-    Ok(LicensingConfig { coverage, groups })
+    Ok(LicensingConfig {
+        coverage,
+        records,
+        groups,
+    })
+}
+
+fn declaration_from_raw(
+    declaration: RawLicensingDeclaration,
+    span: SourceSpan,
+    subject: &str,
+) -> Result<LicensingDeclaration, ConfigValueError> {
+    let copyrights = required_values(
+        declaration.copyrights,
+        span,
+        "SPDX-FileCopyrightText",
+        subject,
+    )?;
+    let expressions = required_values(
+        declaration.expressions,
+        span,
+        "SPDX-License-Identifier",
+        subject,
+    )?;
+    let comments = optional_values(declaration.comments, "SPDX-FileComment", subject)?;
+    Ok(LicensingDeclaration {
+        copyrights,
+        expressions,
+        comments,
+    })
+}
+
+fn record_id(value: String, span: SourceSpan) -> Result<LicensingRecordId, ConfigValueError> {
+    let mut characters = value.bytes();
+    let Some(first) = characters.next() else {
+        return Err(invalid_record_id(span));
+    };
+    if !first.is_ascii_lowercase()
+        || !characters.all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, b'-' | b'_')
+        })
+    {
+        return Err(invalid_record_id(span));
+    }
+    Ok(LicensingRecordId(value))
+}
+
+fn invalid_record_id(span: SourceSpan) -> ConfigValueError {
+    ConfigValueError {
+        span,
+        message: "licensing record IDs must start with a lowercase ASCII letter and then use only lowercase ASCII letters, digits, hyphens, or underscores".into(),
+    }
 }
 
 fn required_values(
     values: Option<toml::Spanned<RawLicensingValues>>,
     group_span: SourceSpan,
     field: &str,
+    subject: &str,
 ) -> Result<Vec<LicensingValue>, ConfigValueError> {
     let Some(values) = values else {
         return Err(ConfigValueError {
             span: group_span,
-            message: format!("licensing group requires at least one {field}"),
+            message: format!("{subject} requires at least one {field}"),
         });
     };
-    non_empty_values(values, field)
+    non_empty_values(values, field, subject)
 }
 
 fn optional_values(
     values: Option<toml::Spanned<RawLicensingValues>>,
     field: &str,
+    subject: &str,
 ) -> Result<Vec<LicensingValue>, ConfigValueError> {
-    values.map_or_else(|| Ok(Vec::new()), |values| non_empty_values(values, field))
+    values.map_or_else(
+        || Ok(Vec::new()),
+        |values| non_empty_values(values, field, subject),
+    )
 }
 
 fn non_empty_values(
     values: toml::Spanned<RawLicensingValues>,
     field: &str,
+    subject: &str,
 ) -> Result<Vec<LicensingValue>, ConfigValueError> {
     let values_span: SourceSpan = values.span().into();
     let values = match values.into_inner() {
@@ -304,7 +433,7 @@ fn non_empty_values(
     if values.is_empty() {
         return Err(ConfigValueError {
             span: values_span,
-            message: format!("licensing group {field} must not be an empty array"),
+            message: format!("{subject} {field} must not be an empty array"),
         });
     }
     values
@@ -313,7 +442,7 @@ fn non_empty_values(
             if value.trim().is_empty() {
                 return Err(ConfigValueError {
                     span,
-                    message: format!("licensing group {field} values must not be empty"),
+                    message: format!("{subject} {field} values must not be empty"),
                 });
             }
             Ok(LicensingValue { value, span })

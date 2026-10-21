@@ -46,8 +46,9 @@ fields use the following defaults.
 | `site.time_zone`                                  | string               | absent                                | IANA time-zone name such as `"Europe/Berlin"`; resolved from Heine's bundled database                                                                                      | Resolves authored `published` and `updated` local times deterministically                              |
 | `build.output_dir`                                | string               | `"public"`                            | Non-empty relative path with portable filename components; cannot be `content/`, `data/`, `deploy/`, `LICENSES/`, `templates/`, `locales/`, or a descendant                | Generated output directory relative to site root                                                       |
 | `assets.integrity`                                | string               | absent                                | `"sha256"`, `"sha384"`, `"sha512"`                                                                                                                                         | Enables Subresource Integrity values from `asset()`                                                    |
-| `licensing.required`                              | boolean              | absent                                | `true` only; `false` is a checked error                                                                                                                                    | Requires one licensing declaration for every copied asset                                              |
-| `licensing.groups`                                | array of tables      | `[]`                                  | Exact non-empty copied-asset `output_path` list and sidecar-style SPDX fields; no overlap, sidecar conflict, glob, or unknown fields                                       | Applies one shared declaration to an asset set                                                         |
+| `licensing.required`                              | boolean              | absent                                | `true` only; `false` is a checked error                                                                                                                                    | Requires one licensing declaration for every eligible published artifact                               |
+| `licensing.records.<id>`                          | table                | `[]`                                  | ID starts with a lowercase ASCII letter, then uses lowercase ASCII letters, digits, `_`, or `-`; SPDX fields follow sidecar rules                                          | Reusable declared licensing facts                                                                       |
+| `licensing.groups`                                | array of tables      | `[]`                                  | Exact non-empty copied-asset `output_path` list and one known `licensing_record`; no overlap, sidecar conflict, glob, or unknown fields                                    | Applies one record to an asset set                                                                      |
 | `i18n.default_locale`                             | string               | required                              | Canonical BCP-47 locale declared by an `i18n.locales.<code>` table                                                                                                         | Locale with unprefixed generated URLs                                                                  |
 | `i18n.locales`                                    | table                | required                              | Non-empty table keyed by canonical BCP-47 locale codes                                                                                                                     | Finite locale source trees to render                                                                   |
 | `i18n.locales.<code>.direction`                   | string               | required                              | `"ltr"` or `"rtl"`                                                                                                                                                         | Base HTML writing direction for that locale                                                            |
@@ -101,6 +102,7 @@ fields use the following defaults.
 | `renderers.<name>.extension`                      | string               | required for image, picture, or link  | Unprefixed ASCII alphanumeric extension; otherwise absent                                                                                                                  | Generated-resource filename extension                                                                  |
 | `renderers.<name>.materializations`               | array of strings     | required for SVG                      | Non-empty subset of `"embedded"`, `"resource"`; otherwise absent                                                                                                           | Supported SVG result forms                                                                             |
 | `renderers.<name>.default_output`                 | string               | sole SVG output form                  | Required for SVG with both output forms; one of the declared forms; otherwise absent                                                                                       | Default SVG result form                                                                                |
+| `renderers.<name>.licensing_record`               | string               | absent                                | Names a declared licensing record; allowed only when the profile can produce a resource                                                                                     | Default licensing facts for separate resources                                                        |
 | `renderers.<name>.inline.arguments`               | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                                 | Enables inline requests                                                                                |
 | `renderers.<name>.block.arguments`                | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                                 | Enables block requests                                                                                 |
 | `renderers.<name>.<placement>.light.arguments`    | array of strings     | picture placement required            | Fixed arguments; workspace placeholders retain their normal rules                                                                                                          | Light picture invocation                                                                               |
@@ -452,7 +454,10 @@ SVG, image, picture, and link resource requests publish one non-empty primary ou
 bytes, so identical results share one generated file. Heine replaces image
 requests with an `img` element using the required `alt` text and link requests
 with an `a` element using the required `label` text. Resource bytes remain
-outside copied-asset licensing coverage.
+outside the copied-asset namespace, but they participate in published-artifact
+licensing. A profile may select `licensing_record`; a resource request may
+override it with `licensing_record="…"`. The request option is unavailable for
+embedded output.
 
 An embedded SVG request may use `class = "…"`. Heine splits that non-empty
 string at ASCII whitespace, normalizes separators, and rejects repeated tokens.
@@ -545,25 +550,35 @@ examples.
 `LICENSES/` is optional. Direct `.txt` files named for an SPDX license or
 exception identifier, or `LicenseRef-…`, are copied to
 `<build.output_dir>/LICENSES/`.
-An adjacent copied-asset sidecar named `asset.ext.license`, or one exact
-`[[licensing.groups]]` declaration, supplies `SPDX-FileCopyrightText`,
-`SPDX-License-Identifier`, and optional `SPDX-FileComment` facts. Sidecars are
-not copied. Each identifier in an expression must have matching published text;
-malformed declarations, orphan sidecars, overlapping group members, and a
-group-sidecar conflict are errors. `licensing.required = true` requires one
-such declaration for every copied asset. Groups use literal published
-`output_path` values, without a leading slash or `site.base_path`. See the
-[asset-licensing guide](asset-licensing.md). The `.license` suffix is reserved
-for these sidecars and is never copied as an asset.
+An adjacent copied-asset sidecar named `asset.ext.license`, or one named
+`[licensing.records.<id>]` table selected by an exact `[[licensing.groups]]`
+declaration, supplies `SPDX-FileCopyrightText`, `SPDX-License-Identifier`, and
+optional `SPDX-FileComment` facts. Sidecars are not copied. Each identifier in
+an expression must have matching published text; malformed declarations,
+orphan sidecars, overlapping group members, and a group-sidecar conflict are
+errors. `licensing.required = true` requires one declaration for every copied
+asset and separate renderer resource that the current build publishes. Groups
+use literal published `output_path` values, without a leading slash or
+`site.base_path`. See the [asset-licensing guide](asset-licensing.md). The
+`.license` suffix is reserved for these sidecars and is never copied as an
+asset.
 
 Each `[[licensing.groups]]` table has the following strict fields:
 
-| Field                     | Type             | Default  | Constraints                                                                                        | Effect                                        |
-|---------------------------|------------------|----------|----------------------------------------------------------------------------------------------------|-----------------------------------------------|
-| `assets`                  | array of strings | required | Non-empty distinct literal copied-asset `output_path` values; no leading slash or `site.base_path` | Exact published assets that share this record |
-| `SPDX-FileCopyrightText`  | string or array  | required | One or more non-empty values                                                                       | Ordered copyright notices                     |
-| `SPDX-License-Identifier` | string or array  | required | One or more non-empty SPDX expressions; an array does not imply `AND` or `OR`                      | Ordered authored SPDX tag values              |
-| `SPDX-FileComment`        | string or array  | absent   | Non-empty values when present                                                                      | Optional ordered comments                     |
+| Field              | Type             | Default  | Constraints                                                                                        | Effect                                   |
+|--------------------|------------------|----------|----------------------------------------------------------------------------------------------------|------------------------------------------|
+| `assets`           | array of strings | required | Non-empty distinct literal copied-asset `output_path` values; no leading slash or `site.base_path` | Exact published assets that share a record |
+| `licensing_record` | string           | required | Names one declared `[licensing.records.<id>]` table                                                | Shared declaration for this asset set    |
+
+Each `[licensing.records.<id>]` table has the following strict fields. Its ID
+must start with a lowercase ASCII letter and otherwise use only lowercase ASCII
+letters, digits, hyphens, and underscores:
+
+| Field                     | Type             | Default | Constraints                                                                   | Effect                       |
+|---------------------------|------------------|---------|-------------------------------------------------------------------------------|------------------------------|
+| `SPDX-FileCopyrightText`  | string or array  | required | One or more non-empty values                                                  | Ordered copyright notices    |
+| `SPDX-License-Identifier` | string or array  | required | One or more non-empty SPDX expressions; an array does not imply `AND` or `OR` | Ordered authored SPDX values |
+| `SPDX-FileComment`        | string or array  | absent  | Non-empty values when present                                                 | Optional ordered comments    |
 
 ## Template contract
 
@@ -619,8 +634,8 @@ namespace. See [Kits](kits.md).
 
 | Function               | Use                                                                                                   | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 |------------------------|-------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `asset`                | `asset(id="assets/logo.svg")`                                                                         | A copied asset in the current locale: `url`, `relative_url`, `absolute_url` when configured, optional `integrity`, `width`, `height`, and optional `licensing` (`copyrights`, `expressions`, `comments`, `license_texts`). Shared assets use the `assets/` prefix.                                                                                                                                                                                                                                         |
-| `attributions`         | `attributions()`                                                                                      | Deterministic inventory of assets with resolved licensing declarations. Each item has `asset` (`output_path`, `url`, `relative_url`, `absolute_url` when configured) and `licensing` (`copyrights`, `expressions`, `comments`, `license_texts`). Each license text has `id`, `url`, `relative_url`, and `absolute_url` when configured; `output_path` is the locale-qualified published path, not an `asset()` lookup ID.                                                                                  |
+| `asset`                | `asset(id="assets/logo.svg")`                                                                         | A copied asset in the current locale: `url`, `relative_url`, `absolute_url` when configured, optional `integrity`, `width`, `height`, and optional `licensing` (`record`, `copyrights`, `expressions`, `comments`, `license_texts`). Shared assets use the `assets/` prefix.                                                                                                                                                                                                                                 |
+| `attributions`         | `attributions()`                                                                                      | Deterministic inventory of declared copied assets and renderer resources. Each item has `artifact` (`output_path`, `url`, `relative_url`, `absolute_url` when configured, `kind`, `media_type`) and `licensing` (`record`, `copyrights`, `expressions`, `comments`, `license_texts`). Renderer resources also have ordered `sources`: each source gives its page `url`, `relative_url`, optional `absolute_url`, and `locale`, plus the declared Markdown `input`, request `kind`, and accessibility `text`. Copied assets have an empty `sources` list. Each license text has `id`, `url`, `relative_url`, and `absolute_url` when configured; `output_path` is the locale-qualified published path, not an `asset()` lookup ID. |
 | `page`                 | `page(id="guide/install")`                                                                            | A rendered page in the current locale, including its render-facing metadata, content, `url`, `relative_url`, and `absolute_url` when configured.                                                                                                                                                                                                                                                                                                                                                           |
 | `page`                 | `page(locale="de", id="hilfe/installieren")`                                                          | An exact rendered page in the named configured locale; this never guesses a translation counterpart.                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `markdown`             | `markdown(content="main")`                                                                            | Trusted HTML from the named declared, unsegmented Markdown content of the current authored page. It applies matching heading IDs, checked local margin-footnote structure, and any planned Markdown block components.                                                                                                                                                                                                                                                                              |

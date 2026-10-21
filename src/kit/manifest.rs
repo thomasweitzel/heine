@@ -302,7 +302,7 @@ mod tests {
             r#"
 name = "paper"
 version = "1.2.3"
-heine = ">=0.9.0, <0.10.0"
+heine = ">=0.10.0, <0.11.0"
 message_prefix = "paper-"
 
 [public]
@@ -321,7 +321,7 @@ compact = false
 
         assert_eq!(manifest.name().as_str(), "paper");
         assert_eq!(manifest.version.to_string(), "1.2.3");
-        assert!(manifest.heine_requirement.matches(&Version::new(0, 9, 0)));
+        assert!(manifest.heine_requirement.matches(&Version::new(0, 10, 0)));
         assert_eq!(
             manifest.public().templates()[0].value().as_str(),
             "base.tera"

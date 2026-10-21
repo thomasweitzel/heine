@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::{
-    asset::AssetLinks,
+    asset::{AssetLicensing, AssetLinks},
     author::AuthorName,
     config::{CollectionName, SeriesName, TaxonomyName},
     content::MarkdownSource,
@@ -397,6 +397,8 @@ pub(super) struct Page {
 pub(super) struct RendererResource {
     pub(super) output_path: OutputPath,
     pub(super) bytes: Vec<u8>,
+    pub(super) media_type: String,
+    pub(super) licensing: Option<Arc<AssetLicensing>>,
     pub(super) origins: Vec<RendererResourceOrigin>,
 }
 
@@ -405,6 +407,57 @@ pub(super) struct RendererResourceOrigin {
     pub(super) description: String,
     pub(super) source: Arc<NamedSource<String>>,
     pub(super) span: SourceSpan,
+    pub(super) licensing_record: Option<crate::markdown::LicensingRecordSelection>,
+    pub(super) page_output_path: OutputPath,
+    pub(super) locale: crate::locale::Locale,
+    pub(super) input: String,
+    pub(super) kind: &'static str,
+    pub(super) text: String,
+    pub(super) position: usize,
+}
+
+/// Inputs that remain stable while one page analyzes its declared Markdown.
+/// Grouping them keeps the page boundary readable as renderer-resource
+/// contracts gain additional checked inputs.
+pub(super) struct MarkdownAnalysisInputs<'a> {
+    pub(super) renderer: &'a MarkdownRenderer,
+    pub(super) assets: &'a AssetLinks,
+    pub(super) pages: &'a PageLinks,
+    pub(super) words_per_minute: Option<NonZeroU64>,
+    pub(super) collect_search_sections: bool,
+    pub(super) resource_base_path: &'a str,
+    pub(super) licensing_coverage: crate::config::LicensingCoverage,
+    pub(super) locale: &'a crate::locale::Locale,
+}
+
+struct RendererResourceOriginContext<'a> {
+    source: &'a Arc<NamedSource<String>>,
+    page_output_path: &'a OutputPath,
+    locale: &'a crate::locale::Locale,
+    input: &'a str,
+    request: &'a crate::markdown::ResolvedRequest,
+}
+
+impl RendererResourceOriginContext<'_> {
+    fn origin(
+        &self,
+        description: String,
+        kind: &'static str,
+        text: String,
+    ) -> RendererResourceOrigin {
+        RendererResourceOrigin {
+            description,
+            source: self.source.clone(),
+            span: self.request.span.clone().into(),
+            licensing_record: self.request.licensing_record.clone(),
+            page_output_path: self.page_output_path.clone(),
+            locale: self.locale.clone(),
+            input: self.input.to_owned(),
+            kind,
+            text,
+            position: self.request.span.start,
+        }
+    }
 }
 
 /// The resolved relationship between a page and directory sibling ordering.
@@ -539,13 +592,18 @@ impl Page {
     /// which pages a search index actually publishes.
     pub(super) fn analyze_markdown(
         &mut self,
-        renderer: &MarkdownRenderer,
-        assets: &AssetLinks,
-        pages: &PageLinks,
-        words_per_minute: Option<NonZeroU64>,
-        collect_search_sections: bool,
-        resource_base_path: &str,
+        inputs: MarkdownAnalysisInputs<'_>,
     ) -> Result<(), Box<crate::markdown::SourceError>> {
+        let MarkdownAnalysisInputs {
+            renderer,
+            assets,
+            pages,
+            words_per_minute,
+            collect_search_sections,
+            resource_base_path,
+            licensing_coverage,
+            locale,
+        } = inputs;
         let mut facts = BTreeMap::new();
         let mut renderer_requests = BTreeMap::new();
         let mut renderer_replacements = BTreeMap::new();
@@ -618,8 +676,46 @@ impl Page {
                     },
                 )));
             }
+            if self.output_path.is_none()
+                && let Some(request) = analysis
+                    .renderer_requests
+                    .iter()
+                    .find(|request| request.output == crate::renderer::Output::Resource)
+            {
+                return Err(Box::new(crate::markdown::source_error(
+                    &source.display_path,
+                    &source.source,
+                    crate::markdown::RenderError::RendererResourcePage {
+                        span: request.span.clone(),
+                    },
+                )));
+            }
+            if licensing_coverage == crate::config::LicensingCoverage::Required
+                && let Some(request) = analysis.renderer_requests.iter().find(|request| {
+                    request.output == crate::renderer::Output::Resource
+                        && request.licensing_record.is_none()
+                })
+            {
+                return Err(Box::new(crate::markdown::source_error(
+                    &source.display_path,
+                    &source.source,
+                    crate::markdown::RenderError::RendererLicensing {
+                        span: request.span.clone(),
+                    },
+                )));
+            }
             let mut transformed = input.to_owned();
             let mut replacements = Vec::new();
+            let renderer_source = analysis
+                .renderer_requests
+                .iter()
+                .any(|request| request.output == crate::renderer::Output::Resource)
+                .then(|| {
+                    Arc::new(NamedSource::new(
+                        source.display_path.display().to_string(),
+                        source.source.clone(),
+                    ))
+                });
             for request in analysis.renderer_requests.iter().rev() {
                 let profile = renderer
                     .renderer_profiles()
@@ -690,6 +786,21 @@ impl Page {
                         ),
                     ))
                 };
+                let resource_origin =
+                    (request.output == crate::renderer::Output::Resource).then(|| {
+                        RendererResourceOriginContext {
+                            source: renderer_source
+                                .as_ref()
+                                .expect("resource renderer requests retain their source"),
+                            page_output_path: self
+                                .output_path
+                                .as_ref()
+                                .expect("renderer requests belong to rendered pages"),
+                            locale,
+                            input: name,
+                            request,
+                        }
+                    });
                 let replacement = if profile.result().is_picture() {
                     let light =
                         execute(Some(crate::renderer::Appearance::Light)).map_err(|error| {
@@ -727,17 +838,22 @@ impl Page {
                         renderer_resources.push(RendererResource {
                             output_path,
                             bytes,
-                            origins: vec![RendererResourceOrigin {
-                                description: format!(
-                                    "{} picture renderer resource",
-                                    appearance.name()
-                                ),
-                                source: Arc::new(NamedSource::new(
-                                    source.display_path.display().to_string(),
-                                    source.source.clone(),
-                                )),
-                                span: request.span.clone().into(),
-                            }],
+                            media_type: profile
+                                .result()
+                                .resource_media_type()
+                                .expect("picture profiles always publish a resource")
+                                .to_owned(),
+                            licensing: None,
+                            origins: vec![
+                                resource_origin
+                                    .as_ref()
+                                    .expect("picture profiles always publish a resource")
+                                    .origin(
+                                        format!("{} picture renderer resource", appearance.name()),
+                                        "image",
+                                        request.alt.clone().unwrap_or_default(),
+                                    ),
+                            ],
                         });
                     }
                     replacement
@@ -770,14 +886,30 @@ impl Page {
                             renderer_resources.push(RendererResource {
                                 output_path,
                                 bytes,
-                                origins: vec![RendererResourceOrigin {
-                                    description: "renderer resource".to_owned(),
-                                    source: Arc::new(NamedSource::new(
-                                        source.display_path.display().to_string(),
-                                        source.source.clone(),
-                                    )),
-                                    span: request.span.clone().into(),
-                                }],
+                                media_type: profile
+                                    .result()
+                                    .resource_media_type()
+                                    .expect("resource output has a configured media type")
+                                    .to_owned(),
+                                licensing: None,
+                                origins: vec![
+                                    resource_origin
+                                        .as_ref()
+                                        .expect("resource output retains renderer provenance")
+                                        .origin(
+                                            "renderer resource".to_owned(),
+                                            if profile.result().needs_label(request.output) {
+                                                "link"
+                                            } else {
+                                                "image"
+                                            },
+                                            request
+                                                .label
+                                                .clone()
+                                                .or_else(|| request.alt.clone())
+                                                .unwrap_or_default(),
+                                        ),
+                                ],
                             });
                             replacement
                         }

@@ -4,7 +4,9 @@
 //! syntax into prose. The parser keeps byte spans so later profile resolution
 //! and execution diagnostics can identify the authored request precisely.
 
-use std::{collections::BTreeMap, ops::Range};
+use std::{collections::BTreeMap, ops::Range, sync::Arc};
+
+use miette::{NamedSource, SourceSpan};
 
 use crate::renderer::{NamedInput, Output, Placement, Profiles, Source};
 
@@ -45,6 +47,25 @@ pub(crate) struct ResolvedRequest {
     pub(crate) class: Option<HtmlClassList>,
     pub(crate) width: Option<u32>,
     pub(crate) height: Option<u32>,
+    pub(crate) licensing_record: Option<LicensingRecordSelection>,
+}
+
+/// The authored location that chose a renderer resource's licensing record.
+/// A request-local selection belongs to the Markdown directive; a profile
+/// default belongs to its `heine.toml` field.
+#[derive(Debug, Clone)]
+pub(crate) struct LicensingRecordSelection {
+    pub(crate) record: String,
+    pub(crate) origin: LicensingRecordOrigin,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LicensingRecordOrigin {
+    Request,
+    Profile {
+        source: Option<Arc<NamedSource<String>>>,
+        span: SourceSpan,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +165,26 @@ fn resolved_request(request: &Request, profiles: &Profiles) -> Result<ResolvedRe
         .result()
         .output(output_option(request)?)
         .expect("request validation resolves a supported output form");
+    let licensing_record = if output == Output::Resource {
+        if let Some(record) = string_option(request, "licensing_record")? {
+            Some(LicensingRecordSelection {
+                record: record.to_owned(),
+                origin: LicensingRecordOrigin::Request,
+            })
+        } else {
+            profile
+                .licensing_record()
+                .map(|record| LicensingRecordSelection {
+                    record: record.id().to_owned(),
+                    origin: LicensingRecordOrigin::Profile {
+                        source: record.source().cloned(),
+                        span: record.span(),
+                    },
+                })
+        }
+    } else {
+        None
+    };
     Ok(ResolvedRequest {
         span: request.start..request.end,
         placement: request.placement,
@@ -162,6 +203,7 @@ fn resolved_request(request: &Request, profiles: &Profiles) -> Result<ResolvedRe
             })?,
         width: positive_u32_option(request, "width")?,
         height: positive_u32_option(request, "height")?,
+        licensing_record,
     })
 }
 
@@ -252,14 +294,39 @@ fn validate_request(
             span,
         }
     })?;
-    validate_result_options(request, output, profile.result())
+    validate_result_options(request, output, profile.result())?;
+    if let Some(record) = string_option(request, "licensing_record")? {
+        if output != Output::Resource {
+            return Err(option_error(
+                request,
+                "licensing_record",
+                "licensing_record is allowed only when this renderer request produces a separate resource",
+            ));
+        }
+        if !profiles.has_licensing_record(record) {
+            return Err(option_error(
+                request,
+                "licensing_record",
+                format!("renderer request refers to unknown licensing record {record:?}"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_options(request: &Request) -> Result<(), Error> {
     for (name, option) in &request.options {
         if !matches!(
             name.as_str(),
-            "source" | "output" | "alt" | "label" | "caption" | "class" | "width" | "height"
+            "source"
+                | "output"
+                | "alt"
+                | "label"
+                | "caption"
+                | "class"
+                | "width"
+                | "height"
+                | "licensing_record"
         ) {
             return Err(Error {
                 message: format!("renderer request option {name:?} is not supported"),
@@ -309,7 +376,7 @@ fn string_option<'a>(request: &'a Request, name: &str) -> Result<Option<&'a str>
             format!("renderer request option {name:?} must be a string"),
         ));
     };
-    if (name == "source" || name == "label") && value.is_empty() {
+    if (name == "source" || name == "label" || name == "licensing_record") && value.is_empty() {
         return Err(option_error(
             request,
             name,
@@ -704,7 +771,10 @@ mod tests {
     }
 
     fn profiles(source: &str) -> Profiles {
-        match crate::renderer::parse(toml::from_str(source).expect("profile TOML")) {
+        match crate::renderer::parse(
+            toml::from_str(source).expect("profile TOML"),
+            &std::collections::BTreeSet::new(),
+        ) {
             Ok(profiles) => profiles,
             Err(error) => panic!("invalid renderer profiles: {}", error.message),
         }

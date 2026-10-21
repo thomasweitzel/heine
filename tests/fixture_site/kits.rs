@@ -46,7 +46,7 @@ fn copy_tree(source: &Path, destination: &Path) {
 fn resolves_a_selected_compatible_kit_before_loading_site_resources() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[kit]\nname = 'paper'\nversion = '^1.2'\n");
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     write_page(&fixture);
 
     build_at(fixture.path(), BuildMode::Full).expect("compatible kit builds");
@@ -63,7 +63,7 @@ fn materialized_kit_reference_site_selects_and_builds_with_its_kit() {
         &package,
         &format!(
             "{}\n[public]\ntemplates = ['base.tera']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     package.write(
@@ -101,7 +101,7 @@ fn materialized_kit_reference_site_selects_and_builds_with_its_kit() {
 fn ignores_reference_site_inputs_during_an_ordinary_site_build() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[kit]\nname = 'paper'\n");
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     fixture.write(
         "kits/paper/site/content/en/unused.page",
         "not valid TOML = [",
@@ -115,7 +115,7 @@ fn ignores_reference_site_inputs_during_an_ordinary_site_build() {
 fn requires_a_non_symlinked_reference_site_that_selects_its_containing_kit() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[kit]\nname = 'paper'\n");
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     write_page(&fixture);
 
     fs::remove_dir_all(fixture.path().join("kits/paper/site"))
@@ -159,7 +159,7 @@ fn reports_a_missing_selected_kit_manifest() {
 fn rejects_symbolic_links_at_the_selected_kit_package_boundary() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[kit]\nname = 'paper'\n");
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     write_page(&fixture);
 
     let package = fixture.path().join("kits/paper");
@@ -194,7 +194,7 @@ fn reports_name_and_version_mismatches_at_the_authored_declarations() {
     fixture.write("heine.toml", "[kit]\nname = 'paper'\nversion = '^2'\n");
     write_manifest(
         &fixture,
-        &manifest("1.2.3", ">=0.9.0, <0.10.0").replace("paper", "other"),
+        &manifest("1.2.3", ">=0.10.0, <0.11.0").replace("paper", "other"),
     );
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("name mismatch is checked");
@@ -206,7 +206,7 @@ fn reports_name_and_version_mismatches_at_the_authored_declarations() {
     assert!(diagnostic.contains("heine.toml:2"), "{diagnostic}");
     assert!(diagnostic.contains("kits/paper/kit.toml:1"), "{diagnostic}");
 
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("version mismatch is checked");
     let diagnostic = format!("{error:?}");
     assert!(
@@ -248,7 +248,7 @@ fn root_adapters_extend_declared_public_kit_templates_by_namespace() {
         &fixture,
         &format!(
             "{}\n[public]\ntemplates = ['base.tera']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write(
@@ -276,7 +276,7 @@ fn rejects_missing_public_kit_templates_at_the_manifest_declaration() {
         &fixture,
         &format!(
             "{}\n[public]\ntemplates = ['missing.tera']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     write_page(&fixture);
@@ -294,7 +294,7 @@ fn rejects_missing_public_kit_templates_at_the_manifest_declaration() {
 fn keeps_private_kit_templates_and_root_templates_in_separate_namespaces() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[kit]\nname = 'paper'\n");
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     fixture.write("kits/paper/templates/private.tera", "private");
     fixture.write("content/en/index.page", "template = 'page.tera'\n");
     fixture.write(
@@ -361,7 +361,7 @@ fn root_template_settings_cannot_select_a_kit_original_directly() {
         &fixture,
         &format!(
             "{}\n[public]\ntemplates = ['base.tera']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write("kits/paper/templates/base.tera", "kit original");
@@ -383,7 +383,7 @@ fn publishes_public_kit_assets_through_the_ordinary_asset_namespace() {
         &fixture,
         &format!(
             "{}\n[public]\nassets = ['assets/css/paper.css']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write("kits/paper/assets/css/paper.css", "kit stylesheet");
@@ -416,7 +416,7 @@ fn resolves_a_public_kit_asset_from_every_configured_locale() {
         &fixture,
         &format!(
             "{}\n[public]\nassets = ['assets/css/paper.css']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write("kits/paper/assets/css/paper.css", "kit stylesheet");
@@ -446,7 +446,7 @@ fn a_root_shared_asset_overlays_a_public_kit_asset() {
         &fixture,
         &format!(
             "{}\n[public]\nassets = ['assets/css/paper.css']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write("kits/paper/assets/css/paper.css", "kit stylesheet");
@@ -472,7 +472,7 @@ fn quick_builds_rerender_pages_after_a_selected_kit_asset_changes() {
         &fixture,
         &format!(
             "{}\n[public]\nassets = ['assets/script.js']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write("kits/paper/assets/script.js", "before");
@@ -505,7 +505,7 @@ fn validates_public_kit_assets_at_the_manifest_declaration() {
         &fixture,
         &format!(
             "{}\n[public]\nassets = ['assets/css/missing.css']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     write_page(&fixture);
@@ -527,7 +527,7 @@ fn applies_required_licensing_and_root_license_overlays_to_kit_assets() {
         "heine.toml",
         "[kit]\nname = 'paper'\n\n[licensing]\nrequired = true\n",
     );
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     fixture.write("kits/paper/assets/images/mark.svg", "kit mark");
     fixture.write(
         "kits/paper/assets/images/mark.svg.license",
@@ -562,7 +562,7 @@ fn kit_templates_can_resolve_private_assets_but_root_templates_cannot() {
         &fixture,
         &format!(
             "{}\n[public]\ntemplates = ['base.tera']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write("kits/paper/assets/images/mark.svg", "kit mark");
@@ -614,7 +614,7 @@ fn reserves_the_internal_kit_asset_function_from_root_templates() {
 fn root_markdown_cannot_resolve_private_kit_assets() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[kit]\nname = 'paper'\n");
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     fixture.write("kits/paper/assets/images/mark.svg", "kit mark");
     fixture.write(
         "content/en/index.page",
@@ -641,7 +641,7 @@ fn root_messages_override_kit_messages_with_default_locale_term_fallback() {
         "heine.toml",
         "[kit]\nname = 'paper'\n\n[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n",
     );
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     fixture.write(
         "kits/paper/locales/en/kit.ftl",
         "paper-label = Kit label\n-paper-brand = Paper\n",
@@ -669,7 +669,7 @@ fn root_messages_override_kit_messages_with_default_locale_term_fallback() {
 fn checks_kit_message_prefixes_and_root_override_names() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[kit]\nname = 'paper'\n");
-    write_manifest(&fixture, &manifest("1.2.3", ">=0.9.0, <0.10.0"));
+    write_manifest(&fixture, &manifest("1.2.3", ">=0.10.0, <0.11.0"));
     fixture.write("kits/paper/locales/en/kit.ftl", "label = Missing prefix\n");
     write_page(&fixture);
 
@@ -697,7 +697,7 @@ fn exposes_only_declared_public_kit_components_to_root_templates() {
         &fixture,
         &format!(
             "{}\n[public]\ncomponents = ['paper.card']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write(
@@ -730,7 +730,7 @@ fn checks_component_namespaces_and_public_declarations() {
         &fixture,
         &format!(
             "{}\n[public]\ncomponents = ['paper.card']\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write(
@@ -789,7 +789,7 @@ fn merges_checked_kit_extra_defaults_and_root_overrides() {
         &fixture,
         &format!(
             "{}\n[extra]\nshow_search = true\nitems = ['start']\n\n[extra.navigation]\ncompact = false\naccent = 'violet'\n",
-            manifest("1.2.3", ">=0.9.0, <0.10.0")
+            manifest("1.2.3", ">=0.10.0, <0.11.0")
         ),
     );
     fixture.write("content/en/index.page", "template = 'page.tera'\n");

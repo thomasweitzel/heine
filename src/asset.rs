@@ -130,10 +130,11 @@ struct AssetEntry {
     layer: AssetLayer,
 }
 
-/// Licensing metadata attached to one copied asset after its REUSE sidecar is
-/// validated. Output links remain paths here; URLs are a template concern.
+/// Licensing metadata attached to one published artifact after its declaration
+/// is validated. Output links remain paths here; URLs are a template concern.
 #[derive(Debug, Clone)]
 pub(crate) struct AssetLicensing {
+    pub(crate) record: Option<String>,
     pub(crate) copyrights: Vec<String>,
     pub(crate) expressions: Vec<String>,
     pub(crate) comments: Vec<String>,
@@ -654,7 +655,7 @@ impl AssetCatalog {
     pub(crate) fn attach_output_licensing(
         &mut self,
         output: &OutputPath,
-        licensing: AssetLicensing,
+        licensing: Arc<AssetLicensing>,
     ) -> Result<(), Error> {
         let Some(entry) = self.entries.get_mut(output) else {
             return Err(Error::UnknownOutput {
@@ -666,7 +667,7 @@ impl AssetCatalog {
                 path: output.as_path().into(),
             });
         }
-        entry.licensing = Some(Arc::new(licensing));
+        entry.licensing = Some(licensing);
         Ok(())
     }
 
@@ -792,6 +793,7 @@ pub(crate) struct AssetLink {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct AssetLicensingView {
+    record: Option<String>,
     copyrights: Vec<String>,
     expressions: Vec<String>,
     comments: Vec<String>,
@@ -809,17 +811,66 @@ pub(crate) struct AssetLicenseTextView {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct AttributionView {
-    asset: AssetAttributionAssetView,
+    artifact: AssetAttributionArtifactView,
     licensing: AssetLicensingView,
+    sources: Vec<RendererAttributionSourceView>,
+    #[serde(skip)]
+    order: AttributionOrder,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum AttributionOrder {
+    CopiedAsset(String),
+    RendererResource(OutputPath, usize),
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct AssetAttributionAssetView {
+pub(crate) struct AssetAttributionArtifactView {
     output_path: String,
     url: String,
     relative_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     absolute_url: Option<String>,
+    kind: &'static str,
+    media_type: Option<String>,
+}
+
+/// A separate renderer result after site resolution has connected it to one
+/// declared licensing record. Template serialization stays at the asset
+/// boundary, so renderer execution never gains template authority.
+#[derive(Debug, Clone)]
+pub(crate) struct RendererAttribution {
+    pub(crate) output_path: OutputPath,
+    pub(crate) media_type: String,
+    pub(crate) licensing: Arc<AssetLicensing>,
+    pub(crate) sources: Vec<RendererAttributionSource>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RendererAttributionSource {
+    pub(crate) page_output_path: OutputPath,
+    pub(crate) locale: String,
+    pub(crate) input: String,
+    pub(crate) kind: &'static str,
+    pub(crate) text: String,
+    pub(crate) position: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RendererAttributionSourceView {
+    page: RendererAttributionPageView,
+    input: String,
+    kind: &'static str,
+    text: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RendererAttributionPageView {
+    url: String,
+    relative_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    absolute_url: Option<String>,
+    locale: String,
 }
 
 impl AssetLinks {
@@ -897,14 +948,19 @@ impl AssetLinks {
         self.catalog.dimensions(path)
     }
 
-    pub(crate) fn attributions(&self, root: &str) -> Vec<AttributionView> {
-        self.catalog
+    pub(crate) fn attributions(
+        &self,
+        root: &str,
+        renderer_resources: &[RendererAttribution],
+    ) -> Vec<AttributionView> {
+        let mut attributions = self
+            .catalog
             .entries
             .iter()
             .filter_map(|(path, entry)| {
                 let licensing = entry.licensing.as_ref()?;
                 Some(AttributionView {
-                    asset: AssetAttributionAssetView {
+                    artifact: AssetAttributionArtifactView {
                         output_path: path.logical_spelling(),
                         url: self.base_path.join(&path.url_path()),
                         relative_url: format!("{root}{}", path.url_path().as_str()),
@@ -912,11 +968,66 @@ impl AssetLinks {
                             .canonical_urls
                             .as_ref()
                             .map(|urls| urls.output_url(path)),
+                        kind: "copied_asset",
+                        media_type: None,
                     },
                     licensing: licensing.view(&self.base_path, root, self.canonical_urls.as_ref()),
+                    sources: Vec::new(),
+                    order: AttributionOrder::CopiedAsset(path.logical_spelling()),
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+        attributions.extend(renderer_resources.iter().map(|resource| {
+            let first = resource
+                .sources
+                .first()
+                .expect("licensed renderer resources retain an originating request");
+            AttributionView {
+                artifact: AssetAttributionArtifactView {
+                    output_path: resource.output_path.logical_spelling(),
+                    url: self.base_path.join(&resource.output_path.url_path()),
+                    relative_url: format!("{root}{}", resource.output_path.url_path().as_str()),
+                    absolute_url: self
+                        .canonical_urls
+                        .as_ref()
+                        .map(|urls| urls.output_url(&resource.output_path)),
+                    kind: "renderer_resource",
+                    media_type: Some(resource.media_type.clone()),
+                },
+                licensing: resource.licensing.view(
+                    &self.base_path,
+                    root,
+                    self.canonical_urls.as_ref(),
+                ),
+                sources: resource
+                    .sources
+                    .iter()
+                    .map(|source| RendererAttributionSourceView {
+                        page: RendererAttributionPageView {
+                            url: self.base_path.join(&source.page_output_path.url_path()),
+                            relative_url: format!(
+                                "{root}{}",
+                                source.page_output_path.url_path().as_str()
+                            ),
+                            absolute_url: self
+                                .canonical_urls
+                                .as_ref()
+                                .map(|urls| urls.output_url(&source.page_output_path)),
+                            locale: source.locale.clone(),
+                        },
+                        input: source.input.clone(),
+                        kind: source.kind,
+                        text: source.text.clone(),
+                    })
+                    .collect(),
+                order: AttributionOrder::RendererResource(
+                    first.page_output_path.clone(),
+                    first.position,
+                ),
+            }
+        }));
+        attributions.sort_by(|left, right| left.order.cmp(&right.order));
+        attributions
     }
 }
 
@@ -959,6 +1070,7 @@ impl AssetLicensing {
         canonical_urls: Option<&CanonicalUrls>,
     ) -> AssetLicensingView {
         AssetLicensingView {
+            record: self.record.clone(),
             copyrights: self.copyrights.clone(),
             expressions: self.expressions.clone(),
             comments: self.comments.clone(),

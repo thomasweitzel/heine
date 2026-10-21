@@ -31,6 +31,15 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-21
+
+### Changed
+
+- **Published-artifact licensing.** Named licensing records now provide one
+  SPDX declaration for exact copied-asset groups and separate renderer
+  resources. Required coverage, `attributions()`, and `asset().licensing`
+  now expose that shared published-artifact inventory.
+
 ## [0.9.9] - 2026-10-21
 
 ### Changed

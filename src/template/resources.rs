@@ -32,7 +32,7 @@ pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
         move |kwargs: tera::Kwargs, state: &tera::State| -> tera::TeraResult<tera::Value> {
             arguments::only("attributions", &kwargs, &[])?;
             let root = attribution_runtime.root(state)?;
-            tera::Value::try_from_serializable(&attribution_runtime.assets().attributions(&root))
+            tera::Value::try_from_serializable(&attribution_runtime.attributions(&root))
                 .map_err(|_| tera::Error::message("Heine attribution view is not serializable"))
         },
     );

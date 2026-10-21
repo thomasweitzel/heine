@@ -62,7 +62,7 @@ message prefix, and declares its public interface.
 # kits/paper/kit.toml
 name = "paper"
 version = "1.0.0"
-heine = ">=0.9.0, <0.10.0"
+heine = ">=0.10.0, <0.11.0"
 message_prefix = "paper-"
 
 [public]
@@ -173,7 +173,8 @@ cannot be replaced from the root.
 
 Root `LICENSES/` files and licensing declarations work across root and kit
 assets. A root license text with the same logical path replaces the kit text.
-See [asset licensing](asset-licensing.md) for the copied-asset rules.
+See [published-artifact licensing](asset-licensing.md) for the copied-asset
+rules.
 
 ## Develop and update a kit
 
