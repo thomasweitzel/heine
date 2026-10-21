@@ -194,8 +194,10 @@ grouped those identical resources:
 - different record IDs for the same resource are a checked error that labels
   each request selection or profile default.
 
-The same resource cannot have different configured media types. That conflict
-is also a checked error: one published file has one declared media type.
+Before this catalog consumes a renderer resource, the renderer domain must
+reject origins for one output path that declare different media types. That
+invariant applies whether or not licensing is configured: one published file
+has one declared media type.
 
 Even records with currently identical SPDX fields remain distinct declaration
 sources. Treating them as interchangeable would allow their facts to drift
@@ -259,20 +261,15 @@ current-page-relative meaning as the copied-asset attribution view.
 `absolute_url` is present only when `site.origin` is configured, matching
 other template URL views.
 
-Every renderer-resource item therefore also exposes one or more `sources`.
+Every renderer-resource item exposes one or more `sources`.
 Each source identifies the page and declared Markdown input that requested the
 resource, including its page URL and locale. Its `kind` is `link` or `image`,
 and its text is the request's existing accessible text: `label` for a link or
 `alt` for an image. Resource links already require a label, and resource images
 already require an alt value, so the view needs no fallback text. These values
 give an attribution page useful visible text and a link back to the page that
-uses the resource. `media_type` identifies a renderer resource's configured
-media type. Sources sort by page output path and then by their Markdown source
-position.
-
-`sources` is renderer-resource provenance, not a generic contract for every
-future artifact kind. A later kind must join the shared licensing catalog, but
-may define source fields that fit its own authored relationship.
+uses the resource. Sources sort by page output path and then by their Markdown
+source position.
 
 `item.licensing.record` is the selected record's stable local identifier, or
 `null` for a sidecar. A localized attribution page may use that key for shared
@@ -406,10 +403,9 @@ Heine's basic attribution view an SPDX document.
 Documentation generators commonly distinguish publishable resources from
 source-only material. For example,
 [Antora](https://docs.antora.org/antora/latest/page/resource-id/) assigns
-identities to publishable pages, attachments, and images, but leaves
-licensing policy to the project. Heine can add value by checking declarations
-against its final owned artifact inventory without taking responsibility for
-the whole legal-compliance process.
+identities to publishable pages, attachments, and images. Heine can add value
+by checking declarations against its final owned artifact inventory without
+taking responsibility for the whole legal-compliance process.
 
 ## Acceptance criteria if implemented
 
@@ -436,8 +432,9 @@ the whole legal-compliance process.
   one digest resource, or a mixture of declared and undeclared requests, fail
   with every relevant source location and explain why one request cannot set
   licensing facts for another: declarations attach to requests and profiles,
-  not to inferred digest paths. Differing media types for one resource fail
-  with the same locations.
+  not to inferred digest paths. Before licensing resolution, renderer-resource
+  grouping rejects differing media types for one output path with the same
+  locations.
 - `attributions()` exposes generic artifact information, stable order, license
   URLs, base-path-aware URLs, absolute URLs where configured, configured
   renderer media types, stable record identifiers, deterministic
