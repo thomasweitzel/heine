@@ -154,8 +154,13 @@ impl Catalog {
                     )?;
                 }
                 let collection = &inputs.collections[locale][definition.collection()];
-                let mut selected =
-                    BinaryHeap::with_capacity(collection.page_ids().len().min(definition.limit()));
+                // The selection briefly holds one extra entry before removing
+                // the lowest-ranked one.
+                let capacity = collection
+                    .page_ids()
+                    .len()
+                    .min(definition.limit().saturating_add(1));
+                let mut selected = BinaryHeap::with_capacity(capacity);
                 for id in collection.page_ids() {
                     selected.push(RankedEntry(entry(
                         name,
