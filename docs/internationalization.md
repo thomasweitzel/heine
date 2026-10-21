@@ -1,8 +1,11 @@
 # Internationalization and localization
 
-This guide explains how one Heine site can render configured locale trees. Start
-with the [tutorial](tutorial.md) for a first multilingual site, and use the
-[reference](reference.md) for the complete configuration and template contract.
+Use locale trees when one site publishes pages and interface text in more than
+one language. Each configured locale has its own source tree, routes, and
+messages, while Heine checks the links and declared counterparts between them.
+Start with the [tutorial](tutorial.md) for a first multilingual site, and use
+the [reference](reference.md) for the complete configuration and template
+contract.
 
 ## Terms
 

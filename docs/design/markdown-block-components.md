@@ -82,10 +82,10 @@ The feature preserves these boundaries:
   Markdown, not Tera source. An empty or whitespace-only body is a build
   error. The explicit opening and closing block distinguish the directive from
   ordinary Markdown.
-- Its opening fence has at least three colons. The closing fence must be an
-  otherwise empty line with the same or a longer colon run. An author can use
-  `::::component[...]` when the body contains a literal `:::` line, following
-  the existing `render` directive's fence rule.
+- It normally uses the three-colon opening and closing fences shown above. An
+  author can use `::::component[...]` with an otherwise empty `::::` closing
+  fence when the body contains a literal `:::` line, following the existing
+  `render` directive's fence rule.
 - The directive cannot contain Tera expressions, loops, conditions, template
   includes, renderer requests, or another component directive in its first
   version.

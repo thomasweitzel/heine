@@ -1,6 +1,6 @@
 [package]
 name = "heine"
-version = "0.9.8"
+version = "0.9.9"
 edition = "2024"
 rust-version = "1.88"
 description = "A small, checked static-site generator"
@@ -36,7 +36,7 @@ mime_guess = "2.0.5"
 mime = "0.3.17"
 notify = "8.2.0"
 percent-encoding = "2.3.2"
-tokio = { version = "1.53.3", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.54.0", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
 tokio-util = { version = "0.7.20", features = ["io"] }
 fluent-bundle = "0.16.0"
@@ -44,7 +44,7 @@ fluent-syntax = "0.12.0"
 fixed_decimal = { version = "0.7.2", features = ["ryu"] }
 intl-memoizer = "0.5.3"
 unic-langid = "0.9.6"
-unicode-normalization = "0.1.25"
+unicode-normalization = "0.1.26"
 unicode-segmentation = "1.13.3"
 icu_datetime = { version = "2.3.0", features = ["compiled_data"] }
 icu_decimal = { version = "2.3.0", features = ["compiled_data"] }

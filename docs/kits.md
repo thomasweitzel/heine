@@ -1,13 +1,14 @@
 # Kits
 
-A kit is one selected presentation package. It supplies a site design, while
-the site root continues to own content, configuration, data, deployment files,
-and local adaptations. A kit is not a generic theme that Heine can safely swap
-between arbitrary sites. Its required reference site shows the structure and
-conventions it expects.
+Use a kit when its complete reference site is a useful starting point for your
+site's presentation. A kit supplies one site design, while the site root keeps
+ownership of content, configuration, data, deployment files, and local
+adaptations. Its required reference site shows the structure and conventions it
+expects.
 
-Start with a kit when its reference site is a useful starting point. Keep an
-ordinary site when you want to own every template and presentation resource.
+Keep an ordinary site when you want to own every template and presentation
+resource. A kit has a specific contract, rather than being a generic theme that
+Heine can swap between arbitrary sites.
 
 ## Install a kit and copy its reference site
 

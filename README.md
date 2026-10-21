@@ -1,28 +1,29 @@
 # Heine
 
-Heine is a synchronous Rust static-site generator. It compiles a
-configured content tree and [Tera2](https://github.com/Keats/tera) templates
-into a checked, managed output tree.
+Heine is a fast static-site generator. It builds a complete model of your
+site before it creates the files for your website. When a page, asset,
+translation, listing, or generated file refers to another part of the site,
+Heine can check that relationship during the build and point to its source when
+it is wrong.
 
 Pronounced Hei·ne, [ˈhaɪ̯nə], “Heineken” without “ken.” Named after Heinrich
 Heine, the German poet and prose writer known for his wit and irony. Heine is
 not affiliated with Heineken.
 
-Heine owns the relationships it can check from a site's resolved model:
-rendered pages, copied assets, locale-aware content, generated routes, and
-generated resources. A missing internal page or copied asset therefore fails
-where it is authored instead of becoming a browser 404.
+For example, a missing internal page or copied asset fails where it is
+authored instead of becoming a browser 404. The same model lets multilingual
+content, collections, taxonomies, and generated routes use the pages that
+already exist instead of reconstructing them in templates.
 
 ## Documentation and downloads
 
 See the [Download page](https://heine.rs/download/) for release artifacts and
-the complete starter site. The
-[documentation overview](docs/README.md) maps the implemented features to
-their guides and reference material.
+the complete starter site. The [documentation overview](docs/README.md) starts
+with a first site and tutorial, then groups the focused guides by task.
 
-Heine does not bundle a frontend toolchain or deployment integration. Use
-ordinary tools for CSS and JavaScript processing, media transformation,
-deployment, audits, and external services.
+Use your usual tools for CSS and JavaScript processing, media transformation,
+deployment, audits, and external services. Heine reads their final files and
+builds the pages and relationships it can check from them.
 
 ## First site
 
@@ -108,6 +109,9 @@ features composed in one site rather than introduced one at a time. Extract the
 archive, change into its top-level directory, and run the executable downloaded
 from the [Download page](https://heine.rs/download/):
 
+Its [source tour](starter-site/README.md#what-this-site-demonstrates) maps each
+demonstrated feature to its rendered page, source files, and focused guide.
+
 ```bash
 /path/to/heine --root .
 ```
@@ -119,12 +123,12 @@ files, explicitly adopt and replace it with:
 /path/to/heine --root . --clean-output
 ```
 
-## External asset tools
+## Use external asset tools
 
-Heine copies final assets; it does not compile Sass, process images, bundle
-JavaScript, or generate content-hashed filenames. Run such tools separately
-and have them write their final files below `content/assets/` (or a locale's
-asset tree). Heine then copies those files and `asset()` can link to them.
+Heine copies final assets. Run Sass compilers, image processors, JavaScript
+bundlers, and similar tools separately, then have them write final files below
+`content/assets/` or a locale's asset tree. Heine copies those files, and
+`asset()` can link to them.
 
 Run an asset transformation before Heine when a template references the asset
 through `asset()`. Modifying managed output afterward can invalidate a

@@ -1,8 +1,8 @@
 # Word counts and reading time
 
-Every declared Markdown input exposes a deterministic Unicode word count.
-Templates can use the fact without deciding which content file is a page's
-primary body:
+Use `page.markdown` when a template should show a word count or reading-time
+estimate without guessing which content file is a page's primary body. Every
+declared Markdown input exposes a deterministic Unicode word count:
 
 ```tera
 {{ page.markdown.main.word_count }}

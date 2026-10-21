@@ -31,6 +31,29 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-10-21
+
+### Changed
+
+- **Starter-site tour.** The starter-site README now maps each demonstrated
+  feature to its rendered route, authored files, and focused guide.
+
+### Fixed
+
+- **Literal colon-directive syntax.** Directive-looking text in Markdown code,
+  raw-HTML blocks, and HTML attributes now remains literal.
+
+### Changed
+
+- **Block directive fences.** `picture`, block `render`, and block
+  `component` directives now share one fence rule: an opening fence has at
+  least three colons and its closing fence may be longer. Heine reserves
+  directive-looking forms in a list, quote, or paragraph continuation rather
+  than giving them an accidental meaning.
+  **Migration:** Move a block directive out of a list item or block quote, or
+  begin it after a paragraph break. Write literal syntax as inline or fenced
+  code.
+
 ## [0.9.8] - 2026-10-20
 
 ### Added

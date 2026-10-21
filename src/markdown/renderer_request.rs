@@ -8,7 +8,14 @@ use std::{collections::BTreeMap, ops::Range};
 
 use crate::renderer::{NamedInput, Output, Placement, Profiles, Source};
 
-use super::{HtmlClassList, closing_colon_fence_run};
+use super::{
+    HtmlClassList,
+    directive::{
+        BlockDirectiveKind, block_directive_opening, closing_code_fence, closing_fence,
+        is_indented_code_line, next_inline_role, next_line, opening_code_fence, raw_html_range_at,
+        raw_html_ranges,
+    },
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Request {
@@ -70,20 +77,33 @@ pub(super) fn parse(input: &str) -> Result<Vec<Request>, Error> {
     let mut requests = Vec::new();
     let mut offset = 0;
     let mut fenced: Option<(u8, usize)> = None;
+    let raw_html = if input.contains(":render[") {
+        raw_html_ranges(input)
+    } else {
+        Vec::new()
+    };
     while offset < input.len() {
         let line_end = input[offset..]
             .find('\n')
             .map_or(input.len(), |index| offset + index);
         let line = &input[offset..line_end];
         if let Some((marker, length)) = fenced {
-            if fence_run(line, marker).is_some_and(|run| run >= length) {
+            if closing_code_fence(line, marker).is_some_and(|run| run >= length) {
                 fenced = None;
             }
             offset = next_line(input, line_end);
             continue;
         }
-        if let Some((marker, length)) = opening_fence(line) {
+        if raw_html_range_at(&raw_html, offset).is_some_and(|range| range.end >= line_end) {
+            offset = next_line(input, line_end);
+            continue;
+        }
+        if let Some((marker, length)) = opening_code_fence(line) {
             fenced = Some((marker, length));
+            offset = next_line(input, line_end);
+            continue;
+        }
+        if is_indented_code_line(line) {
             offset = next_line(input, line_end);
             continue;
         }
@@ -92,7 +112,7 @@ pub(super) fn parse(input: &str) -> Result<Vec<Request>, Error> {
             requests.push(request);
             continue;
         }
-        parse_inline_line(input, offset, line_end, &mut requests)?;
+        parse_inline_line(input, offset, line_end, &raw_html, &mut requests)?;
         offset = next_line(input, line_end);
     }
     Ok(requests)
@@ -403,36 +423,14 @@ fn placement_name(placement: Placement) -> &'static str {
     }
 }
 
-fn next_line(input: &str, line_end: usize) -> usize {
-    if line_end < input.len() {
-        line_end + 1
-    } else {
-        line_end
-    }
-}
-
-fn opening_fence(line: &str) -> Option<(u8, usize)> {
-    let indent = line.bytes().take_while(|byte| *byte == b' ').count();
-    let trimmed = (indent <= 3).then(|| &line[indent..])?;
-    let marker = *trimmed.as_bytes().first()?;
-    matches!(marker, b'`' | b'~').then_some(())?;
-    let length = trimmed.bytes().take_while(|byte| *byte == marker).count();
-    (length >= 3).then_some((marker, length))
-}
-
-fn fence_run(line: &str, marker: u8) -> Option<usize> {
-    let indent = line.bytes().take_while(|byte| *byte == b' ').count();
-    let trimmed = (indent <= 3).then(|| &line[indent..])?;
-    let length = trimmed.bytes().take_while(|byte| *byte == marker).count();
-    (length > 0 && trimmed[length..].trim().is_empty()).then_some(length)
-}
-
 fn parse_block(input: &str, start: usize, line_end: usize) -> Result<Option<Request>, Error> {
     let line = &input[start..line_end];
-    let run = line.bytes().take_while(|byte| *byte == b':').count();
-    if run < 3 || !line[run..].starts_with("render[") {
+    let Some(run) = block_directive_opening(line)
+        .filter(|header| header.kind == BlockDirectiveKind::Render)
+        .map(|header| header.fence_length)
+    else {
         return Ok(None);
-    }
+    };
     let header_end = header_end(line, run + "render[".len())
         .map(|index| start + index)
         .ok_or_else(|| Error {
@@ -454,7 +452,7 @@ fn parse_block(input: &str, start: usize, line_end: usize) -> Result<Option<Requ
             .find('\n')
             .map_or(input.len(), |index| cursor + index);
         let close_line = &input[cursor..close_end];
-        if closing_colon_fence_run(close_line).is_some_and(|close_run| close_run >= run) {
+        if closing_fence(close_line).is_some_and(|close_run| close_run >= run) {
             let body_end = if cursor == body_start {
                 cursor
             } else {
@@ -476,7 +474,7 @@ fn parse_block(input: &str, start: usize, line_end: usize) -> Result<Option<Requ
         cursor = close_end + 1;
     }
     Err(Error {
-        message: "Markdown renderer directive is missing its closing colon line".into(),
+        message: "Markdown renderer directive is missing its closing colon fence".into(),
         span: start..input.len(),
     })
 }
@@ -485,73 +483,56 @@ fn parse_inline_line(
     input: &str,
     start: usize,
     end: usize,
+    raw_html: &[Range<usize>],
     requests: &mut Vec<Request>,
 ) -> Result<(), Error> {
     let line = &input[start..end];
     let mut cursor = 0;
-    while cursor < line.len() {
-        if line.as_bytes()[cursor] == b'`' {
-            let run = line[cursor..]
-                .bytes()
-                .take_while(|byte| *byte == b'`')
-                .count();
-            let after = cursor + run;
-            if let Some(close) = line[after..].find(&"`".repeat(run)) {
-                cursor = after + close + run;
-                continue;
-            }
-            break;
-        }
-        if line[cursor..].starts_with(":render[") && !escaped(line, cursor) {
-            let header_start = cursor + ":render[".len();
-            let Some(header_end) = header_end(line, header_start) else {
-                return Err(Error {
-                    message: "inline Markdown renderer request is missing its closing ]".into(),
-                    span: start + cursor..end,
-                });
-            };
-            let delimiter_start = header_end + 1;
-            let run = line[delimiter_start..]
-                .bytes()
-                .take_while(|byte| *byte == b'`')
-                .count();
-            if run == 0 {
-                return Err(Error {
-                    message: "inline Markdown renderer request must use a backtick-delimited body"
-                        .into(),
-                    span: start + cursor..start + delimiter_start,
-                });
-            }
-            let body_start = delimiter_start + run;
-            let delimiter = "`".repeat(run);
-            let Some(body_length) = line[body_start..].find(&delimiter) else {
-                return Err(Error {
-                    message:
-                        "inline Markdown renderer request is missing its closing backtick delimiter"
-                            .into(),
-                    span: start + cursor..end,
-                });
-            };
-            let header_span = start + header_start..start + header_end;
-            let (profile, options) =
-                parse_header(&line[header_start..header_end], start + header_start)?;
-            let body_span = start + body_start..start + body_start + body_length;
-            requests.push(Request {
-                start: start + cursor,
-                placement: Placement::Inline,
-                profile,
-                header_span,
-                body_span,
-                end: start + body_start + body_length + run,
-                options,
+    while let Some(role_start) = next_inline_role(line, start, cursor, "render", raw_html) {
+        cursor = role_start;
+        let header_start = cursor + ":render[".len();
+        let Some(header_end) = header_end(line, header_start) else {
+            return Err(Error {
+                message: "inline Markdown renderer request is missing its closing ]".into(),
+                span: start + cursor..end,
             });
-            cursor = body_start + body_length + run;
-            continue;
-        }
-        let Some(character) = line[cursor..].chars().next() else {
-            break;
         };
-        cursor += character.len_utf8();
+        let delimiter_start = header_end + 1;
+        let run = line[delimiter_start..]
+            .bytes()
+            .take_while(|byte| *byte == b'`')
+            .count();
+        if run == 0 {
+            return Err(Error {
+                message: "inline Markdown renderer request must use a backtick-delimited body"
+                    .into(),
+                span: start + cursor..start + delimiter_start,
+            });
+        }
+        let body_start = delimiter_start + run;
+        let delimiter = "`".repeat(run);
+        let Some(body_length) = line[body_start..].find(&delimiter) else {
+            return Err(Error {
+                message:
+                    "inline Markdown renderer request is missing its closing backtick delimiter"
+                        .into(),
+                span: start + cursor..end,
+            });
+        };
+        let header_span = start + header_start..start + header_end;
+        let (profile, options) =
+            parse_header(&line[header_start..header_end], start + header_start)?;
+        let body_span = start + body_start..start + body_start + body_length;
+        requests.push(Request {
+            start: start + cursor,
+            placement: Placement::Inline,
+            profile,
+            header_span,
+            body_span,
+            end: start + body_start + body_length + run,
+            options,
+        });
+        cursor = body_start + body_length + run;
     }
     Ok(())
 }
@@ -572,16 +553,6 @@ fn header_end(input: &str, start: usize) -> Option<usize> {
         }
     }
     None
-}
-
-fn escaped(line: &str, offset: usize) -> bool {
-    line[..offset]
-        .bytes()
-        .rev()
-        .take_while(|byte| *byte == b'\\')
-        .count()
-        % 2
-        == 1
 }
 
 fn parse_header(
@@ -766,6 +737,46 @@ arguments = ["--format", "htmlAndMathml"]
         assert_eq!(requests[1].placement, Placement::Block);
         assert_eq!(&source[requests[1].body_span.clone()], "A -> B");
         assert_eq!(requests[2].options["alt"].value.as_str(), Some("]"));
+    }
+
+    #[test]
+    fn accepts_a_longer_block_fence() {
+        let source = "::::render[katex]\nx^2\n::::\n";
+        let requests = parse(source).expect("longer fence is valid");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(&source[requests[0].body_span.clone()], "x^2");
+    }
+
+    #[test]
+    fn keeps_renderer_syntax_literal_inside_raw_html() {
+        let source = "<div>\n:::render[katex]`x^2`\n</div>\n";
+        assert!(parse(source).expect("raw HTML is not a request").is_empty());
+    }
+
+    #[test]
+    fn keeps_renderer_syntax_literal_in_indented_code_and_html_attributes() {
+        let indented = "    :render[katex]`x^2`\n";
+        assert!(
+            parse(indented)
+                .expect("indented code is not a request")
+                .is_empty()
+        );
+
+        let html = "<span data-example=\":render[katex]`x^2`\">literal</span>\n";
+        assert!(
+            parse(html)
+                .expect("HTML attribute is not a request")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn raw_html_does_not_turn_its_code_fences_into_scanner_state() {
+        let source =
+            "<div>\n```text\n:::render[ignored]\n```\n</div>\n\n:::render[katex]\nx^2\n:::\n";
+        let requests = parse(source).expect("only the ordinary block is a request");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(&source[requests[0].body_span.clone()], "x^2");
     }
 
     #[test]

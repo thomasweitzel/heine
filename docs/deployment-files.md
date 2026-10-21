@@ -1,9 +1,9 @@
 # Deployment files
 
-`deploy/` is an optional source root for [deployment files](glossary.md#deployment-file):
-files that must travel with a deployed site but are not site content. It keeps
-host configuration and third-party verification files out of `content/`, where
-regular files are otherwise copied assets with locale and template semantics.
+Use `deploy/` for [deployment files](glossary.md#deployment-file) that must
+travel with the site at a fixed output path, such as server configuration or a
+third-party verification file. It keeps those host-owned files separate from
+`content/`, whose regular files are copied assets for pages and templates.
 
 Use this guide after the [tutorial's deployment step](tutorial.md#10-prepare-the-generated-site-for-deployment)
 when you need a file at a fixed output-root path.

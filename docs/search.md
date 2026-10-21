@@ -1,9 +1,10 @@
 # Search indexes
 
-Heine can generate a locale-local JSON document index from one or more
-[collections](collections.md). It supplies checked membership, stable page
-facts, source-derived text, URLs, and output ownership. Your site supplies the
-browser search engine and user interface.
+Use a search index when your site provides its own browser search interface.
+Heine generates one locale-local JSON document from one or more
+[collections](collections.md), with checked membership, stable page facts,
+source-derived text, and URLs. Your site supplies the browser search engine and
+user interface.
 
 This keeps search independent of one JavaScript library. A site can use
 a local script, while a larger one can replace that script with a suitable

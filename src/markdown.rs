@@ -36,6 +36,7 @@ use std::path::PathBuf;
 mod analysis;
 mod class_list;
 pub(crate) mod component;
+mod directive;
 mod highlighting;
 pub(crate) mod margin_footnotes;
 pub(crate) mod picture;
@@ -53,13 +54,6 @@ pub(crate) use render::{render_with_links, render_with_links_anchors};
 pub(crate) use renderer_request::{ResolvedInput, ResolvedRequest};
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
-
-/// Returns a colon-fence length only when the line contains no content after
-/// the fence. Block directives share this closing-fence rule.
-pub(crate) fn closing_colon_fence_run(line: &str) -> Option<usize> {
-    let length = line.bytes().take_while(|byte| *byte == b':').count();
-    (length > 0 && line[length..].trim().is_empty()).then_some(length)
-}
 
 /// One checked renderer replacement held outside the Markdown source until
 /// Markdown has determined the authored document structure.
@@ -570,6 +564,11 @@ pub(crate) enum RenderError {
     RendererPermission { span: Range<usize> },
     #[error("Markdown block component error: {message}")]
     Component { message: String, span: Range<usize> },
+    #[error("Markdown block directives cannot appear inside a {container} yet")]
+    DirectivePlacement {
+        container: &'static str,
+        span: Range<usize>,
+    },
     #[error("renderer failed: {message}")]
     RendererProcess {
         message: String,
@@ -749,6 +748,12 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
             "use a top-level :::component[name key = value] block with a non-empty Markdown body".into(),
             span.clone(),
         ),
+        RenderError::DirectivePlacement { container, span } => (
+            "directive",
+            format!("block directive in a {container}"),
+            directive_placement_help(container),
+            span.clone(),
+        ),
         RenderError::RendererProcess {
             message,
             diagnostics,
@@ -773,6 +778,14 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
         span: span.into(),
         label,
         help,
+    }
+}
+
+fn directive_placement_help(container: &str) -> String {
+    if container == "paragraph continuation" {
+        "begin the directive after a paragraph break, or write it as inline code when documenting literal syntax".into()
+    } else {
+        "move the directive to an ordinary top-level block, or write it as inline code when documenting literal syntax".into()
     }
 }
 

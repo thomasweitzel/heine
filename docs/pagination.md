@@ -1,9 +1,10 @@
 # Pagination
 
-Pagination divides one ordered [collection](glossary.md#collection) into several rendered views. An
-ordinary authored listing declares `[pagination]`; a taxonomy term listing
-uses the `per_page` value from its taxonomy definition. Neither form discovers
-pages, changes collection order, or lets a template create output.
+Use pagination when an ordered [collection](glossary.md#collection) needs more
+than one listing page. An ordinary listing declares `[pagination]`; a taxonomy
+term listing uses the `per_page` value from its taxonomy definition. Heine
+keeps the collection's existing membership and order, then creates the needed
+listing pages from that result.
 
 Start with the [collection guide](collections.md) or the
 [tutorial's pagination step](tutorial.md#7-paginate-the-blog-index) if the

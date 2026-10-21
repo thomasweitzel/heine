@@ -1,9 +1,10 @@
 # Development server
 
-`heine serve` builds a site, serves its [generated output](glossary.md#generated-output),
-watches its inputs, and reloads open HTML pages after a successful rebuild. It
-is for local development, not production hosting. It does not provide TLS,
-compression, production caching or cache revalidation, or conditional requests.
+Use `heine serve` while writing a site. It builds the site, serves its
+[generated output](glossary.md#generated-output), watches its inputs, and
+reloads open HTML pages after a successful rebuild. It is a local development
+server; use a production web server for TLS, compression, caching, and
+conditional requests.
 
 Run the downloaded executable:
 

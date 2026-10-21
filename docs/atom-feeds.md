@@ -1,9 +1,9 @@
 # Atom feeds
 
-An Atom feed is an XML document that lets feed readers discover recent pages
-from one [collection](collections.md). Heine generates feeds from already
-resolved collection membership; a feed cannot discover pages, change a
-collection, or create output through a template.
+Use an Atom feed when feed readers should discover recent pages from one
+[collection](collections.md). Heine takes the collection's existing members,
+orders them by publication time, and generates the feed as a checked output
+file.
 
 Feeds are opt-in. They are locale-local, checked generated resources: one
 configured feed produces one document for every configured locale. An English

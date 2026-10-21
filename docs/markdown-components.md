@@ -23,11 +23,14 @@ The component receives the rendered body through Tera's `body` value:
 {% endcomponent site.note %}
 ```
 
-The opening fence has at least three colons. Use a longer opening and closing
-fence when the body contains a shorter colon fence. Components need a
-non-empty body and must occur as an ordinary top-level Markdown block. They
-cannot nest or occur in a list, quote, table, footnote definition, or segmented
-source.
+Components normally use the three-colon opening and closing fences shown
+above. When the body contains a literal `:::` line, use a longer opening fence
+and an otherwise empty closing fence of the same length or longer. Components
+need a non-empty body and must occur as an ordinary top-level Markdown block.
+They cannot nest or occur in a list, quote, table,
+footnote definition, or segmented source. Heine rejects directive-looking
+forms in a list, quote, or paragraph continuation until it can define their
+structural behavior without changing their meaning later.
 
 Arguments follow the component name and use TOML scalar values. They can be
 strings, finite numbers, or booleans. They are literal values, not Tera

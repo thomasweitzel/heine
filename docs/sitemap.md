@@ -1,8 +1,8 @@
 # Sitemaps
 
-A sitemap is an XML list of a site's public URLs. Search engines use it to
-discover pages. It is not a navigation page and does not decide whether a page
-is publicly reachable.
+Use a sitemap when search engines should discover a site's public pages. Heine
+generates an XML list from the pages and generated listings it will publish;
+the sitemap itself is separate from a site's reader-facing navigation.
 
 ## Smallest configuration
 
