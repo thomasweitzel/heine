@@ -106,17 +106,18 @@ assets = ["assets/reports/example.pdf", "assets/reports/example-data.csv"]
 licensing_record = "organisation-report"
 ```
 
-The table key is a unique, local record identifier. It uses lowercase ASCII
-letters, digits, hyphens, and underscores. A group selects exactly one record.
-Adjacent sidecars remain the natural declaration for one copied file and do
-not need a record.
+The table key is a unique, local record identifier. It starts with a lowercase
+ASCII letter and then uses lowercase ASCII letters, digits, hyphens, or
+underscores. A group selects exactly one record. Adjacent sidecars remain the
+natural declaration for one copied file and do not need a record.
 
 Choose the smallest declaration that describes the relationship. Use a sidecar
 when one copied file needs facts of its own. Use a record and an exact group
 when several copied files share facts. Use a record when copied files and
 renderer resources share facts, even if the copied set has only one file. The
 record then keeps one declaration attached to every authored cause of those
-published artifacts.
+published artifacts. A one-file group that shares no facts with another
+artifact only adds indirection, so it should use a sidecar instead.
 
 Heine parses records with the same SPDX expression and local license-text
 rules that it already applies to sidecars and groups. A record that names a
@@ -125,7 +126,8 @@ license identifier or exception still requires the matching
 without `licensing_record`, SPDX fields in a group, and an identifier outside
 that character set are checked configuration errors. Every record must contain
 at least one copyright notice and one SPDX expression. A named record may
-remain unused, just as an unused renderer profile remains valid.
+remain unused, just as an unused renderer profile remains valid. Unusedness
+does not waive license-text validation for any identifier the record names.
 
 Records improve authoring without weakening review: groups still enumerate
 their exact output paths. A record supplies facts; it never selects files.
@@ -199,6 +201,10 @@ Even records with currently identical SPDX fields remain distinct declaration
 sources. Treating them as interchangeable would allow their facts to drift
 without a new review of the shared output.
 
+This distinction matters only where Heine merges one output. Copied assets in
+different exact groups remain independent declarations even when their records
+currently have identical fields, matching the current group model.
+
 The resource does not need a fictitious adjacent sidecar. Its stable authored
 identity is the renderer request or profile field, not its changing digest
 path.
@@ -247,9 +253,11 @@ should be:
 `output_path` is the exact public identity, not presentation text. It is
 stable for copied assets but changes when a renderer's returned bytes change.
 `media_type` is `null` for copied assets: Heine does not infer a media type
-from a filename extension. `relative_url` has the same current-page-relative
-meaning as the copied-asset attribution view. `absolute_url` is present only
-when `site.origin` is configured, matching other template URL views.
+from a filename extension. A renderer resource has an authored media type
+because its profile declares that result contract. `relative_url` has the same
+current-page-relative meaning as the copied-asset attribution view.
+`absolute_url` is present only when `site.origin` is configured, matching
+other template URL views.
 
 Every renderer-resource item therefore also exposes one or more `sources`.
 Each source identifies the page and declared Markdown input that requested the
@@ -262,6 +270,10 @@ uses the resource. `media_type` identifies a renderer resource's configured
 media type. Sources sort by page output path and then by their Markdown source
 position.
 
+`sources` is renderer-resource provenance, not a generic contract for every
+future artifact kind. A later kind must join the shared licensing catalog, but
+may define source fields that fit its own authored relationship.
+
 `item.licensing.record` is the selected record's stable local identifier, or
 `null` for a sidecar. A localized attribution page may use that key for shared
 prose, while `sources` distinguish several resources that use the same record.
@@ -271,6 +283,10 @@ Copied-asset items expose an empty `sources` list.
 in one locale may therefore list a renderer resource whose sources exist only
 in another locale. A template that needs a locale-specific presentation can
 filter the deterministic `sources` list by `source.page.locale`.
+
+The current build determines the source set. A draft preview can include a
+draft source that an ordinary build excludes, so its resource ordering may
+differ from the ordinary build's ordering.
 
 The existing `asset()` helper remains copied-asset-only. Its `licensing` view
 gains the same optional `record` identifier when a group selects a record;
@@ -302,7 +318,8 @@ This proposal covers only output relationships Heine already owns.
 Today, Markdown `:::render` requests are the only renderer-resource producer.
 If a later feature can publish an independently usable generated resource, it
 must use this same artifact catalog and licensing-record selection path rather
-than add another attribution mechanism.
+than add another attribution mechanism. It may define provenance fields that
+fit its own authored relationship rather than reuse renderer `sources`.
 
 - A raw HTML `src`, literal CSS `url()`, JavaScript string, or third-party
   embed remains unchecked. Heine neither owns those bytes nor knows whether
@@ -418,7 +435,8 @@ the whole legal-compliance process.
 - Matching digest resources share one attribution item. Different records for
   one digest resource, or a mixture of declared and undeclared requests, fail
   with every relevant source location and explain why one request cannot set
-  licensing facts for another. Differing media types for one resource fail
+  licensing facts for another: declarations attach to requests and profiles,
+  not to inferred digest paths. Differing media types for one resource fail
   with the same locations.
 - `attributions()` exposes generic artifact information, stable order, license
   URLs, base-path-aware URLs, absolute URLs where configured, configured
@@ -432,6 +450,9 @@ the whole legal-compliance process.
   conflict, media-type conflict, the draft-preview-only coverage failure, an
   accepted unused record, a group without `licensing_record`, a group with SPDX
   fields, and an unknown record.
+- The controlled fixture renderer returns byte-identical output for identical
+  input on every supported platform, so digest paths and conflict cases remain
+  deterministic.
 - Full and quick builds retain their existing freshness rules. The guides name
   configuration, license text, renderer-profile, request, and record changes
   as changes that require a full build when quick mode cannot establish a
