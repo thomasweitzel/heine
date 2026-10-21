@@ -1,10 +1,11 @@
 # Collections
 
-Collections are named, deterministic, locale-local ordered sets of rendered
-pages. They provide the shared input for article listings, pagination,
-taxonomies, and [Atom feeds](atom-feeds.md). A template can read a resolved
-collection, but can never create pages or alter its membership. If collections are new to you, build the
-[tutorial's collection step](tutorial.md#6-create-an-ordered-post-collection) first.
+Use a collection when several parts of a site need the same ordered pages: a
+blog listing, pagination, a taxonomy, or an [Atom feed](atom-feeds.md). A
+collection names the pages once, then templates and generated resources can
+read that result without recreating the membership or order. If collections are
+new to you, build the [tutorial's collection
+step](tutorial.md#6-create-an-ordered-post-collection) first.
 
 ## Quick start
 

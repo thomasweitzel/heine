@@ -1,15 +1,15 @@
 # Asset licensing
 
-Heine supports a REUSE-compatible convention for declaring the rights
-information of [copied assets](glossary.md#copied-asset). It keeps licensing
-beside the asset it describes, or records one explicit shared declaration for
-a shared asset set, publishes the matching license texts, and exposes the
-declared information to ordinary Tera templates. It does not determine whether
-a declaration satisfies the law applicable to a particular work or use.
+Use asset licensing when copied files need published rights information or an
+attribution page. Heine follows a REUSE-compatible convention: a declaration
+stays beside the [copied asset](glossary.md#copied-asset) it describes, or one
+shared declaration names an exact asset set. Heine publishes the matching
+license texts and exposes the declared information to Tera templates. The site
+author remains responsible for whether those declarations fit a particular work
+or use.
 
-Use this guide after the [tutorial's asset-licensing step](tutorial.md#11-add-asset-licensing-and-attributions)
-when a copied asset needs published licensing information or an attribution
-page.
+The [tutorial's asset-licensing step](tutorial.md#11-add-asset-licensing-and-attributions)
+shows the same convention in a working site.
 
 ## Layout
 

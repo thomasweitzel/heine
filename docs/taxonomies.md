@@ -1,10 +1,9 @@
 # Taxonomies
 
-Taxonomies classify the explicitly selected members of a
-[collection](glossary.md#collection) into
-named terms. They are the generated-output counterpart to collections: a
-collection decides which pages participate and in what order; a taxonomy
-partitions that already ordered set into term listings.
+Use a taxonomy when readers should browse a [collection](glossary.md#collection)
+by tags, categories, topics, or another named term. A collection decides which
+pages participate and in what order. A taxonomy groups that existing ordered
+set into generated term listings.
 
 ```text
 collection      = which rendered pages participate, in one explicit order

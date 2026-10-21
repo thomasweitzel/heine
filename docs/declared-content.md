@@ -1,7 +1,7 @@
 # Declared content
 
-A page's `[content]` table gives its template named inputs. Most pages need one
-unsegmented Markdown file and render it in one reading flow:
+Use a page's `[content]` table to name the files its template renders. Most
+pages need one unsegmented Markdown file in one reading flow:
 
 ```toml
 # content/en/article.page
