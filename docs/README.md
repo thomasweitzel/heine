@@ -12,7 +12,9 @@ template value, while the [glossary](glossary.md) explains Heine terms.
 
 For a complete working site rather than a teaching-sized example, inspect and
 build [`starter-site/`](../starter-site). It shows several features working
-together, but you do not need it before using the guides.
+together, but you do not need it before using the guides. Its [source
+tour](../starter-site/README.md#what-this-site-demonstrates) maps a feature to
+the rendered example, its authored files, and the relevant guide.
 
 ## Shape a site
 

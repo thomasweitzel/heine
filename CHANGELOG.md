@@ -33,6 +33,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [0.9.9] - 2026-10-21
 
+### Changed
+
+- **Starter-site tour.** The starter-site README now maps each demonstrated
+  feature to its rendered route, authored files, and focused guide.
+
 ### Fixed
 
 - **Literal colon-directive syntax.** Directive-looking text in Markdown code,
