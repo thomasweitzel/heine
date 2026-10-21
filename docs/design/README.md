@@ -34,6 +34,9 @@ guides and the [reference](../reference.md) instead.
 - [External asset manifests](external-asset-manifests.md): why a per-URL
   cache-busting helper is insufficient, and the boundary a future external
   asset-manifest integration would need.
+- [Published-artifact licensing](published-artifact-licensing.md): a candidate
+  extension that would attach declared licensing facts to renderer resources
+  as well as copied assets.
 
 ## Rejected proposals
 

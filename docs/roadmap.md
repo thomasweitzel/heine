@@ -55,3 +55,13 @@ needs a concrete external-builder use case and must preserve the boundary in
 the [external-asset-manifest record](design/external-asset-manifests.md): the
 builder owns graph rewriting and final fingerprinted files, while Heine may
 validate a narrow manifest-to-checked-asset relationship.
+
+### Published-artifact licensing
+
+Copied assets already support REUSE-style sidecars, exact licensing groups,
+local license texts, and optional required coverage. Renderer resources remain
+outside that model even though Heine owns their final bytes and output paths.
+The [published-artifact licensing design](design/published-artifact-licensing.md)
+explores a narrow extension: reusable declared licensing records and coverage
+for separate renderer resources, without treating pages or arbitrary URLs as
+assets or claiming legal compliance.

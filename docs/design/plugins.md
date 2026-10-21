@@ -481,10 +481,11 @@ collector.
 
 A generated renderer resource is not a copied asset. It has no adjacent
 licensing sidecar and is outside the current `[licensing].required` coverage
-contract, which applies to copied assets only. A future policy for generated
-resource licensing needs a separate design for tracking its source and
-licensing facts: relevant facts may come from the authored renderer source, the
-renderer, bundled fonts, or other tool inputs. Heine does not infer those facts.
+contract, which applies to copied assets only. The exploratory
+[published-artifact licensing design](published-artifact-licensing.md)
+considers a narrow extension for attaching authored facts to separate renderer
+resources. Heine does not infer those facts from the renderer, source bundle,
+bundled fonts, or other tool inputs.
 
 The host retains the originating page, content file, directive span, and
 renderer-profile name for every derived resource. An attempted authored claim
