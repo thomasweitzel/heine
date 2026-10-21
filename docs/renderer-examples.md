@@ -13,9 +13,13 @@ existing Heine site:
 The examples use external programs. Heine does not install them and executes
 them only when the build command includes `--allow-external-renderers`.
 Run every command from the site root unless the command says otherwise. A block
-request begins with `:::render[profile]` and ends with `:::`. An inline request
-has the form ``:render[profile]`body` `` and stays on one line. Heine replaces
-either request with the profile's checked result.
+request normally begins with `:::render[profile]` and ends with `:::`. When its
+body contains a literal `:::` line, use a longer opening fence and an otherwise
+empty closing fence of the same length or longer. An inline request has the
+form ``:render[profile]`body` `` and stays on one line. Heine replaces either
+request with the profile's checked result. Block requests must be ordinary
+top-level Markdown blocks, not list-item, block-quote, or paragraph-
+continuation content.
 
 ## Choose a recipe
 

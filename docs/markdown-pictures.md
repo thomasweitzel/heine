@@ -103,10 +103,14 @@ also to `figure` when a caption creates one. Use `picture.<class>` or
 `figure.<class>` when a rule belongs to one element only. A broad `.<class>`
 selector matches both elements for a captioned picture.
 
-The directive is a standalone Markdown block. Its opening line is exactly
-`:::picture`, and its closing line is exactly `:::`. Fenced code remains
-literal, so documentation can show the syntax without escaping it. A malformed
-or unterminated block is a checked Markdown error.
+The directive is a standalone Markdown block. It normally uses the
+three-colon opening and closing fences shown above. When the body contains a
+literal `:::` line, use a longer opening fence and an otherwise empty closing
+fence of the same length or longer. Fenced code remains literal,
+so documentation can show the syntax without escaping it. A malformed or
+unterminated block is a checked Markdown error. Pictures must be ordinary
+top-level Markdown blocks, not list-item or block-quote content or paragraph
+continuations.
 
 Its `alt` text and optional caption each contribute once to a source-level
 [search index](search.md). The source IDs and other directive fields do not. A

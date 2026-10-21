@@ -2251,6 +2251,98 @@ fn renders_markdown_block_components_inside_the_checked_document_plan() {
 }
 
 #[test]
+fn keeps_all_block_directive_syntax_literal_in_documentation_contexts() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        r#"Use `:::component[site.note]`, `:::picture`, and `:::render[copy]` when documenting syntax.
+
+```markdown
+:::component[site.note]
+:::picture
+:::render[copy]
+```
+
+<div>
+:::component[site.note]
+:::picture
+:::render[copy]
+</div>
+
+<span data-component=":::component[site.note]" data-picture=":::picture" data-render=":render[copy]`body`">literal</span>
+"#,
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("literal directive syntax builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<code>:::component[site.note]</code>"),
+        "{output}"
+    );
+    assert!(output.contains("<code>:::picture</code>"), "{output}");
+    assert!(output.contains("<code>:::render[copy]</code>"), "{output}");
+    assert!(
+        output.contains("data-render=\":render[copy]`body`\""),
+        "{output}"
+    );
+}
+
+#[test]
+fn reserves_block_directives_inside_lists_and_quotes() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "- :::component[site.note]\n  A note.\n  :::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("a component in a list is reserved for a future contract");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("block directive in a list item"),
+        "{diagnostic}"
+    );
+    assert!(
+        diagnostic.contains("ordinary top-level block"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn reserves_block_directives_inside_paragraph_continuations() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "Before the directive\n:::component[site.note]\nA note.\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("a component in a paragraph continuation is reserved");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:2"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("block directive in a paragraph continuation"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
 fn renders_markdown_block_components_from_crlf_source() {
     let fixture = Fixture::new();
     fixture.write(

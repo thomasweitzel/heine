@@ -13,7 +13,9 @@ use serde::Deserialize;
 use crate::asset::AssetLinks;
 
 use super::{
-    HtmlClassList, RenderError, closing_colon_fence_run, push_html_attribute, push_html_text,
+    HtmlClassList, RenderError,
+    directive::{BlockDirectiveKind, block_directive_opening, closing_fence},
+    push_html_attribute, push_html_text,
 };
 
 #[derive(Debug, Deserialize)]
@@ -125,10 +127,11 @@ pub(super) fn source_text(source: &str) -> Option<String> {
 /// Identifies a paragraph that begins a picture directive. Margin-footnote
 /// planning uses this to ignore directive metadata as prose.
 pub(super) fn starts_directive(source: &str) -> bool {
-    source
-        .lines()
-        .next()
-        .is_some_and(|line| line.trim_end_matches('\r') == ":::picture")
+    source.lines().next().is_some_and(|line| {
+        let line = line.trim_end_matches('\r');
+        block_directive_opening(line)
+            .is_some_and(|header| header.kind == BlockDirectiveKind::Picture)
+    })
 }
 
 fn parse(
@@ -141,10 +144,10 @@ fn parse(
     }
     let Some((body, body_offset)) = body(source) else {
         return Err(Error {
-            message: "Markdown picture directive is missing its closing ::: line".into(),
+            message: "Markdown picture directive is missing its closing colon fence".into(),
             span: offset..offset + source.len(),
             label: "unterminated picture directive",
-            help: "close the standalone picture block with :::".into(),
+            help: "close the standalone picture block with an otherwise empty colon fence of the same length or longer".into(),
         });
     };
     let raw = toml::from_str::<RawPicture>(body).map_err(|error| {
@@ -450,9 +453,12 @@ fn value_span<T>(value: &toml::Spanned<T>, offset: usize) -> Range<usize> {
 
 fn body(source: &str) -> Option<(&str, usize)> {
     let lines = lines(source);
+    let opening = block_directive_opening(lines.first()?.1)
+        .filter(|header| header.kind == BlockDirectiveKind::Picture)?
+        .fence_length;
     if lines.len() < 2
-        || lines.first()?.1 != ":::picture"
-        || closing_colon_fence_run(lines.last()?.1) != Some(3)
+        || !lines.first()?.1[opening + "picture".len()..].is_empty()
+        || closing_fence(lines.last()?.1).is_none_or(|closing| closing < opening)
     {
         return None;
     }
@@ -482,7 +488,16 @@ fn lines(source: &str) -> Vec<(usize, &str, usize)> {
 
 #[cfg(test)]
 mod tests {
-    use super::dimensions_for_picture;
+    use super::{dimensions_for_picture, source_text};
+
+    #[test]
+    fn accepts_a_longer_fence_for_picture_examples_with_literal_colons() {
+        let source = "::::picture\nalt = \"A diagram\"\nlight = \"asset:light.svg\"\ndark = \"asset:dark.svg\"\ncaption = \"::: remains literal\"\n::::\n";
+        assert_eq!(
+            source_text(source),
+            Some("A diagram\n::: remains literal".into())
+        );
+    }
 
     #[test]
     fn generated_pictures_check_and_derive_dimensions_from_the_light_fallback() {

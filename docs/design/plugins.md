@@ -243,8 +243,7 @@ Markdown's code-span convention:
 
 ### Block directive
 
-A block request starts at the beginning of a line with a run of at least three
-colons and ends with an equal or longer colon run on its own line:
+A block request normally starts and ends with three colons:
 
 ```markdown
 :::render[plantuml output="resource"]
@@ -255,8 +254,8 @@ Bob --> Alice: response
 :::
 ```
 
-An author lengthens the opening and closing colon runs when the body contains
-the shorter delimiter:
+An author lengthens both fences only when the body contains a literal `:::`
+line:
 
 ```markdown
 ::::render[plantuml output="resource"]
@@ -271,7 +270,9 @@ end note
 The block form is the only form that may contain line breaks. Nested renderer
 requests are not part of the first version. Code spans and fenced code blocks
 always suppress renderer-request recognition. In ordinary prose, `\:render`
-begins literal text rather than a request.
+begins literal text rather than a request. A block request must be its own
+top-level Markdown block, not content in a list, block quote, or paragraph
+continuation.
 
 The syntactic form determines placement:
 

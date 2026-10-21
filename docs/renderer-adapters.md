@@ -14,8 +14,13 @@ external-tool recipes.
 ## Requests, profiles, and trust
 
 An inline request has the form ``:render[profile]`body` `` and stays on one
-Markdown line. A block request begins with `:::render[profile]` and ends with
-`:::`. Each selects one profile from the root `heine.toml`.
+Markdown line. A block request normally begins with `:::render[profile]` and
+ends with `:::`. When its body contains a literal `:::` line, use a longer
+opening fence and an otherwise empty closing fence of the same length or
+longer. Each selects one profile from the root `heine.toml`. Block requests
+must be ordinary top-level Markdown blocks. Heine rejects a request in a list
+item or block quote, or a paragraph continuation, until it defines how that
+structure should contain the replacement.
 
 A profile's `protocol` controls how Heine supplies the checked input. A
 `stream` profile receives one input on standard input and writes one result to

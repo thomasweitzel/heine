@@ -9,7 +9,14 @@ use std::{collections::BTreeMap, ops::Range};
 use pulldown_cmark::{Event, Parser, Tag};
 use serde_json::Value;
 
-use super::{RenderError, closing_colon_fence_run};
+use super::{
+    RenderError,
+    directive::{
+        BlockDirectiveKind, block_directive_opening, closing_code_fence, closing_fence,
+        is_indented_code_line, is_raw_html_at, next_line, opening_code_fence, raw_html_ranges,
+        trim_cr, unsupported_block_placement,
+    },
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ComponentCall {
@@ -52,22 +59,42 @@ pub(crate) struct ComponentPlan {
 
 impl ComponentPlan {
     pub(crate) fn parse(input: &str) -> Result<Option<Self>, RenderError> {
+        // Most Markdown inputs contain no block-directive prefix. Avoid a
+        // structural parse and the component scan in that common case.
+        if !input.contains(":::") {
+            return Ok(None);
+        }
+        if let Some(placement) = unsupported_block_placement(input) {
+            return Err(RenderError::DirectivePlacement {
+                container: placement.container,
+                span: placement.span,
+            });
+        }
         let mut calls = Vec::new();
         let mut offset = 0;
         let mut code_fence = None;
+        let raw_html = if input.contains(":::component[") {
+            raw_html_ranges(input)
+        } else {
+            Vec::new()
+        };
         while offset < input.len() {
             let line_end = input[offset..]
                 .find('\n')
                 .map_or(input.len(), |index| offset + index);
             let line = trim_cr(&input[offset..line_end]);
             if let Some((marker, length)) = code_fence {
-                if fence_run(line, marker).is_some_and(|run| run >= length) {
+                if closing_code_fence(line, marker).is_some_and(|run| run >= length) {
                     code_fence = None;
                 }
                 offset = next_line(input, line_end);
                 continue;
             }
-            if let Some(fence) = opening_fence(line) {
+            if is_raw_html_at(&raw_html, offset) {
+                offset = next_line(input, line_end);
+                continue;
+            }
+            if let Some(fence) = opening_code_fence(line) {
                 code_fence = Some(fence);
                 offset = next_line(input, line_end);
                 continue;
@@ -81,12 +108,6 @@ impl ComponentPlan {
                 calls.push(call);
                 offset = next;
                 continue;
-            }
-            if line.trim_start().contains(":::component[") {
-                return Err(error(
-                    "Markdown block component directives need an ordinary top-level block",
-                    offset..line_end,
-                ));
             }
             offset = next_line(input, line_end);
         }
@@ -132,18 +153,18 @@ fn parse_call(
             .map_or(input.len(), |index| offset + index);
         let line = trim_cr(&input[offset..close_end]);
         if let Some((marker, length)) = code_fence {
-            if fence_run(line, marker).is_some_and(|run| run >= length) {
+            if closing_code_fence(line, marker).is_some_and(|run| run >= length) {
                 code_fence = None;
             }
             offset = next_line(input, close_end);
             continue;
         }
-        if let Some(fence) = opening_fence(line) {
+        if let Some(fence) = opening_code_fence(line) {
             code_fence = Some(fence);
             offset = next_line(input, close_end);
             continue;
         }
-        if closing_colon_fence_run(line).is_some_and(|run| run >= fence_length) {
+        if closing_fence(line).is_some_and(|run| run >= fence_length) {
             let body_end = if offset == body_start {
                 offset
             } else {
@@ -315,12 +336,12 @@ fn contains_footnote_definition(body: &str) -> bool {
     let mut code_fence = None;
     for line in body.lines().map(trim_cr) {
         if let Some((marker, length)) = code_fence {
-            if fence_run(line, marker).is_some_and(|run| run >= length) {
+            if closing_code_fence(line, marker).is_some_and(|run| run >= length) {
                 code_fence = None;
             }
             continue;
         }
-        if let Some(fence) = opening_fence(line) {
+        if let Some(fence) = opening_code_fence(line) {
             code_fence = Some(fence);
             continue;
         }
@@ -346,34 +367,9 @@ fn blank_non_newlines(input: &mut [u8], range: Range<usize>) {
 }
 
 fn component_fence(line: &str) -> Option<usize> {
-    let run = line.bytes().take_while(|byte| *byte == b':').count();
-    (run >= 3 && line[run..].starts_with("component[") && line.ends_with(']')).then_some(run)
-}
-
-fn trim_cr(line: &str) -> &str {
-    line.strip_suffix('\r').unwrap_or(line)
-}
-
-fn is_indented_code_line(line: &str) -> bool {
-    line.starts_with('\t') || line.bytes().take_while(|byte| *byte == b' ').count() >= 4
-}
-
-fn next_line(input: &str, end: usize) -> usize {
-    if end < input.len() { end + 1 } else { end }
-}
-fn opening_fence(line: &str) -> Option<(u8, usize)> {
-    let indent = line.bytes().take_while(|byte| *byte == b' ').count();
-    let trimmed = (indent <= 3).then(|| &line[indent..])?;
-    let marker = *trimmed.as_bytes().first()?;
-    matches!(marker, b'`' | b'~').then_some(())?;
-    let run = trimmed.bytes().take_while(|byte| *byte == marker).count();
-    (run >= 3).then_some((marker, run))
-}
-fn fence_run(line: &str, marker: u8) -> Option<usize> {
-    let indent = line.bytes().take_while(|byte| *byte == b' ').count();
-    let trimmed = (indent <= 3).then(|| &line[indent..])?;
-    let run = trimmed.bytes().take_while(|byte| *byte == marker).count();
-    (run > 0 && trimmed[run..].trim().is_empty()).then_some(run)
+    block_directive_opening(line)
+        .filter(|header| header.kind == BlockDirectiveKind::Component)
+        .map(|header| header.fence_length)
 }
 fn error(message: impl Into<String>, span: Range<usize>) -> RenderError {
     RenderError::Component {
@@ -422,6 +418,9 @@ mod tests {
 
         let indented_literal = "    :::component[site.note]\n    text\n    :::\n";
         assert!(ComponentPlan::parse(indented_literal).unwrap().is_none());
+
+        let raw_html = "<aside>\n:::component[site.note]\ntext\n:::\n</aside>\n";
+        assert!(ComponentPlan::parse(raw_html).unwrap().is_none());
 
         let empty = ":::component[site.note]\n\n:::\n";
         assert!(matches!(
