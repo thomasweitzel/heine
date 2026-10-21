@@ -111,6 +111,13 @@ letters, digits, hyphens, and underscores. A group selects exactly one record.
 Adjacent sidecars remain the natural declaration for one copied file and do
 not need a record.
 
+Choose the smallest declaration that describes the relationship. Use a sidecar
+when one copied file needs facts of its own. Use a record and an exact group
+when several copied files share facts. Use a record when copied files and
+renderer resources share facts, even if the copied set has only one file. The
+record then keeps one declaration attached to every authored cause of those
+published artifacts.
+
 Heine parses records with the same SPDX expression and local license-text
 rules that it already applies to sidecars and groups. A record that names a
 license identifier or exception still requires the matching
@@ -432,5 +439,6 @@ the whole legal-compliance process.
 - The tutorial, asset-licensing guide, renderer-adapter guide, reference,
   glossary, starter-site tour, and plugin design all describe the resulting
   boundary without claiming REUSE or legal compliance. The glossary defines
-  both licensing record and published artifact. The guide shows both a simple
-  sidecar and the more verbose record-plus-group form for a one-off asset set.
+  both licensing record and published artifact. The guide shows a sidecar for
+  one copied file, a record plus group for a shared copied-asset set, and a
+  shared record for copied assets and renderer resources.
