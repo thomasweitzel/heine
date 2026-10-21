@@ -21,9 +21,11 @@ mod sitemap;
 mod taxonomy;
 
 use std::{
+    cmp::Ordering,
     collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
+    sync::Arc,
     time::SystemTime,
 };
 
@@ -31,7 +33,9 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
-    asset::{AssetCatalog, AssetSources, SharedAssets},
+    asset::{
+        AssetCatalog, AssetSources, RendererAttribution, RendererAttributionSource, SharedAssets,
+    },
     config::{
         BasePath, CollectionsConfig, FeedsConfig, I18nConfig, LicensingConfig, SearchConfig,
         SeriesConfig, SiteConfig, SiteSettings, SitemapConfig, TaxonomiesConfig,
@@ -145,6 +149,9 @@ pub(crate) enum Error {
     Licensing(#[from] Box<crate::licensing::Error>),
     #[error(transparent)]
     #[diagnostic(transparent)]
+    RendererResource(#[from] Box<RendererResourceDiagnostic>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     DuplicateTranslation(#[from] Box<index::DuplicateTranslation>),
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -231,6 +238,32 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Search(Box<search::Error>),
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(code(heine::renderer::resource))]
+#[error("{message}")]
+pub(crate) struct RendererResourceDiagnostic {
+    message: String,
+    #[source_code]
+    source_code: Arc<miette::NamedSource<String>>,
+    label: String,
+    #[label("{label}")]
+    span: miette::SourceSpan,
+    #[help]
+    help: String,
+    #[related]
+    related: Vec<RendererResourceOrigin>,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error("another renderer request produces the same resource")]
+struct RendererResourceOrigin {
+    #[source_code]
+    source_code: Arc<miette::NamedSource<String>>,
+    label: String,
+    #[label("{label}")]
+    span: miette::SourceSpan,
 }
 
 /// Fully validated site data. This is deliberately independent of Tera.
@@ -387,12 +420,16 @@ impl Site {
             })
             .collect::<BTreeMap<_, _>>();
         let mut assets = AssetCatalog::discover_locales(&asset_sources)?;
+        let licensing_records = licenses
+            .resolve_config_records(licensing, diagnostics)
+            .map_err(Box::new)?;
         licenses
             .attach_to_assets(
                 &mut assets,
                 content_root,
                 kit_assets,
                 licensing,
+                &licensing_records,
                 diagnostics,
             )
             .map_err(Box::new)?;
@@ -418,14 +455,16 @@ impl Site {
                 let assets = validation_assets.with_locale(locale.clone());
                 let page_links = validation_pages.with_locale(locale.clone());
                 for page in locale_pages.values_mut() {
-                    page.analyze_markdown(
-                        markdown_renderer,
-                        &assets,
-                        &page_links,
-                        reading_time.words_per_minute(locale),
-                        search_selections.contains(locale, &page.id),
-                        site_settings.base_path().as_str(),
-                    )?;
+                    page.analyze_markdown(page::MarkdownAnalysisInputs {
+                        renderer: markdown_renderer,
+                        assets: &assets,
+                        pages: &page_links,
+                        words_per_minute: reading_time.words_per_minute(locale),
+                        collect_search_sections: search_selections.contains(locale, &page.id),
+                        resource_base_path: site_settings.base_path().as_str(),
+                        licensing_coverage: licensing.coverage(),
+                        locale,
+                    })?;
                 }
             }
         }
@@ -482,12 +521,13 @@ impl Site {
             taxonomies: &taxonomy_config,
         })
         .map_err(|error| Error::Search(Box::new(error)))?;
-        let renderer_resources = group_renderer_resources(
+        let mut renderer_resources = group_renderer_resources(
             pages
                 .values()
                 .flat_map(|pages| pages.values())
                 .flat_map(|page| page.renderer_resources.iter().cloned()),
-        );
+        )?;
+        attach_renderer_licensing(&mut renderer_resources, &licensing_records)?;
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks, series.tasks());
         let sitemap = match (sitemap_config, canonical_urls.as_ref()) {
             (Some(config), Some(urls)) => Some(
@@ -609,26 +649,197 @@ impl Site {
     pub(crate) fn assets(&self) -> &AssetCatalog {
         self.assets.as_ref()
     }
+
+    pub(crate) fn renderer_attributions(&self) -> Vec<RendererAttribution> {
+        self.renderer_resources
+            .iter()
+            .filter_map(|resource| {
+                let licensing = resource.licensing.clone()?;
+                let mut sources = resource
+                    .origins
+                    .iter()
+                    .map(|origin| RendererAttributionSource {
+                        page_output_path: origin.page_output_path.clone(),
+                        locale: origin.locale.to_string(),
+                        input: origin.input.clone(),
+                        kind: origin.kind,
+                        text: origin.text.clone(),
+                        position: origin.position,
+                    })
+                    .collect::<Vec<_>>();
+                sources.sort_by(|left, right| {
+                    left.page_output_path
+                        .cmp(&right.page_output_path)
+                        .then_with(|| left.position.cmp(&right.position))
+                });
+                Some(RendererAttribution {
+                    output_path: resource.output_path.clone(),
+                    media_type: resource.media_type.clone(),
+                    licensing,
+                    sources,
+                })
+            })
+            .collect()
+    }
 }
 
 fn group_renderer_resources(
     resources: impl IntoIterator<Item = page::RendererResource>,
-) -> Vec<page::RendererResource> {
-    resources
-        .into_iter()
-        .fold(
-            BTreeMap::<_, page::RendererResource>::new(),
-            |mut grouped, resource| {
-                if let Some(existing) = grouped.get_mut(&resource.output_path) {
-                    existing.origins.extend(resource.origins);
-                } else {
-                    grouped.insert(resource.output_path.clone(), resource);
-                }
-                grouped
-            },
-        )
-        .into_values()
-        .collect()
+) -> Result<Vec<page::RendererResource>, Box<RendererResourceDiagnostic>> {
+    let mut grouped = BTreeMap::<_, page::RendererResource>::new();
+    for resource in resources {
+        match grouped.get_mut(&resource.output_path) {
+            Some(existing) if existing.media_type != resource.media_type => {
+                // This is an error path. Cloning retains every authored
+                // location so the diagnostic can show the complete conflict.
+                let mut origins = existing.origins.clone();
+                origins.extend(resource.origins);
+                sort_renderer_origins(&mut origins);
+                let first = origins
+                    .first()
+                    .expect("renderer resources always retain their requests");
+                let primary = request_location(first, "this renderer request");
+                return Err(Box::new(RendererResourceDiagnostic {
+                    message: format!(
+                        "renderer resource {} has conflicting declared media types",
+                        resource.output_path.as_path().display()
+                    ),
+                    source_code: primary.source_code,
+                    label: primary.label,
+                    span: primary.span,
+                    help:
+                        "use one media_type for every renderer profile that can produce these bytes"
+                            .into(),
+                    related: origins[1..]
+                        .iter()
+                        .map(|origin| request_location(origin, "other renderer request here"))
+                        .collect(),
+                }));
+            }
+            Some(existing) => existing.origins.extend(resource.origins),
+            None => {
+                grouped.insert(resource.output_path.clone(), resource);
+            }
+        }
+    }
+    let mut resources = grouped.into_values().collect::<Vec<_>>();
+    for resource in &mut resources {
+        sort_renderer_origins(&mut resource.origins);
+    }
+    Ok(resources)
+}
+
+fn sort_renderer_origins(origins: &mut [page::RendererResourceOrigin]) {
+    origins.sort_by(compare_renderer_origins);
+}
+
+fn compare_renderer_origins(
+    left: &page::RendererResourceOrigin,
+    right: &page::RendererResourceOrigin,
+) -> Ordering {
+    left.page_output_path
+        .cmp(&right.page_output_path)
+        .then_with(|| left.position.cmp(&right.position))
+        .then_with(|| left.input.cmp(&right.input))
+        .then_with(|| left.description.cmp(&right.description))
+}
+
+fn attach_renderer_licensing(
+    resources: &mut [page::RendererResource],
+    records: &crate::licensing::ResolvedRecords,
+) -> Result<(), Error> {
+    for resource in resources {
+        let first = resource
+            .origins
+            .first()
+            .expect("a renderer resource always retains the request that produced it");
+        let selected_record = first
+            .licensing_record
+            .as_ref()
+            .map(|selection| selection.record.as_str());
+        if resource.origins[1..].iter().all(|origin| {
+            origin
+                .licensing_record
+                .as_ref()
+                .map(|selection| selection.record.as_str())
+                == selected_record
+        }) {
+            if let Some(record) = selected_record {
+                let licensing = records
+                    .get(record)
+                    .expect("renderer request validation resolves configured licensing records");
+                resource.licensing = Some(licensing.clone());
+            }
+            continue;
+        }
+        let has_declared = resource
+            .origins
+            .iter()
+            .any(|origin| origin.licensing_record.is_some());
+        let has_undeclared = resource
+            .origins
+            .iter()
+            .any(|origin| origin.licensing_record.is_none());
+        let message = if has_declared && has_undeclared {
+            format!(
+                "renderer resource {} has both declared and undeclared licensing requests",
+                resource.output_path.as_path().display()
+            )
+        } else {
+            format!(
+                "renderer resource {} has conflicting licensing records",
+                resource.output_path.as_path().display()
+            )
+        };
+        let primary = licensing_location(first);
+        let related = resource.origins[1..]
+            .iter()
+            .map(licensing_location)
+            .collect();
+        return Err(Box::new(RendererResourceDiagnostic {
+            message,
+            source_code: primary.source_code,
+            label: primary.label,
+            span: primary.span,
+            help: "declare one licensing_record consistently on every request that produces these bytes; a request cannot inherit facts from another request".into(),
+            related,
+        })
+        .into());
+    }
+    Ok(())
+}
+
+fn request_location(
+    origin: &page::RendererResourceOrigin,
+    label: impl Into<String>,
+) -> RendererResourceOrigin {
+    RendererResourceOrigin {
+        source_code: origin.source.clone(),
+        label: label.into(),
+        span: origin.span,
+    }
+}
+
+fn licensing_location(origin: &page::RendererResourceOrigin) -> RendererResourceOrigin {
+    let Some(selection) = &origin.licensing_record else {
+        return request_location(origin, "this request has no licensing declaration");
+    };
+    match &selection.origin {
+        crate::markdown::LicensingRecordOrigin::Request => {
+            request_location(origin, "this request selects a licensing record")
+        }
+        crate::markdown::LicensingRecordOrigin::Profile {
+            source: Some(source),
+            span,
+        } => RendererResourceOrigin {
+            source_code: source.clone(),
+            label: "this profile default selects a licensing record".into(),
+            span: *span,
+        },
+        crate::markdown::LicensingRecordOrigin::Profile { source: None, .. } => {
+            request_location(origin, "this request inherits a profile licensing record")
+        }
+    }
 }
 
 fn self_series_claims(series: &series::Catalog) -> Vec<OutputClaim> {
@@ -663,17 +874,30 @@ mod tests {
         let resource = |name: &str, description: &str| page::RendererResource {
             output_path: output_path.clone(),
             bytes: b"<svg/>".to_vec(),
+            media_type: "image/svg+xml".into(),
+            licensing: None,
             origins: vec![page::RendererResourceOrigin {
                 description: description.to_owned(),
                 source: Arc::new(NamedSource::new(name, ":::render[diagram]".to_owned())),
                 span: (0, 1).into(),
+                licensing_record: None,
+                page_output_path: crate::output::OutputPath::try_new(
+                    format!("pages/{name}.html").into(),
+                )
+                .expect("valid page output path"),
+                locale: "en".parse().expect("valid locale"),
+                input: "main".into(),
+                kind: "image",
+                text: "diagram".into(),
+                position: 0,
             }],
         };
 
         let grouped = group_renderer_resources([
             resource("first.md", "light picture renderer resource"),
             resource("second.md", "dark picture renderer resource"),
-        ]);
+        ])
+        .expect("identical resources have one media type");
 
         assert_eq!(grouped.len(), 1);
         assert_eq!(grouped[0].origins.len(), 2);
@@ -687,6 +911,42 @@ mod tests {
                 "light picture renderer resource",
                 "dark picture renderer resource"
             ]
+        );
+    }
+
+    #[test]
+    fn renderer_resources_with_identical_bytes_require_one_media_type() {
+        let output_path = crate::output::OutputPath::try_new("heine-renderers/a.svg".into())
+            .expect("valid renderer output path");
+        let resource = |name: &str, media_type: &str| page::RendererResource {
+            output_path: output_path.clone(),
+            bytes: b"<svg/>".to_vec(),
+            media_type: media_type.into(),
+            licensing: None,
+            origins: vec![page::RendererResourceOrigin {
+                description: "renderer resource".into(),
+                source: Arc::new(NamedSource::new(name, ":::render[diagram]".to_owned())),
+                span: (0, 1).into(),
+                licensing_record: None,
+                page_output_path: output_path.clone(),
+                locale: "en".parse().expect("valid locale"),
+                input: "main".into(),
+                kind: "image",
+                text: "diagram".into(),
+                position: 0,
+            }],
+        };
+
+        let error = group_renderer_resources([
+            resource("first.md", "image/svg+xml"),
+            resource("second.md", "application/svg+xml"),
+        ])
+        .expect_err("same output cannot have two declared media types");
+
+        assert!(
+            error
+                .to_string()
+                .contains("conflicting declared media types")
         );
     }
 }

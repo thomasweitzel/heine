@@ -2,23 +2,23 @@
 
 ## Status
 
-Exploratory. This record proposes an extension of Heine's implemented
-copied-asset licensing model. It also consolidates group declarations: records
-would become the one configuration-level place where SPDX facts are authored,
-and groups would select a record rather than repeat those fields. It does not
-yet change configuration, template views, or coverage rules.
+Implemented. This record extends copied-asset licensing to separate renderer
+resources and consolidates group declarations. Records are the one
+configuration-level place where SPDX facts are authored, and groups select a
+record rather than repeat those fields.
 
 ## Problem
 
-Heine can already identify every copied asset that it will publish. A site may
+Before this change, Heine could identify every copied asset that it would
+publish. A site could
 attach REUSE-style SPDX facts with a sidecar or an exact licensing group, and
 `required = true` makes an undeclared copied asset a build error.
 
-That model ends at the copied-asset boundary. A renderer adapter can publish a
+That model ended at the copied-asset boundary. A renderer adapter can publish a
 PDF, image, or resource-materialized SVG below `heine-renderers/`. Heine owns
 that file's output path, bytes, and Markdown request, but it cannot attach a
-licensing declaration to the file. Under the current contract, renderer
-resources also fall outside required copied-asset coverage.
+licensing declaration to the file. Renderer resources also fell outside
+required copied-asset coverage.
 
 A documentation site may, for example, publish a CC-BY report PDF or a diagram
 that incorporates licensed third-party icons. Its readers can download the
@@ -34,23 +34,24 @@ resource that Heine publishes with one declared set of copyright and SPDX
 facts. Named records provide that declaration without repeating facts across
 groups and renderer requests.
 
-## Current boundary
+## Boundary retained
 
-The implemented asset-licensing feature covers copied regular files below
-`content/`, including unused files, binary files, draft-only files,
-locale-specific overlays, and public kit assets. It publishes matching local
-`LICENSES/` texts, exposes `asset().licensing`, and lists declared copied
-assets through `attributions()`.
+Published-artifact licensing covers copied regular files below `content`,
+including unused files, binary files, draft-only files, locale-specific
+overlays, and public kit assets. It also covers separate renderer resources
+when their request or profile selects a record. It publishes matching local
+`LICENSES/` texts, exposes `asset().licensing`, and lists declared artifacts
+through `attributions()`.
 
 It does not cover declared Markdown inputs, page output, templates, data,
 Fluent resources, deployment files, license texts, sidecars, generated pages,
-feeds, sitemaps, search indexes, or renderer resources. That distinction is
+feeds, sitemaps, search indexes, or embedded renderer results. That distinction is
 intentional. A rendered page is a representation of the site's authored
 content, not an independently acquired file to which Heine can infer rights.
 
-An embedded renderer result also remains part of its page. Only a separate
-renderer resource, such as a PDF download or image file, becomes a candidate
-for this design.
+An embedded renderer result remains part of its page. A separate renderer
+resource, such as a PDF download or image file, is the additional artifact
+kind this design covers.
 
 ## Two complementary responsibilities
 
@@ -84,13 +85,13 @@ This is an output inventory, not a statement that every output file is an
 independently licensed work. It deliberately excludes generated HTML, feeds,
 sitemaps, search indexes, and embedded renderer fragments.
 
-## Candidate contract
+## Contract
 
 ### Reusable licensing records
 
-The current group syntax repeats SPDX facts when more than one exact asset set
-or renderer uses the same facts. A site should be able to name those facts
-once in a root-owned record:
+The original group syntax repeated SPDX facts when more than one exact asset
+set or renderer used the same facts. Records name those facts once in a
+root-owned table:
 
 ```toml
 [licensing]
@@ -213,8 +214,8 @@ path.
 
 ### Coverage and output inventory
 
-The existing `required = true` policy should require a declaration for every
-eligible published artifact. A site that publishes a renderer resource must
+The existing `required = true` policy requires a declaration for every eligible
+published artifact. A site that publishes a renderer resource must
 therefore add a profile default or request-level record before the build can
 publish that resource. This deliberately gives required coverage its complete
 meaning: it cannot overlook an independently downloadable file that Heine
@@ -226,11 +227,11 @@ does not need another hash or filesystem scan: renderer resources already have
 validated bytes and output paths, while copied assets already have their
 resolved output inventory.
 
-`attributions()` should list every declared eligible artifact in a stable,
-useful order: copied assets by output path, then renderer resources by their
+`attributions()` lists every declared eligible artifact in a stable, useful
+order: copied assets by output path, then renderer resources by their
 first source page's output path and Markdown position. A changed resource
 digest therefore does not reorder an attribution page. Its generic shape
-should be:
+is:
 
 ```tera
 {% for item in attributions() %}
@@ -288,8 +289,8 @@ differ from the ordinary build's ordering.
 The existing `asset()` helper remains copied-asset-only. Its `licensing` view
 gains the same optional `record` identifier when a group selects a record;
 sidecars still produce `null`. Since `item.asset` no longer accurately names
-every attribution item, this candidate replaces it with `item.artifact` and
-updates the starter kit and guides in the same change.
+every attribution item, the feature uses `item.artifact` and updates the
+starter kit and guides with it.
 
 Heine records facts and URLs. It does not choose attribution wording or place
 credits beside a particular use. An author whose license requires local credit
@@ -310,7 +311,7 @@ correct. This preserves the same boundary as copied-asset sidecars.
 
 ## Other paths into a site
 
-This proposal covers only output relationships Heine already owns.
+This feature covers only output relationships Heine already owns.
 
 Today, Markdown `:::render` requests are the only renderer-resource producer.
 If a later feature can publish an independently usable generated resource, it
@@ -337,9 +338,9 @@ The starter site must build immediately from the released executable and
 starter-site archive. It must not require Typst, Java, Node, or another
 external renderer merely to show licensing support.
 
-The starter kit should therefore update its attribution template to consume
+The starter kit therefore updates its attribution template to consume
 the generic `attributions()` shape. Its existing copied assets make that page
-useful without a renderer. A focused fixture site should exercise a licensed
+useful without a renderer. A focused fixture site exercises a licensed
 renderer resource with a controlled test renderer. The guide may show a real
 Typst or PlantUML example, clearly stating its external prerequisite.
 
@@ -407,7 +408,7 @@ identities to publishable pages, attachments, and images. Heine can add value
 by checking declarations against its final owned artifact inventory without
 taking responsibility for the whole legal-compliance process.
 
-## Acceptance criteria if implemented
+## Implementation checks
 
 - Named licensing records and groups that select them retain precise
   configuration spans and one shared SPDX and license-text resolver.

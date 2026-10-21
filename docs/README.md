@@ -62,9 +62,9 @@ the rendered example, its authored files, and the relevant guide.
 
 - [Development server](development-server.md): local serving, live reload,
   and byte-range responses for media.
-- [Asset licensing](asset-licensing.md): REUSE-compatible declarations,
-  published license texts, optional complete copied-asset coverage, and
-  template attribution data.
+- [Published-artifact licensing](asset-licensing.md): REUSE-compatible
+  declarations, published license texts, optional complete coverage for copied
+  assets and renderer resources, and template attribution data.
 - [Renderer adapters](renderer-adapters.md): configure checked replacements
   produced by external tools.
 - [Renderer examples](renderer-examples.md): install Typst or KaTeX and build

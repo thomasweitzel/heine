@@ -1,8 +1,9 @@
-//! REUSE-compatible licensing declarations for copied content assets.
+//! REUSE-compatible licensing declarations for published artifacts.
 //!
 //! A project may place license texts in `LICENSES/`. They are published under
 //! the same path. Adjacent `asset.ext.license` sidecars declare the copyright
-//! notices and SPDX expression for the asset they accompany.
+//! notices and SPDX expression for the copied asset they accompany. Named
+//! records provide the same facts for exact asset groups and renderer resources.
 
 mod declaration;
 
@@ -19,7 +20,7 @@ use walkdir::WalkDir;
 
 use crate::{
     asset::{AssetCatalog, AssetLicensing},
-    config::{LicensingConfig, LicensingCoverage},
+    config::{LicensingConfig, LicensingCoverage, LicensingRecord},
     output::{CopiedFiles, OutputPath},
     source_diagnostic, source_path,
 };
@@ -27,6 +28,8 @@ use crate::{
 const LICENSE_DIRECTORY: &str = "LICENSES";
 
 use declaration::{DeclarationFields, DeclarationProblem, TaggedValue};
+
+pub(crate) type ResolvedRecords = BTreeMap<String, Arc<AssetLicensing>>;
 
 #[derive(Debug, Diagnostic, Error)]
 pub(crate) enum Error {
@@ -63,7 +66,7 @@ pub(crate) enum Error {
     Detailed(#[from] Box<SidecarDiagnostic>),
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Group(#[from] Box<GroupDiagnostic>),
+    Declaration(#[from] Box<DeclarationDiagnostic>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     Coverage(#[from] Box<CoverageDiagnostic>),
@@ -112,9 +115,9 @@ pub(crate) enum SidecarDiagnostic {
 }
 
 #[derive(Debug, Diagnostic, Error)]
-#[diagnostic(code(heine::licensing::group))]
+#[diagnostic(code(heine::licensing::declaration))]
 #[error("{message}")]
-pub(crate) struct GroupDiagnostic {
+pub(crate) struct DeclarationDiagnostic {
     message: String,
     #[source_code]
     source_code: Arc<NamedSource<String>>,
@@ -272,6 +275,7 @@ impl Catalog {
         content_root: &Path,
         kit_assets: Option<&crate::asset::KitAssets>,
         config: &LicensingConfig,
+        records: &ResolvedRecords,
         diagnostics: &source_diagnostic::DiagnosticPaths,
     ) -> Result<(), Error> {
         let mut declarations = BTreeMap::new();
@@ -285,7 +289,7 @@ impl Catalog {
                 diagnostics,
             )?;
         }
-        self.attach_groups(assets, config, &mut declarations, diagnostics)?;
+        self.attach_groups(assets, config, records, &mut declarations)?;
         if config.coverage() == LicensingCoverage::Required {
             self.require_coverage(assets, diagnostics)?;
         }
@@ -427,6 +431,44 @@ impl Catalog {
         declaration::resolve(&self.texts, fields)
     }
 
+    pub(crate) fn resolve_config_records(
+        &self,
+        config: &LicensingConfig,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Result<ResolvedRecords, Error> {
+        // Records are configuration, not lazy renderer state. Resolving all
+        // of them here keeps an unused record subject to the same SPDX and
+        // local-license-text checks as a selected one.
+        config
+            .records()
+            .map(|(id, record)| {
+                self.resolve_config_record(record, diagnostics)
+                    .map(|licensing| {
+                        (
+                            id.as_str().to_owned(),
+                            Arc::new(AssetLicensing {
+                                record: Some(id.as_str().to_owned()),
+                                ..licensing
+                            }),
+                        )
+                    })
+            })
+            .collect()
+    }
+
+    fn resolve_config_record(
+        &self,
+        record: &LicensingRecord,
+        diagnostics: &source_diagnostic::DiagnosticPaths,
+    ) -> Result<AssetLicensing, Error> {
+        let source = record
+            .source()
+            .cloned()
+            .ok_or(Error::ConfigurationSourceUnavailable)?;
+        self.resolve_declaration(declaration::from_config(record.declaration()))
+            .map_err(|problem| self.declaration_problem(source, problem, diagnostics))
+    }
+
     fn sidecar_problem(
         &self,
         path: &Path,
@@ -474,21 +516,21 @@ impl Catalog {
         &self,
         assets: &mut AssetCatalog,
         config: &LicensingConfig,
+        records: &ResolvedRecords,
         declarations: &mut BTreeMap<OutputPath, DeclarationOrigin>,
-        diagnostics: &source_diagnostic::DiagnosticPaths,
     ) -> Result<(), Error> {
         for group in config.groups() {
             let source_code = group
                 .source()
                 .cloned()
                 .ok_or(Error::ConfigurationSourceUnavailable)?;
-            let record = self
-                .resolve_declaration(declaration::from_config(group.declaration()))
-                .map_err(|problem| self.group_problem(source_code.clone(), problem, diagnostics))?;
+            let record = records
+                .get(group.record().as_str())
+                .expect("configured licensing records were resolved before groups");
             for member in group.assets() {
                 let output = member.output();
                 if !assets.contains_output(output) {
-                    return Err(Box::new(GroupDiagnostic {
+                    return Err(Box::new(DeclarationDiagnostic {
                         message: format!(
                             "licensing group names {path}, which is not a copied asset",
                             path = output.as_path().display()
@@ -503,7 +545,7 @@ impl Catalog {
                     .into());
                 }
                 if let Some(first) = declarations.get(output) {
-                    return Err(Box::new(GroupDiagnostic {
+                    return Err(Box::new(DeclarationDiagnostic {
                         message: format!(
                             "copied asset {path} has more than one licensing declaration",
                             path = output.as_path().display()
@@ -555,7 +597,7 @@ impl Catalog {
         .into())
     }
 
-    fn group_problem(
+    fn declaration_problem(
         &self,
         source_code: Arc<NamedSource<String>>,
         problem: DeclarationProblem,
@@ -564,7 +606,7 @@ impl Catalog {
         let (span, message, label, help) = match problem {
             DeclarationProblem::InvalidExpression { span, message } => (
                 span,
-                format!("invalid licensing group declaration: {message}"),
+                format!("invalid licensing record declaration: {message}"),
                 "invalid SPDX expression".into(),
                 "use a valid SPDX license expression".into(),
             ),
@@ -574,14 +616,14 @@ impl Catalog {
                 help,
             } => (
                 span,
-                format!("invalid licensing group declaration: {message}"),
+                format!("invalid licensing record declaration: {message}"),
                 "this reference cannot be resolved from local LICENSES/".into(),
                 help.into(),
             ),
             DeclarationProblem::MissingLicenseText { span, id } => (
                 span,
                 format!(
-                    "licensing group refers to missing license text {}",
+                    "licensing record refers to missing license text {}",
                     diagnostics
                         .display_path(&self.root.join(format!("{id}.txt")))
                         .display()
@@ -590,7 +632,7 @@ impl Catalog {
                 "add the matching text below LICENSES/".into(),
             ),
         };
-        Box::new(GroupDiagnostic {
+        Box::new(DeclarationDiagnostic {
             message,
             source_code,
             span,

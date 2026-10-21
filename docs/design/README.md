@@ -20,6 +20,7 @@ guides and the [reference](../reference.md) instead.
 - [Series](series.md)
 - [Table of contents](table-of-contents.md)
 - [Plugins and renderer adapters](plugins.md)
+- [Published-artifact licensing](published-artifact-licensing.md)
 - [Generated color-scheme pictures](renderer-pictures.md)
 
 ## Deferred proposals
@@ -34,9 +35,6 @@ guides and the [reference](../reference.md) instead.
 - [External asset manifests](external-asset-manifests.md): why a per-URL
   cache-busting helper is insufficient, and the boundary a future external
   asset-manifest integration would need.
-- [Published-artifact licensing](published-artifact-licensing.md): a candidate
-  extension that would attach declared licensing facts to renderer resources
-  as well as copied assets.
 
 ## Rejected proposals
 

@@ -137,9 +137,22 @@ copyable reference site that shows the root structure it expects. See
 ### Licensing group
 
 One explicit `[[licensing.groups]]` declaration in `heine.toml`. It assigns
-the same SPDX facts to an exact non-empty list of copied-asset output paths.
+one named licensing record to an exact non-empty list of copied-asset output paths.
 It is an alternative to individual sidecars for an upstream or
 first-party asset set, not a directory rule, glob, or template-facing object.
+
+### Licensing record
+
+One named `[licensing.records.<id>]` table in `heine.toml`. It holds reusable
+SPDX copyright, license, and optional comment facts. Exact licensing groups
+and resource-producing renderer profiles or requests select a record.
+
+### Published artifact
+
+One independently usable file in Heine's output inventory that can carry a
+licensing declaration: a copied asset or a separate renderer resource. It does
+not include a rendered page, feed, sitemap, search index, or embedded renderer
+markup.
 
 ### Copied asset
 
@@ -205,7 +218,8 @@ pages.
 
 A text file in optional `LICENSES/`, named for an SPDX identifier or local
 `LicenseRef-…`. Heine publishes it below `<build.output_dir>/LICENSES/` and
-checks it against every resolved asset licensing declaration that names it.
+checks it against every resolved published-artifact licensing declaration that
+names it.
 
 ### Locale tree
 

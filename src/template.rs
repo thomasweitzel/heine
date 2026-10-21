@@ -142,6 +142,7 @@ pub(crate) enum Error {
 /// shape the internal domain model.
 pub(crate) struct TemplateResources {
     asset_links: AssetLinks,
+    renderer_attributions: std::sync::Arc<Vec<crate::asset::RendererAttribution>>,
     relationships: TemplateRelationships,
     localization: std::sync::Arc<Localization>,
     highlight_css: Option<String>,
@@ -259,6 +260,7 @@ pub(crate) struct RuntimeContext<'a> {
 impl TemplateResources {
     pub(crate) fn new(
         asset_links: AssetLinks,
+        renderer_attributions: Vec<crate::asset::RendererAttribution>,
         relationships: TemplateRelationships,
         localization: std::sync::Arc<Localization>,
         highlight_css: Option<String>,
@@ -267,6 +269,7 @@ impl TemplateResources {
     ) -> Self {
         Self {
             asset_links,
+            renderer_attributions: std::sync::Arc::new(renderer_attributions),
             relationships,
             localization,
             highlight_css,

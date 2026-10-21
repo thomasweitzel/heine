@@ -51,7 +51,9 @@ pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 #[cfg(test)]
 pub(crate) use render::render;
 pub(crate) use render::{render_with_links, render_with_links_anchors};
-pub(crate) use renderer_request::{ResolvedInput, ResolvedRequest};
+pub(crate) use renderer_request::{
+    LicensingRecordOrigin, LicensingRecordSelection, ResolvedInput, ResolvedRequest,
+};
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
 
@@ -562,6 +564,10 @@ pub(crate) enum RenderError {
     RendererRequest(#[from] renderer_request::Error),
     #[error("external renderer permission is required")]
     RendererPermission { span: Range<usize> },
+    #[error("renderer resource has no licensing declaration while licensing.required = true")]
+    RendererLicensing { span: Range<usize> },
+    #[error("a renderer resource requires its page to have rendered output")]
+    RendererResourcePage { span: Range<usize> },
     #[error("Markdown block component error: {message}")]
     Component { message: String, span: Range<usize> },
     #[error("Markdown block directives cannot appear inside a {container} yet")]
@@ -740,6 +746,18 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
             "external renderer permission is required here".into(),
             "rerun with --allow-external-renderers after reviewing the selected renderer profile"
                 .into(),
+            span.clone(),
+        ),
+        RenderError::RendererLicensing { span } => (
+            "renderer request",
+            "resource request without a licensing declaration".into(),
+            "set licensing_record on this request or its renderer profile".into(),
+            span.clone(),
+        ),
+        RenderError::RendererResourcePage { span } => (
+            "renderer request",
+            "resource request on a page without rendered output".into(),
+            "select a page template, or use embedded renderer output instead".into(),
             span.clone(),
         ),
         RenderError::Component { message, span } => (

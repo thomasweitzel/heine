@@ -34,6 +34,7 @@ pub(super) struct MarkdownContent<'a> {
 #[derive(Clone)]
 pub(super) struct TemplateRuntime {
     assets: AssetLinks,
+    renderer_attributions: Arc<Vec<crate::asset::RendererAttribution>>,
     page_links: PageLinks,
     page_catalog: PageCatalog,
     collections: Arc<BTreeMap<Locale, BTreeMap<String, CollectionView>>>,
@@ -112,6 +113,7 @@ impl From<TemplateResources> for TemplateRuntime {
         } = resources.relationships;
         Self {
             assets: resources.asset_links,
+            renderer_attributions: resources.renderer_attributions,
             page_links,
             page_catalog,
             collections,
@@ -184,6 +186,10 @@ impl TemplateRuntime {
 
     pub(super) fn assets(&self) -> &AssetLinks {
         &self.assets
+    }
+
+    pub(super) fn attributions(&self, root: &str) -> Vec<crate::asset::AttributionView> {
+        self.assets.attributions(root, &self.renderer_attributions)
     }
 
     pub(super) fn pages(&self) -> &PageLinks {

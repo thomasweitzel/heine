@@ -1,14 +1,15 @@
-# Asset licensing
+# Published-artifact licensing
 
-Use asset licensing when copied files need published rights information or an
-attribution page. Heine follows a REUSE-compatible convention: a declaration
-stays beside the [copied asset](glossary.md#copied-asset) it describes, or one
-shared declaration names an exact asset set. Heine publishes the matching
-license texts and exposes the declared information to Tera templates. The site
-author remains responsible for whether those declarations fit a particular work
-or use.
+Use published-artifact licensing when a copied file or a separate renderer
+resource needs published rights information or an attribution page. Heine
+follows a REUSE-compatible convention: a declaration stays beside one
+[copied asset](glossary.md#copied-asset), or a named record supplies facts for
+an exact asset set and renderer resources. Heine publishes the matching license
+texts and exposes the declared information to Tera templates. The site author
+remains responsible for whether those declarations fit a particular work or
+use.
 
-The [tutorial's asset-licensing step](tutorial.md#11-add-asset-licensing-and-attributions)
+The [tutorial's published-artifact licensing step](tutorial.md#11-add-published-artifact-licensing-and-attributions)
 shows the same convention in a working site.
 
 ## Layout
@@ -54,27 +55,30 @@ that this local-file model cannot identify or publish unambiguously.
 
 ## Shared declarations and required coverage
 
-Use an adjacent sidecar for one copied asset. When several files have exactly
-the same licensing facts, such as a
-family of font files or a first-party site asset set, a site may record one
-[licensing group](glossary.md#licensing-group) in `heine.toml` instead:
+Use an adjacent sidecar for one copied asset with facts of its own. When
+several files share facts, define one [licensing record](glossary.md#licensing-record)
+and select it from an exact [licensing group](glossary.md#licensing-group):
 
 ```toml
 [licensing]
 required = true
+
+[licensing.records.example-fonts]
+SPDX-FileCopyrightText = "2000 Example Foundry"
+SPDX-License-Identifier = "OFL-1.1"
+SPDX-FileComment = "https://example.test/fonts"
 
 [[licensing.groups]]
 assets = [
   "assets/fonts/example-roman.woff2",
   "assets/fonts/example-bold.woff2",
 ]
-SPDX-FileCopyrightText = "2000 Example Foundry"
-SPDX-License-Identifier = "OFL-1.1"
-SPDX-FileComment = "https://example.test/fonts"
+licensing_record = "example-fonts"
 ```
 
-`required = true` requires a declaration for every copied asset Heine
-publishes. Omit `required` when declarations remain optional. Writing
+`required = true` requires a declaration for every eligible published artifact:
+every copied asset and every separate renderer resource in the current build.
+Omit `required` when declarations remain optional. Writing
 `required = false` is a checked error because omission already selects that
 policy.
 
@@ -90,21 +94,53 @@ facts, remove it from the group and give that asset its own sidecar. A group
 and sidecar may not both declare one asset, even when their current values
 match. Heine reports both locations rather than choosing a precedence rule.
 
-All group fields use the same rules as sidecars. Copyright notices and SPDX
+Record fields use the same rules as sidecars. Copyright notices and SPDX
 expressions may be one string or an array of strings. An array contains
 separate authored SPDX tag values: it does not imply `AND` or `OR`; express
-that relationship inside an SPDX expression. Unknown group fields, empty
-groups, duplicate members, unavailable paths, invalid expressions, and missing
-license texts are checked errors.
+that relationship inside an SPDX expression. Unknown fields, empty groups,
+duplicate members, unavailable paths, invalid expressions, and missing license
+texts are checked errors.
 
 Required coverage applies to every copied asset, including an unused file, a
-binary file, a locale overlay, and an asset used only by a draft. It does not
-apply to declared content, templates, data, deployment files, generated
-resources, sidecars, or license texts. A full build reports every uncovered
-asset in deterministic output-path order. A quick build also checks the current
-asset catalog, but may leave stale output from an earlier catalog after a
-deletion or rename. Use a full build after changing `heine.toml`, deleting or
-renaming an asset or sidecar, or changing a license text.
+binary file, a locale overlay, and an asset used only by a draft. It also
+applies to each separate renderer resource that the current build publishes.
+An ordinary build excludes draft pages, so their renderer resources are checked
+only by a draft preview. It does not apply to declared content, templates,
+data, deployment files, generated pages, embedded renderer markup, sidecars,
+or license texts. A full build reports every uncovered copied asset in
+deterministic output-path order. A quick build also checks the current asset
+catalog, but may leave stale output from an earlier catalog after a deletion or
+rename. Use a full build after changing `heine.toml`, deleting or renaming an
+asset or sidecar, or changing a license text.
+
+## Renderer resources
+
+A renderer profile that can publish a separate resource may select a default
+record. A request may override that choice when the particular resource has
+different facts:
+
+```toml
+[licensing.records.organisation-report]
+SPDX-FileCopyrightText = "2026 Example Organisation"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[renderers.report]
+# renderer settings omitted
+licensing_record = "organisation-report"
+```
+
+```markdown
+:::render[report label="Download the report"]
+Renderer source
+:::
+```
+
+Use `licensing_record="other-record"` on a `render` request only when it
+publishes a separate resource. Heine rejects it for embedded output. When
+strict coverage is enabled, Heine reports a missing record before it starts the
+external renderer. If identical renderer bytes come from several requests,
+every request must select the same record. One request cannot silently supply
+facts for another.
 
 Heine uses REUSE-compatible fields and sidecars, but groups are not
 `REUSE.toml` annotations and successful coverage is not a claim of REUSE or
@@ -113,7 +149,8 @@ legal compliance.
 ## Template views
 
 `asset()` returns `licensing` as `null` when no declaration exists. Otherwise it
-contains `copyrights`, `expressions`, `comments`, and `license_texts`. Each
+contains `record`, `copyrights`, `expressions`, `comments`, and `license_texts`.
+`record` is `null` for a sidecar. Each
 license text has its `id`, base-path-aware `url`, and current-page-relative
 `relative_url`.
 
@@ -129,7 +166,8 @@ license text has its `id`, base-path-aware `url`, and current-page-relative
 ```
 
 For a complete deterministic inventory, use `attributions()`. Each item has
-`asset` (`output_path`, `url`, `relative_url`) and the same `licensing` view.
+`artifact` (`output_path`, `url`, `relative_url`, `absolute_url` when
+configured, `kind`, and `media_type`) and the same `licensing` view.
 `output_path` is the locale-qualified published path. For example,
 `de/images/logo.svg`, rather than the locale-relative ID passed to `asset()`.
 It is therefore unambiguous across the whole site and suitable as a key for
@@ -139,12 +177,20 @@ so a site decides its route, language, and presentation:
 ```tera
 <ul>
 {% for item in attributions() %}
-  <li><a href="{{ item.asset.url }}">{{ item.asset.output_path }}</a> -
+  <li><a href="{{ item.artifact.url }}">{{ item.artifact.output_path }}</a> -
       {{ item.licensing.copyrights | join(sep=", ") }}
       ({{ item.licensing.expressions | join(sep="; ") }})</li>
 {% endfor %}
 </ul>
 ```
+
+For a renderer resource, `artifact.kind` is `"renderer_resource"` and
+`artifact.media_type` is the profile's declared media type. Its `sources` list
+names every Markdown request that produced the same bytes. Each source has its
+page URL and locale, the declared Markdown input, whether the request produced
+a link or image, and its label or alternative text. Copied assets have
+`kind = "copied_asset"`, no media type, and an empty `sources` list. Heine does
+not infer a copied file's media type from its filename.
 
 A central inventory serves a site-wide attribution page. Some licenses or
 information about a work's origin or authorship may require attribution near a
@@ -158,9 +204,9 @@ own locale-specific presentation text while retaining the canonical declaration.
 
 License texts participate in normal output ownership and collision checks.
 Full builds publish exactly the current `LICENSES/` tree and, when coverage is
-required, establish that every copied asset in that tree's current publication
+required, establish that every eligible published artifact in the current
 model has one declaration. Quick builds validate the current copied-asset
-catalog as well. They update present license texts and re-render pages when a
-sidecar changes, but, like other quick-build inputs, do not remove stale
-output after deletion. Run a full build after changing licensing configuration
-or deleting or renaming an asset, sidecar, or license text.
+catalog and resources from the pages they render, but, like other quick-build
+inputs, do not remove stale output after deletion or discover configuration
+changes. Run a full build after changing licensing configuration or deleting
+or renaming an asset, sidecar, or license text.

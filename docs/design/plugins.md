@@ -479,13 +479,12 @@ different bytes, the superseded digest file therefore disappears with the
 previous output tree; public renderer resources need no separate garbage
 collector.
 
-A generated renderer resource is not a copied asset. It has no adjacent
-licensing sidecar and is outside the current `[licensing].required` coverage
-contract, which applies to copied assets only. The exploratory
-[published-artifact licensing design](published-artifact-licensing.md)
-considers a narrow extension for attaching authored facts to separate renderer
-resources. Heine does not infer those facts from the renderer, source bundle,
-bundled fonts, or other tool inputs.
+A generated renderer resource is not a copied asset and has no adjacent
+licensing sidecar. It can select a named licensing record through its renderer
+profile or request, so `licensing.required = true` covers it when the current
+build publishes it. The [published-artifact licensing design](published-artifact-licensing.md)
+explains that boundary. Heine does not infer facts from the renderer, source
+bundle, bundled fonts, or other tool inputs.
 
 The host retains the originating page, content file, directive span, and
 renderer-profile name for every derived resource. An attempted authored claim
@@ -763,7 +762,9 @@ An implementation must include focused and fixture-site coverage for:
   unchanged resource bytes; one-primary-resource enforcement; output
   collisions; base paths; locale routes; integrity interactions; and atomic
   publication;
-- generated-resource licensing remaining outside copied-asset coverage;
+- generated-resource licensing records, required-coverage diagnostics before
+  renderer execution, and attribution provenance for separately published
+  resources;
 - stream and workspace bridge execution, argument boundaries, paths containing
   spaces and non-ASCII text, complete-placeholder substitution, output escape
   attempts, extra outputs, output capture, and bounded diagnostic text,

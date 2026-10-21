@@ -216,6 +216,12 @@ Heine publishes that resource once. If another producer claims its path,
 Heine's collision report identifies every Markdown request that contributed to
 the shared resource.
 
+A separate resource may select a [licensing record](asset-licensing.md#renderer-resources)
+through its profile or its `render` request. When `licensing.required = true`,
+Heine requires that record before it starts the external program. Ordinary
+builds do not run draft-page requests, so a draft resource receives that check
+only in a draft preview.
+
 Read the [reference](reference.md#renderer-adapters) for every field and the
 [renderer-adapter design](design/plugins.md) for the trust and output-ownership
 boundaries.

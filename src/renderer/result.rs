@@ -47,13 +47,16 @@ pub(crate) enum ResultCapabilities {
     },
     Image {
         extension: String,
+        media_type: String,
     },
     Picture {
         extension: String,
         svg: bool,
+        media_type: String,
     },
     Link {
         extension: String,
+        media_type: String,
     },
 }
 
@@ -68,9 +71,9 @@ impl ResultCapabilities {
             Self::Html => "html",
             Self::Mathml => "mml",
             Self::Svg { .. } => "svg",
-            Self::Image { extension }
+            Self::Image { extension, .. }
             | Self::Picture { extension, .. }
-            | Self::Link { extension } => extension,
+            | Self::Link { extension, .. } => extension,
         }
     }
 
@@ -111,6 +114,20 @@ impl ResultCapabilities {
 
     pub(crate) fn is_embedded_svg(&self, output: Output) -> bool {
         matches!(self, Self::Svg { .. }) && output == Output::Embedded
+    }
+
+    pub(crate) fn resource_media_type(&self) -> Option<&str> {
+        match self {
+            Self::Svg {
+                materializations, ..
+            } => materializations
+                .contains(&Output::Resource)
+                .then_some("image/svg+xml"),
+            Self::Image { media_type, .. }
+            | Self::Picture { media_type, .. }
+            | Self::Link { media_type, .. } => Some(media_type),
+            Self::Html | Self::Mathml => None,
+        }
     }
 }
 
@@ -367,6 +384,7 @@ mod tests {
             (
                 ResultCapabilities::Image {
                     extension: "webp".into(),
+                    media_type: "image/webp".into(),
                 },
                 "webp",
             ),
@@ -374,12 +392,14 @@ mod tests {
                 ResultCapabilities::Picture {
                     extension: "png".into(),
                     svg: false,
+                    media_type: "image/png".into(),
                 },
                 "png",
             ),
             (
                 ResultCapabilities::Link {
                     extension: "pdf".into(),
+                    media_type: "application/pdf".into(),
                 },
                 "pdf",
             ),

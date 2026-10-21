@@ -29,6 +29,11 @@ integrity = "sha384"
 [licensing]
 required = true
 
+[licensing.records.starter-site]
+SPDX-FileCopyrightText = "2026 Thomas Weitzel"
+SPDX-License-Identifier = "MIT"
+SPDX-FileComment = "Created for the Heine starter site and licensed under MIT by its author."
+
 [reading_time.words_per_minute]
 en = 236
 de = 260
@@ -43,9 +48,7 @@ assets = [
   "assets/js/search.js",
   "blog/mathml-audio/audio/heine-introduction.mp3",
 ]
-SPDX-FileCopyrightText = "2026 Thomas Weitzel"
-SPDX-License-Identifier = "MIT"
-SPDX-FileComment = "Created for the Heine starter site and licensed under MIT by its author."
+licensing_record = "starter-site"
 
 [collections.posts]
 order = "published-desc"

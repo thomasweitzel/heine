@@ -722,17 +722,17 @@ For an ordered reading path whose pages may also have other relationships, use
 a [Series](series.md). Its page-local positions are independent of collection
 order and its generated listings use the same pager view.
 
-## 11. Add asset licensing and attributions
+## 11. Add published-artifact licensing and attributions
 
-When copied assets require rights information, add adjacent `.license`
-[asset sidecars](glossary.md#asset-sidecar) and matching texts under
+When copied assets or separate renderer resources require rights information,
+add adjacent `.license` [asset sidecars](glossary.md#asset-sidecar) for one
+copied file, or define a [licensing record](glossary.md#licensing-record) and
+select it from an exact group or renderer profile. Put matching texts under
 `LICENSES/`; Heine publishes author-supplied texts unchanged and never fetches
 them. An authored attribution page can render `attributions()`. Read the
-[asset-licensing guide](asset-licensing.md) before publishing assets that carry
-those requirements. When every copied asset needs a declaration, enable
-`required = true` in `[licensing]`; an upstream or first-party asset
-set with identical facts can use one exact
-[licensing group](glossary.md#licensing-group) instead of duplicated sidecars.
+[asset-licensing guide](asset-licensing.md) before publishing artifacts that
+carry those requirements. When every eligible published artifact needs a
+declaration, enable `required = true` in `[licensing]`.
 
 ## 12. Development server details
 
