@@ -1,13 +1,44 @@
+/*
+ * Canonical source: `starter-site/kits/starter/assets/js/search.js` in Heine.
+ *
+ * This file is intentionally copied into independently deployable sites. Edit
+ * the canonical source first, then replace each maintained copy as a whole.
+ * Do not add site-specific behavior to a copied version: templates provide
+ * localized labels and CSS owns the visual design.
+ *
+ * The script consumes Heine search-index format 3. It requires `.search-form`,
+ * `input[name=q]`, `.search-status`, `.search-results`, and
+ * `.search-pagination`. The form supplies `data-search-url`, status labels,
+ * plural result-count labels, `data-no-results`, and `data-failure`.
+ * `data-results-per-page`, `data-context-before`, `data-context-after`,
+ * `data-draft-marker`, and `.search-clear` are optional. Results use
+ * `search-result`, `search-result-heading`,
+ * `search-result-title`, `search-result-contexts`, `search-result-context`,
+ * and `search-result-summary`; pagination uses `search-pagination-link`,
+ * `search-pagination-current`, and `search-pagination-gap`. Consuming sites
+ * style those semantic classes with their own CSS.
+ *
+ * Authored search data always becomes DOM text nodes, never HTML strings.
+ */
 (() => {
   const form = document.querySelector(".search-form");
   if (!form) return;
 
   const input = form.querySelector("input[name=q]");
+  const clearButton = form.querySelector(".search-clear");
   const status = document.querySelector(".search-status");
   const results = document.querySelector(".search-results");
   const navigation = document.querySelector(".search-pagination");
   const labels = form.dataset;
-  const pageSize = 10;
+  const integerSetting = (name, fallback, minimum) => {
+    const value = Number(form.dataset[name] || fallback);
+    if (Number.isSafeInteger(value) && value >= minimum) return value;
+    console.error(`search ${name} must be an integer no less than ${minimum}`);
+    return fallback;
+  };
+  const pageSize = integerSetting("resultsPerPage", 10, 1);
+  const contextBefore = integerSetting("contextBefore", 90, 0);
+  const contextAfter = integerSetting("contextAfter", 170, 0);
   const windowSize = 1;
   const locale = document.documentElement.lang;
   let documentsPromise;
@@ -30,6 +61,10 @@
   const queryState = () => new URLSearchParams(window.location.search);
   const pageNumber = (value, total) => Math.min(Math.max(Number.parseInt(value, 10) || 1, 1), total || 1);
 
+  function syncClearButton() {
+    if (clearButton) clearButton.hidden = !input.value;
+  }
+
   function documents() {
     if (!documentsPromise) {
       documentsLoading = true;
@@ -40,12 +75,17 @@
         if (index.format !== 3 || !Array.isArray(index.documents)) {
           throw new Error("unsupported search index format");
         }
-        return index.documents.map((doc) => ({
+        return index.documents.map((doc, searchOrder) => ({
           ...doc,
+          // Heine writes this index in page-ID order. Keep that order for ties.
+          searchOrder,
           searchFields: [doc.title, doc.summary ?? doc.description]
             .map((value) => normalize(value || "")),
           searchSections: doc.sections.map((section) => ({
             ...section,
+            displayText: joinUnspacedLineBreaks(section.text.normalize("NFC"))
+              .replace(/\s+/gu, " ")
+              .trim(),
             searchText: normalize(section.text),
           })),
         }));
@@ -59,28 +99,42 @@
     return documentsPromise;
   }
 
-  function bestMatchingSection(sections, fragments) {
-    let best;
-    for (const section of sections) {
-      let matches = 0;
-      for (const fragment of fragments) {
-        if (section.searchText.includes(fragment)) matches += 1;
-      }
-      if (matches && (!best || matches > best.matches)) best = { section, matches };
+  function occurrences(text, fragment) {
+    let count = 0;
+    let position = text.indexOf(fragment);
+    while (position >= 0) {
+      count += 1;
+      position = text.indexOf(fragment, position + fragment.length);
     }
-    return best?.section;
+    return count;
+  }
+
+  function matchingSections(sections, fragments) {
+    return sections.map((section, order) => {
+      const counts = fragments.map((fragment) => occurrences(section.searchText, fragment));
+      return {
+        section,
+        order,
+        coverage: counts.filter(Boolean).length,
+        occurrences: counts.reduce((total, count) => total + count, 0),
+      };
+    }).filter((match) => match.coverage).sort((left, right) => (
+      right.coverage - left.coverage
+      || right.occurrences - left.occurrences
+      || left.order - right.order
+    ));
   }
 
   function scoreDocument(doc, fragments) {
-    const section = bestMatchingSection(doc.searchSections, fragments);
+    const sections = matchingSections(doc.searchSections, fragments);
     let score = 0;
     for (const fragment of fragments) {
       const weight = doc.searchFields.findIndex((field) => field.includes(fragment));
       if (weight >= 0) score += [3, 2][weight];
-      else if (doc.searchSections.some((candidate) => candidate.searchText.includes(fragment))) score += 1;
+      else if (sections.some((candidate) => candidate.section.searchText.includes(fragment))) score += 1;
       else return null;
     }
-    return { score, section };
+    return { score: score + Math.min(sections[0]?.occurrences || 0, 3), sections: sections.slice(0, 2) };
   }
 
   function navigationPages(current, total) {
@@ -89,12 +143,15 @@
     return [...pages].sort((left, right) => left - right);
   }
 
-  function setUrl(query, page, replace) {
+  function searchUrl(query, page) {
     const parameters = queryState();
     if (query) parameters.set("q", query); else parameters.delete("q");
     if (page > 1) parameters.set("page", page); else parameters.delete("page");
-    const url = `${window.location.pathname}${parameters.size ? `?${parameters}` : ""}`;
-    window.history[replace ? "replaceState" : "pushState"]({}, "", url);
+    return `${window.location.pathname}${parameters.size ? `?${parameters}` : ""}`;
+  }
+
+  function setUrl(query, page, replace) {
+    window.history[replace ? "replaceState" : "pushState"]({}, "", searchUrl(query, page));
   }
 
   function resultCount(count) {
@@ -104,32 +161,109 @@
     return template.replace("__count__", numberFormatter.format(count));
   }
 
-  function link(result) {
-    const { doc, section } = result;
+  function passageCandidates(section, fragments) {
+    const characters = Array.from(section.displayText);
+    const normalizedCharacters = Array.from(section.searchText);
+    // Some case mappings expand one character. The full section still matches,
+    // but a code-point offset can no longer name the displayed text reliably.
+    if (characters.length !== normalizedCharacters.length) {
+      return [{ section, text: section.displayText }];
+    }
+    const positions = fragments.flatMap((fragment) => {
+      const pattern = Array.from(fragment);
+      const matches = [];
+      for (let start = 0; start <= normalizedCharacters.length - pattern.length; start += 1) {
+        if (pattern.every((value, offset) => normalizedCharacters[start + offset] === value)) {
+          matches.push(start);
+        }
+      }
+      return matches;
+    }).sort((left, right) => left - right)
+      .filter((position, index, values) => !index || position !== values[index - 1]);
+    if (!positions.length) return [{ section, text: section.displayText }];
+
+    const bestPosition = (excluded) => {
+      let first = 0;
+      let after = 0;
+      let best;
+      for (const position of positions) {
+        while (first < positions.length && positions[first] < position - contextBefore) first += 1;
+        while (after < positions.length && positions[after] <= position + contextAfter) after += 1;
+        const overlaps = excluded !== undefined
+          && position - contextBefore <= excluded + contextAfter
+          && position + contextAfter >= excluded - contextBefore;
+        if (!overlaps && (!best || after - first > best.nearby)) {
+          best = { position, nearby: after - first };
+        }
+      }
+      return best;
+    };
+    const selected = [bestPosition()];
+    const second = bestPosition(selected[0].position);
+    if (second) selected.push(second);
+
+    return selected.map(({ position }) => {
+      const start = Math.max(0, position - contextBefore);
+      const end = Math.min(characters.length, position + contextAfter);
+      return {
+        section,
+        text: `${start ? "…" : ""}${characters.slice(start, end).join("")}${end < characters.length ? "…" : ""}`,
+      };
+    });
+  }
+
+  function matchingPassages(sections, fragments) {
+    const candidates = sections.map((match) => passageCandidates(match.section, fragments));
+    const first = candidates.flatMap((passages) => passages.slice(0, 1));
+    const further = candidates.flatMap((passages) => passages.slice(1));
+    return first.concat(further).slice(0, 2);
+  }
+
+  function resultTarget(doc, section) {
+    const target = new URL(doc.url, window.location.origin);
+    if (section?.fragment) target.hash = section.fragment;
+    return `${target.pathname}${target.search}${target.hash}`;
+  }
+
+  function appendContext(item, doc, passage) {
+    const anchor = document.createElement("a");
+    anchor.className = "search-result-context";
+    anchor.href = resultTarget(doc, passage.section);
+    anchor.textContent = passage.text;
+    item.append(anchor);
+  }
+
+  function resultLink(result, fragments) {
+    const { doc, sections } = result;
+    const passages = matchingPassages(sections, fragments);
     const item = document.createElement("li");
-    item.className = "page-list-item";
-    const heading = document.createElement("div");
-    heading.className = "page-list-heading";
-    if (doc.draft) {
+    item.className = "search-result";
+    const heading = document.createElement("h2");
+    heading.className = "search-result-heading";
+    if (doc.draft && labels.draftMarker) {
       const marker = document.createElement("span");
       marker.className = "draft-marker";
       marker.textContent = labels.draftMarker;
       heading.append(marker);
     }
     const anchor = document.createElement("a");
-    const target = new URL(doc.url, window.location.origin);
-    if (section?.fragment) target.hash = section.fragment;
-    anchor.href = `${target.pathname}${target.search}${target.hash}`;
+    anchor.className = "search-result-title";
+    anchor.href = resultTarget(doc, passages[0]?.section);
     const title = document.createElement("span");
-    title.className = "page-list-title";
     title.textContent = doc.title || doc.url;
     anchor.append(title);
     heading.append(anchor);
     item.append(heading);
-    const summary = doc.summary ?? doc.description;
-    if (summary) {
+    if (passages.length) {
+      const contexts = document.createElement("div");
+      contexts.className = "search-result-contexts";
+      for (const passage of passages) appendContext(contexts, doc, passage);
+      item.append(contexts);
+    } else {
+      const summary = doc.summary ?? doc.description;
+      if (!summary) return item;
       const copy = document.createElement("span");
-      copy.className = "page-list-summary";
+      copy.className = "search-result-summary";
       copy.textContent = summary;
       item.append(copy);
     }
@@ -138,7 +272,8 @@
 
   function navigationLink(query, page) {
     const node = document.createElement("a");
-    node.href = "#";
+    node.className = "search-pagination-link";
+    node.href = searchUrl(query, page);
     node.textContent = page;
     node.addEventListener("click", (event) => {
       event.preventDefault();
@@ -155,12 +290,14 @@
     for (const page of navigationPages(current, total)) {
       if (page > previous + 1) {
         const gap = document.createElement("span");
+        gap.className = "search-pagination-gap";
         gap.textContent = "…";
         gap.setAttribute("aria-hidden", "true");
         navigation.append(gap);
       }
       const node = page === current ? document.createElement("span") : navigationLink(query, page);
       if (page === current) {
+        node.className = "search-pagination-current";
         node.textContent = page;
         node.setAttribute("aria-current", "page");
       }
@@ -186,11 +323,12 @@
         const match = scoreDocument(doc, fragments);
         return match && { doc, ...match };
       }).filter(Boolean)
-        .sort((left, right) => right.score - left.score);
+        .sort((left, right) => right.score - left.score || left.doc.searchOrder - right.doc.searchOrder);
       const total = Math.max(1, Math.ceil(matching.length / pageSize));
       const page = pageNumber(requestedPage, total);
       if (page !== requestedPage) setUrl(query, page, true);
-      results.replaceChildren(...matching.slice((page - 1) * pageSize, page * pageSize).map(link));
+      results.replaceChildren(...matching.slice((page - 1) * pageSize, page * pageSize)
+        .map((result) => resultLink(result, fragments)));
       status.textContent = matching.length ? resultCount(matching.length) : labels.noResults;
       renderNavigation(query, page, total);
     } catch (_) {
@@ -205,11 +343,13 @@
     const parameters = queryState();
     const query = parameters.get("q") || "";
     input.value = query;
+    syncClearButton();
     render(query, pageNumber(parameters.get("page"), Number.MAX_SAFE_INTEGER));
   }
 
   input.addEventListener("focus", () => { documents().catch(() => {}); }, { once: true });
   input.addEventListener("input", () => {
+    syncClearButton();
     window.clearTimeout(debounce);
     debounce = window.setTimeout(() => {
       setUrl(input.value, 1, true);
@@ -220,6 +360,14 @@
     event.preventDefault();
     setUrl(input.value, 1, false);
     render(input.value, 1);
+  });
+  clearButton?.addEventListener("click", () => {
+    window.clearTimeout(debounce);
+    input.value = "";
+    syncClearButton();
+    setUrl("", 1, true);
+    render("", 1);
+    input.focus();
   });
   window.addEventListener("popstate", loadFromUrl);
   loadFromUrl();

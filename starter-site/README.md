@@ -29,8 +29,22 @@ rather than copying an example without understanding its limits.
 Some details deliberately remain site policy. The local audio player uses raw
 HTML because browser controls and preload behavior are not Markdown features.
 The search script is one dependency-free browser implementation, not a search
-engine supplied by Heine. Treat the example as a working starting point, then
-keep only the parts your site needs.
+engine supplied by Heine. It shows contextual passages from the matching
+Markdown sections, including two passages when a result matches in separate
+parts of a page. Treat the example as a working starting point, then keep only
+the parts your site needs.
+
+The search form controls its excerpt window with `data-context-before` and
+`data-context-after`. The example uses 80 and 160 Unicode characters.
+It favors title matches, then summaries or descriptions, then Markdown
+sections. Equal scores keep Heine's page-ID order.
+
+`kits/starter/assets/js/search.js` is the canonical source for the maintained
+starter, documentation, and Zolarwind search clients. Those independently
+deployable sites keep complete copied versions. Edit the starter-kit file
+first, then replace each copy as a whole. Its leading comment defines the
+required search-page hooks, optional controls, and semantic result classes;
+site CSS owns their appearance.
 
 ## Starter kit
 

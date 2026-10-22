@@ -161,7 +161,15 @@ fn assert_site_shell_and_search(output: &Path) {
     let search_script =
         fs::read_to_string(output.join("assets/js/search.js")).expect("search script");
     assert!(
-        search_script.contains("const pageSize = 10;"),
+        search_script.contains("integerSetting(\"resultsPerPage\", 10, 1)"),
+        "{search_script}"
+    );
+    assert!(
+        search_script.contains("integerSetting(\"contextBefore\", 90, 0)"),
+        "{search_script}"
+    );
+    assert!(
+        search_script.contains("integerSetting(\"contextAfter\", 170, 0)"),
         "{search_script}"
     );
     assert!(
@@ -175,6 +183,14 @@ fn assert_site_shell_and_search(output: &Path) {
     let search_page = fs::read_to_string(output.join("search/index.html")).expect("search page");
     assert!(
         search_page.contains("data-search-url=\"/my-project/search/site."),
+        "{search_page}"
+    );
+    assert!(
+        search_page.contains("data-context-before=\"80\""),
+        "{search_page}"
+    );
+    assert!(
+        search_page.contains("data-context-after=\"160\""),
         "{search_page}"
     );
     assert!(
