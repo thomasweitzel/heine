@@ -76,9 +76,18 @@ rules.
 ## Browser behavior belongs to the site
 
 The starter site includes a dependency-free example that fetches the index,
-uses basic Unicode-aware local substring matching, safely creates DOM nodes,
-and stores its query and result page in the URL. It is a usable starting point,
-not a required ranking policy or a bundled Heine component.
+uses basic Unicode-aware local substring matching, shows one or two matching
+section passages for each result, safely creates DOM nodes, and stores its
+query and result page in the URL. It is a usable starting point, not a
+required ranking policy or a bundled Heine component.
+
+Its search form may set `data-context-before` and `data-context-after` to the
+number of Unicode characters shown before and after a match. The client uses
+90 and 170 when those attributes are absent. The maintained example sites use
+80 and 160.
+
+The example favors matches in a title, then a summary or description, then a
+Markdown section. Equal scores retain the index's page-ID order.
 
 Search indexes are rebuilt by full builds and `heine serve`. `--quick` leaves
 the previously published index unchanged, because it cannot safely establish

@@ -306,9 +306,13 @@ of its existing locales, each resolving the current locale's
 `search(name="site")` view.
 
 The example uses a copied `search.js`, not a bundled third-party search engine.
-It demonstrates the boundary that Heine supplies and leaves browser policy to
-the site. A site needing fuzzy matching, stemming, or a large index can replace
-only this file with another client engine.
+The starter-kit copy is the canonical source for the maintained starter,
+documentation, and Zolarwind clients; each independently deployable site keeps
+its own complete copy. The script emits semantic result markup, while each site
+owns the CSS that presents it. This demonstrates the boundary that Heine
+supplies and leaves browser policy to the site. A site needing fuzzy matching,
+stemming, or a large index can replace only this file with another client
+engine.
 
 The generated JSON schema and `search()` view are Heine's public search
 contract. The starter script is not a second public Heine API or a compatibility

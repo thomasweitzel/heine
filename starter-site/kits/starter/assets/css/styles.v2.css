@@ -957,7 +957,8 @@ a:focus-visible {
     list-style: none;
 }
 
-.page-list-item {
+.page-list-item,
+.search-result {
     margin-block: var(--spacing-s);
     padding: 0.7rem var(--spacing-m);
     border: var(--border);
@@ -966,7 +967,9 @@ a:focus-visible {
 }
 
 .page-list-item:hover,
-.page-list-item:focus-within {
+.page-list-item:focus-within,
+.search-result:hover,
+.search-result:focus-within {
     background-color: transparent;
     border-color: var(--color-2);
     box-shadow: none;
@@ -979,6 +982,7 @@ a:focus-visible {
 }
 
 .page-list-heading,
+.search-result-heading,
 .series-list-heading {
     display: flex;
     flex-wrap: wrap;
@@ -986,26 +990,33 @@ a:focus-visible {
 }
 
 .page-list-heading .draft-marker,
+.search-result-heading .draft-marker,
 .series-list-heading .draft-marker {
     flex: none;
 }
 
-.page-list-heading > a {
+.page-list-heading > a,
+.search-result-title {
     color: var(--fg);
 }
 
 .page-list-item:hover .page-list-heading > a,
-.page-list-item:focus-within .page-list-heading > a {
+.page-list-item:focus-within .page-list-heading > a,
+.search-result:hover .search-result-title,
+.search-result:focus-within .search-result-title {
     color: var(--color-2);
 }
 
 .page-list-heading > a:hover,
-.page-list-heading > a:focus-visible {
+.page-list-heading > a:focus-visible,
+.search-result-title:hover,
+.search-result-title:focus-visible {
     background-color: transparent;
     box-shadow: none;
 }
 
-.page-list-title {
+.page-list-title,
+.search-result-title {
     font-weight: 600;
 }
 
@@ -1067,4 +1078,22 @@ a:focus-visible {
 
 .search-status:empty {
     display: none;
+}
+
+.search-result-contexts {
+    display: grid;
+    gap: var(--spacing-xs);
+    margin-top: 0.35rem;
+}
+
+.search-result-context,
+.search-result-summary {
+    color: var(--muted-fg);
+    font-size: 0.9rem;
+}
+
+.search-result-context {
+    padding-inline-start: var(--spacing-s);
+    border-inline-start: 2px solid var(--border-color);
+    text-decoration: none;
 }
