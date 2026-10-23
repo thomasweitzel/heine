@@ -182,12 +182,23 @@ fn assert_site_shell_and_search(output: &Path) {
         search_script.contains("documentsPromise = undefined;"),
         "{search_script}"
     );
+    assert!(search_script.contains("titleSearchText"), "{search_script}");
+    assert!(search_script.contains("bestPassage"), "{search_script}");
     assert!(
-        search_script.contains("summaryAddsMatch"),
+        search_script.contains("search-result-excerpt"),
         "{search_script}"
     );
     assert!(
-        search_script.contains("else if (summaryAddsMatch)"),
+        !search_script.contains("summaryAddsMatch"),
+        "{search_script}"
+    );
+    assert!(!search_script.contains("doc.summary"), "{search_script}");
+    assert!(
+        search_script.contains("anchor.href = resultTarget(doc, passage?.section)"),
+        "{search_script}"
+    );
+    assert!(
+        !search_script.contains("appendResultLink"),
         "{search_script}"
     );
     assert!(
