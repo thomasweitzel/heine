@@ -88,6 +88,8 @@ number of Unicode characters shown before and after a match. The client uses
 
 The example favors matches in a title, then a summary or description, then a
 Markdown section. Equal scores retain the index's page-ID order.
+It shows supplementary text only when that text contains a query term. A
+title-only match therefore shows only its title.
 
 Search indexes are rebuilt by full builds and `heine serve`. `--quick` leaves
 the previously published index unchanged, because it cannot safely establish

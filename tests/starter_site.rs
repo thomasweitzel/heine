@@ -180,6 +180,14 @@ fn assert_site_shell_and_search(output: &Path) {
         search_script.contains("documentsPromise = undefined;"),
         "{search_script}"
     );
+    assert!(
+        search_script.contains("summaryAddsMatch"),
+        "{search_script}"
+    );
+    assert!(
+        search_script.contains("else if (summaryAddsMatch)"),
+        "{search_script}"
+    );
     let search_page = fs::read_to_string(output.join("search/index.html")).expect("search page");
     assert!(
         search_page.contains("data-search-url=\"/my-project/search/site."),
