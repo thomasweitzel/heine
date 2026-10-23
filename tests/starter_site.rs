@@ -16,6 +16,8 @@ fn builds_the_documented_starter_site() {
     let temporary = TestDirectory::new();
     let root = temporary.path();
 
+    assert_starter_pagination_contract(&source);
+
     copy_file(&source.join("heine.toml"), &root.join("heine.toml"));
     copy_tree_except(
         &source.join("content"),
@@ -188,6 +190,10 @@ fn assert_site_shell_and_search(output: &Path) {
         search_script.contains("else if (summaryAddsMatch)"),
         "{search_script}"
     );
+    assert!(
+        !search_script.contains("search-pagination-link"),
+        "{search_script}"
+    );
     let search_page = fs::read_to_string(output.join("search/index.html")).expect("search page");
     assert!(
         search_page.contains("data-search-url=\"/my-project/search/site."),
@@ -213,6 +219,10 @@ fn assert_site_shell_and_search(output: &Path) {
         search_page.contains("name=\"q\" type=\"search\" dir=\"auto\""),
         "{search_page}"
     );
+    assert!(
+        search_page.contains("class=\"page-navigation pagination search-pagination\""),
+        "{search_page}"
+    );
     let search_index = generated_file_with_extension(&output.join("search"), "json");
     let search_json = fs::read_to_string(search_index).expect("search index");
     assert!(
@@ -223,6 +233,32 @@ fn assert_site_shell_and_search(output: &Path) {
         search_json.contains("لا يوجد طريقٌ ملوكيٌّ إلى الهندسة."),
         "{search_json}"
     );
+}
+
+fn assert_starter_pagination_contract(source: &Path) {
+    let components = fs::read_to_string(source.join("kits/starter/templates/components.tera"))
+        .expect("starter pagination component");
+    assert!(
+        components.contains("class=\"page-navigation pagination\""),
+        "{components}"
+    );
+    for item in [
+        "<a href=\"{{ item.relative_url }}\"",
+        "<span aria-current=\"page\">",
+        "<span aria-hidden=\"true\">…</span>",
+    ] {
+        assert!(components.contains(item), "{components}");
+    }
+
+    let styles = fs::read_to_string(source.join("kits/starter/assets/css/styles.v2.css"))
+        .expect("starter stylesheet");
+    for selector in [
+        ".pagination {",
+        ".pagination a,",
+        ".pagination [aria-current=\"page\"]",
+    ] {
+        assert!(styles.contains(selector), "{styles}");
+    }
 }
 
 fn assert_localized_indexes_and_catalogs(output: &Path) {
