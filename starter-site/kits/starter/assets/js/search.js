@@ -127,6 +127,7 @@
 
   function scoreDocument(doc, fragments) {
     const sections = matchingSections(doc.searchSections, fragments);
+    const titleMatches = fragments.map((fragment) => doc.searchFields[0].includes(fragment));
     let score = 0;
     for (const fragment of fragments) {
       const weight = doc.searchFields.findIndex((field) => field.includes(fragment));
@@ -134,7 +135,13 @@
       else if (sections.some((candidate) => candidate.section.searchText.includes(fragment))) score += 1;
       else return null;
     }
-    return { score: score + Math.min(sections[0]?.occurrences || 0, 3), sections: sections.slice(0, 2) };
+    return {
+      score: score + Math.min(sections[0]?.occurrences || 0, 3),
+      sections: sections.slice(0, 2),
+      summaryAddsMatch: fragments.some((fragment, index) => (
+        !titleMatches[index] && doc.searchFields[1].includes(fragment)
+      )),
+    };
   }
 
   function navigationPages(current, total) {
@@ -225,16 +232,16 @@
     return `${target.pathname}${target.search}${target.hash}`;
   }
 
-  function appendContext(item, doc, passage) {
+  function appendResultLink(item, className, doc, section, text) {
     const anchor = document.createElement("a");
-    anchor.className = "search-result-context";
-    anchor.href = resultTarget(doc, passage.section);
-    anchor.textContent = passage.text;
+    anchor.className = className;
+    anchor.href = resultTarget(doc, section);
+    anchor.textContent = text;
     item.append(anchor);
   }
 
   function resultLink(result, fragments) {
-    const { doc, sections } = result;
+    const { doc, sections, summaryAddsMatch } = result;
     const passages = matchingPassages(sections, fragments);
     const item = document.createElement("li");
     item.className = "search-result";
@@ -257,15 +264,13 @@
     if (passages.length) {
       const contexts = document.createElement("div");
       contexts.className = "search-result-contexts";
-      for (const passage of passages) appendContext(contexts, doc, passage);
+      for (const passage of passages) {
+        appendResultLink(contexts, "search-result-context", doc, passage.section, passage.text);
+      }
       item.append(contexts);
-    } else {
+    } else if (summaryAddsMatch) {
       const summary = doc.summary ?? doc.description;
-      if (!summary) return item;
-      const copy = document.createElement("span");
-      copy.className = "search-result-summary";
-      copy.textContent = summary;
-      item.append(copy);
+      appendResultLink(item, "search-result-summary", doc, undefined, summary);
     }
     return item;
   }
