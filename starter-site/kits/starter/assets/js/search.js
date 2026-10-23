@@ -14,9 +14,10 @@
  * `data-draft-marker`, and `.search-clear` are optional. Results use
  * `search-result`, `search-result-heading`,
  * `search-result-title`, `search-result-contexts`, `search-result-context`,
- * and `search-result-summary`; pagination uses `search-pagination-link`,
- * `search-pagination-current`, and `search-pagination-gap`. Consuming sites
- * style those semantic classes with their own CSS.
+ * and `search-result-summary`. Its pagination container must also carry
+ * `.pagination`: links, the current-page span, and gap spans use the same
+ * semantic HTML as every other pagination control. Consuming sites style that
+ * shared pagination structure with their own CSS.
  *
  * Authored search data always becomes DOM text nodes, never HTML strings.
  */
@@ -277,7 +278,6 @@
 
   function navigationLink(query, page) {
     const node = document.createElement("a");
-    node.className = "search-pagination-link";
     node.href = searchUrl(query, page);
     node.textContent = page;
     node.addEventListener("click", (event) => {
@@ -295,14 +295,12 @@
     for (const page of navigationPages(current, total)) {
       if (page > previous + 1) {
         const gap = document.createElement("span");
-        gap.className = "search-pagination-gap";
         gap.textContent = "…";
         gap.setAttribute("aria-hidden", "true");
         navigation.append(gap);
       }
       const node = page === current ? document.createElement("span") : navigationLink(query, page);
       if (page === current) {
-        node.className = "search-pagination-current";
         node.textContent = page;
         node.setAttribute("aria-current", "page");
       }
