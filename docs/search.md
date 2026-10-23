@@ -75,21 +75,19 @@ rules.
 
 ## Browser behavior belongs to the site
 
-The starter site includes a dependency-free example that fetches the index,
-uses basic Unicode-aware local substring matching, shows the strongest
-matching Markdown passage for each result, safely creates DOM nodes, and
-stores its query and result page in the URL. It is a usable starting point,
-not a required ranking policy or a bundled Heine component.
+The starter site includes a dependency-free browser example. It searches the
+generated index locally, creates its result DOM safely, and keeps the query
+and result page in the URL. It is a usable starting point, not a required
+ranking policy or a bundled Heine component.
 
 Its search form may set `data-context-before` and `data-context-after` to the
 number of Unicode characters shown before and after a match. The client uses
 90 and 170 when those attributes are absent. The maintained example sites use
 80 and 160.
 
-The example favors matches in a title, then Markdown sections. Equal scores
-retain the index's page-ID order. A result card is one link. It targets the
-strongest matching section when it has a heading anchor, otherwise the page.
-A title-only match shows only its title.
+The example gives title matches priority and adds context from matching
+Markdown when it can. Its exact ranking and excerpt choices are site policy,
+not part of Heine's search-index contract.
 
 Search indexes are rebuilt by full builds and `heine serve`. `--quick` leaves
 the previously published index unchanged, because it cannot safely establish

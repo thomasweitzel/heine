@@ -29,17 +29,14 @@ rather than copying an example without understanding its limits.
 Some details deliberately remain site policy. The local audio player uses raw
 HTML because browser controls and preload behavior are not Markdown features.
 The search script is one dependency-free browser implementation, not a search
-engine supplied by Heine. It shows contextual passages from the matching
-Markdown sections, including two passages when a result matches in separate
-parts of a page. Treat the example as a working starting point, then keep only
-the parts your site needs.
+engine supplied by Heine. It searches the generated index locally and can show
+context from matching Markdown. Treat the example as a working starting point,
+then keep only the parts your site needs.
 
 The search form controls its excerpt window with `data-context-before` and
 `data-context-after`. The example uses 80 and 160 Unicode characters.
-It favors title matches, then Markdown sections. Equal scores keep Heine's
-page-ID order. Each result is one link to its strongest matching section, or
-to the page when that section has no heading anchor. A title-only match shows
-only its title.
+It gives title matches priority and adds context from matching Markdown when
+it can. Its exact ranking and excerpt choices are site policy.
 
 `kits/starter/assets/js/search.js` is the canonical source for the maintained
 starter, documentation, and Zolarwind search clients. Those independently

@@ -324,31 +324,19 @@ is universally correct or permanently frozen.
 The search page has one ordinary form, a live status region, an ordered result
 list, and result-navigation controls. Its query input uses HTML `dir="auto"`,
 so browser editing follows the first strong directional character in a query
-without changing the page locale or search-document selection. The script:
+without changing the page locale or search-document selection.
 
-1. fetches the JSON once when the search interface is used, retaining a
-   successful result for the life of that page and clearing a failed request so
-   a later interaction retries it;
-2. NFC-normalizes searchable fields once after a successful fetch and each
-   query when it is entered. Before collapsing remaining Unicode whitespace to
-   one ASCII space, it removes a single source line feed between adjacent
-   characters from scripts that commonly do not use spaces between words: Han,
-   Hiragana, Katakana, Hangul, Thai, Lao, Khmer, and Myanmar, plus East Asian
-   punctuation. This is a narrow matching convenience, not universal Unicode
-   word segmentation;
-3. uses `toLocaleLowerCase(document.documentElement.lang)` for its local,
-   case-insensitive matching policy;
-4. splits a query into non-empty whitespace fragments and requires every
-   fragment to occur as a substring somewhere in a document;
-5. adds the highest matching field weight for every fragment: title `3`,
-   summary or description `2`, and search-section text `1`; and
-6. preserves JSON document order for score ties;
-7. presents ten results per client-side result page; and
-8. renders a one-link page-number window around the current page, retaining
-   first and last page links and collapsing gaps with ellipses.
-9. links a result to the section matching the most query fragments, retaining
-   source order for a tie; it appends that section's non-null fragment to the
-   page URL and otherwise links to the page itself.
+The script loads the index when a reader first uses search, retains a
+successful result for that page, and retries a failed request on a later
+interaction. It normalizes text and queries for local matching, then preserves
+the query and result page in browser history.
+
+The maintained example searches titles and source-derived Markdown. It builds
+accessible result and pagination controls with DOM APIs, links a matching
+section when it has an existing heading anchor, and shows Markdown context when
+it helps the reader. Its ranking, excerpt selection, and visual presentation
+remain site policy. A site may replace the script without changing Heine's
+generated search-index contract.
 
 Typing uses a short debounce and resets the result page to one. The form's
 ordinary submit behavior performs the same search immediately, so keyboard
@@ -407,7 +395,7 @@ The browser state is shareable and history-aware:
 
 The script reads `q` and `page` through `URLSearchParams`. It stores the
 decoded query as entered, applies its local normalization only while matching,
-and writes URL state through `URLSearchParams` and `history.pushState()`.
+and writes URL state through `URLSearchParams` and browser history.
 Unicode query text is therefore UTF-8 percent-encoded by the browser when
 needed, without inventing a separate language-specific URL format. The current
 rendered page selects the locale and index; the script does not trust a
@@ -425,10 +413,10 @@ or Heine-generated result pages. A production site may replace only this
 script with a local browser library or a service integration while preserving
 the generated JSON contract.
 
-The starter script does not mark matched text in result summaries. If a site
-adds match highlighting later, it must construct marked text through DOM text
-nodes and elements, never by interpolating an authored field or query into an
-HTML string.
+The starter script does not mark matched text. If a site adds match
+highlighting later, it must construct marked text through DOM text nodes and
+elements, never by interpolating an authored field or query into an HTML
+string.
 
 The Tera template remains structural. It uses `search()` only to expose the
 index URL and places all visible and assistive text in Fluent resources,
