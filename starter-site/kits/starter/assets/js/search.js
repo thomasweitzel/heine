@@ -13,8 +13,8 @@
  * `data-results-per-page`, `data-context-before`, `data-context-after`,
  * `data-draft-marker`, and `.search-clear` are optional. Results use
  * `search-result`, `search-result-heading`,
- * `search-result-title`, `search-result-contexts`, `search-result-context`,
- * and `search-result-summary`. Its pagination container must also carry
+ * `search-result-title`, and `search-result-excerpt`. Its pagination
+ * container must also carry
  * `.pagination`: links, the current-page span, and gap spans use the same
  * semantic HTML as every other pagination control. Consuming sites style that
  * shared pagination structure with their own CSS.
@@ -80,8 +80,7 @@
           ...doc,
           // Heine writes this index in page-ID order. Keep that order for ties.
           searchOrder,
-          searchFields: [doc.title, doc.summary ?? doc.description]
-            .map((value) => normalize(value || "")),
+          titleSearchText: normalize(doc.title || ""),
           searchSections: doc.sections.map((section) => ({
             ...section,
             displayText: joinUnspacedLineBreaks(section.text.normalize("NFC"))
@@ -128,20 +127,15 @@
 
   function scoreDocument(doc, fragments) {
     const sections = matchingSections(doc.searchSections, fragments);
-    const titleMatches = fragments.map((fragment) => doc.searchFields[0].includes(fragment));
     let score = 0;
     for (const fragment of fragments) {
-      const weight = doc.searchFields.findIndex((field) => field.includes(fragment));
-      if (weight >= 0) score += [3, 2][weight];
+      if (doc.titleSearchText.includes(fragment)) score += 3;
       else if (sections.some((candidate) => candidate.section.searchText.includes(fragment))) score += 1;
       else return null;
     }
     return {
       score: score + Math.min(sections[0]?.occurrences || 0, 3),
-      sections: sections.slice(0, 2),
-      summaryAddsMatch: fragments.some((fragment, index) => (
-        !titleMatches[index] && doc.searchFields[1].includes(fragment)
-      )),
+      section: sections[0]?.section,
     };
   }
 
@@ -220,11 +214,8 @@
     });
   }
 
-  function matchingPassages(sections, fragments) {
-    const candidates = sections.map((match) => passageCandidates(match.section, fragments));
-    const first = candidates.flatMap((passages) => passages.slice(0, 1));
-    const further = candidates.flatMap((passages) => passages.slice(1));
-    return first.concat(further).slice(0, 2);
+  function bestPassage(section, fragments) {
+    return section ? passageCandidates(section, fragments)[0] : undefined;
   }
 
   function resultTarget(doc, section) {
@@ -233,19 +224,13 @@
     return `${target.pathname}${target.search}${target.hash}`;
   }
 
-  function appendResultLink(item, className, doc, section, text) {
-    const anchor = document.createElement("a");
-    anchor.className = className;
-    anchor.href = resultTarget(doc, section);
-    anchor.textContent = text;
-    item.append(anchor);
-  }
-
   function resultLink(result, fragments) {
-    const { doc, sections, summaryAddsMatch } = result;
-    const passages = matchingPassages(sections, fragments);
+    const { doc, section } = result;
+    const passage = bestPassage(section, fragments);
     const item = document.createElement("li");
-    item.className = "search-result";
+    const anchor = document.createElement("a");
+    anchor.className = "search-result";
+    anchor.href = resultTarget(doc, passage?.section);
     const heading = document.createElement("h2");
     heading.className = "search-result-heading";
     if (doc.draft && labels.draftMarker) {
@@ -254,25 +239,18 @@
       marker.textContent = labels.draftMarker;
       heading.append(marker);
     }
-    const anchor = document.createElement("a");
-    anchor.className = "search-result-title";
-    anchor.href = resultTarget(doc, passages[0]?.section);
     const title = document.createElement("span");
+    title.className = "search-result-title";
     title.textContent = doc.title || doc.url;
-    anchor.append(title);
-    heading.append(anchor);
-    item.append(heading);
-    if (passages.length) {
-      const contexts = document.createElement("div");
-      contexts.className = "search-result-contexts";
-      for (const passage of passages) {
-        appendResultLink(contexts, "search-result-context", doc, passage.section, passage.text);
-      }
-      item.append(contexts);
-    } else if (summaryAddsMatch) {
-      const summary = doc.summary ?? doc.description;
-      appendResultLink(item, "search-result-summary", doc, undefined, summary);
+    heading.append(title);
+    anchor.append(heading);
+    if (passage) {
+      const excerpt = document.createElement("p");
+      excerpt.className = "search-result-excerpt";
+      excerpt.textContent = passage.text;
+      anchor.append(excerpt);
     }
+    item.append(anchor);
     return item;
   }
 

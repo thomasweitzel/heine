@@ -36,10 +36,10 @@ the parts your site needs.
 
 The search form controls its excerpt window with `data-context-before` and
 `data-context-after`. The example uses 80 and 160 Unicode characters.
-It favors title matches, then summaries or descriptions, then Markdown
-sections. Equal scores keep Heine's page-ID order.
-It shows extra text only when that text contains a query term, so a title-only
-match displays only its title.
+It favors title matches, then Markdown sections. Equal scores keep Heine's
+page-ID order. Each result is one link to its strongest matching section, or
+to the page when that section has no heading anchor. A title-only match shows
+only its title.
 
 `kits/starter/assets/js/search.js` is the canonical source for the maintained
 starter, documentation, and Zolarwind search clients. Those independently
