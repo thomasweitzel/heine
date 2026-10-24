@@ -85,9 +85,10 @@ number of Unicode characters shown before and after a match. The client uses
 90 and 170 when those attributes are absent. The maintained example sites use
 80 and 160.
 
-The example gives title matches priority and adds context from matching
-Markdown when it can. Its exact ranking and excerpt choices are site policy,
-not part of Heine's search-index contract.
+The example matches each query term at the start of a word. It gives title
+matches priority, adds context from matching Markdown when it can, and falls
+back to a page description for a title-only match. Its exact ranking and
+excerpt choices are site policy, not part of Heine's search-index contract.
 
 Search indexes are rebuilt by full builds and `heine serve`. `--quick` leaves
 the previously published index unchanged, because it cannot safely establish

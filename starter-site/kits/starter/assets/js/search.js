@@ -45,8 +45,10 @@
   let documentsPromise;
   let documentsLoading = false;
   let debounce;
+  let renderGeneration = 0;
 
   const unspacedCharacter = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\u3000-\u303f\uff00-\uffef]$/u;
+  const wordCharacter = /[\p{L}\p{N}\p{M}]/u;
   const joinUnspacedLineBreaks = (value) => [...value].map((character, index, characters) => (
     character === "\n"
       && unspacedCharacter.test(characters[index - 1] || "")
@@ -99,14 +101,51 @@
     return documentsPromise;
   }
 
-  function occurrences(text, fragment) {
-    let count = 0;
+  function characterBefore(value, index) {
+    const preceding = value.charCodeAt(index - 1);
+    if (preceding >= 0xdc00 && preceding <= 0xdfff && index > 1) {
+      const leading = value.charCodeAt(index - 2);
+      if (leading >= 0xd800 && leading <= 0xdbff) return value.slice(index - 2, index);
+    }
+    return value[index - 1] || "";
+  }
+
+  function characterAt(value, index) {
+    const codePoint = value.codePointAt(index);
+    return codePoint === undefined ? "" : String.fromCodePoint(codePoint);
+  }
+
+  function startsWord(previous, current) {
+    // Unspaced scripts have no word separators, so each character may begin a match.
+    return !wordCharacter.test(previous) || unspacedCharacter.test(current);
+  }
+
+  function matchPositions(text, fragment) {
+    const positions = [];
     let position = text.indexOf(fragment);
     while (position >= 0) {
-      count += 1;
+      if (startsWord(characterBefore(text, position), characterAt(text, position))) {
+        positions.push(position);
+      }
       position = text.indexOf(fragment, position + fragment.length);
     }
-    return count;
+    return positions;
+  }
+
+  function characterMatchPositions(characters, fragment) {
+    const pattern = Array.from(fragment);
+    const positions = [];
+    for (let start = 0; start <= characters.length - pattern.length; start += 1) {
+      if (startsWord(characters[start - 1] || "", characters[start])
+        && pattern.every((value, offset) => characters[start + offset] === value)) {
+        positions.push(start);
+      }
+    }
+    return positions;
+  }
+
+  function occurrences(text, fragment) {
+    return matchPositions(text, fragment).length;
   }
 
   function matchingSections(sections, fragments) {
@@ -115,6 +154,7 @@
       return {
         section,
         order,
+        counts,
         coverage: counts.filter(Boolean).length,
         occurrences: counts.reduce((total, count) => total + count, 0),
       };
@@ -128,9 +168,9 @@
   function scoreDocument(doc, fragments) {
     const sections = matchingSections(doc.searchSections, fragments);
     let score = 0;
-    for (const fragment of fragments) {
-      if (doc.titleSearchText.includes(fragment)) score += 3;
-      else if (sections.some((candidate) => candidate.section.searchText.includes(fragment))) score += 1;
+    for (const [index, fragment] of fragments.entries()) {
+      if (occurrences(doc.titleSearchText, fragment)) score += 3;
+      else if (sections.some((candidate) => candidate.counts[index])) score += 1;
       else return null;
     }
     return {
@@ -171,51 +211,44 @@
     if (characters.length !== normalizedCharacters.length) {
       return [{ section, text: section.displayText }];
     }
-    const positions = fragments.flatMap((fragment) => {
-      const pattern = Array.from(fragment);
-      const matches = [];
-      for (let start = 0; start <= normalizedCharacters.length - pattern.length; start += 1) {
-        if (pattern.every((value, offset) => normalizedCharacters[start + offset] === value)) {
-          matches.push(start);
-        }
-      }
-      return matches;
-    }).sort((left, right) => left - right)
+    const positions = fragments.flatMap((fragment) => characterMatchPositions(normalizedCharacters, fragment))
+      .sort((left, right) => left - right)
       .filter((position, index, values) => !index || position !== values[index - 1]);
     if (!positions.length) return [{ section, text: section.displayText }];
 
-    const bestPosition = (excluded) => {
+    const bestPosition = () => {
       let first = 0;
       let after = 0;
       let best;
       for (const position of positions) {
         while (first < positions.length && positions[first] < position - contextBefore) first += 1;
         while (after < positions.length && positions[after] <= position + contextAfter) after += 1;
-        const overlaps = excluded !== undefined
-          && position - contextBefore <= excluded + contextAfter
-          && position + contextAfter >= excluded - contextBefore;
-        if (!overlaps && (!best || after - first > best.nearby)) {
+        if (!best || after - first > best.nearby) {
           best = { position, nearby: after - first };
         }
       }
       return best;
     };
-    const selected = [bestPosition()];
-    const second = bestPosition(selected[0].position);
-    if (second) selected.push(second);
-
-    return selected.map(({ position }) => {
-      const start = Math.max(0, position - contextBefore);
-      const end = Math.min(characters.length, position + contextAfter);
-      return {
-        section,
-        text: `${start ? "…" : ""}${characters.slice(start, end).join("")}${end < characters.length ? "…" : ""}`,
-      };
-    });
+    const { position } = bestPosition();
+    let start = Math.max(0, position - contextBefore);
+    let end = Math.min(characters.length, position + contextAfter);
+    while (start > 0 && wordCharacter.test(characters[start - 1])
+      && !unspacedCharacter.test(characters[start - 1]) && !unspacedCharacter.test(characters[start])) {
+      start -= 1;
+    }
+    while (end < characters.length && wordCharacter.test(characters[end])
+      && !unspacedCharacter.test(characters[end - 1]) && !unspacedCharacter.test(characters[end])) {
+      end += 1;
+    }
+    return [{
+      section,
+      text: `${start ? "…" : ""}${characters.slice(start, end).join("")}${end < characters.length ? "…" : ""}`,
+    }];
   }
 
   function bestPassage(section, fragments) {
-    return section ? passageCandidates(section, fragments)[0] : undefined;
+    if (!section) return undefined;
+    return passageCandidates(section, fragments)[0];
   }
 
   function resultTarget(doc, section) {
@@ -244,10 +277,11 @@
     title.textContent = doc.title || doc.url;
     heading.append(title);
     anchor.append(heading);
-    if (passage) {
+    const excerptText = passage?.text || doc.description;
+    if (excerptText) {
       const excerpt = document.createElement("p");
       excerpt.className = "search-result-excerpt";
-      excerpt.textContent = passage.text;
+      excerpt.textContent = excerptText;
       anchor.append(excerpt);
     }
     item.append(anchor);
@@ -288,6 +322,7 @@
   }
 
   async function render(query, requestedPage) {
+    const generation = ++renderGeneration;
     const normalized = normalize(query);
     if (!normalized) {
       results.replaceChildren();
@@ -300,11 +335,14 @@
       const fragments = normalized.split(" ").filter(Boolean);
       const source = documents();
       if (documentsLoading) status.textContent = labels.loading;
-      const matching = (await source).map((doc) => {
+      const documentsForSearch = await source;
+      if (generation !== renderGeneration) return;
+      const matching = documentsForSearch.map((doc) => {
         const match = scoreDocument(doc, fragments);
         return match && { doc, ...match };
       }).filter(Boolean)
         .sort((left, right) => right.score - left.score || left.doc.searchOrder - right.doc.searchOrder);
+      if (generation !== renderGeneration) return;
       const total = Math.max(1, Math.ceil(matching.length / pageSize));
       const page = pageNumber(requestedPage, total);
       if (page !== requestedPage) setUrl(query, page, true);
@@ -313,6 +351,7 @@
       status.textContent = matching.length ? resultCount(matching.length) : labels.noResults;
       renderNavigation(query, page, total);
     } catch (_) {
+      if (generation !== renderGeneration) return;
       results.replaceChildren();
       navigation.replaceChildren();
       navigation.hidden = true;
