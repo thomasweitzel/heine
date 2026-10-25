@@ -31,6 +31,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Search text boundaries.** Nested Markdown blocks and image alternatives
+  now remain separate words in search indexes, word counts, and reading-time
+  estimates.
+
 ## [0.10.0] - 2026-10-21
 
 ### Changed

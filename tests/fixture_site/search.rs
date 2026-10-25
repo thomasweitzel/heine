@@ -270,7 +270,7 @@ fn search_text_has_stable_markdown_boundaries_and_empty_locale_indexes() {
     );
     fixture.write(
         "content/en/guide/alpha.md",
-        "<!-- segment: body -->\nFirst segment.\n",
+        "<!-- segment: body -->\nFirst segment.\n\n* Development tools\n  * JetBrains IDEs\n",
     );
     fixture.write("content/en/guide/beta.md", "Second source.\n");
     fixture.write(
@@ -300,7 +300,7 @@ fn search_text_has_stable_markdown_boundaries_and_empty_locale_indexes() {
     assert_eq!(
         guide["sections"],
         serde_json::json!([
-            {"fragment": null, "text": "First segment."},
+            {"fragment": null, "text": "First segment.\n\nDevelopment tools\n\nJetBrains IDEs"},
             {"fragment": null, "text": "Second source."}
         ])
     );

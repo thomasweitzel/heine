@@ -162,6 +162,12 @@ fn analyze_inner(
         if let Some(validation) = validation {
             validate_event(&event, span.clone(), validation.renderer, validation.links)?;
         }
+        if starts_source_text_structure(&event) {
+            text.boundary();
+            if collect_search_sections {
+                append_boundary(&mut section.text);
+            }
+        }
         let raw_html = match &event {
             Event::Html(value) | Event::InlineHtml(value) => Some(raw_html_text(value)),
             _ => None,
@@ -180,7 +186,7 @@ fn analyze_inner(
                     }
                 }
                 Event::SoftBreak | Event::HardBreak => text.boundary(),
-                Event::End(end) if is_fact_block_end(*end) => text.boundary(),
+                Event::End(end) if ends_source_text_structure(*end) => text.boundary(),
                 Event::InlineMath(_) | Event::DisplayMath(_) => {}
                 _ => {}
             }
@@ -216,7 +222,9 @@ fn analyze_inner(
                     append_text(&mut section.text, raw_html);
                 }
             }
-            Event::End(end) if is_search_block_end(*end) => append_boundary(&mut section.text),
+            Event::End(end) if ends_source_text_structure(*end) => {
+                append_boundary(&mut section.text);
+            }
             _ => {}
         }
         scan_unresolved_footnotes(
@@ -288,12 +296,44 @@ impl CountedText {
     }
 }
 
-fn is_fact_block_end(end: TagEnd) -> bool {
+/// Markdown structure separates authored text even when a tight list omits
+/// paragraph events around its items. Both source-derived text consumers use
+/// this one policy so search text and word counts cannot disagree about words.
+fn starts_source_text_structure(event: &Event<'_>) -> bool {
+    matches!(event, Event::Rule)
+        || matches!(event, Event::Start(tag) if is_source_text_structure_tag(tag))
+}
+
+fn is_source_text_structure_tag(tag: &Tag<'_>) -> bool {
+    matches!(
+        tag,
+        Tag::Paragraph
+            | Tag::Heading { .. }
+            | Tag::BlockQuote(_)
+            | Tag::CodeBlock(_)
+            | Tag::HtmlBlock
+            | Tag::List(_)
+            | Tag::Item
+            | Tag::FootnoteDefinition(_)
+            | Tag::DefinitionList
+            | Tag::DefinitionListTitle
+            | Tag::DefinitionListDefinition
+            | Tag::Table(_)
+            | Tag::TableHead
+            | Tag::TableRow
+            | Tag::TableCell
+            | Tag::Image { .. }
+    )
+}
+
+fn ends_source_text_structure(end: TagEnd) -> bool {
     matches!(
         end,
         TagEnd::Paragraph
             | TagEnd::Heading(_)
             | TagEnd::BlockQuote(_)
+            | TagEnd::CodeBlock
+            | TagEnd::HtmlBlock
             | TagEnd::List(_)
             | TagEnd::Item
             | TagEnd::FootnoteDefinition
@@ -304,6 +344,7 @@ fn is_fact_block_end(end: TagEnd) -> bool {
             | TagEnd::TableHead
             | TagEnd::TableRow
             | TagEnd::TableCell
+            | TagEnd::Image
     )
 }
 
@@ -321,26 +362,6 @@ impl SectionBuilder {
             sections.push(SearchTextSection { fragment, text });
         }
     }
-}
-
-fn is_search_block_end(end: TagEnd) -> bool {
-    matches!(
-        end,
-        TagEnd::Paragraph
-            | TagEnd::Heading(_)
-            | TagEnd::BlockQuote(_)
-            | TagEnd::CodeBlock
-            | TagEnd::List(_)
-            | TagEnd::Item
-            | TagEnd::FootnoteDefinition
-            | TagEnd::DefinitionList
-            | TagEnd::DefinitionListTitle
-            | TagEnd::DefinitionListDefinition
-            | TagEnd::Table
-            | TagEnd::TableHead
-            | TagEnd::TableRow
-            | TagEnd::TableCell
-    )
 }
 
 #[cfg(test)]
@@ -410,6 +431,50 @@ mod tests {
                 .text
                 .contains("excluded from facts")
         );
+    }
+
+    #[test]
+    fn source_text_boundaries_separate_nested_blocks_and_image_alternatives() {
+        let analysis = analyze(
+            "* Development tools\n  * JetBrains IDEs\n* Parent\n  > Quoted child\n* Example\n  ```text\n  code child\n  ```\n\ntools![JetBrains](logo.svg)later\n",
+            &MarkdownConfig::default(),
+            NonZeroU64::new(20),
+            None,
+            true,
+        );
+        let text = analysis
+            .search_sections
+            .iter()
+            .map(|section| section.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        assert_eq!(
+            text,
+            "Development tools\n\nJetBrains IDEs\n\nParent\n\nQuoted child\n\nExample\n\ncode child\n\ntools\n\nJetBrains\n\nlater"
+        );
+        assert_eq!(analysis.facts.word_count, 11);
+        assert_eq!(analysis.facts.reading_time, Some(1));
+    }
+
+    #[test]
+    fn source_text_boundaries_preserve_inline_authored_adjacency() {
+        let analysis = analyze(
+            "Jet[Brains](https://example.test) and <span>Code</span>base.",
+            &MarkdownConfig::default(),
+            None,
+            None,
+            true,
+        );
+
+        assert_eq!(
+            analysis.search_sections,
+            vec![SearchTextSection {
+                fragment: None,
+                text: "JetBrains and Codebase.".into(),
+            }]
+        );
+        assert_eq!(analysis.facts.word_count, 3);
     }
 
     #[test]

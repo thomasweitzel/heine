@@ -73,6 +73,10 @@ assets, or an inferred `content.main` body. See the
 [reference](reference.md#search-indexes) for the full JSON shape and extraction
 rules.
 
+Each structural Markdown block and image alternative remains separate in the
+extracted text, including a nested list below a labelled list item. Inline
+Markdown and inline HTML keep the adjacency that the author wrote.
+
 ## Browser behavior belongs to the site
 
 The starter site includes a dependency-free browser example. It searches the
