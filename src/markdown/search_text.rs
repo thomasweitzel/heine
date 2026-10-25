@@ -77,6 +77,10 @@ impl TokenSink for HtmlSearchTextSink {
                         if excluded {
                             state.excluded.push(name.clone());
                         }
+                        let boundary = is_html_text_boundary_element(&name);
+                        if state.excluded.is_empty() && boundary {
+                            append_boundary(&mut state.text);
+                        }
                         if state.excluded.is_empty()
                             && name == "img"
                             && let Some(alt) = tag
@@ -86,12 +90,9 @@ impl TokenSink for HtmlSearchTextSink {
                         {
                             append_text(&mut state.text, &alt.value);
                         }
-                        if state.excluded.is_empty() && is_html_block_element(&name) {
-                            append_boundary(&mut state.text);
-                        }
-                        if tag.self_closing
-                            && state.excluded.is_empty()
-                            && is_html_block_element(&name)
+                        if state.excluded.is_empty()
+                            && boundary
+                            && (tag.self_closing || is_html_void_text_boundary_element(&name))
                         {
                             append_boundary(&mut state.text);
                         }
@@ -106,7 +107,8 @@ impl TokenSink for HtmlSearchTextSink {
                             .is_some_and(|excluded| excluded == &name)
                         {
                             state.excluded.pop();
-                        } else if state.excluded.is_empty() && is_html_block_element(&name) {
+                        } else if state.excluded.is_empty() && is_html_text_boundary_element(&name)
+                        {
                             append_boundary(&mut state.text);
                         }
                     }
@@ -132,7 +134,10 @@ fn is_html_block_element(name: &str) -> bool {
             | "article"
             | "aside"
             | "blockquote"
+            | "caption"
             | "div"
+            | "dialog"
+            | "details"
             | "dl"
             | "dt"
             | "dd"
@@ -151,12 +156,18 @@ fn is_html_block_element(name: &str) -> bool {
             | "hgroup"
             | "hr"
             | "li"
+            | "legend"
             | "main"
+            | "menu"
             | "nav"
             | "ol"
+            | "option"
+            | "optgroup"
             | "p"
             | "pre"
             | "section"
+            | "search"
+            | "summary"
             | "table"
             | "thead"
             | "tbody"
@@ -166,6 +177,14 @@ fn is_html_block_element(name: &str) -> bool {
             | "td"
             | "ul"
     )
+}
+
+fn is_html_text_boundary_element(name: &str) -> bool {
+    is_html_block_element(name) || matches!(name, "br" | "img")
+}
+
+fn is_html_void_text_boundary_element(name: &str) -> bool {
+    matches!(name, "br" | "hr" | "img")
 }
 
 #[cfg(test)]
@@ -255,5 +274,28 @@ mod tests {
         assert!(table.contains("table text"), "{table}");
         assert!(!unclosed.contains("not searchable"), "{unclosed}");
         assert!(later.contains("later text"), "{later}");
+    }
+
+    #[test]
+    fn raw_html_text_separates_semantic_boundaries_but_not_inline_markup() {
+        let text = raw_html_text(
+            "before<br>after<img alt=\"JetBrains\">later<details>details<summary>summary</summary>body</details>end",
+        );
+
+        assert_eq!(
+            text,
+            "before\n\nafter\n\nJetBrains\n\nlater\n\ndetails\n\nsummary\n\nbody\n\nend"
+        );
+        assert_eq!(
+            raw_html_text(
+                "<fieldset><legend>Development tools</legend>JetBrains IDEs</fieldset><select><optgroup><option>One</option><option>Two</option></optgroup></select>",
+            ),
+            "Development tools\n\nJetBrains IDEs\n\nOne\n\nTwo\n\n"
+        );
+        assert_eq!(
+            raw_html_text("<table><caption>Projects</caption><tr><td>Heine</td></tr></table>"),
+            "Projects\n\nHeine\n\n"
+        );
+        assert_eq!(raw_html_text("Jet<span>Brains</span>"), "JetBrains");
     }
 }

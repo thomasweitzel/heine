@@ -190,8 +190,10 @@ texts. The source text includes headings, link labels, image alternatives,
 code, and recognized math source. Source-authored raw HTML adds text nodes and
 `img` `alt` values, while markup, comments, URLs, attributes, and `script`,
 `style`, or `template` contents do not contribute. Soft and hard Markdown
-breaks remain line feeds; block boundaries become two line feeds. Heine does
-not lower-case, tokenize, stem, truncate, or derive text from rendered HTML.
+breaks remain line feeds; entering or leaving a structural Markdown block and
+an image alternative become two line feeds. Inline Markdown and inline HTML
+keep authored adjacency. Heine does not lower-case, tokenize, stem, truncate,
+or derive text from rendered HTML.
 
 ## Markdown facts
 
