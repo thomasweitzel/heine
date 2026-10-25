@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-25
+
 ### Fixed
 
 - **Search text boundaries.** Nested Markdown blocks and image alternatives
