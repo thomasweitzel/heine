@@ -74,7 +74,7 @@ assets, or an inferred `content.main` body. See the
 rules.
 
 Each structural Markdown block and image alternative remains separate in the
-extracted text, including a nested list below a labelled list item. Inline
+extracted text, including a nested list below a labeled list item. Inline
 Markdown and inline HTML keep the adjacency that the author wrote.
 
 ## Browser behavior belongs to the site
@@ -85,9 +85,18 @@ and result page in the URL. It is a usable starting point, not a required
 ranking policy or a bundled Heine component.
 
 Its search form may set `data-context-before` and `data-context-after` to the
-number of Unicode characters shown before and after a match. The client uses
-90 and 170 when those attributes are absent. The maintained example sites use
-80 and 160.
+preferred Unicode code-point context before and after a complete match. The
+client uses 80 and 160 when those attributes are absent. The maintained example
+sites use those same values.
+
+`data-context-before-max` and `data-context-after-max` bound an extension to a
+nearby word boundary. They default to 100 and 200, or to the corresponding
+preferred value when it is larger. When a preferred edge falls inside a word in
+a script with ordinary word boundaries, the client includes the whole word if
+its boundary lies within that maximum. Otherwise it cuts at the maximum. Scripts
+without ordinary word boundaries use the preferred edge directly. These limits
+bound context rather than matching text itself, so an unusually long query can
+make an excerpt exceed its context values.
 
 The example matches each query term at the start of a word. It gives title
 matches priority, adds context from matching Markdown when it can, and falls

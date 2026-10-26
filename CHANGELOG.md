@@ -31,6 +31,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Changed
+
+- **Starter-site search excerpts.** The maintained search client now uses an
+  80/160 preferred context and bounds word-boundary expansion at 100/200 code
+  points, so an unusually long token cannot produce an unbounded excerpt.
+
 ## [0.10.1] - 2026-10-25
 
 ### Fixed

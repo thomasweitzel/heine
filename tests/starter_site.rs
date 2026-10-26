@@ -167,11 +167,19 @@ fn assert_site_shell_and_search(output: &Path) {
         "{search_script}"
     );
     assert!(
-        search_script.contains("integerSetting(\"contextBefore\", 90, 0)"),
+        search_script.contains("integerSetting(\"contextBefore\", 80, 0)"),
         "{search_script}"
     );
     assert!(
-        search_script.contains("integerSetting(\"contextAfter\", 170, 0)"),
+        search_script.contains("integerSetting(\"contextAfter\", 160, 0)"),
+        "{search_script}"
+    );
+    assert!(
+        search_script.contains("contextMaximum(\"contextBeforeMax\", contextBefore, 100)"),
+        "{search_script}"
+    );
+    assert!(
+        search_script.contains("contextMaximum(\"contextAfterMax\", contextAfter, 200)"),
         "{search_script}"
     );
     assert!(
@@ -216,6 +224,14 @@ fn assert_site_shell_and_search(output: &Path) {
     );
     assert!(
         search_page.contains("data-context-after=\"160\""),
+        "{search_page}"
+    );
+    assert!(
+        search_page.contains("data-context-before-max=\"100\""),
+        "{search_page}"
+    );
+    assert!(
+        search_page.contains("data-context-after-max=\"200\""),
         "{search_page}"
     );
     assert!(

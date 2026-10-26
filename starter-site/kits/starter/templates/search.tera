@@ -9,6 +9,8 @@
       data-search-url="{{ index.url }}"
       data-context-before="80"
       data-context-after="160"
+      data-context-before-max="100"
+      data-context-after-max="200"
       data-loading="{{ t(id="starter-search-loading") }}"
       data-results-zero="{{ t(id="starter-search-results-count", attribute="zero", count="__count__") }}"
       data-results-one="{{ t(id="starter-search-results-count", attribute="one", count="__count__") }}"
