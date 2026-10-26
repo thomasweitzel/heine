@@ -14,7 +14,7 @@ role, and emits a native HTML `picture` element. The browser selects the dark
 source only when `prefers-color-scheme: dark` matches.
 
 A renderer resource has the same presentation need when a tool such as Typst,
-Mermaid, Graphviz, or a chart generator produces fixed-colour SVG, PNG, or
+Mermaid, Graphviz, or a chart generator produces fixed-color SVG, PNG, or
 WebP output. Two independent `:::render` requests cannot express that they
 are visual alternatives of one semantic image. They would emit two independent
 `img` elements, retain two unrelated source spans, and expose neither result
@@ -82,7 +82,7 @@ arguments = [
 The profile author chooses how the renderer receives that fixed appearance
 input. The Typst example uses `sys.inputs`; another tool may use its own
 fixed command-line setting. Heine does not define a renderer-specific theme
-API, inspect the source for colour choices, or transform the returned files.
+API, inspect the source for color choices, or transform the returned files.
 
 Each supported placement must declare both appearances. A profile may support
 only blocks, only inline requests, or both, subject to the existing placement
@@ -153,7 +153,7 @@ The host emits this structure, with its checked digest URLs substituted:
 
 Without `caption`, the host emits `picture` alone. The browser owns the media
 query decision, just as it does for copied-asset pictures. Heine does not add
-a site-owned appearance preference, JavaScript selection, or automatic colour
+a site-owned appearance preference, JavaScript selection, or automatic color
 transformation.
 
 The light resource is the fallback `img` source. Browsers that support the
@@ -238,12 +238,12 @@ accessibility content in the page. There is no native HTML equivalent of
 `picture` that selects one fragment before it enters the document.
 
 An embedded renderer that needs theme-aware presentation must return one
-semantic fragment with stable classes. The site stylesheet owns its colours
+semantic fragment with stable classes. The site stylesheet owns its colors
 through its normal tokens, custom properties, and appearance rules. An SVG
 that can contain its own responsive CSS should likewise remain one SVG result
 rather than become a generated picture pair. Prefer that self-theming SVG form
 when the renderer can deliberately produce it. Use a generated picture pair
-when the renderer produces fixed-colour SVG or raster output.
+when the renderer produces fixed-color SVG or raster output.
 
 ### Arbitrary Markdown attributes and embedded-renderer classes
 
@@ -264,14 +264,14 @@ elements and use the existing image-resource contract.
 
 A PDF, archive, audio file, video file, or other download does not normally
 change because a page uses dark presentation. If two files carry a meaningful
-difference, authors must expose two explicit labelled links. Heine must not
+difference, authors must expose two explicit labeled links. Heine must not
 silently choose a download based on a browser preference.
 
 ### Automatic recolouring and post-processing
 
-Heine does not invert, recolour, or inject CSS into renderer output. Such a
+Heine does not invert, recolor, or inject CSS into renderer output. Such a
 transformation cannot preserve the meaning of diagrams, photographs, charts,
-brand colours, and accessibility contrast in general. A root class on one
+brand colors, and accessibility contrast in general. A root class on one
 embedded SVG is different: it lets the site choose CSS for a renderer output
 that the profile author deliberately designed as monochrome. A renderer profile
 may invoke a trusted external wrapper after explicit permission, but the host
@@ -295,7 +295,7 @@ must not introduce that unrelated feature implicitly.
 ### Further variant axes
 
 This design owns only light and dark image representations selected by the
-browser's colour-scheme media feature. A contrast preference, reduced-motion
+browser's color-scheme media feature. A contrast preference, reduced-motion
 alternative, pixel-density representation, locale-specific image, or another
 variant axis may have a different number of alternatives, fallback behavior,
 accessibility meaning, or native HTML mapping. It requires a separate concrete

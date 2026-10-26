@@ -11,7 +11,8 @@
  * `.search-pagination`. The form supplies `data-search-url`, status labels,
  * plural result-count labels, `data-no-results`, and `data-failure`.
  * `data-results-per-page`, `data-context-before`, `data-context-after`,
- * `data-draft-marker`, and `.search-clear` are optional. Results use
+ * their `-max` counterparts, `data-draft-marker`, and `.search-clear` are
+ * optional. Results use
  * `search-result`, `search-result-heading`,
  * `search-result-title`, and `search-result-excerpt`. Its pagination
  * container must also carry
@@ -38,8 +39,18 @@
     return fallback;
   };
   const pageSize = integerSetting("resultsPerPage", 10, 1);
-  const contextBefore = integerSetting("contextBefore", 90, 0);
-  const contextAfter = integerSetting("contextAfter", 170, 0);
+  const contextBefore = integerSetting("contextBefore", 80, 0);
+  const contextAfter = integerSetting("contextAfter", 160, 0);
+  const contextMaximum = (name, preferred, fallback) => {
+    const value = form.dataset[name];
+    if (value === undefined || value === "") return Math.max(preferred, fallback);
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed) && parsed >= preferred) return parsed;
+    console.error(`search ${name} must be an integer no less than its preferred context`);
+    return Math.max(preferred, fallback);
+  };
+  const contextBeforeMaximum = contextMaximum("contextBeforeMax", contextBefore, 100);
+  const contextAfterMaximum = contextMaximum("contextAfterMax", contextAfter, 200);
   const windowSize = 1;
   const locale = document.documentElement.lang;
   let documentsPromise;
@@ -208,35 +219,49 @@
     const normalizedCharacters = Array.from(section.searchText);
     // Some case mappings expand one character. The full section still matches,
     // but a code-point offset can no longer name the displayed text reliably.
+    // Omit this excerpt rather than publishing an unbounded or misleading one.
     if (characters.length !== normalizedCharacters.length) {
-      return [{ section, text: section.displayText }];
+      return [];
     }
-    const positions = fragments.flatMap((fragment) => characterMatchPositions(normalizedCharacters, fragment))
-      .sort((left, right) => left - right)
-      .filter((position, index, values) => !index || position !== values[index - 1]);
-    if (!positions.length) return [{ section, text: section.displayText }];
+    const matches = fragments.flatMap((fragment) => {
+      const length = Array.from(fragment).length;
+      return characterMatchPositions(normalizedCharacters, fragment)
+        .map((start) => ({ start, end: start + length }));
+    }).sort((left, right) => left.start - right.start || right.end - left.end);
+    const positions = [];
+    for (const match of matches) {
+      const previous = positions.at(-1);
+      if (previous?.start === match.start) {
+        previous.end = Math.max(previous.end, match.end);
+      } else {
+        positions.push(match);
+      }
+    }
+    if (!positions.length) return [];
 
-    const bestPosition = () => {
+    const bestMatch = () => {
       let first = 0;
       let after = 0;
       let best;
-      for (const position of positions) {
-        while (first < positions.length && positions[first] < position - contextBefore) first += 1;
-        while (after < positions.length && positions[after] <= position + contextAfter) after += 1;
+      for (const match of positions) {
+        while (first < positions.length && positions[first].start < match.start - contextBefore) first += 1;
+        while (after < positions.length && positions[after].start <= match.end + contextAfter) after += 1;
         if (!best || after - first > best.nearby) {
-          best = { position, nearby: after - first };
+          best = { match, nearby: after - first };
         }
       }
       return best;
     };
-    const { position } = bestPosition();
-    let start = Math.max(0, position - contextBefore);
-    let end = Math.min(characters.length, position + contextAfter);
-    while (start > 0 && wordCharacter.test(characters[start - 1])
+    const { match } = bestMatch();
+    let start = Math.max(0, match.start - contextBefore);
+    let end = Math.min(characters.length, match.end + contextAfter);
+    const earliest = Math.max(0, match.start - contextBeforeMaximum);
+    const latest = Math.min(characters.length, match.end + contextAfterMaximum);
+    while (start > earliest && wordCharacter.test(characters[start - 1])
       && !unspacedCharacter.test(characters[start - 1]) && !unspacedCharacter.test(characters[start])) {
       start -= 1;
     }
-    while (end < characters.length && wordCharacter.test(characters[end])
+    while (end < latest && wordCharacter.test(characters[end])
       && !unspacedCharacter.test(characters[end - 1]) && !unspacedCharacter.test(characters[end])) {
       end += 1;
     }

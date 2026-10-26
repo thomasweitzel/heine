@@ -16,7 +16,7 @@ different place in every Series it joins.
 Heine resolves every membership into template-facing facts, including the
 Series title, its authored position, resolved one-based number and size, and
 the immediately preceding and following members of that particular Series. A
-template renders zero, one, or several labelled navigation blocks.
+template renders zero, one, or several labeled navigation blocks.
 Heine does not invent a primary
 Series, infer visitor state from a referrer, or make one page URL vary by the
 path used to reach it.
@@ -44,7 +44,7 @@ under several routes makes the model less honest.
 
 Heine instead retains every true membership and makes each navigation path
 visible to the template. A page with several Series memberships can render
-several blocks, each labelled with its Series title and position. The site
+several blocks, each labeled with its Series title and position. The site
 chooses the presentation, while Heine checks the relationship and supplies the
 navigation facts.
 
@@ -103,7 +103,7 @@ IDs, empty keys, invalid paths, non-positive `per_page`, and missing templates
 are checked at their authored settings. Fluent lookup follows Heine's normal
 locale fallback and error rules.
 
-Series definitions are a checked catalogue, not names discovered implicitly
+Series definitions are a checked catalog, not names discovered implicitly
 from pages. A misspelled membership ID must therefore fail at the page that
 declared it instead of silently creating a new sequence.
 
@@ -332,7 +332,7 @@ members yet.
 Collections can approximate a chronological Series, but their order comes
 from shared page facts such as publication time or global page weight. They
 cannot express a page at two independently authored positions in two
-collections, and they do not generate a catalogue or listing output by
+collections, and they do not generate a catalog or listing output by
 themselves.
 
 ### Model every Series as a taxonomy
@@ -346,7 +346,7 @@ would effectively be Series under misleading terminology.
 
 This would make one unqualified previous/next pair convenient, but it would
 artificially forbid a page that legitimately belongs in several reading paths.
-Several labelled navigation blocks communicate the actual relationships more
+Several labeled navigation blocks communicate the actual relationships more
 faithfully than an invented primary-Series rule.
 
 ### Infer a current Series from navigation history
@@ -375,7 +375,7 @@ each initial example page has one membership. This demonstrates the general
 multi-Series template contract without adding artificial content.
 
 The example supplies all labels through English Fluent resources and presents
-one responsive, labelled navigation block per membership. It does not
+one responsive, labeled navigation block per membership. It does not
 add a German placeholder sequence solely to demonstrate the feature.
 
 ## Boundaries

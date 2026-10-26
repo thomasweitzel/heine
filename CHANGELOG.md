@@ -31,6 +31,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Changed
+
+- **Starter-site search excerpts.** The maintained search client now uses an
+  80/160 preferred context and bounds word-boundary expansion at 100/200 code
+  points, so an unusually long token cannot produce an unbounded excerpt.
+
 ## [0.10.1] - 2026-10-25
 
 ### Fixed
@@ -155,7 +161,7 @@ are corrected only to repair an error or explain a missed material migration.
   copyable starter kit and reference-site material are now explicitly MIT.
   Bundled third-party fonts and artwork retain their declared terms. The new
   licensing notes explain that building an independently authored site does not
-  place it under Heine's licence.
+  place it under Heine's license.
 
 ### Fixed
 
@@ -251,7 +257,7 @@ are corrected only to repair an error or explain a missed material migration.
   asset diagnostics, intrinsic layout dimensions, and source-level search text.
 
 - **Semantic responsive Markdown tables.** Sites can opt into localized,
-  labelled `heine-table-scroll` regions for parsed Markdown tables, allowing
+  labeled `heine-table-scroll` regions for parsed Markdown tables, allowing
   site CSS to provide keyboard-accessible narrow-screen horizontal scrolling
   without changing native table semantics. Trusted raw HTML tables remain
   author-owned. **Migration:** no existing table configuration changes. To add

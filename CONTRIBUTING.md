@@ -109,8 +109,8 @@ when the change naturally affects them.
 
 You may use AI-assisted tools, but you remain responsible for every submitted
 change. Disclose substantial AI assistance in the pull request, verify the
-result yourself, and be prepared to explain its behavior, tests, and licence
-status. Do not submit generated text or code whose origin or licence you
+result yourself, and be prepared to explain its behavior, tests, and license
+status. Do not submit generated text or code whose origin or license you
 cannot establish.
 
 ## Conduct and security
@@ -123,9 +123,9 @@ described in [the security policy](SECURITY.md), not in a public issue.
 
 Heine is licensed under EUPL-1.2-or-later. The copyable starter kit and its
 reference-site material are licensed separately under MIT, except for files
-that declare another licence. Read [LICENSING.md](LICENSING.md) before copying
-or contributing licence-sensitive material.
+that declare another license. Read [LICENSING.md](LICENSING.md) before copying
+or contributing license-sensitive material.
 
 By contributing to Heine, you agree that your contribution is provided under
-EUPL-1.2-or-later. The project does not currently use a contributor licence
+EUPL-1.2-or-later. The project does not currently use a contributor license
 agreement or copyright assignment.

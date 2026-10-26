@@ -33,10 +33,15 @@ engine supplied by Heine. It searches the generated index locally and can show
 context from matching Markdown. Treat the example as a working starting point,
 then keep only the parts your site needs.
 
-The search form controls its excerpt window with `data-context-before` and
-`data-context-after`. The example uses 80 and 160 Unicode characters.
-It gives title matches priority and adds context from matching Markdown when
-it can. Its exact ranking and excerpt choices are site policy.
+The search form controls its preferred excerpt context with
+`data-context-before` and `data-context-after`. The example uses 80 and 160
+Unicode code points. `data-context-before-max` and `data-context-after-max`
+limit a word-boundary extension to 100 and 200 code points, or the preferred
+value when it is larger. The script keeps a whole nearby word when it fits
+within that limit and otherwise cuts at the limit. The limits bound context
+rather than the matching text itself. It gives
+title matches priority and adds context from matching Markdown
+when it can. Its exact ranking and excerpt choices are site policy.
 
 `kits/starter/assets/js/search.js` is the canonical source for the maintained
 starter, documentation, and Zolarwind search clients. Those independently
@@ -62,7 +67,7 @@ See the [kit guide](../docs/kits.md) for the package and customization model.
 
 The starter site's authored content, configuration, templates, stylesheets,
 scripts, and example assets are available under MIT. The `LICENSES/MIT.txt`
-text records that licence. Files with their own declarations, including the
+text records that license. Files with their own declarations, including the
 STIX font and historical portraits, retain those terms. Keep those declarations
 with redistributed or modified starter material.
 

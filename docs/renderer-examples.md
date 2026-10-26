@@ -191,12 +191,12 @@ Typst's output beneath it. The isolated input file named by Typst's diagnostic
 is a temporary workspace file, not the Markdown page itself. The failure
 rejects the build; Heine does not publish an inline error replacement.
 
-## Typst embedded SVG mathematics that follows prose colour
+## Typst embedded SVG mathematics that follows prose color
 
 For deliberately monochrome SVG mathematics, one embedded result can follow
-the surrounding text colour in both schemes. Each request runs Typst once,
+the surrounding text color in both schemes. Each request runs Typst once,
 rather than once for each appearance as a `picture` result does. This is useful
-for a short visual formula, but not for a multi-colour diagram or a formula
+for a short visual formula, but not for a multicolor diagram or a formula
 that needs a semantic MathML representation. Do not use this visual result as
 the only representation of mathematics that readers must be able to interpret
 with assistive technology.
@@ -290,11 +290,11 @@ svg.typst-block-math > path[fill="none"][stroke] {
 
 The direct-child selector reflects the verified Typst 0.15.1 structure. Inspect
 the generated SVG after upgrading Typst and keep the selector narrow. Do not
-use a broad `[fill]` or `[stroke]` selector: it can recolour intentional
-multi-colour artwork or turn `fill="none"` into a visible fill. If a future
-formula leaves one glyph unrecoloured, inspect whether Typst emitted that glyph
+use a broad `[fill]` or `[stroke]` selector: it can recolor intentional
+multicolor artwork or turn `fill="none"` into a visible fill. If a future
+formula leaves one glyph unrecolored, inspect whether Typst emitted that glyph
 as a raw `path` rather than a `use` element before changing the selector. The
-class gives the site a styling hook; Heine does not recolour the SVG itself. Use
+class gives the site a styling hook; Heine does not recolor the SVG itself. Use
 an HTML-and-MathML renderer, such as KaTeX, when the equation needs semantic
 mathematical content for assistive technology.
 

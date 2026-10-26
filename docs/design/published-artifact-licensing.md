@@ -97,14 +97,14 @@ root-owned table:
 [licensing]
 required = true
 
-[licensing.records.organisation-report]
-SPDX-FileCopyrightText = "2026 Example Organisation"
+[licensing.records.organization-report]
+SPDX-FileCopyrightText = "2026 Example Organization"
 SPDX-License-Identifier = "CC-BY-4.0"
-SPDX-FileComment = "Generated from the organisation's report source."
+SPDX-FileComment = "Generated from the organization's report source."
 
 [[licensing.groups]]
 assets = ["assets/reports/example.pdf", "assets/reports/example-data.csv"]
-licensing_record = "organisation-report"
+licensing_record = "organization-report"
 ```
 
 The table key is a unique, local record identifier. It starts with a lowercase
@@ -149,7 +149,7 @@ inputs = ["body", "file", "bundle"]
 result = "link"
 media_type = "application/pdf"
 extension = "pdf"
-licensing_record = "organisation-report"
+licensing_record = "organization-report"
 ```
 
 A profile may set that default when at least one of its declared result modes
