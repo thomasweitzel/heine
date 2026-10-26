@@ -7,7 +7,7 @@ and a cohesive starter-site example where one fits naturally.
 
 ## Later
 
-- **Kit distribution:** publish a small, curated kit catalogue only after kit
+- **Kit distribution:** publish a small, curated kit catalog only after kit
   authors have a practical way to version, test, and maintain their own
   repositories. Heine's checked kit contract does not require a central
   registry or package resolver.

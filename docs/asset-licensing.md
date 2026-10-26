@@ -120,13 +120,13 @@ record. A request may override that choice when the particular resource has
 different facts:
 
 ```toml
-[licensing.records.organisation-report]
-SPDX-FileCopyrightText = "2026 Example Organisation"
+[licensing.records.organization-report]
+SPDX-FileCopyrightText = "2026 Example Organization"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 [renderers.report]
 # renderer settings omitted
-licensing_record = "organisation-report"
+licensing_record = "organization-report"
 ```
 
 ```markdown

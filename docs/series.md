@@ -100,7 +100,7 @@ are lightweight page links with `id`, `title`, `url`, and `relative_url`.
 {% endfor %}
 ```
 
-A page with several memberships should render several labelled navigation
+A page with several memberships should render several labeled navigation
 blocks. Heine does not invent a primary Series or infer one from visitor
 history.
 

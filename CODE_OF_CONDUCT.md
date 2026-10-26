@@ -6,25 +6,25 @@ We pledge to make participation in the Heine project a harassment-free
 experience for everyone, regardless of age, body size, visible or invisible
 disability, ethnicity, sex characteristics, gender identity and expression,
 level of experience, education, socio-economic status, nationality, personal
-appearance, race, caste, colour, religion, or sexual identity and orientation.
+appearance, race, caste, color, religion, or sexual identity and orientation.
 
 We pledge to act and interact in ways that contribute to an open, welcoming,
 diverse, inclusive, and healthy community.
 
 ## Our standards
 
-Examples of behaviour that contributes to a positive environment include:
+Examples of behavior that contributes to a positive environment include:
 
 - demonstrating empathy and kindness toward other people;
 - respecting differing opinions, viewpoints, and experiences;
 - giving and gracefully accepting constructive feedback;
-- accepting responsibility and apologising to those affected by mistakes; and
+- accepting responsibility and apologizing to those affected by mistakes; and
 - focusing on what is best not just for us as individuals, but for the overall
   community.
 
-Examples of unacceptable behaviour include:
+Examples of unacceptable behavior include:
 
-- sexualised language or imagery, and sexual attention or advances of any kind;
+- sexualized language or imagery, and sexual attention or advances of any kind;
 - trolling, insulting or derogatory comments, and personal or political
   attacks;
 - public or private harassment;
@@ -45,7 +45,7 @@ an individual is officially representing the project in public spaces.
 
 ## Enforcement
 
-Report unacceptable behaviour to
+Report unacceptable behavior to
 [tweitzel@gmail.com](mailto:tweitzel@gmail.com). Reports will be reviewed and
 investigated promptly and fairly. The maintainer will respect the privacy and
 security of the reporter to the extent possible.

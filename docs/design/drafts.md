@@ -249,7 +249,7 @@ normally and keeps the previous successful development-server output in place.
 
 The starter site should not add an unfinished article merely to
 show an invisible ordinary-build feature. Its published content remains a
-site rather than a catalogue of flags. Fixture-site tests will
+site rather than a catalog of flags. Fixture-site tests will
 exercise both ordinary and preview catalogs.
 
 The public documentation needs:

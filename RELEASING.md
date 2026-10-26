@@ -94,7 +94,7 @@ Perform these steps on the reviewed release branch, normally `main`.
 3. Regenerate the third-party notice from the locked dependency graph before
    packaging. Install the reviewed `cargo-about` version when it is not already
    available, then review the generated diff. A `Cargo.lock` change can add a
-   new notice even when every dependency remains within the accepted licence
+   new notice even when every dependency remains within the accepted license
    policy in `about.toml`.
 
    ```bash
@@ -115,7 +115,7 @@ Perform these steps on the reviewed release branch, normally `main`.
    ```
 
    Inspect the package listing. It must contain the intended source,
-   documentation, and licence material, and no local-only files. The starter
+   documentation, and license material, and no local-only files. The starter
    site must build as extracted source, not only from an existing `public/`
    directory. Then confirm that Jiff cannot consult host time-zone data:
 
@@ -129,7 +129,7 @@ Perform these steps on the reviewed release branch, normally `main`.
 
 5. Before the first crates.io publication, confirm that `Cargo.toml` has the
    public canonical `repository` URL and accurate description, categories,
-   keywords, licence, and Rust version. Then run:
+   keywords, license, and Rust version. Then run:
 
    ```bash
    cargo publish --dry-run
@@ -344,9 +344,9 @@ Finally, update `heine.rs` to point to the GitHub Release downloads and publish
 the release documentation and checksums there. Check the rendered download page
 and every linked file after deployment.
 
-## Recover from a failed, cancelled, or timed-out run
+## Recover from a failed, canceled, or timed-out run
 
-A timed-out job is cancelled and marked failed. Jobs that depend on it do not
+A timed-out job is canceled and marked failed. Jobs that depend on it do not
 run. A platform-build timeout therefore prevents assembly, attestation, and
 publication; an assembly timeout prevents attestation and publication; and an
 attestation timeout prevents publication.
@@ -383,4 +383,4 @@ expand Heine into a deployment system.
 - The action does not deploy `heine.rs`.
 - The action never overwrites an existing GitHub Release or tag.
 - The workflow does not add an advisory, dependency-source, duplicate-version,
-  or licence-policy check until Heine has an explicit policy for it.
+  or license-policy check until Heine has an explicit policy for it.

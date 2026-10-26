@@ -642,7 +642,7 @@ table-scroll = Scrollable table
 ```
 
 With this optional table setting, Heine keeps each parsed Markdown table as a
-native `<table>` and wraps it in a labelled, focusable `.heine-table-scroll`
+native `<table>` and wraps it in a labeled, focusable `.heine-table-scroll`
 region. Let the container, rather than the table, own narrow-screen scrolling:
 
 ```css
@@ -651,7 +651,7 @@ region. Let the container, rather than the table, own narrow-screen scrolling:
 }
 ```
 
-Trusted raw HTML tables stay exactly as authored, so give those a labelled,
+Trusted raw HTML tables stay exactly as authored, so give those a labeled,
 focusable wrapper yourself when they also need this behavior.
 
 For a long Markdown guide, the [table-of-contents guide](table-of-contents.md)

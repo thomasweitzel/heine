@@ -427,7 +427,7 @@ template example. The page must not place Tera expressions inside Markdown or
 branch on that post's identity. Existing post metadata is a real template
 boundary that naturally demonstrates Fluent formatting; the section gives
 readers an authored example without turning the starter site into a feature
-catalogue.
+catalog.
 
 Each public package updates the focused internationalization guide, reference,
 glossary where terminology becomes durable, starter site where a cohesive
