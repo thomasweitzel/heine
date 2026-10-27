@@ -24,7 +24,6 @@
     <label for="search-query">{{ t(id="starter-search-label") }}</label>
     <div class="search-form-controls">
       <input id="search-query" name="q" type="search" dir="auto" placeholder="{{ t(id="starter-search-placeholder") }}" autocomplete="off">
-      <button type="submit">{{ t(id="starter-search-submit") }}</button>
     </div>
   </form>
   <p class="search-status" role="status" aria-live="polite"></p>

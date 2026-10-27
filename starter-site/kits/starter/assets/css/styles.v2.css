@@ -1045,7 +1045,6 @@ a:focus-visible {
 
 .search-form-controls {
     display: flex;
-    gap: var(--spacing-s);
     margin-block: var(--spacing-s) var(--spacing-m);
 }
 
@@ -1060,23 +1059,7 @@ a:focus-visible {
     font: inherit;
 }
 
-.search-form button {
-    padding: var(--spacing-s) var(--spacing-m);
-    border: var(--border);
-    border-radius: var(--radius);
-    color: var(--fg);
-    background: var(--color-1);
-    font: inherit;
-}
-
-.search-form button:hover,
-.search-form button:focus-visible {
-    color: var(--color-2-text);
-    background: var(--color-2);
-}
-
-.search-form input:focus-visible,
-.search-form button:focus-visible {
+.search-form input:focus-visible {
     outline: 2px solid var(--color-2);
     outline-offset: 2px;
 }

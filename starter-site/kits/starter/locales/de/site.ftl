@@ -79,7 +79,6 @@ starter-feed-subscribe = Atom abonnieren
 # Labels and status text for the client-side search example.
 starter-search-label = Beiträge und Dokumentation durchsuchen
 starter-search-placeholder = Suchbegriff eingeben
-starter-search-submit = Suchen
 starter-search-loading = Suchindex wird geladen…
 starter-search-results-count =
     .zero = { $count } Ergebnisse
