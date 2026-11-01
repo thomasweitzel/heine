@@ -98,7 +98,7 @@ Perform these steps on the reviewed release branch, normally `main`.
    policy in `about.toml`.
 
    ```bash
-   cargo install cargo-about --version 0.9.2 --locked
+   cargo install cargo-about --version 0.9.2 --locked --features cli
    cargo about generate --locked --output-file THIRD_PARTY_NOTICES.html about.hbs
    git diff --check -- THIRD_PARTY_NOTICES.html
    ```
