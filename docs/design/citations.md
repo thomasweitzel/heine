@@ -2,7 +2,7 @@
 
 ## Status and goal
 
-The feature branch implements checked in-text citations. Heine connects citations
+Heine implements checked in-text citations. It connects citations
 in one Markdown source to local BibTeX entries and a CSL style, then checks
 that the page template places the resulting bibliography. The first release
 covers numeric and author-date styles. It does not fetch files or run a

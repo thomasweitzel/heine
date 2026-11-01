@@ -42,8 +42,9 @@ processor requests can alter position semantics and is not an equivalent fix.
 
 The library retained a BibTeX `\\&` URL escape in a sample, but silently
 dropped a malformed URL during conversion. Heine checks URLs before conversion.
-The correct treatment of escaped URLs remains a separate investigation; the
-sample does not establish a general normalization rule.
+The investigation did not establish a general normalization rule. Heine
+reports escapes such as `\&` and asks authors to write URL characters
+literally; it also rejects consecutive hyphens that the parser would change.
 
 Per-item prefixes and suffixes need more work: collapsed and reordered output
 does not always expose the mapping needed to attach them without changing
