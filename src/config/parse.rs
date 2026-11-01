@@ -470,7 +470,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
         if project::starts_with_input_root(output_dir.0.as_path()) {
             return Err(ConfigValueError {
                 span: output_dir_span.into(),
-                message: "build.output_dir must not be content/, data/, deploy/, templates/, locales/, or LICENSES/, or a directory beneath an input directory".into(),
+                message: "build.output_dir must not be content/, citations/, data/, deploy/, templates/, locales/, or LICENSES/, or a directory beneath an input directory".into(),
             });
         }
         let extensions_span = raw.markdown.extensions.span();

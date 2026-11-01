@@ -4,6 +4,8 @@
 //! in dedicated child modules. `Site` coordinates those stages without owning
 //! template-engine or output filesystem implementation details.
 
+mod citation_inputs;
+pub(crate) use citation_inputs::CitationView;
 mod collation;
 pub(crate) mod collection;
 mod feed;
@@ -185,6 +187,9 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidPage(#[from] Box<loader::PageDiagnostic>),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    CitationInput(#[from] Box<loader::CitationInputDiagnostic>),
     #[error(transparent)]
     #[diagnostic(transparent)]
     SitemapDirectoryOverride(#[from] Box<loader::SitemapDirectoryOverride>),
@@ -457,6 +462,7 @@ impl Site {
                 for page in locale_pages.values_mut() {
                     page.analyze_markdown(page::MarkdownAnalysisInputs {
                         renderer: markdown_renderer,
+                        diagnostics,
                         assets: &assets,
                         pages: &page_links,
                         words_per_minute: reading_time.words_per_minute(locale),

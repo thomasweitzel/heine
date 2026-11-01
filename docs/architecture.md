@@ -66,6 +66,8 @@ validation and output behavior:
   declaration chooses its inputs. Declared inputs are not copied.
 - **Configuration, locale trees, and the selected kit** establish site-wide
   behavior, localized identity, and the available presentation boundary.
+- **Citation inputs** hold local bibliographies and CSL styles. They are
+  checked for the selected pages and are not published as source files.
 - **Data** supplies global structured values to templates. It is not published
   and does not provide arbitrary filesystem access.
 - **Templates and Fluent messages** describe presentation. Templates receive

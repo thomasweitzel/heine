@@ -40,6 +40,7 @@ pub(crate) struct RenderContext<'a> {
     pub(crate) anchors: Option<&'a [String]>,
     pub(crate) table_scroll_label: Option<&'a str>,
     pub(crate) replacements: &'a [super::RendererReplacement],
+    pub(crate) citations: &'a [super::citation::Replacement],
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +56,25 @@ struct Block {
 }
 
 impl MarginFootnotePlan {
+    pub(crate) fn rebase(&mut self, offsets: &super::rebase::Rebase) -> Result<(), Range<usize>> {
+        let references = std::mem::take(&mut self.references);
+        self.references = references
+            .into_iter()
+            .map(|(position, value)| Ok((offsets.point(position)?, value)))
+            .collect::<Result<_, Range<usize>>>()?;
+        let blocks = std::mem::take(&mut self.blocks);
+        self.blocks = blocks
+            .into_iter()
+            .map(|(position, mut block)| {
+                for reference in &mut block.references {
+                    *reference = offsets.point(*reference)?;
+                }
+                Ok((offsets.point(position)?, block))
+            })
+            .collect::<Result<_, Range<usize>>>()?;
+        Ok(())
+    }
+
     pub(crate) fn content(&self) -> &str {
         &self.content
     }
@@ -124,15 +144,71 @@ struct RelatedDefinition {
 pub(crate) fn plan(
     path: &Path,
     content: String,
-    input: &str,
+    sources: (&str, &str),
     config: &MarkdownConfig,
     marker_message: String,
 ) -> Result<MarginFootnotePlan, Box<MarginFootnoteDiagnostic>> {
+    let (input, authored) = sources;
     plan_inner(content, input, config, marker_message).map_err(|error| {
         Box::new(MarginFootnoteDiagnostic::from_plan_error(
-            path, input, error,
+            path, authored, error,
         ))
     })
+}
+
+/// Plans both features from the same parsed source and reports errors against
+/// the authored text, whose byte offsets normalization preserves.
+pub(crate) fn plan_with_toc(
+    path: &Path,
+    content: String,
+    sources: (&str, &str),
+    config: &MarkdownConfig,
+    marker_message: String,
+    min_level: u8,
+    max_level: u8,
+) -> (
+    super::TocPlan,
+    Result<MarginFootnotePlan, Box<MarginFootnoteDiagnostic>>,
+) {
+    let (input, authored) = sources;
+    let (toc, result) = collect_with_toc(
+        input,
+        Parser::new_ext(input, options(config)).into_offset_iter(),
+        content,
+        marker_message,
+        min_level,
+        max_level,
+    );
+    let result = result.map_err(|error| {
+        Box::new(MarginFootnoteDiagnostic::from_plan_error(
+            path, authored, error,
+        ))
+    });
+    (toc, result)
+}
+
+fn collect_with_toc<'a>(
+    input: &str,
+    events: impl IntoIterator<Item = (Event<'a>, Range<usize>)>,
+    content: String,
+    marker_message: String,
+    min_level: u8,
+    max_level: u8,
+) -> (super::TocPlan, Result<MarginFootnotePlan, PlanError>) {
+    let mut toc = super::TocCollector::new(min_level, max_level);
+    let mut notes = MarginFootnoteCollector::default();
+    let mut error = None;
+    for (event, span) in events {
+        toc.push(&event);
+        if error.is_none() {
+            error = notes.push(input, event, span).err();
+        }
+    }
+    let result = match error {
+        Some(error) => Err(error),
+        None => notes.finish(content.clone(), marker_message),
+    };
+    (toc.finish(content), result)
 }
 
 fn plan_inner(
@@ -141,28 +217,64 @@ fn plan_inner(
     config: &MarkdownConfig,
     marker_message: String,
 ) -> Result<MarginFootnotePlan, PlanError> {
-    let mut definitions = BTreeMap::<String, Range<usize>>::new();
-    let mut references = Vec::<(String, Range<usize>, usize)>::new();
-    let mut blocks = BTreeMap::<usize, PendingBlock>::new();
-    let mut active_block = None::<usize>;
-    let mut prohibited_depth = 0usize;
-    let mut definition_depth = 0usize;
-    let mut unresolved = UnresolvedFootnoteReferenceScanner::default();
-    let mut picture_paragraph_depth = 0usize;
+    plan_from_events(
+        content,
+        input,
+        marker_message,
+        Parser::new_ext(input, options(config)).into_offset_iter(),
+    )
+}
 
-    for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
-        if picture_paragraph_depth > 0 {
+fn plan_from_events<'a>(
+    content: String,
+    input: &str,
+    marker_message: String,
+    events: impl IntoIterator<Item = (Event<'a>, Range<usize>)>,
+) -> Result<MarginFootnotePlan, PlanError> {
+    let mut collector = MarginFootnoteCollector::default();
+    for (event, span) in events {
+        collector.push(input, event, span)?;
+    }
+    collector.finish(content, marker_message)
+}
+
+#[derive(Default)]
+struct MarginFootnoteCollector {
+    definitions: BTreeMap<String, Range<usize>>,
+    references: Vec<(String, Range<usize>, usize)>,
+    blocks: BTreeMap<usize, PendingBlock>,
+    active_block: Option<usize>,
+    prohibited_depth: usize,
+    definition_depth: usize,
+    unresolved: UnresolvedFootnoteReferenceScanner,
+    picture_paragraph_depth: usize,
+}
+
+impl MarginFootnoteCollector {
+    fn push(&mut self, input: &str, event: Event<'_>, span: Range<usize>) -> Result<(), PlanError> {
+        let Self {
+            definitions,
+            references,
+            blocks,
+            active_block,
+            prohibited_depth,
+            definition_depth,
+            unresolved,
+            picture_paragraph_depth,
+        } = self;
+
+        if *picture_paragraph_depth > 0 {
             if matches!(event, Event::End(TagEnd::Paragraph)) {
-                picture_paragraph_depth -= 1;
+                *picture_paragraph_depth -= 1;
             }
-            continue;
+            return Ok(());
         }
         if matches!(event, Event::Start(Tag::Paragraph))
             && picture::starts_directive(&input[span.clone()])
         {
-            picture_paragraph_depth += 1;
+            *picture_paragraph_depth += 1;
             unresolved.clear();
-            continue;
+            return Ok(());
         }
         match event {
             Event::Start(Tag::FootnoteDefinition(label)) => {
@@ -174,40 +286,40 @@ fn plan_inner(
                         first_span,
                     });
                 }
-                definition_depth += 1;
+                *definition_depth += 1;
             }
-            Event::End(TagEnd::FootnoteDefinition) => definition_depth -= 1,
-            Event::Start(tag) if is_prohibited_start(&tag) => prohibited_depth += 1,
-            Event::End(end) if is_prohibited_end(end) => prohibited_depth -= 1,
+            Event::End(TagEnd::FootnoteDefinition) => *definition_depth -= 1,
+            Event::Start(tag) if is_prohibited_start(&tag) => *prohibited_depth += 1,
+            Event::End(end) if is_prohibited_end(end) => *prohibited_depth -= 1,
             Event::Start(Tag::Paragraph) => {
-                active_block = Some(span.start);
+                *active_block = Some(span.start);
                 blocks.insert(span.start, PendingBlock::default());
                 unresolved.clear();
             }
             Event::Start(Tag::Heading { .. }) => {
-                active_block = Some(span.start);
+                *active_block = Some(span.start);
                 blocks.insert(span.start, PendingBlock::default());
                 unresolved.clear();
             }
             Event::End(TagEnd::Paragraph) | Event::End(TagEnd::Heading(_)) => {
-                active_block = None;
+                *active_block = None;
                 unresolved.clear();
             }
             Event::Html(_) | Event::InlineHtml(_) => {
-                if let Some(start) = active_block
+                if let Some(start) = *active_block
                     && let Some(block) = blocks.get_mut(&start)
                 {
                     block.has_html = true;
                 }
             }
             Event::FootnoteReference(label) => {
-                if definition_depth > 0 {
+                if *definition_depth > 0 {
                     return Err(PlanError::NestedReference { span });
                 }
-                let Some(block_start) = active_block else {
+                let Some(block_start) = *active_block else {
                     return Err(PlanError::UnsupportedPlacement { span });
                 };
-                if prohibited_depth > 0 {
+                if *prohibited_depth > 0 {
                     return Err(PlanError::UnsupportedPlacement { span });
                 }
                 let reference_index = references.len();
@@ -224,13 +336,13 @@ fn plan_inner(
                     unresolved.escape_next();
                 }
                 for (label, range) in unresolved.push(&input[span.clone()], span.start) {
-                    if definition_depth > 0 {
+                    if *definition_depth > 0 {
                         return Err(PlanError::NestedReference { span: range });
                     }
-                    if prohibited_depth > 0 {
+                    if *prohibited_depth > 0 {
                         return Err(PlanError::UnsupportedPlacement { span: range });
                     }
-                    let Some(block_start) = active_block else {
+                    let Some(block_start) = *active_block else {
                         return Err(PlanError::UnsupportedPlacement { span: range });
                     };
                     let reference_index = references.len();
@@ -243,64 +355,77 @@ fn plan_inner(
             }
             _ => {}
         }
+        Ok(())
     }
 
-    let used = references
-        .iter()
-        .map(|(label, _, _)| label.clone())
-        .collect::<BTreeSet<_>>();
-    if let Some((label, span)) = definitions.iter().find(|(label, _)| !used.contains(*label)) {
-        return Err(PlanError::UnusedDefinition {
-            label: label.clone(),
-            span: span.clone(),
-        });
-    }
-    if let Some((label, span, _)) = references
-        .iter()
-        .find(|(label, _, _)| !definitions.contains_key(label))
-    {
-        return Err(PlanError::MissingDefinition {
-            label: label.clone(),
-            span: span.clone(),
-        });
-    }
-    if let Some((_, block)) = blocks
-        .iter()
-        .find(|(_, block)| block.has_html && !block.references.is_empty())
-    {
-        let (_, span, _) = &references[block.references[0]];
-        return Err(PlanError::RawHtml { span: span.clone() });
-    }
+    fn finish(
+        self,
+        content: String,
+        marker_message: String,
+    ) -> Result<MarginFootnotePlan, PlanError> {
+        let Self {
+            definitions,
+            references,
+            blocks,
+            ..
+        } = self;
+        let used = references
+            .iter()
+            .map(|(label, _, _)| label.clone())
+            .collect::<BTreeSet<_>>();
+        if let Some((label, span)) = definitions.iter().find(|(label, _)| !used.contains(*label)) {
+            return Err(PlanError::UnusedDefinition {
+                label: label.clone(),
+                span: span.clone(),
+            });
+        }
+        if let Some((label, span, _)) = references
+            .iter()
+            .find(|(label, _, _)| !definitions.contains_key(label))
+        {
+            return Err(PlanError::MissingDefinition {
+                label: label.clone(),
+                span: span.clone(),
+            });
+        }
+        if let Some((_, block)) = blocks
+            .iter()
+            .find(|(_, block)| block.has_html && !block.references.is_empty())
+        {
+            let (_, span, _) = &references[block.references[0]];
+            return Err(PlanError::RawHtml { span: span.clone() });
+        }
 
-    let mut numbers = BTreeMap::<String, usize>::new();
-    let mut resolved_references = BTreeMap::new();
-    let mut resolved_blocks = BTreeMap::new();
-    for (index, (definition, span, block_start)) in references.into_iter().enumerate() {
-        let next = numbers.len() + 1;
-        let number = *numbers.entry(definition.clone()).or_insert(next);
-        resolved_references.insert(
-            span.start,
-            Reference {
-                definition,
-                number,
-                instance: index + 1,
-            },
-        );
-        resolved_blocks
-            .entry(block_start)
-            .or_insert_with(|| Block {
-                references: Vec::new(),
-            })
-            .references
-            .push(span.start);
-    }
+        let mut numbers = BTreeMap::<String, usize>::new();
+        let mut resolved_references = BTreeMap::new();
+        let mut resolved_blocks = BTreeMap::new();
+        for (index, (definition, span, block_start)) in references.into_iter().enumerate() {
+            let next = numbers.len() + 1;
+            let number = *numbers.entry(definition.clone()).or_insert(next);
+            resolved_references.insert(
+                span.start,
+                Reference {
+                    definition,
+                    number,
+                    instance: index + 1,
+                },
+            );
+            resolved_blocks
+                .entry(block_start)
+                .or_insert_with(|| Block {
+                    references: Vec::new(),
+                })
+                .references
+                .push(span.start);
+        }
 
-    Ok(MarginFootnotePlan {
-        content,
-        marker_message,
-        references: resolved_references,
-        blocks: resolved_blocks,
-    })
+        Ok(MarginFootnotePlan {
+            content,
+            marker_message,
+            references: resolved_references,
+            blocks: resolved_blocks,
+        })
+    }
 }
 
 #[derive(Default)]
@@ -435,6 +560,7 @@ fn transformed_events(
         .collect();
     let events = picture::transform(input, events, context.assets)?;
     let events = apply_renderer_replacements(events, context.replacements);
+    let events = super::citation::replace_events(events, context.citations)?;
     let mut in_definition = 0usize;
     let mut transformed_events = Vec::with_capacity(events.len());
     for (event, span) in events {

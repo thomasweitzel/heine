@@ -5,6 +5,32 @@
 
 use std::num::NonZeroU64;
 
+#[cfg(test)]
+thread_local! {
+    static BUILD_PROBE: std::cell::RefCell<Option<BuildProbe>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) struct BuildProbe {
+    path: std::path::PathBuf,
+    pub(crate) walks: usize,
+}
+
+#[cfg(test)]
+pub(crate) fn begin_build_probe(path: &std::path::Path) {
+    BUILD_PROBE.with(|probe| {
+        *probe.borrow_mut() = Some(BuildProbe {
+            path: path.to_owned(),
+            walks: 0,
+        })
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn take_build_probe() -> BuildProbe {
+    BUILD_PROBE.with(|probe| probe.borrow_mut().take().expect("build probe was started"))
+}
+
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use serde::Serialize;
 use unicode_segmentation::UnicodeSegmentation;
@@ -51,11 +77,20 @@ pub(crate) fn analyze(
         input,
         config,
         words_per_minute,
-        fragments,
-        collect_search_sections,
+        (fragments, collect_search_sections),
+        None,
         None,
     )
     .expect("analysis without checked relationships cannot fail")
+}
+
+#[cfg(test)]
+pub(super) fn observe_citations(
+    input: &str,
+    config: &MarkdownConfig,
+    citations: &mut super::citation::Collector,
+) -> Result<MarkdownAnalysis, RenderError> {
+    analyze_inner(input, config, None, (None, false), None, Some(citations))
 }
 
 /// Derives source facts and validates checked Markdown transformations in one
@@ -66,6 +101,7 @@ pub(super) struct ValidationInputs<'a> {
     pub(super) assets: &'a AssetLinks,
     pub(super) pages: &'a PageLinks,
     pub(super) renderer_sources: &'a std::collections::BTreeMap<String, crate::renderer::Source>,
+    pub(super) citations: Option<&'a mut super::citation::Collector>,
 }
 
 pub(super) fn analyze_and_validate(
@@ -74,13 +110,20 @@ pub(super) fn analyze_and_validate(
     words_per_minute: Option<NonZeroU64>,
     fragments: Option<&[String]>,
     collect_search_sections: bool,
+    #[cfg(test)] display_path: &std::path::Path,
 ) -> Result<MarkdownAnalysis, RenderError> {
+    #[cfg(test)]
+    BUILD_PROBE.with(|probe| {
+        let mut probe = probe.borrow_mut();
+        if let Some(probe) = probe.as_mut().filter(|probe| probe.path == display_path) {
+            probe.walks += 1;
+        }
+    });
     analyze_inner(
         input,
         validation.renderer.config(),
         words_per_minute,
-        fragments,
-        collect_search_sections,
+        (fragments, collect_search_sections),
         Some(Validation {
             renderer: validation.renderer,
             renderer_sources: validation.renderer_sources,
@@ -90,6 +133,7 @@ pub(super) fn analyze_and_validate(
                 pages: Some(validation.pages),
             },
         }),
+        validation.citations,
     )
 }
 
@@ -104,10 +148,11 @@ fn analyze_inner(
     input: &str,
     config: &MarkdownConfig,
     words_per_minute: Option<NonZeroU64>,
-    fragments: Option<&[String]>,
-    collect_search_sections: bool,
+    search: (Option<&[String]>, bool),
     validation: Option<Validation<'_>>,
+    mut citations: Option<&mut super::citation::Collector>,
 ) -> Result<MarkdownAnalysis, RenderError> {
+    let (fragments, collect_search_sections) = search;
     let renderer_requests = renderer_request::parse(input)?;
     let resolved_renderer_requests = validation
         .map(|validation| {
@@ -129,8 +174,25 @@ fn analyze_inner(
         .filter(|_| config.extensions().contains(&MarkdownExtension::Footnotes))
         .map(|_| UnresolvedFootnoteReferenceScanner::default());
     let mut events = Parser::new_ext(input, options(config)).into_offset_iter();
+    let mut request_index = 0;
 
     while let Some((event, span)) = events.next() {
+        if let Some(collector) = &mut citations {
+            while request_index < renderer_requests.len()
+                && renderer_requests[request_index].span().end <= span.start
+            {
+                request_index += 1;
+            }
+            let inside_request = renderer_requests.get(request_index).is_some_and(|request| {
+                let request = request.span();
+                span.start >= request.start && span.end <= request.end
+            });
+            if inside_request {
+                collector.clear_pending();
+            } else {
+                collector.observe(input, &event, &span);
+            }
+        }
         if matches!(event, Event::Start(Tag::Paragraph))
             && picture::starts_directive(&input[span.clone()])
         {
@@ -236,6 +298,9 @@ fn analyze_inner(
         )?;
     }
 
+    if let Some(collector) = &mut citations {
+        collector.finish();
+    }
     if collect_search_sections {
         section.finish_into(&mut sections);
     }
@@ -367,6 +432,48 @@ impl SectionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actual_citation_build_uses_one_shared_analysis_walk() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let root = dir.path();
+        for path in ["content/en", "templates", "locales/en", "citations"] {
+            std::fs::create_dir_all(root.join(path)).expect("fixture directory");
+        }
+        std::fs::write(root.join("heine.toml"), "[site]\ntime_zone='Europe/Berlin'\n[i18n]\ndefault_locale='en'\n[i18n.locales.en]\ndirection='ltr'\n[markdown]\nextensions=['footnotes']\n[markdown.margin_footnotes]\nmarker_message='footnote-marker'\n").unwrap();
+        std::fs::write(
+            root.join("locales/en/site.ftl"),
+            "footnote-marker = Footnote { $number }\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("content/en/index.page"), "template='page.tera'\ncontent.main='main.md'\n[citations]\ncontent='main'\nbibliography=['works.bib']\nstyle='style.csl'\n[toc]\ncontent='main'\n[footnotes]\ncontent='main'\n").unwrap();
+        std::fs::write(
+            root.join("content/en/main.md"),
+            "## Heading\n\nText [@work].[^n]\n\n[^n]: A note.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("citations/works.bib"),
+            "@book{work,title={Example}}\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("citations/style.csl"), r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><info><title>Example</title><id>https://example.org/style</id></info><citation><layout><text variable="title"/></layout></citation><bibliography><layout><text variable="title"/></layout></bibliography></style>"#).unwrap();
+        std::fs::write(
+            root.join("templates/page.tera"),
+            "{{ markdown(content='main') }}{{ bibliography() }}",
+        )
+        .unwrap();
+        begin_build_probe(std::path::Path::new("content/en/main.md"));
+        let result = crate::build_at(root, crate::site::BuildMode::Full);
+        let probe = take_build_probe();
+        result.expect("citation fixture builds");
+        assert_eq!(probe.walks, 1);
+        let output = std::fs::read_to_string(root.join("public/index.html")).unwrap();
+        assert!(
+            output.contains("href=\"#__heine-bibliography\""),
+            "{output}"
+        );
+    }
 
     #[test]
     fn counts_readable_markdown_but_not_code_or_math() {

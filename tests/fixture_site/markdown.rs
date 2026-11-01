@@ -1987,6 +1987,171 @@ fn margin_footnote_relationships_and_placement_are_checked_at_markdown() {
 }
 
 #[test]
+fn margin_footnote_error_precedes_chronology_error_during_page_loading() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n");
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\ncontent.main = 'index.md'\npublished = 2024-02-01T12:00:00\nupdated = 2024-01-01T12:00:00\n\n[footnotes]\ncontent = 'main'\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    fixture.write("content/en/index.md", "A missing note.[^missing]\n");
+    let first = build_at(fixture.path(), BuildMode::Full).expect_err("both inputs are invalid");
+    assert!(first.to_string().contains("has no definition"), "{first:?}");
+
+    fixture.write(
+        "content/en/index.md",
+        "A note.[^one]\n\n[^one]: Explanation.\n",
+    );
+    let second = build_at(fixture.path(), BuildMode::Full).expect_err("chronology is invalid");
+    assert!(
+        second.to_string().contains("must not be earlier"),
+        "{second:?}"
+    );
+}
+
+#[test]
+fn shared_toc_and_margin_source_preserves_headings_notes_and_diagnostics() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n");
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n\n[footnotes]\ncontent = 'main'\n");
+    fixture.write("templates/page.tera", "{% for heading in page.toc.headings %}[{{ heading.text }}:{{ heading.fragment }}]{% endfor %}{{ markdown(content='main') }}");
+    fixture.write(
+        "content/en/index.md",
+        "## Heading\n\nFirst[^one].\n\nAgain[^one].\n\n[^one]: Explanation.\n",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("shared source builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("[Heading:heading]"), "{output}");
+    assert!(
+        output.contains("<h2 id=\"heading\">Heading</h2>"),
+        "{output}"
+    );
+    assert_eq!(
+        output.matches("heine-annotated-block").count(),
+        2,
+        "{output}"
+    );
+    assert_eq!(output.matches("Explanation.").count(), 2, "{output}");
+
+    fixture.write("content/en/index.md", "## Heading\n\nMissing[^absent].\n");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("missing note fails");
+    assert!(error.to_string().contains("has no definition"), "{error:?}");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:3"), "{diagnostic}");
+}
+
+#[test]
+fn component_footnote_error_uses_normalized_structure_and_authored_source() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n");
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n\n[footnotes]\ncontent = 'main'\n");
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\n<span>\n[^a]\n:::\n\n[^a]: Explanation.\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unused definition");
+    assert!(error.to_string().contains("is not referenced"), "{error:?}");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("content/en/index.md:6"), "{diagnostic}");
+    assert!(diagnostic.contains("[^a]: Explanation."), "{diagnostic}");
+}
+
+#[test]
+fn literal_component_example_does_not_advance_other_directive_errors() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n");
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\ncontent.main = 'index.md'\npublished = 2024-02-01T12:00:00\nupdated = 2024-01-01T12:00:00\n\n[footnotes]\ncontent = 'main'\n");
+    fixture.write(
+        "content/en/index.md",
+        "```text\n:::component[site.note]\n```\n\n> :::picture\n> :::\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid chronology");
+    assert!(
+        error.to_string().contains("must not be earlier"),
+        "{error:?}"
+    );
+
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("invalid directive placement");
+    assert!(format!("{error:?}").contains("block quote"), "{error:?}");
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA body.\n:::\n\n> :::picture\n> :::\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full)
+        .expect_err("cached component still checks directive placement");
+    assert!(format!("{error:?}").contains("block quote"), "{error:?}");
+}
+
+#[test]
+fn invalid_component_precedes_footnote_and_chronology_errors() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n");
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\ncontent.main = 'index.md'\npublished = 2024-02-01T12:00:00\nupdated = 2024-01-01T12:00:00\n\n[toc]\ncontent = 'main'\n\n[footnotes]\ncontent = 'main'\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA missing note.[^missing]\n",
+    );
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n");
+    let config_error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("missing marker configuration");
+    assert!(
+        config_error.to_string().contains("marker_message"),
+        "{config_error:?}"
+    );
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n");
+    let first = build_at(fixture.path(), BuildMode::Full).expect_err("invalid component");
+    assert!(first.to_string().contains("component"), "{first:?}");
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA missing note.[^missing]\n:::\n",
+    );
+    let second = build_at(fixture.path(), BuildMode::Full).expect_err("invalid footnote");
+    assert!(
+        second.to_string().contains("has no definition"),
+        "{second:?}"
+    );
+    let diagnostic = format!("{second:?}");
+    assert!(
+        diagnostic.contains(":::component[site.note]"),
+        "{diagnostic}"
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA note.[^one]\n:::\n\n[^one]: Explanation.\n",
+    );
+    let third = build_at(fixture.path(), BuildMode::Full).expect_err("invalid chronology");
+    assert!(
+        third.to_string().contains("must not be earlier"),
+        "{third:?}"
+    );
+}
+
+#[test]
 fn margin_footnote_sources_render_checked_picture_blocks() {
     let fixture = Fixture::new();
     fixture.write(
@@ -2846,6 +3011,31 @@ fn rejects_the_markdown_filter_for_block_component_content() {
 }
 
 #[test]
+fn plans_setext_heading_at_start_of_component_body_without_the_fence() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nHeading\n-------\n:::\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() %}<aside>{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{% for heading in page.toc.headings %}[{{ heading.text }}:{{ heading.fragment }}]{% endfor %}{{ markdown(content='main') }}");
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("[Heading:heading]"), "{output}");
+    assert!(
+        output.contains("<h2 id=\"heading\">Heading</h2>"),
+        "{output}"
+    );
+}
+
+#[test]
 fn keeps_margin_footnotes_local_when_a_component_wraps_their_prose() {
     let fixture = Fixture::new();
     fixture.write(
@@ -2858,7 +3048,7 @@ fn keeps_margin_footnotes_local_when_a_component_wraps_their_prose() {
     );
     fixture.write(
         "content/en/index.page",
-        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[footnotes]\ncontent = 'main'\n",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n\n[toc]\ncontent = 'main'\n\n[footnotes]\ncontent = 'main'\n",
     );
     fixture.write(
         "content/en/index.md",
@@ -2880,4 +3070,196 @@ fn keeps_margin_footnotes_local_when_a_component_wraps_their_prose() {
         .expect("local note output");
     assert!(marker > note_start, "{output}");
     assert!(output.contains("Explanation."), "{output}");
+}
+
+#[test]
+fn component_margin_notes_work_when_toc_selects_another_source_or_is_absent() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n");
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA note.[^one]\n:::\n\n[^one]: Explanation.\n",
+    );
+    fixture.write("content/en/other.md", "## Other heading\n");
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() %}<aside>{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{% if page.toc %}{{ markdown(content='other') }}{% endif %}{{ markdown(content='main') }}",
+    );
+    fixture.write("content/en/index.page", "template = 'page.tera'\ncontent.main = 'index.md'\ncontent.other = 'other.md'\n\n[toc]\ncontent = 'other'\n\n[footnotes]\ncontent = 'main'\n");
+    build_at(fixture.path(), BuildMode::Full).expect("different sources build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(
+        output.contains("<h2 id=\"other-heading\">Other heading</h2>"),
+        "{output}"
+    );
+    assert!(output.contains("heine-annotated-block"), "{output}");
+    fixture.write("content/en/index.page", "template = 'page.tera'\ncontent.main = 'index.md'\ncontent.other = 'other.md'\n\n[footnotes]\ncontent = 'main'\n");
+    build_at(fixture.path(), BuildMode::Full).expect("source without toc builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("heine-annotated-block"), "{output}");
+}
+
+#[test]
+fn preserves_citation_like_text_inside_a_component_in_source_order() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "Before [@first].\n\n:::component[site.note]\nInside [@second].\n:::\n\nAfter [@third].\n",
+    );
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() %}<aside>{{ body }}</aside>{% endcomponent site.note %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("component builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    let first = output.find("[@first]").expect("first text");
+    let wrapper = output.find("<aside>").expect("component wrapper");
+    let second = output.find("[@second]").expect("component text");
+    let end = output.find("</aside>").expect("component end");
+    let third = output.find("[@third]").expect("last text");
+    assert!(
+        first < wrapper && wrapper < second && second < end && end < third,
+        "{output}"
+    );
+}
+
+#[test]
+fn repeated_footnotes_show_the_difference_between_ordinary_and_margin_notes() {
+    for margin in [false, true] {
+        let fixture = Fixture::new();
+        let config = if margin {
+            "[markdown]\nextensions = ['footnotes']\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n"
+        } else {
+            "[markdown]\nextensions = ['footnotes']\n"
+        };
+        fixture.write("heine.toml", config);
+        fixture.write(
+            "locales/en/site.ftl",
+            "footnote-marker = Footnote { $number }\n",
+        );
+        let page = if margin {
+            "template = 'page.tera'\ncontent.main = 'index.md'\n[footnotes]\ncontent = 'main'\n"
+        } else {
+            "template = 'page.tera'\ncontent.main = 'index.md'\n"
+        };
+        fixture.write("content/en/index.page", page);
+        fixture.write(
+            "content/en/index.md",
+            "First [@before].[^note]\n\nLater [@after].[^note]\n\n[^note]: Source [@inside].\n",
+        );
+        fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+        build_at(fixture.path(), BuildMode::Full).expect("footnotes build");
+        let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+        assert_eq!(
+            output.matches("[@inside]").count(),
+            if margin { 2 } else { 1 },
+            "{output}"
+        );
+        let before = output.find("[@before]").expect("first citation-like text");
+        let after = output.find("[@after]").expect("last citation-like text");
+        let note = output.find("[@inside]").expect("note citation-like text");
+        assert!(before < after && (before < note));
+        assert_eq!(note < after, margin, "{output}");
+    }
+}
+
+#[test]
+fn footnote_modes_preserve_multiple_preformatted_citations_and_punctuation() {
+    for margin in [false, true] {
+        let fixture = Fixture::new();
+        let config = if margin {
+            "[markdown]\nextensions = ['footnotes']\n[markdown.margin_footnotes]\nmarker_message = 'footnote-marker'\n"
+        } else {
+            "[markdown]\nextensions = ['footnotes']\n"
+        };
+        fixture.write("heine.toml", config);
+        fixture.write(
+            "locales/en/site.ftl",
+            "footnote-marker = Footnote { $number }\n",
+        );
+        let page = if margin {
+            "template = 'page.tera'\ncontent.main = 'index.md'\n[footnotes]\ncontent = 'main'\n"
+        } else {
+            "template = 'page.tera'\ncontent.main = 'index.md'\n"
+        };
+        fixture.write("content/en/index.page", page);
+        fixture.write("content/en/index.md", "First[^note] and again[^note].\n\n[^note]: See Charles Yu, *Interior Chinatown* (Pantheon Books, 2020). Compare Jane Smith, *Another Book* (Example Press, 2021).\n");
+        fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+        build_at(fixture.path(), BuildMode::Full).expect("footnotes build");
+        let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+        let text = "See Charles Yu, <em>Interior Chinatown</em> (Pantheon Books, 2020). Compare Jane Smith, <em>Another Book</em> (Example Press, 2021).";
+        assert_eq!(
+            output.matches(text).count(),
+            if margin { 2 } else { 1 },
+            "{output}"
+        );
+    }
+}
+
+#[test]
+fn renderer_before_margin_footnote_preserves_the_note_plan() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", &format!("{}\n[markdown]\nextensions=['footnotes']\n[markdown.margin_footnotes]\nmarker_message='footnote-marker'\n", stream_copy_profile("copy", "[\"body\"]", "html")));
+    fixture.write(
+        "locales/en/site.ftl",
+        "footnote-marker = Footnote { $number }\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template='page.tera'\ncontent.main='index.md'\n[footnotes]\ncontent='main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::render[copy]\n<span>generated</span>\n:::\n\nA note.[^n]\n\n[^n]: Explanation.\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    build_at_with_options(
+        fixture.path(),
+        BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("renderer and margin note build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(output.contains("<span>generated</span>"), "{output}");
+    assert!(output.contains("Explanation."), "{output}");
+}
+
+#[test]
+fn renderer_before_component_preserves_the_component_body_plan() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("copy", "[\"body\"]", "html"),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template='page.tera'\ncontent.main='index.md'\n",
+    );
+    fixture.write("content/en/index.md", ":::render[copy]\n<span>generated</span>\n:::\n\n:::component[site.note]\nAuthored text.\n:::\n");
+    fixture.write(
+        "templates/components.tera",
+        "{% component site.note() %}<aside>{{ body }}</aside>{% endcomponent %}",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    build_at_with_options(
+        fixture.path(),
+        BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("renderer and component build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(output.contains("<span>generated</span>"), "{output}");
+    assert!(output.contains("<aside><p>Authored text.</p>"), "{output}");
 }

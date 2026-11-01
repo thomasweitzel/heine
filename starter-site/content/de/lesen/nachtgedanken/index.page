@@ -1,4 +1,4 @@
-template = "reading.tera"
+template = "reading-citations.tera"
 title = "Nachtgedanken"
 description = "Eine kommentierte Lektüre von Heinrich Heines Nachtgedanken aus den Neuen Gedichten von 1844."
 summary = "Heinrich Heines Nachtgedanken, mit Anmerkungen zum Mitlesen."
@@ -7,6 +7,11 @@ collections = ["readings"]
 
 [content]
 main = "reading.md"
+
+[citations]
+content = "main"
+bibliography = ["heine.bib"]
+style = "reading.csl"
 
 [taxonomies]
 authors = ["Heinrich Heine"]

@@ -1,0 +1,9 @@
+{% extends "kit/starter/reading.tera" %}
+
+{% block content %}
+  {{ super() }}
+  <section class="prose">
+    <h2>{{ t(id="reading-sources") }}</h2>
+    {{ bibliography() }}
+  </section>
+{% endblock %}

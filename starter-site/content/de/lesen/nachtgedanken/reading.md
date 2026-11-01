@@ -1,5 +1,6 @@
-*Nachtgedanken* entstand 1843 und erschien 1844 als Schlussgedicht des Zyklus
-**Zeitgedichte** in Heines *Neuen Gedichten*. Das Gedicht führt von einer
+*Nachtgedanken* erschien zuerst 1843 in der *Zeitung für die elegante Welt*
+und 1844 als Schlussgedicht des Zyklus **Zeitgedichte** in Heines *Neuen
+Gedichten* [@heine1843; @heine1844, p. 274]. Das Gedicht führt von einer
 Pariser Nacht nach Deutschland, zur Mutter und schließlich wieder zurück ans
 Fenster. Die Anmerkungen folgen diesem Weg und verweilen bei einigen der
 Wiederholungen und Gegensätze.
@@ -78,14 +79,13 @@ nicht.
 Das Ende löst die Sorge nicht auf. Es setzt ihr nur etwas Gegenwärtiges
 entgegen: französisches Tageslicht, die Frau am Fenster, ein Lächeln. Die
 letzten Verse sind leichter als die vorangegangenen, ohne die Sorge wirklich
-zu zerstreuen.
+zu zerstreuen [@heine1844, p. 276].
 
-## Quellen und Hinweise
+## Textgrundlage
 
-Textgrundlage: Heinrich Heine, *Neue Gedichte*, Hoffmann und Campe, Hamburg
-1844, S. 274–276. Ein Scan der Erstausgabe und eine Transkription des Gedichts
-sind bei [Wikisource](https://de.wikisource.org/wiki/Nachtgedanken_(Heine))
-zu finden.
+Die Textgrundlage ist die Buchausgabe von 1844. Ein Scan der Erstausgabe und
+eine Transkription des Gedichts sind bei
+[Wikisource](https://de.wikisource.org/wiki/Nachtgedanken_(Heine)) zu finden.
 
 Der Text Heines ist gemeinfrei. Die Anmerkungen betrachten einige Stellen
 genauer und sollen Anstöße für die eigene Lektüre geben.

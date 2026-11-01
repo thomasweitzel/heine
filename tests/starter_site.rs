@@ -24,7 +24,15 @@ fn builds_the_documented_starter_site() {
         &root.join("content"),
         Some(&source.join("content/en/performance-posts")),
     );
-    for directory in ["data", "deploy", "LICENSES", "templates", "kits"] {
+    for directory in [
+        "citations",
+        "data",
+        "deploy",
+        "LICENSES",
+        "locales",
+        "templates",
+        "kits",
+    ] {
         copy_tree(&source.join(directory), &root.join(directory));
     }
 
@@ -672,10 +680,8 @@ fn assert_authored_pages_and_legal_output(output: &Path) {
         reading.contains("Denk ich an Deutschland in der Nacht"),
         "{reading}"
     );
-    assert!(
-        reading.contains("<h2>Quellen und Hinweise</h2>"),
-        "{reading}"
-    );
+    assert!(reading.contains("<h2>Textgrundlage</h2>"), "{reading}");
+    assert_reading_citations(&reading);
     assert!(
         reading.contains("href=\"https://de.wikisource.org/wiki/Nachtgedanken_(Heine)\""),
         "{reading}"
@@ -759,6 +765,26 @@ fn starter_kit_reference_site_materializes_as_an_ordinary_site() {
     assert!(output.join("de/404.html").is_file());
     assert!(output.join("assets/css/styles.v2.css").is_file());
     assert!(output.join("LICENSES/OFL-1.1.txt").is_file());
+    let reading = fs::read_to_string(output.join("de/lesen/nachtgedanken/index.html"))
+        .expect("reference-site reading");
+    assert_reading_citations(&reading);
+}
+
+fn assert_reading_citations(reading: &str) {
+    assert!(reading.contains("[1; 2, S. 274]"), "{reading}");
+    assert!(reading.contains("[2, S. 276]"), "{reading}");
+    assert!(reading.contains("<h2>Literatur</h2>"), "{reading}");
+    assert_eq!(reading.matches("id=\"__heine-bibliography\"").count(), 1);
+    assert!(
+        reading.contains("<ul class=\"csl-bibliography\" role=\"list\""),
+        "{reading}"
+    );
+    assert_eq!(reading.matches("<li class=\"csl-entry\">").count(), 2);
+    assert!(
+        reading.contains("Zeitung für die elegante Welt"),
+        "{reading}"
+    );
+    assert!(reading.contains("Hoffmann und Campe"), "{reading}");
 }
 
 fn generated_file_with_extension(directory: &Path, extension: &str) -> std::path::PathBuf {

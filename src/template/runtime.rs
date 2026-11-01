@@ -27,6 +27,7 @@ pub(super) struct MarkdownContent<'a> {
     pub(super) toc: Option<&'a crate::markdown::TocPlan>,
     pub(super) footnotes: Option<&'a crate::site::FootnotesView>,
     pub(super) has_components: bool,
+    pub(super) citations: Option<&'a crate::site::CitationView>,
 }
 
 /// The only bridge from Tera's dynamic render state back to validated Heine
@@ -51,6 +52,14 @@ pub(super) struct TemplateRuntime {
     editorial_time_zone: Option<crate::config::EditorialTimeZone>,
     source_aware_renders: Arc<Mutex<Vec<SourceAwareRender>>>,
     prepared_markdown: Arc<Mutex<BTreeMap<String, String>>>,
+    bibliography: Arc<Mutex<Option<BibliographyRender>>>,
+}
+
+#[derive(Debug)]
+struct BibliographyRender {
+    html: String,
+    marker: String,
+    calls: usize,
 }
 
 #[derive(Debug)]
@@ -65,6 +74,7 @@ pub(super) enum SourceAwareRenderKind {
     TableOfContents,
     MarginFootnotes,
     MarkdownComponents,
+    Citations,
 }
 
 impl SourceAwareRenderKind {
@@ -73,6 +83,7 @@ impl SourceAwareRenderKind {
             Self::TableOfContents => "table-of-contents",
             Self::MarginFootnotes => "margin-footnote",
             Self::MarkdownComponents => "block-component",
+            Self::Citations => "citation",
         }
     }
 }
@@ -130,11 +141,77 @@ impl From<TemplateResources> for TemplateRuntime {
             editorial_time_zone: resources.editorial_time_zone,
             source_aware_renders: Arc::new(Mutex::new(Vec::new())),
             prepared_markdown: Arc::new(Mutex::new(BTreeMap::new())),
+            bibliography: Arc::new(Mutex::new(None)),
         }
     }
 }
 
 impl TemplateRuntime {
+    pub(super) fn begin_bibliography(
+        &self,
+        citations: Option<&crate::site::CitationView>,
+    ) -> Result<(), String> {
+        use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+        use sha2::{Digest, Sha256};
+        let mut current = self
+            .bibliography
+            .lock()
+            .map_err(|_| "bibliography state is unavailable".to_owned())?;
+        *current = citations.map(|value| {
+            let digest = Sha256::digest(value.bibliography.as_bytes());
+            let marker = format!(
+                "<!--heine-bibliography-{}-->",
+                URL_SAFE_NO_PAD.encode(digest)
+            );
+            BibliographyRender {
+                html: value.bibliography.clone(),
+                marker,
+                calls: 0,
+            }
+        });
+        Ok(())
+    }
+
+    pub(super) fn bibliography(&self) -> tera::TeraResult<String> {
+        let mut current = self
+            .bibliography
+            .lock()
+            .map_err(|_| tera::Error::message("bibliography state is unavailable"))?;
+        let value = current.as_mut().ok_or_else(|| {
+            tera::Error::message("bibliography() requires citations on this page")
+        })?;
+        value.calls += 1;
+        Ok(format!("{}{}{}", value.marker, value.html, value.marker))
+    }
+
+    pub(super) fn finish_bibliography(&self, mut rendered: String) -> Result<String, String> {
+        let mut current = self
+            .bibliography
+            .lock()
+            .map_err(|_| "bibliography state is unavailable".to_owned())?;
+        let Some(value) = current.take() else {
+            return Ok(rendered);
+        };
+        if value.calls != 1 {
+            return Err("bibliography() must be called exactly once".into());
+        }
+        let mut markers = rendered.match_indices(&value.marker);
+        let first = markers.next().map(|(index, _)| index);
+        let second = markers.next().map(|(index, _)| index);
+        if markers.next().is_some()
+            || first.zip(second).is_none_or(|(first, second)| {
+                rendered.get(first + value.marker.len()..second) != Some(value.html.as_str())
+            })
+        {
+            return Err("bibliography output must appear intact exactly once".into());
+        }
+        if let (Some(first), Some(second)) = (first, second) {
+            rendered.replace_range(second..second + value.marker.len(), "");
+            rendered.replace_range(first..first + value.marker.len(), "");
+        }
+        Ok(rendered)
+    }
+
     pub(super) fn begin_prepared_markdown(&self) -> Result<(), String> {
         let mut prepared = self
             .prepared_markdown
@@ -442,6 +519,9 @@ impl TemplateRuntime {
             toc,
             footnotes,
             has_components: components.is_some(),
+            citations: page
+                .citations()
+                .filter(|citations| citations.content == name),
         })
     }
 
@@ -469,7 +549,11 @@ impl TemplateRuntime {
             page.content_markdown(name)
                 .is_some_and(|(content, _, _)| content == input)
         });
-        Ok(selected_toc || selected_footnotes || selected_component)
+        let selected_citations = page
+            .citations()
+            .and_then(|citation| page.content_markdown(&citation.content))
+            .is_some_and(|(content, _, _)| content == input);
+        Ok(selected_toc || selected_footnotes || selected_component || selected_citations)
     }
 
     pub(super) fn margin_footnote_labels(
@@ -503,6 +587,7 @@ impl TemplateRuntime {
         toc: Option<&crate::markdown::TocPlan>,
         footnotes: Option<&crate::site::FootnotesView>,
         components: impl IntoIterator<Item = String>,
+        citations: Option<&crate::site::CitationView>,
     ) -> Result<(), String> {
         let mut current = self
             .source_aware_renders
@@ -520,6 +605,13 @@ impl TemplateRuntime {
             current.push(SourceAwareRender {
                 kind: SourceAwareRenderKind::MarginFootnotes,
                 content: footnotes.content().to_owned(),
+                calls: 0,
+            });
+        }
+        if let Some(citations) = citations {
+            current.push(SourceAwareRender {
+                kind: SourceAwareRenderKind::Citations,
+                content: citations.content.clone(),
                 calls: 0,
             });
         }

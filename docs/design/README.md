@@ -32,6 +32,8 @@ guides and the [reference](../reference.md) instead.
 
 ## Exploratory records
 
+- [Citations](citations.md): checked in-text citations and reference lists,
+  with note styles and publication catalogs deferred.
 - [External asset manifests](external-asset-manifests.md): why a per-URL
   cache-busting helper is insufficient, and the boundary a future external
   asset-manifest integration would need.

@@ -1145,7 +1145,7 @@ fn rejects_a_default_locale_asset_that_would_overlay_a_shared_asset() {
     fs::create_dir_all(fixture.path().join("content/pl")).unwrap();
 
     let error = build_at(fixture.path(), BuildMode::Full).expect_err("asset collision");
-    let diagnostic = format!("{error:?}");
+    let diagnostic = error.to_string();
     assert!(
         diagnostic.contains("content/assets/logo.svg")
             && diagnostic.contains("content/en/assets")

@@ -20,6 +20,17 @@ pub(super) fn register(
         },
     );
 
+    let bibliography_runtime = runtime.clone();
+    tera.register_function(
+        "bibliography",
+        move |kwargs: tera::Kwargs, _: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("bibliography", &kwargs, &[])?;
+            bibliography_runtime
+                .bibliography()
+                .map(|html| tera::Value::safe_string(&html))
+        },
+    );
+
     let markdown_runtime = runtime.clone();
     let markdown_filter_renderer = markdown_renderer.clone();
     tera.register_filter(
@@ -63,13 +74,21 @@ pub(super) fn register(
             let page_links = markdown_content_runtime.pages().with_locale(locale);
             let content = markdown_content_runtime.markdown_content(state, name)?;
             if let Some(prepared) = markdown_content_runtime.prepared_markdown(name)? {
-                if content.toc.is_some() || content.footnotes.is_some() || content.has_components {
+                if content.toc.is_some()
+                    || content.footnotes.is_some()
+                    || content.has_components
+                    || content.citations.is_some()
+                {
                     markdown_content_runtime.record_source_aware_render(name)?;
                 }
                 return Ok(tera::Value::safe_string(&prepared));
             }
             let table_scroll_label = markdown_content_runtime.table_scroll_label(state)?;
-            if content.toc.is_some() || content.footnotes.is_some() || content.has_components {
+            if content.toc.is_some()
+                || content.footnotes.is_some()
+                || content.has_components
+                || content.citations.is_some()
+            {
                 markdown_content_runtime.record_source_aware_render(name)?;
             }
             let rendered = if let Some(footnotes) = content.footnotes {
@@ -84,12 +103,13 @@ pub(super) fn register(
                         anchors: content.toc.map(crate::markdown::TocPlan::anchors),
                         table_scroll_label: table_scroll_label.as_deref(),
                         replacements: content.replacements,
+                        citations: content.citations.map_or(&[], |value| &value.replacements),
                     },
                     footnotes.plan(),
                     &labels,
                 )
             } else {
-                crate::markdown::render_with_links_anchors(
+                crate::markdown::render::render_with_citations(
                     content.source,
                     &markdown_renderer,
                     Some(&asset_links),
@@ -97,6 +117,7 @@ pub(super) fn register(
                     content.toc.map(crate::markdown::TocPlan::anchors),
                     table_scroll_label.as_deref(),
                     content.replacements,
+                    content.citations.map_or(&[], |value| &value.replacements),
                 )
             };
             rendered

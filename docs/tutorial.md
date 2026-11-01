@@ -662,6 +662,10 @@ When ordinary Markdown footnotes should stay beside the prose they qualify,
 the [margin-footnotes guide](margin-footnotes.md) shows the page-owned,
 CSS-controlled presentation and its checked source relationship.
 
+When an article cites published works, the [citations guide](citations.md)
+shows how to select local bibliography and CSL files, write checked references,
+and place a reference list in the template.
+
 When one image needs light and dark visual variants, use a native Markdown
 `picture` block rather than template markup. The
 [color-scheme picture guide](markdown-pictures.md) shows the checked copied
