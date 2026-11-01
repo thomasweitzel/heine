@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-01
+
 ### Added
 
 - **Citations.** Pages can cite local BibTeX entries with an in-text CSL style
