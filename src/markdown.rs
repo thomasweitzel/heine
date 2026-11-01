@@ -34,12 +34,14 @@ use crate::{
 use std::path::PathBuf;
 
 mod analysis;
+pub(crate) mod citation;
 mod class_list;
 pub(crate) mod component;
 mod directive;
 mod highlighting;
 pub(crate) mod margin_footnotes;
 pub(crate) mod picture;
+pub(crate) mod rebase;
 pub(crate) mod render;
 mod renderer_request;
 mod search_text;
@@ -50,7 +52,9 @@ use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
 #[cfg(test)]
 pub(crate) use render::render;
-pub(crate) use render::{render_with_links, render_with_links_anchors};
+pub(crate) use render::render_with_links;
+#[cfg(test)]
+pub(crate) use render::render_with_links_anchors;
 pub(crate) use renderer_request::{
     LicensingRecordOrigin, LicensingRecordSelection, ResolvedInput, ResolvedRequest,
 };
@@ -345,6 +349,19 @@ impl TocPlan {
     pub(crate) fn anchors(&self) -> &[String] {
         &self.anchors
     }
+
+    pub(crate) fn update_heading_texts(&mut self, texts: &[String]) {
+        let mut selected = self.view.iter_mut().peekable();
+        for (anchor, text) in self.anchors.iter().zip(texts) {
+            if selected
+                .peek()
+                .is_some_and(|heading| heading.fragment == *anchor)
+                && let Some(heading) = selected.next()
+            {
+                heading.text.clone_from(text);
+            }
+        }
+    }
 }
 
 pub(crate) fn toc_plan(
@@ -354,39 +371,64 @@ pub(crate) fn toc_plan(
     min_level: u8,
     max_level: u8,
 ) -> TocPlan {
-    let mut used = HashSet::new();
-    let mut anchors = Vec::new();
-    let mut view = Vec::new();
-    let mut heading: Option<(u8, String)> = None;
-    let mut footnote_definition_depth = 0usize;
+    let mut collector = TocCollector::new(min_level, max_level);
     for event in Parser::new_ext(input, options(config)) {
+        collector.push(&event);
+    }
+    collector.finish(content)
+}
+
+struct TocCollector {
+    used: HashSet<String>,
+    anchors: Vec<String>,
+    view: Vec<TocHeading>,
+    heading: Option<(u8, String)>,
+    footnote_definition_depth: usize,
+    min_level: u8,
+    max_level: u8,
+}
+
+impl TocCollector {
+    fn new(min_level: u8, max_level: u8) -> Self {
+        Self {
+            used: HashSet::new(),
+            anchors: Vec::new(),
+            view: Vec::new(),
+            heading: None,
+            footnote_definition_depth: 0,
+            min_level,
+            max_level,
+        }
+    }
+
+    fn push(&mut self, event: &Event<'_>) {
         match event {
-            Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
-            Event::End(TagEnd::FootnoteDefinition) => footnote_definition_depth -= 1,
-            _ if footnote_definition_depth > 0 => {}
+            Event::Start(Tag::FootnoteDefinition(_)) => self.footnote_definition_depth += 1,
+            Event::End(TagEnd::FootnoteDefinition) => self.footnote_definition_depth -= 1,
+            _ if self.footnote_definition_depth > 0 => {}
             Event::Start(Tag::Heading { level, .. }) => {
-                heading = Some((level as u8, String::new()))
+                self.heading = Some((*level as u8, String::new()))
             }
             Event::Text(text) | Event::Code(text) => {
-                if let Some((_, value)) = &mut heading {
-                    value.push_str(&text);
+                if let Some((_, value)) = &mut self.heading {
+                    value.push_str(text);
                 }
             }
             Event::SoftBreak | Event::HardBreak => {
-                if let Some((_, value)) = &mut heading
+                if let Some((_, value)) = &mut self.heading
                     && !value.ends_with(' ')
                 {
                     value.push(' ');
                 }
             }
             Event::End(TagEnd::Heading(_)) => {
-                if let Some((level, text)) = heading.take() {
-                    let fragment = unique_fragment(&text, &mut used);
-                    anchors.push(fragment.clone());
-                    if (min_level..=max_level).contains(&level) {
-                        view.push(TocHeading {
+                if let Some((level, text)) = self.heading.take() {
+                    let fragment = unique_fragment(&text, &mut self.used);
+                    self.anchors.push(fragment.clone());
+                    if (self.min_level..=self.max_level).contains(&level) {
+                        self.view.push(TocHeading {
                             level,
-                            depth: level - min_level + 1,
+                            depth: level - self.min_level + 1,
                             text,
                             fragment,
                         });
@@ -396,10 +438,13 @@ pub(crate) fn toc_plan(
             _ => {}
         }
     }
-    TocPlan {
-        content,
-        view,
-        anchors,
+
+    fn finish(self, content: String) -> TocPlan {
+        TocPlan {
+            content,
+            view: self.view,
+            anchors: self.anchors,
+        }
     }
 }
 
@@ -554,6 +599,8 @@ pub(crate) enum RenderError {
         message: String,
         span: Range<usize>,
     },
+    #[error("{message}")]
+    Citation { message: String, span: Range<usize> },
     #[error("footnote reference {label:?} has no definition")]
     Footnote { label: String, span: Range<usize> },
     #[error("could not render margin footnotes: {message}")]
@@ -568,6 +615,8 @@ pub(crate) enum RenderError {
     RendererLicensing { span: Range<usize> },
     #[error("a renderer resource requires its page to have rendered output")]
     RendererResourcePage { span: Range<usize> },
+    #[error("renderer replacement offsets exceed the supported range")]
+    RendererOffsets { span: Range<usize> },
     #[error("Markdown block component error: {message}")]
     Component { message: String, span: Range<usize> },
     #[error("Markdown block directives cannot appear inside a {container} yet")]
@@ -591,9 +640,10 @@ pub(super) enum PageReferenceFailure {
 }
 
 #[derive(Debug, Diagnostic, Error)]
-#[error("invalid Markdown {kind} in {path}")]
+#[error("invalid {domain} {kind} in {path}")]
 #[diagnostic(code(heine::markdown::invalid))]
 pub(crate) struct SourceError {
+    domain: &'static str,
     path: Box<Path>,
     kind: &'static str,
     message: String,
@@ -654,6 +704,7 @@ pub(crate) struct SourceAnalysisInputs<'a> {
     pub(crate) fragments: Option<&'a [String]>,
     pub(crate) collect_search_sections: bool,
     pub(crate) renderer_sources: &'a BTreeMap<String, crate::renderer::Source>,
+    pub(crate) citations: Option<&'a mut citation::Collector>,
 }
 
 /// Derives page facts and validates checked transformations while the original
@@ -669,10 +720,13 @@ pub(crate) fn analyze_source_with_links(
             assets: inputs.assets,
             pages: inputs.pages,
             renderer_sources: inputs.renderer_sources,
+            citations: inputs.citations,
         },
         inputs.words_per_minute,
         inputs.fragments,
         inputs.collect_search_sections,
+        #[cfg(test)]
+        inputs.display_path,
     )
     .map_err(|error| Box::new(source_error(inputs.display_path, inputs.input, error)))
 }
@@ -722,6 +776,12 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
             "rebuild the site after correcting the selected Markdown source".into(),
             span.clone(),
         ),
+        RenderError::Citation { message, span } => (
+            "citation",
+            message.clone(),
+            "correct the citation or its bibliography; escape a literal @ as \\@".into(),
+            span.clone(),
+        ),
         RenderError::Footnote { span, .. } => (
             "footnote",
             "reference without a matching definition".into(),
@@ -760,6 +820,12 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
             "select a page template, or use embedded renderer output instead".into(),
             span.clone(),
         ),
+        RenderError::RendererOffsets { span } => (
+            "renderer request",
+            "replacement offsets exceed the supported range".into(),
+            "reduce the size of this Markdown source or its renderer replacements".into(),
+            span.clone(),
+        ),
         RenderError::Component { message, span } => (
             "Markdown block component",
             message.clone(),
@@ -785,6 +851,7 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
         ),
     };
     SourceError {
+        domain: "Markdown",
         path: display_path.into(),
         kind,
         message: error.to_string(),
@@ -796,6 +863,42 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
         span: span.into(),
         label,
         help,
+    }
+}
+
+pub(crate) fn citation_bibliography_error(
+    path: &Path,
+    source: &str,
+    span: Range<usize>,
+    message: String,
+) -> SourceError {
+    SourceError {
+        domain: "citation",
+        path: path.into(),
+        kind: "bibliography",
+        label: format!("invalid bibliography field: {message}"),
+        message,
+        source_code: crate::source_diagnostic::named_source_at_display_path(path, source, "BibTeX"),
+        span: span.into(),
+        help: "correct the bibliography field".into(),
+    }
+}
+
+pub(crate) fn citation_configuration_error(
+    path: &Path,
+    source: &str,
+    span: Range<usize>,
+    message: String,
+) -> SourceError {
+    SourceError {
+        domain: "citation",
+        path: path.into(),
+        kind: "configuration",
+        label: format!("style selected here: {message}"),
+        message,
+        source_code: crate::source_diagnostic::named_source_at_display_path(path, source, "TOML"),
+        span: span.into(),
+        help: "choose a compatible local CSL style or adjust its selection".into(),
     }
 }
 

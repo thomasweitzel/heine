@@ -64,8 +64,8 @@ as `relative_url`; unlike `url`, it does not begin with `site.base_path`.
 ### Site root
 
 The project directory containing `heine.toml`, `content/`, and `templates/`.
-Optional roots such as `data/`, `locales/`, `deploy/`, and `LICENSES/` also
-live beside them.
+Optional roots such as `citations/`, `data/`, `locales/`, `deploy/`, and
+`LICENSES/` also live beside them.
 
 ### Site origin
 
@@ -124,6 +124,12 @@ the resulting UTC timestamps do not depend on the build machine.
 A file named `<asset filename>.license` beside a copied asset. It declares
 REUSE-style SPDX copyright and licensing facts for that asset; it is not itself
 published as an asset.
+
+### Citation
+
+A checked reference in a selected Markdown input to an entry in a local
+BibTeX bibliography. A CSL style formats the reference and the page's
+bibliography. See the [citations guide](citations.md).
 
 ### Kit
 

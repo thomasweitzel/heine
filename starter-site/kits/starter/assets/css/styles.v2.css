@@ -400,6 +400,19 @@ html[dir="rtl"] .navigation-arrow {
     list-style-position: outside;
 }
 
+.prose .csl-bibliography {
+    padding: 0;
+    list-style: none;
+}
+
+.prose .csl-entry {
+    overflow-wrap: anywhere;
+}
+
+.prose .csl-entry + .csl-entry {
+    margin-block-start: var(--spacing-s);
+}
+
 .attribution-list li + li {
     margin-block-start: var(--spacing-s);
 }

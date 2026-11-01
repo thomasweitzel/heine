@@ -399,7 +399,13 @@ impl TemplateEngine {
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default(),
+                context.page.as_ref().and_then(|page| page.page.citations()),
             )
+            .map_err(|message| {
+                Error::source_aware_render_error(template, rendering, &self.sources, None, message)
+            })?;
+        self.runtime
+            .begin_bibliography(context.page.as_ref().and_then(|page| page.page.citations()))
             .map_err(|message| {
                 Error::source_aware_render_error(template, rendering, &self.sources, None, message)
             })?;
@@ -443,6 +449,12 @@ impl TemplateEngine {
             Error::source_aware_render_error(template, rendering, &self.sources, None, message)
         })?;
         let rendered = rendered?;
+        let rendered = self
+            .runtime
+            .finish_bibliography(rendered)
+            .map_err(|message| {
+                Error::source_aware_render_error(template, rendering, &self.sources, None, message)
+            })?;
         let unmatched = source_aware_renders
             .into_iter()
             .filter(|source| source.calls != 1)
@@ -535,6 +547,10 @@ impl TemplateEngine {
                         anchors,
                         table_scroll_label: None,
                         replacements,
+                        citations: page
+                            .citations()
+                            .filter(|citation| citation.content == name)
+                            .map_or(&[], |citation| &citation.replacements),
                     },
                     footnotes.plan(),
                     &labels,
@@ -551,6 +567,10 @@ impl TemplateEngine {
                         anchors,
                         table_scroll_label: None,
                         replacements,
+                        citations: page
+                            .citations()
+                            .filter(|citation| citation.content == name)
+                            .map_or(&[], |citation| &citation.replacements),
                     },
                     plan.calls(),
                     |call, body| self.render_markdown_component(call, body, context),
@@ -982,6 +1002,60 @@ fn quoted_template_string(value: &str) -> Option<(&str, usize)> {
 mod tests {
     use super::{TemplateName, component_body_may_hide, remove_component_body_marker};
     use tera::Context;
+
+    #[test]
+    fn bibliography_template_prototype_tracks_calls_and_preserved_output() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let body = "<ol><li id=\"ref-one\">One</li></ol>";
+        let opening = "<!--bibliography-open-->";
+        let closing = "<!--bibliography-close-->";
+        let marked = format!("{opening}{body}{closing}");
+        for (template, expected_calls, expected_valid) in [
+            ("<main>{{ bibliography() }}</main>", 1, true),
+            ("<main>None</main>", 0, false),
+            (
+                "{% set unused = bibliography() %}<main>None</main>",
+                1,
+                false,
+            ),
+            ("{{ bibliography() }}{{ bibliography() }}", 2, false),
+            (
+                "{% set list = bibliography() %}{{ list }}{{ list }}",
+                1,
+                false,
+            ),
+            ("{{ bibliography() | upper }}", 1, false),
+        ] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let recorded = Arc::clone(&calls);
+            let result = marked.clone();
+            let mut tera = tera::Tera::default();
+            tera.register_function(
+                "bibliography",
+                move |_: tera::Kwargs, _: &tera::State| -> tera::TeraResult<tera::Value> {
+                    recorded.fetch_add(1, Ordering::Relaxed);
+                    Ok(tera::Value::safe_string(&result))
+                },
+            );
+            tera.add_raw_template("page.html", template)
+                .expect("template");
+            let rendered = tera.render("page.html", &Context::new()).expect("render");
+            let count = calls.load(Ordering::Relaxed);
+            let preserved = rendered.matches(opening).count() == 1
+                && rendered.matches(closing).count() == 1
+                && rendered.matches(&marked).count() == 1;
+            assert_eq!(count, expected_calls, "{template}");
+            assert_eq!(
+                count == 1 && preserved,
+                expected_valid,
+                "{template}: {rendered}"
+            );
+        }
+    }
 
     fn is_host_owned_component_value(component: &tera::ComponentInfo, name: &str) -> bool {
         name == "body"

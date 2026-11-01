@@ -17,7 +17,7 @@ main = "article.md"
 
 Keep this form when the text belongs together. It is the clearest choice for a
 page body, and it is required when that Markdown source supplies a table of
-contents or margin footnotes.
+contents, margin footnotes, or citations, or contains block components.
 
 Some pages need a different arrangement. Their prose still belongs in one
 authored document, but the template needs to place named parts in different
@@ -95,7 +95,6 @@ same-role text parts. The [reference](reference.md#declared-content-files)
 defines the marker syntax and value shape.
 
 Segments are not a Markdown syntax tree. A segmented Markdown input cannot be
-the source selected for a table of contents or margin footnotes, because those
-features need one unsegmented source rendered exactly once with
-`markdown(content="…")`. Keep a normal page body unsegmented when it needs
-either feature.
+the source selected for a table of contents, margin footnotes, or citations,
+or contain block components. These features need one unsegmented source
+rendered exactly once with `markdown(content="…")`.

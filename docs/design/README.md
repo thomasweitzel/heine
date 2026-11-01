@@ -8,6 +8,7 @@ guides and the [reference](../reference.md) instead.
 ## Implemented features
 
 - [Absolute URLs](absolute-urls.md)
+- [Citations](citations.md)
 - [Copied-asset licensing coverage](asset-licensing-coverage.md)
 - [Draft publication](drafts.md)
 - [Kits](kits.md)

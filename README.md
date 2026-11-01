@@ -101,6 +101,9 @@ task. Use the [glossary](docs/glossary.md) for Heine terms, the
 [reference](docs/reference.md) for exact fields and template values, and the
 [roadmap](docs/roadmap.md) for planned work.
 
+For articles that cite published works, the [citations guide](docs/citations.md)
+shows how to use local BibTeX files and a CSL style to build a reference list.
+
 ## Starter site
 
 The [downloadable starter site](starter-site) is a complete, working

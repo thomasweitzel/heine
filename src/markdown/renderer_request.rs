@@ -30,6 +30,12 @@ pub(super) struct Request {
     pub(super) options: BTreeMap<String, OptionValue>,
 }
 
+impl Request {
+    pub(super) fn span(&self) -> Range<usize> {
+        self.start..self.end
+    }
+}
+
 /// A renderer request after its selected profile, input form, output mode,
 /// and authored accessibility text have been checked. Rendering owns this
 /// model rather than reparsing the directive when it eventually replaces it.

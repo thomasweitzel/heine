@@ -64,12 +64,22 @@ impl ComponentPlan {
         if !input.contains(":::") {
             return Ok(None);
         }
+        Self::check_placement(input)?;
+        Self::parse_for_planning(input)
+    }
+
+    pub(crate) fn check_placement(input: &str) -> Result<(), RenderError> {
         if let Some(placement) = unsupported_block_placement(input) {
             return Err(RenderError::DirectivePlacement {
                 container: placement.container,
                 span: placement.span,
             });
         }
+        Ok(())
+    }
+
+    /// Plans top-level components without advancing unrelated directive errors.
+    pub(crate) fn parse_for_planning(input: &str) -> Result<Option<Self>, RenderError> {
         let mut calls = Vec::new();
         let mut offset = 0;
         let mut code_fence = None;
@@ -122,6 +132,15 @@ impl ComponentPlan {
         let normalized = String::from_utf8(normalized)
             .expect("replacing source bytes with ASCII whitespace preserves UTF-8");
         Ok(Some(Self { normalized, calls }))
+    }
+
+    /// Preserve authored header spans for diagnostics while rebasing body
+    /// ranges to the Markdown text containing renderer markers.
+    pub(crate) fn rebase(&mut self, offsets: &super::rebase::Rebase) -> Result<(), Range<usize>> {
+        for call in &mut self.calls {
+            call.body_span = offsets.range(&call.body_span, true)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn normalized(&self) -> &str {
@@ -397,6 +416,28 @@ mod tests {
             &source[call.body_span.clone()]
         );
         assert!(!plan.normalized().contains("component["));
+    }
+
+    #[test]
+    fn component_body_keeps_citation_text_in_document_order_with_source_offsets() {
+        let source = "Before [@first].\n\n:::component[site.note]\nInside [@second].\n:::\n\nAfter [@third].\n";
+        let plan = ComponentPlan::parse(source)
+            .expect("valid component")
+            .expect("component is present");
+        let found: Vec<_> = Parser::new(plan.normalized())
+            .into_offset_iter()
+            .filter_map(|(event, span)| match event {
+                Event::Text(text) if text.contains('@') => {
+                    Some((text.into_string(), source[span].to_owned()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(found.len(), 3, "{found:?}");
+        for (index, key) in ["@first", "@second", "@third"].iter().enumerate() {
+            assert!(found[index].0.contains(key), "{found:?}");
+            assert!(found[index].1.contains(key), "{found:?}");
+        }
     }
 
     #[test]

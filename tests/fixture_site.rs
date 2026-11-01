@@ -33,6 +33,8 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 
 #[path = "fixture_site/absolute_urls.rs"]
 mod absolute_urls;
+#[path = "fixture_site/citations.rs"]
+mod citations;
 #[path = "fixture_site/content.rs"]
 mod content;
 #[path = "fixture_site/deploy.rs"]

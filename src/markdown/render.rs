@@ -21,6 +21,7 @@ pub(crate) struct ComponentRenderContext<'a> {
     pub(crate) anchors: Option<&'a [String]>,
     pub(crate) table_scroll_label: Option<&'a str>,
     pub(crate) replacements: &'a [super::RendererReplacement],
+    pub(crate) citations: &'a [super::citation::Replacement],
 }
 
 #[cfg(test)]
@@ -73,6 +74,35 @@ pub(crate) fn render_with_links_anchors(
     Ok(output)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "render dependencies remain explicit at this boundary"
+)]
+pub(crate) fn render_with_citations(
+    input: &str,
+    renderer: &Renderer,
+    assets: Option<&AssetLinks>,
+    pages: Option<&PageLinks>,
+    anchors: Option<&[String]>,
+    table_scroll_label: Option<&str>,
+    replacements: &[super::RendererReplacement],
+    citations: &[super::citation::Replacement],
+) -> Result<String, RenderError> {
+    let events = transformed_events_with_citations(
+        input,
+        renderer,
+        assets,
+        pages,
+        anchors,
+        table_scroll_label,
+        replacements,
+        citations,
+    )?;
+    let mut output = String::new();
+    html::push_html(&mut output, events.into_iter().map(|(event, _)| event));
+    Ok(output)
+}
+
 /// Renders one planned document while replacing each component body before
 /// final HTML serialization. The caller owns component lookup and presentation;
 /// this module keeps the body's Markdown events in the shared document stream.
@@ -88,7 +118,7 @@ where
         &str,
     ) -> Result<String, super::component::ComponentRenderFailure>,
 {
-    let events = transformed_events_with_links_anchors(
+    let events = transformed_events_with_citations(
         input,
         context.renderer,
         context.assets,
@@ -96,6 +126,7 @@ where
         context.anchors,
         context.table_scroll_label,
         context.replacements,
+        context.citations,
     )
     .map_err(super::component::ComponentRenderError::Markdown)?;
     let events = replace_component_bodies(events, components, render_component)?;
@@ -104,7 +135,7 @@ where
     Ok(output)
 }
 
-fn replace_component_bodies<F>(
+pub(super) fn replace_component_bodies<F>(
     events: Vec<(Event<'static>, std::ops::Range<usize>)>,
     components: &[super::component::ComponentCall],
     mut render_component: F,
@@ -194,6 +225,32 @@ pub(super) fn transformed_events_with_links_anchors(
     table_scroll_label: Option<&str>,
     replacements: &[super::RendererReplacement],
 ) -> Result<Vec<(Event<'static>, std::ops::Range<usize>)>, RenderError> {
+    transformed_events_with_citations(
+        input,
+        renderer,
+        assets,
+        pages,
+        anchors,
+        table_scroll_label,
+        replacements,
+        &[],
+    )
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "render dependencies remain explicit at this boundary"
+)]
+fn transformed_events_with_citations(
+    input: &str,
+    renderer: &Renderer,
+    assets: Option<&AssetLinks>,
+    pages: Option<&PageLinks>,
+    anchors: Option<&[String]>,
+    table_scroll_label: Option<&str>,
+    replacements: &[super::RendererReplacement],
+    citations: &[super::citation::Replacement],
+) -> Result<Vec<(Event<'static>, std::ops::Range<usize>)>, RenderError> {
     if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config()) {
         return Err(RenderError::Footnote { label, span });
     }
@@ -219,6 +276,7 @@ pub(super) fn transformed_events_with_links_anchors(
         .collect();
     let events = picture::transform(input, events, assets)?;
     let events = apply_renderer_replacements(events, replacements);
+    let events = super::citation::replace_events(events, citations)?;
     let mut footnote_definition_depth = 0usize;
     let mut transformed_events = Vec::with_capacity(events.len());
     for (event, span) in events {

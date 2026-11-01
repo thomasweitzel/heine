@@ -31,11 +31,29 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-01
+
+### Added
+
+- **Citations.** Pages can cite local BibTeX entries with an in-text CSL style
+  and place a checked bibliography from their template. Directory defaults can
+  share input selections across pages.
+
 ### Changed
 
 - **Starter-site search excerpts.** The maintained search client now uses an
   80/160 preferred context and bounds word-boundary expansion at 100/200 code
   points, so an unusually long token cannot produce an unbounded excerpt.
+
+### Fixed
+
+- **Renderer placement.** Renderer output before a Markdown component or margin
+  footnote no longer invalidates the later source plan.
+- **Component headings.** A Setext heading at the start of a Markdown component
+  body no longer includes the component fence in its table-of-contents text or ID.
+- **Component footnote checks.** Margin footnotes now use the same Markdown
+  structure as component rendering, so errors identify the rendered document's
+  footnote relationships and retain locations in the authored source.
 
 ## [0.10.1] - 2026-10-25
 

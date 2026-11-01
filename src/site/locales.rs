@@ -80,6 +80,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
     let mut entries_by_locale = BTreeMap::new();
     let mut content_inputs = BTreeSet::new();
     let mut draft_uses_margin_footnotes = false;
+    let mut citation_inputs = super::citation_inputs::InputCache::default();
 
     for locale in i18n.locales() {
         let root = content_root.join(locale.to_string());
@@ -136,6 +137,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
                 draft,
                 loader::PageLoadContext {
                     project_content_root: content_root,
+                    citation_inputs: &mut citation_inputs,
                     content_root: &root,
                     diagnostics,
                     locale,

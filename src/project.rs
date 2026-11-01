@@ -12,8 +12,10 @@ const DEPLOY_DIRECTORY: &str = "deploy";
 const TEMPLATES_DIRECTORY: &str = "templates";
 const LOCALES_DIRECTORY: &str = "locales";
 const LICENSES_DIRECTORY: &str = "LICENSES";
-const INPUT_DIRECTORIES: [&str; 6] = [
+const CITATIONS_DIRECTORY: &str = "citations";
+const INPUT_DIRECTORIES: [&str; 7] = [
     CONTENT_DIRECTORY,
+    CITATIONS_DIRECTORY,
     DATA_DIRECTORY,
     DEPLOY_DIRECTORY,
     TEMPLATES_DIRECTORY,
@@ -33,6 +35,7 @@ pub(crate) struct ProjectPaths {
     root: PathBuf,
     config: PathBuf,
     content: PathBuf,
+    citations: PathBuf,
     data: PathBuf,
     deploy: PathBuf,
     templates: PathBuf,
@@ -46,6 +49,7 @@ impl ProjectPaths {
             root: root.into(),
             config: root.join(CONFIG_FILE),
             content: root.join(CONTENT_DIRECTORY),
+            citations: root.join(CITATIONS_DIRECTORY),
             data: root.join(DATA_DIRECTORY),
             deploy: root.join(DEPLOY_DIRECTORY),
             templates: root.join(TEMPLATES_DIRECTORY),
@@ -94,6 +98,7 @@ impl ProjectPaths {
         path == self.config
             || [
                 &self.content,
+                &self.citations,
                 &self.data,
                 &self.deploy,
                 &self.templates,
@@ -127,6 +132,7 @@ mod tests {
     fn recognizes_every_reserved_input_root_for_output_validation() {
         for root in [
             "content",
+            "citations",
             "data",
             "deploy",
             "templates",

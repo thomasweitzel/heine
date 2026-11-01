@@ -193,6 +193,7 @@ struct SitemapDirectoryBoundary {
 /// published catalog before its richer page relationships are resolved.
 pub(super) struct PageLoadContext<'a> {
     pub(super) project_content_root: &'a Path,
+    pub(super) citation_inputs: &'a mut super::citation_inputs::InputCache,
     pub(super) content_root: &'a Path,
     pub(super) diagnostics: &'a crate::source_diagnostic::DiagnosticPaths,
     pub(super) locale: &'a Locale,
@@ -520,7 +521,106 @@ pub(super) fn load_page(
         }
         content.insert(name, loaded.value);
     }
-    let toc = if let Some(config) = toc_config {
+    let page_citations = raw
+        .citations
+        .map(|value| policy::parse_citations(value, path, &text, false))
+        .transpose()?;
+    let declarations =
+        ancestors
+            .iter()
+            .filter_map(|descriptor| {
+                descriptor.citations.as_ref().map(|policy| {
+                    super::citation_inputs::policy::Declaration {
+                        policy,
+                        path: &descriptor.path,
+                        source: &descriptor.text,
+                    }
+                })
+            })
+            .chain(page_citations.as_ref().map(|policy| {
+                super::citation_inputs::policy::Declaration {
+                    policy,
+                    path,
+                    source: &text,
+                }
+            }));
+    let citation_setting =
+        super::citation_inputs::policy::resolve(declarations).map_err(|error| {
+            let (error_path, span) = match &error {
+                super::citation_inputs::policy::Error::TrueSwitch { path, span }
+                | super::citation_inputs::policy::Error::NothingToDisable { path, span } => {
+                    (path.as_ref(), span.clone())
+                }
+            };
+            let source = if error_path == path {
+                &text
+            } else {
+                ancestors
+                    .iter()
+                    .find(|item| item.path == error_path)
+                    .map_or(&text, |item| &item.text)
+            };
+            invalid(error_path, source, span.into(), error.to_string())
+        })?;
+    let citations = citation_setting
+        .map(|setting| {
+            let root = context
+                .project_content_root
+                .parent()
+                .unwrap_or(context.project_content_root);
+            context
+                .citation_inputs
+                .plan(
+                    setting.settings,
+                    &root.join("citations"),
+                    &content,
+                    &markdown_names,
+                    (setting.path, setting.source),
+                )
+                .map_err(|error| {
+                    if let super::citation_inputs::PlanError::Inputs(
+                        super::citation_inputs::SettingsError::Bibliography(bib_error),
+                    ) = &error
+                        && let Some(report) = citation_input_diagnostic(
+                            bib_error,
+                            &root.join("citations"),
+                            context.diagnostics,
+                        )
+                    {
+                        return Error::CitationInput(Box::new(report));
+                    }
+                    let span = match &error {
+                        super::citation_inputs::PlanError::Content { span, .. } => span.clone(),
+                        super::citation_inputs::PlanError::Inputs(
+                            super::citation_inputs::SettingsError::Input { span, .. }
+                            | super::citation_inputs::SettingsError::Content { span }
+                            | super::citation_inputs::SettingsError::Locale { span, .. }
+                            | super::citation_inputs::SettingsError::Style { span, .. },
+                        ) => span.clone(),
+                        _ => 0..0,
+                    };
+                    let mut message = error.to_string();
+                    let mut cause = std::error::Error::source(&error);
+                    while let Some(source) = cause {
+                        message.push_str(": ");
+                        message.push_str(&source.to_string());
+                        cause = source.source();
+                    }
+                    invalid(setting.path, setting.source, span.into(), message)
+                })
+        })
+        .transpose()?;
+    if let Some(plan) = &citations
+        && template.is_none()
+    {
+        return Err(invalid(
+            &plan.declaration_path,
+            &plan.declaration_source,
+            plan.declaration_span.clone().into(),
+            "citations require a page template to render the source and bibliography",
+        ));
+    }
+    let toc_input = if let Some(config) = toc_config {
         let settings = config.settings;
         if !markdown_names.contains(&settings.content) {
             return Err(invalid(
@@ -544,17 +644,11 @@ pub(super) fn load_page(
                 ),
             ));
         };
-        Some(crate::markdown::toc_plan(
-            settings.content.clone(),
-            markdown,
-            context.markdown,
-            settings.min_level,
-            settings.max_level,
-        ))
+        Some((settings, markdown))
     } else {
         None
     };
-    let footnotes = if let Some(config) = footnotes_config {
+    let footnote_input = if let Some(config) = footnotes_config {
         let settings = config.settings;
         let Some(markdown) = markdown_sources.get(&settings.content) else {
             return Err(invalid(
@@ -567,27 +661,86 @@ pub(super) fn load_page(
                 ),
             ));
         };
-        let marker_message = context
-            .markdown
-            .margin_footnotes()
+        let marker = context.markdown.margin_footnotes()
             .map(crate::config::MarginFootnotesConfig::marker_message)
-            .ok_or_else(|| {
-                invalid(
-                    config.path,
-                    config.source,
-                    settings.span,
-                    "margin footnotes require markdown.margin_footnotes.marker_message in heine.toml",
-                )
+            .ok_or_else(|| invalid(config.path, config.source, settings.span,
+                "margin footnotes require markdown.margin_footnotes.marker_message in heine.toml"))?;
+        Some((settings, markdown, marker))
+    } else {
+        None
+    };
+
+    let mut component_plans = BTreeMap::new();
+    if let Some((settings, source, _)) = &footnote_input
+        && source.source.contains(":::component[")
+        && let Some(plan) = crate::markdown::ComponentPlan::parse_for_planning(&source.source)
+            .map_err(|error| {
+                Error::Markdown(Box::new(crate::markdown::source_error(
+                    &source.display_path,
+                    &source.source,
+                    error,
+                )))
             })?
-            .to_owned();
-        Some(
-            crate::markdown::margin_footnotes::plan(
-                markdown.display_path.as_ref(),
+    {
+        component_plans.insert(settings.content.clone(), plan);
+    }
+    if let Some((settings, markdown)) = &toc_input
+        && !component_plans.contains_key(&settings.content)
+        && footnote_input
+            .as_ref()
+            .is_none_or(|(footnotes, _, _)| footnotes.content != settings.content)
+        && markdown.contains(":::component[")
+        && let Ok(Some(plan)) = crate::markdown::ComponentPlan::parse_for_planning(markdown)
+    {
+        // A table-of-contents-only component error retains its later diagnostic order.
+        component_plans.insert(settings.content.clone(), plan);
+    }
+
+    let mut shared_footnotes = None;
+    let toc = toc_input.map(|(settings, markdown)| {
+        let input = component_plans
+            .get(&settings.content)
+            .map_or(markdown, |plan| plan.normalized());
+        if let Some((_, source, marker)) = footnote_input
+            .as_ref()
+            .filter(|(footnotes, _, _)| footnotes.content == settings.content)
+        {
+            let (toc, notes) = crate::markdown::margin_footnotes::plan_with_toc(
+                &source.display_path,
                 settings.content.clone(),
-                &markdown.source,
+                (input, &source.source),
                 context.markdown,
-                marker_message,
+                (*marker).to_owned(),
+                settings.min_level,
+                settings.max_level,
+            );
+            shared_footnotes = Some(notes);
+            toc
+        } else {
+            crate::markdown::toc_plan(
+                settings.content.clone(),
+                input,
+                context.markdown,
+                settings.min_level,
+                settings.max_level,
             )
+        }
+    });
+    let footnotes = if let Some((settings, source, marker)) = footnote_input {
+        let input = component_plans
+            .get(&settings.content)
+            .map_or(source.source.as_str(), |plan| plan.normalized());
+        Some(
+            match shared_footnotes {
+                Some(result) => result,
+                None => crate::markdown::margin_footnotes::plan(
+                    &source.display_path,
+                    settings.content.clone(),
+                    (input, &source.source),
+                    context.markdown,
+                    marker.to_owned(),
+                ),
+            }
             .map_err(Error::MarginFootnotes)?,
         )
     } else {
@@ -705,13 +858,14 @@ pub(super) fn load_page(
         renderer_sources,
         renderer_requests: BTreeMap::new(),
         renderer_replacements: BTreeMap::new(),
-        component_plans: BTreeMap::new(),
+        component_plans,
         component_sources: BTreeMap::new(),
         renderer_resources: Vec::new(),
         markdown_facts: BTreeMap::new(),
         markdown_search_sections: None,
         toc,
         footnotes,
+        citations,
         draft,
         metadata,
         translationid,
@@ -1403,6 +1557,78 @@ pub(crate) struct PageTomlDiagnostic {
     source_code: NamedSource<String>,
     #[label("{message}")]
     span: SourceSpan,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("invalid bibliography {path}: {message}")]
+#[diagnostic(code(heine::citation::bibliography))]
+pub(crate) struct CitationInputDiagnostic {
+    path: PathBuf,
+    message: String,
+    #[source_code]
+    source_code: NamedSource<String>,
+    #[label("bibliography problem here")]
+    span: SourceSpan,
+    #[related]
+    related: Vec<CitationInputRelated>,
+}
+
+#[derive(Debug, Diagnostic, ThisError)]
+#[error("first declaration is here")]
+struct CitationInputRelated {
+    #[source_code]
+    source_code: NamedSource<String>,
+    #[label("first declaration")]
+    span: SourceSpan,
+}
+
+fn citation_input_diagnostic(
+    error: &super::citation_inputs::bibliography::Error,
+    root: &Path,
+    paths: &crate::source_diagnostic::DiagnosticPaths,
+) -> Option<CitationInputDiagnostic> {
+    use super::citation_inputs::bibliography::{Error as BibError, Location};
+    let (location, first) = match error {
+        BibError::Parse { path, source } => (
+            Location {
+                path: path.clone(),
+                span: source.span.clone(),
+            },
+            None,
+        ),
+        BibError::Duplicate { first, second, .. } => (second.clone(), Some(first)),
+        BibError::InvalidUrl { location, .. }
+        | BibError::Cycle { location }
+        | BibError::TooDeep { location }
+        | BibError::InvalidAliases { location }
+        | BibError::ExpansionTooLarge { location }
+        | BibError::TooMuchWork { location, .. } => (location.clone(), None),
+    };
+    let read_source = |location: &Location| {
+        let text = super::citation_inputs::read(root, &location.path).ok()?;
+        let path = paths.display_path(&root.join(&location.path));
+        Some((
+            path.clone(),
+            crate::source_diagnostic::named_source_at_display_path(&path, text, "BibTeX"),
+        ))
+    };
+    let (path, source_code) = read_source(&location)?;
+    let related = first
+        .and_then(|first| {
+            read_source(first).map(|(_, source_code)| CitationInputRelated {
+                source_code,
+                span: first.span.clone().into(),
+            })
+        })
+        .into_iter()
+        .collect();
+    Some(CitationInputDiagnostic {
+        path,
+        message: error.to_string(),
+        source_code,
+        span: location.span.into(),
+        related,
+    })
 }
 
 /// A semantic page-definition error tied to the field that caused it.

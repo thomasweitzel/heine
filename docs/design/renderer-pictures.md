@@ -206,7 +206,7 @@ input. `--refresh-renderers` refreshes both variants. A cache hit for one
 appearance does not excuse a failed or missing other appearance.
 
 On a cold cache and during refresh, a picture request costs two renderer
-invocations. That cost is deliberate: automatic recolouring of one fixed
+invocations. That cost is deliberate: automatic recoloring of one fixed
 result cannot reliably preserve diagram meaning or contrast. Independent cache
 entries avoid repeated invocations when an unchanged variant remains valid.
 
@@ -267,7 +267,7 @@ change because a page uses dark presentation. If two files carry a meaningful
 difference, authors must expose two explicit labeled links. Heine must not
 silently choose a download based on a browser preference.
 
-### Automatic recolouring and post-processing
+### Automatic recoloring and post-processing
 
 Heine does not invert, recolor, or inject CSS into renderer output. Such a
 transformation cannot preserve the meaning of diagrams, photographs, charts,

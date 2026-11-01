@@ -144,6 +144,7 @@ pub(super) struct RawPage {
     pub(super) sitemap: Option<toml::Spanned<bool>>,
     pub(super) toc: Option<toml::Spanned<toml::Value>>,
     pub(super) footnotes: Option<toml::Spanned<toml::Value>>,
+    pub(super) citations: Option<toml::Spanned<toml::Value>>,
     pub(super) extra: Option<toml::Spanned<toml::Value>>,
     #[serde(default)]
     pub(super) content: BTreeMap<String, toml::Spanned<String>>,
@@ -378,6 +379,7 @@ pub(super) struct Page {
         Option<BTreeMap<String, Vec<crate::markdown::SearchTextSection>>>,
     pub(super) toc: Option<TocPlan>,
     pub(super) footnotes: Option<MarginFootnotePlan>,
+    pub(super) citations: Option<super::citation_inputs::PagePlan>,
     pub(super) draft: bool,
     pub(super) metadata: Metadata,
     pub(super) translationid: Option<TranslationId>,
@@ -421,6 +423,7 @@ pub(super) struct RendererResourceOrigin {
 /// contracts gain additional checked inputs.
 pub(super) struct MarkdownAnalysisInputs<'a> {
     pub(super) renderer: &'a MarkdownRenderer,
+    pub(super) diagnostics: &'a crate::source_diagnostic::DiagnosticPaths,
     pub(super) assets: &'a AssetLinks,
     pub(super) pages: &'a PageLinks,
     pub(super) words_per_minute: Option<NonZeroU64>,
@@ -596,6 +599,7 @@ impl Page {
     ) -> Result<(), Box<crate::markdown::SourceError>> {
         let MarkdownAnalysisInputs {
             renderer,
+            diagnostics,
             assets,
             pages,
             words_per_minute,
@@ -613,49 +617,40 @@ impl Page {
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
         let mut renderer_resources = Vec::new();
         for (name, source) in &self.markdown_sources {
-            let component_plan =
+            let mut component_plan = if let Some(plan) = self.component_plans.remove(name) {
+                crate::markdown::ComponentPlan::check_placement(&source.source).map_err(
+                    |error| {
+                        Box::new(crate::markdown::source_error(
+                            &source.display_path,
+                            &source.source,
+                            error,
+                        ))
+                    },
+                )?;
+                Some(plan)
+            } else {
                 crate::markdown::ComponentPlan::parse(&source.source).map_err(|error| {
                     Box::new(crate::markdown::source_error(
                         &source.display_path,
                         &source.source,
                         error,
                     ))
-                })?;
+                })?
+            };
             let input = component_plan.as_ref().map_or(
                 source.source.as_str(),
                 crate::markdown::ComponentPlan::normalized,
             );
-            if let Some(plan) = self
-                .footnotes
-                .as_ref()
-                .filter(|plan| plan.content() == name)
-                && component_plan.is_some()
-            {
-                self.footnotes = Some(
-                    crate::markdown::margin_footnotes::plan(
-                        &source.display_path,
-                        plan.content().to_owned(),
-                        input,
-                        renderer.config(),
-                        plan.marker_message().to_owned(),
-                    )
-                    .map_err(|error| {
-                        Box::new(crate::markdown::source_error(
-                            &source.display_path,
-                            &source.source,
-                            crate::markdown::RenderError::MarginFootnote {
-                                message: error.to_string(),
-                                span: 0..0,
-                            },
-                        ))
-                    })?,
-                );
-            }
             let fragments = self
                 .toc
                 .as_ref()
                 .filter(|toc| toc.content() == name)
                 .map(TocPlan::anchors);
+            let mut citation_collector = self
+                .citations
+                .as_ref()
+                .filter(|plan| plan.content == *name)
+                .map(|_| crate::markdown::citation::Collector::with_headings(fragments.is_some()));
             let analysis = crate::markdown::analyze_source_with_links(SourceAnalysisInputs {
                 display_path: &source.display_path,
                 input,
@@ -666,7 +661,70 @@ impl Page {
                 fragments,
                 collect_search_sections,
                 renderer_sources: &self.renderer_sources,
+                citations: citation_collector.as_mut(),
             })?;
+            if let Some(collector) = citation_collector {
+                if let Some(problem) = collector.problems.into_iter().next() {
+                    return Err(Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        &source.source,
+                        crate::markdown::RenderError::Citation {
+                            message: problem.message.to_owned(),
+                            span: problem.span,
+                        },
+                    )));
+                }
+                if let Some(plan) = self.citations.as_mut() {
+                    for group in &collector.groups {
+                        for span in &group.keys {
+                            let key = &input[span.clone()];
+                            if !plan.contains_key(key) {
+                                return Err(Box::new(crate::markdown::source_error(
+                                    &source.display_path,
+                                    &source.source,
+                                    crate::markdown::RenderError::Citation {
+                                        message: format!("unknown citation key {key:?}"),
+                                        span: span.clone(),
+                                    },
+                                )));
+                            }
+                        }
+                    }
+                    plan.groups = collector.groups;
+                    plan.format(input, &locale.to_string()).map_err(|error| {
+                        if let Some(span) = error.citation_span() {
+                            Box::new(crate::markdown::source_error(
+                                &source.display_path,
+                                &source.source,
+                                crate::markdown::RenderError::Citation {
+                                    message: error.to_string(),
+                                    span,
+                                },
+                            ))
+                        } else if let Some((path, input, span)) = error
+                            .bibliography_span()
+                            .and_then(|span| plan.bibliography_source(span))
+                        {
+                            Box::new(crate::markdown::citation_bibliography_error(
+                                &diagnostics.display_path(&path),
+                                input,
+                                span,
+                                error.to_string(),
+                            ))
+                        } else {
+                            Box::new(crate::markdown::citation_configuration_error(
+                                &plan.declaration_path,
+                                &plan.declaration_source,
+                                plan.style_span.clone(),
+                                error.to_string(),
+                            ))
+                        }
+                    })?;
+                    if let Some(toc) = self.toc.as_mut().filter(|toc| toc.content() == name) {
+                        toc.update_heading_texts(&plan.heading_texts(&collector.headings));
+                    }
+                }
+            }
             if !analysis.renderer_requests.is_empty() && !renderer.allows_external_renderers() {
                 return Err(Box::new(crate::markdown::source_error(
                     &source.display_path,
@@ -706,6 +764,16 @@ impl Page {
             }
             let mut transformed = input.to_owned();
             let mut replacements = Vec::new();
+            let mut rebases = Vec::new();
+            let needs_rebase = self
+                .citations
+                .as_ref()
+                .is_some_and(|plan| plan.content == *name)
+                || self
+                    .footnotes
+                    .as_ref()
+                    .is_some_and(|plan| plan.content() == name)
+                || component_plan.is_some();
             let renderer_source = analysis
                 .renderer_requests
                 .iter()
@@ -920,10 +988,63 @@ impl Page {
                     request.placement,
                     replacement,
                 );
-                transformed.replace_range(request.span.clone(), &replacement.markdown_marker());
+                let marker = replacement.markdown_marker();
+                if needs_rebase {
+                    rebases.push((request.span.clone(), marker.len()));
+                }
+                transformed.replace_range(request.span.clone(), &marker);
                 replacements.push(replacement);
             }
             rendered_content.insert(name.clone(), transformed);
+            if !rebases.is_empty() {
+                let offsets = crate::markdown::rebase::Rebase::new(&rebases).map_err(|span| {
+                    Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        &source.source,
+                        crate::markdown::RenderError::RendererOffsets { span },
+                    ))
+                })?;
+                if let Some(plan) = self.citations.as_mut().filter(|plan| plan.content == *name) {
+                    plan.rebase(&offsets).map_err(|span| {
+                        Box::new(crate::markdown::source_error(
+                            &source.display_path,
+                            &source.source,
+                            crate::markdown::RenderError::Citation {
+                                message: "citation overlaps a renderer directive".into(),
+                                span,
+                            },
+                        ))
+                    })?;
+                }
+                if let Some(plan) = self
+                    .footnotes
+                    .as_mut()
+                    .filter(|plan| plan.content() == name)
+                {
+                    plan.rebase(&offsets).map_err(|span| {
+                        Box::new(crate::markdown::source_error(
+                            &source.display_path,
+                            &source.source,
+                            crate::markdown::RenderError::MarginFootnote {
+                                message: "margin footnote overlaps a renderer directive".into(),
+                                span,
+                            },
+                        ))
+                    })?;
+                }
+                if let Some(plan) = &mut component_plan {
+                    plan.rebase(&offsets).map_err(|span| {
+                        Box::new(crate::markdown::source_error(
+                            &source.display_path,
+                            &source.source,
+                            crate::markdown::RenderError::Component {
+                                message: "renderer directive crosses a component boundary".into(),
+                                span,
+                            },
+                        ))
+                    })?;
+                }
+            }
             if let Some(plan) = component_plan {
                 component_plans.insert(name.clone(), plan);
                 component_sources.insert(name.clone(), source.clone());
@@ -988,6 +1109,9 @@ impl Page {
             markdown: self.markdown_facts,
             toc: self.toc,
             footnotes: self.footnotes.map(FootnotesView::from),
+            citations: self
+                .citations
+                .and_then(super::citation_inputs::PagePlan::into_view),
             draft: self.draft,
             title,
             description,
@@ -1070,6 +1194,8 @@ pub(crate) struct PageView {
     markdown: BTreeMap<String, crate::markdown::MarkdownFacts>,
     toc: Option<TocPlan>,
     footnotes: Option<FootnotesView>,
+    #[serde(skip)]
+    citations: Option<super::citation_inputs::CitationView>,
     draft: bool,
     title: Option<String>,
     description: Option<String>,
@@ -1106,6 +1232,10 @@ impl PageView {
 
     pub(crate) fn toc(&self) -> Option<&TocPlan> {
         self.toc.as_ref()
+    }
+
+    pub(crate) fn citations(&self) -> Option<&super::citation_inputs::CitationView> {
+        self.citations.as_ref()
     }
 
     pub(crate) fn footnotes(&self) -> Option<&FootnotesView> {

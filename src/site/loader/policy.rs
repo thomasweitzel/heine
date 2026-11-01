@@ -35,6 +35,48 @@ use super::{
     validate_requirements,
 };
 
+pub(super) fn parse_citations(
+    raw: toml::Spanned<toml::Value>,
+    path: &Path,
+    source: &str,
+    directory: bool,
+) -> Result<crate::site::citation_inputs::policy::Policy, Error> {
+    use crate::site::citation_inputs::{Settings, policy::Policy};
+    #[derive(serde::Deserialize)]
+    struct Page {
+        citations: Settings,
+    }
+    #[derive(serde::Deserialize)]
+    struct Directory {
+        pages: Page,
+    }
+    let span = raw.span();
+    match raw.into_inner() {
+        toml::Value::Boolean(value) => Ok(Policy::Switch(toml::Spanned::new(span, value))),
+        toml::Value::Table(_) => {
+            let parsed = if directory {
+                toml::from_str::<Directory>(source).map(|value| value.pages.citations)
+            } else {
+                toml::from_str::<Page>(source).map(|value| value.citations)
+            };
+            parsed.map(Policy::Enabled).map_err(|error| {
+                invalid(
+                    path,
+                    source,
+                    error.span().unwrap_or(span).into(),
+                    error.message(),
+                )
+            })
+        }
+        _ => Err(invalid(
+            path,
+            source,
+            span.into(),
+            "citations must be false or a complete table",
+        )),
+    }
+}
+
 pub(super) fn parse_toc(
     raw: toml::Spanned<toml::Value>,
     path: &Path,
@@ -364,6 +406,7 @@ struct RawPagePolicy {
     sitemap: Option<toml::Spanned<bool>>,
     toc: Option<toml::Spanned<toml::Value>>,
     footnotes: Option<toml::Spanned<toml::Value>>,
+    citations: Option<toml::Spanned<toml::Value>>,
     metadata: Option<RawMetadataPolicy>,
 }
 
@@ -382,6 +425,7 @@ pub(in crate::site) struct DirectoryDescriptor {
     pub(super) sitemap_exclusion: Option<SourceSpan>,
     pub(super) toc: Option<TocPolicy>,
     pub(super) footnotes: Option<FootnotesPolicy>,
+    pub(super) citations: Option<crate::site::citation_inputs::policy::Policy>,
     pub(super) modified: SystemTime,
 }
 
@@ -535,6 +579,10 @@ pub(in crate::site) fn load_descriptors(
             .footnotes
             .map(|value| parse_footnotes(value, path, &text, "pages.footnotes"))
             .transpose()?;
+        let citations = page_policy
+            .citations
+            .map(|value| parse_citations(value, path, &text, true))
+            .transpose()?;
         let page_requirements =
             requirements(page_policy.metadata, path, &text, RequirementTarget::Page)?;
         let template = match page_policy.template {
@@ -568,12 +616,35 @@ pub(in crate::site) fn load_descriptors(
                 sitemap_exclusion,
                 toc,
                 footnotes,
+                citations,
                 modified: metadata_modified(source_path)?,
             },
         );
     }
     for descriptor in descriptors.values() {
         let ancestors = descriptor_ancestors(&descriptor.relative, &descriptors);
+        let declarations = ancestors.iter().filter_map(|ancestor| {
+            ancestor.citations.as_ref().map(|policy| {
+                crate::site::citation_inputs::policy::Declaration {
+                    policy,
+                    path: &ancestor.path,
+                    source: &ancestor.text,
+                }
+            })
+        });
+        crate::site::citation_inputs::policy::resolve(declarations).map_err(|error| {
+            let (path, span) = match &error {
+                crate::site::citation_inputs::policy::Error::TrueSwitch { path, span }
+                | crate::site::citation_inputs::policy::Error::NothingToDisable { path, span } => {
+                    (path.as_ref(), span.clone())
+                }
+            };
+            let source = ancestors
+                .iter()
+                .find(|ancestor| ancestor.path == path)
+                .map_or("", |ancestor| ancestor.text.as_str());
+            invalid(path, source, span.into(), error.to_string())
+        })?;
         let requirements = ancestors.iter().flat_map(|ancestor| {
             ancestor
                 .metadata_requirements
