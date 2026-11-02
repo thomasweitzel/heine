@@ -47,8 +47,18 @@ suppresses an inherited setting. `content` is resolved separately for each
 page. A dependent style needs `parent_style`, a path to its local independent
 parent. A `locale` value overrides the page locale for CSL formatting.
 
+Heine passes that locale to Hayagriva, which uses terms defined by the CSL
+style and its bundled CSL locale data. The bundled data covers a finite set of
+locales, not every locale Heine accepts. Hayagriva looks for the requested
+locale and an applicable language fallback; a term it cannot find can fall
+back to US English. These terms do not come from the site's Fluent messages.
+The style decides which terms to display and whether to use their short or long
+forms.
+
 Citation groups use semicolons. Locators accept `p.`, `pp.`, `chap.`, and
-`chapter`. A numeric group with a locator expands instead of collapsing.
+`chapter` in every locale. These identify the kind of locator; the CSL style
+and locale determine its displayed label. A numeric group with a locator
+expands instead of collapsing.
 Other collapsed groups with locators are rejected. Prefixes, suffixes, and
 note styles are not supported. Citation rules that can reach `ibid`,
 `ibid-with-locator`, or `near-note` are rejected. A locator containing periods
