@@ -68,6 +68,9 @@ literal; use `\[@smith2024]` to write citation-shaped prose literally. An
 unclosed bracket such as `[@smith2024` remains literal Markdown. Citations in ordinary
 and margin footnotes and in Markdown block components are supported.
 
+Heine's fixture tests exercise representative APA and IEEE styles. Passing
+those examples does not establish conformance for every use of either style.
+
 Bibliography URLs must be absolute HTTP or HTTPS URLs without credentials.
 Write URL characters literally, for example `&` rather than `\&`; use URL
 percent encoding where the URL requires it.

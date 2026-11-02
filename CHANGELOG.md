@@ -31,6 +31,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bibliography URLs.** An assembled URL no longer fails because unrelated
+  bibliography text contains consecutive hyphens.
+
 ## [0.11.0] - 2026-11-01
 
 ### Added

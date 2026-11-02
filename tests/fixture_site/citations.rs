@@ -112,6 +112,28 @@ fn configured_fixture() -> Fixture {
 }
 
 #[test]
+fn citations_render_in_lists_tables_and_blockquotes() {
+    let fixture = configured_fixture();
+    fixture.write("heine.toml", "[markdown]\nextensions=['tables']\n");
+    fixture.write(
+        "content/en/index.md",
+        "- List [@work].\n\n| Source |\n| --- |\n| Table [@work] |\n\n> Quote [@work].\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ markdown(content='main') }}{{ bibliography() }}",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("citations in Markdown structures build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    for prefix in ["<li>List ", "<td>Table ", "<blockquote>\n<p>Quote "] {
+        assert!(
+            output.contains(&format!("{prefix}<a href=\"#__heine-bibliography\"")),
+            "{output}"
+        );
+    }
+}
+
+#[test]
 fn bibliography_and_selected_source_must_each_be_placed_once() {
     for template in [
         "{{ markdown(content='main') }}",
@@ -274,6 +296,23 @@ fn literal_bibliography_url_keeps_query_and_percent_encoding() {
         html.contains("https://example.org/a%2D%2Db?a=1&amp;b=2"),
         "{html}"
     );
+}
+
+#[test]
+fn assembled_url_ignores_hyphens_in_unrelated_bibliography_text() {
+    let fixture = configured_fixture();
+    fixture.write(
+        "citations/works.bib",
+        "@string{host={https://example.org}}\n@book{unrelated,title={A--B}}\n@book{work,title={Example},url=host # {/path}}\n",
+    );
+    fixture.write("citations/style.csl", r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><info><title>Example</title><id>https://example.org/style</id></info><citation><layout><text variable="title"/></layout></citation><bibliography><layout><text variable="URL"/></layout></bibliography></style>"#);
+    fixture.write(
+        "templates/page.tera",
+        "{{ markdown(content='main') }}{{ bibliography() }}",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("unrelated hyphens do not affect URL");
+    let html = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(html.contains("https://example.org/path"), "{html}");
 }
 
 #[test]

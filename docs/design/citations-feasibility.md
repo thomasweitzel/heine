@@ -45,6 +45,21 @@ dropped a malformed URL during conversion. Heine checks URLs before conversion.
 The investigation did not establish a general normalization rule. Heine
 reports escapes such as `\&` and asks authors to write URL characters
 literally; it also rejects consecutive hyphens that the parser would change.
+`biblatex` exposes resolved chunks and permits replacing an entry's fields,
+but a replacement would have to recover the intended URL across authored
+fields, abbreviations, and inherited values before Hayagriva converts it.
+That API alone does not establish that such recovery preserves every URL, so
+the checks remain in place.
+
+The `resolved_url_spans_do_not_always_identify_only_the_url` and
+`url_span_can_include_unrelated_hyphens` tests show why the hyphen check must
+use raw input. A resolved chunk assembled from an abbreviation and a literal
+can have a span that covers unrelated entries between them. Heine checks the
+actual raw URL fields and referenced abbreviations, avoiding a false rejection
+when unrelated text contains `--`.
+After bibliography parsing, URL checks follow entry order. A hyphen error is
+ordered at the entry that declares the URL, even when an earlier entry inherits
+it. Its diagnostic points to the actual fragment containing the hyphens.
 
 Per-item prefixes and suffixes need more work: collapsed and reordered output
 does not always expose the mapping needed to attach them without changing
@@ -58,6 +73,13 @@ sampled comparison with Pandoc selected the non-`ibid` branch. Sorting and
 locators can affect the relevant processor sequence, so a document-specific
 exception needs further evidence. Heine conservatively rejects reachable
 position conditions that it cannot handle reliably.
+
+In Hayagriva 0.10.1, the final position calculation compares each sorted item
+with the preceding item, including items within a group and the last item of a
+previous group. A narrower check would need to account for that ordering,
+repeated keys, locators, and processor transformations before it could safely
+permit a style such as Chicago author-date. The existing style-level check
+therefore remains in place.
 
 A structural scan of 80 independent bundled styles found reachable `ibid` or
 `ibid-with-locator` conditions in four of 75 in-text styles and all five note
