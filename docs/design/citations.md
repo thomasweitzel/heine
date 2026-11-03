@@ -79,18 +79,17 @@ Bibliography URLs must be absolute HTTP or HTTPS URLs without credentials.
 Heine checks them before conversion because the processor can discard invalid
 URLs. URL fields are literal: an escaped character such as `\&` receives a
 source-located diagnostic rather than being silently rewritten. Consecutive
-hyphens also produce an error because the parser would change them. See the
-[URL findings](citations-feasibility.md#formatting-and-links).
+hyphens within a single value fragment also produce an error because the parser
+would change them. See the [URL findings](citations-feasibility.md#formatting-and-links).
 
 ## Remaining work
 
 The fixture tests exercise representative numeric and author-date styles, and
 the starter site's German reading cites the poem's newspaper and book
 publications. Third-party notices have been regenerated for the locked
-dependencies. The large-corpus investigation measured resolution work, not
-build time or memory; its results and limitations are in the investigation
-report. A runtime and memory comparison remains available for a later
-performance review.
+dependencies. The large-corpus investigation measured resolution work, build
+time, and peak memory on a local fixture. Its results and limitations are in
+the investigation report.
 Quick builds do not fully track citation inputs or changed selections; a full
 build is required for those changes.
 

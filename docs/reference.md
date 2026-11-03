@@ -338,8 +338,10 @@ locator. Bibliography URLs must use HTTP or HTTPS and must not contain
 credentials. Citation-shaped text in code, raw HTML contents, and renderer
 directive bodies remains literal, as does an unclosed citation bracket.
 BibTeX `ids` aliases resolve to their canonical entries. Duplicate CSL macro
-names are rejected. The bibliography parser cannot preserve consecutive
-hyphens in URLs, so Heine reports them rather than publish a changed link.
+names are rejected. The bibliography parser changes consecutive hyphens
+within a single BibTeX value fragment, so Heine reports them in URLs rather
+than publish a changed link. Hyphens assembled from separate fragments are
+preserved.
 Heine rejects cycles and limits bibliography resolution to 50 links per
 chain, 1,000 recursive visits per field or entry, and 100,000 source bytes
 per expanded abbreviation-bearing field.

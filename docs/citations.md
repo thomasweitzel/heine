@@ -81,8 +81,9 @@ when their works have the same year. Hayagriva tracks related
 Bibliography URLs must be absolute HTTP or HTTPS URLs without credentials.
 Write URL characters literally, for example `&` rather than `\&`; use URL
 percent encoding where the URL requires it.
-The current bibliography parser cannot preserve consecutive hyphens in URLs;
-Heine reports them so an author can use a verified percent-encoded URL.
+The bibliography parser changes consecutive hyphens within a single BibTeX
+value fragment. Heine reports them in URLs so an author can use a verified
+percent-encoded URL. Hyphens assembled from separate fragments are preserved.
 The CSL output adapter rejects unsupported output and URLs. The generated
 bibliography is a list with `csl-bibliography` and `csl-entry` classes. It
 also exposes `csl-first` and `csl-content` classes and layout data attributes
