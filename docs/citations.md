@@ -70,6 +70,13 @@ and margin footnotes and in Markdown block components are supported.
 
 Heine's fixture tests exercise representative APA and IEEE styles. Passing
 those examples does not establish conformance for every use of either style.
+In particular, Hayagriva can fail to distinguish different authors with the
+same surname in author-date citations. For example, works by Alice Smith and
+Bob Smith from 2020 can both appear as “Smith, 2020,” with neither given name
+in the bibliography. Heine does not currently detect this. Review the rendered
+citations and their reference entries when authors share a surname, especially
+when their works have the same year. Hayagriva tracks related
+[name-disambiguation problems](https://github.com/typst/hayagriva/issues/470).
 
 Bibliography URLs must be absolute HTTP or HTTPS URLs without credentials.
 Write URL characters literally, for example `&` rather than `\&`; use URL

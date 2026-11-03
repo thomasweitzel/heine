@@ -70,6 +70,10 @@ forms are diagnosed.
 A locator containing a period is rejected when a reachable style rule can
 strip it. These restrictions address observed processor behavior, not a claim
 that all other CSL styles conform. See the [processor findings](citations-feasibility.md#note-styles-and-position-conditions).
+In particular, an accepted author-date style can leave different authors with
+the same surname indistinguishable in both citations and the bibliography.
+Heine does not currently detect this; the [investigation report](citations-feasibility.md)
+records the examples and the limits of the checks considered.
 
 Bibliography URLs must be absolute HTTP or HTTPS URLs without credentials.
 Heine checks them before conversion because the processor can discard invalid

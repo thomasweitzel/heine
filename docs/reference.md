@@ -323,6 +323,10 @@ covers a finite set of locales. It tries the selected locale and an applicable
 language fallback; missing terms can fall back to US English. CSL terms do not
 use the site's Fluent messages.
 
+Hayagriva can leave citations and bibliography entries ambiguous when different
+authors share a surname. Heine does not currently detect this; see the
+[citation guide](citations.md) for an example.
+
 The selected input uses `[@key]` or `[@key; @other]`. Page and chapter
 locators use `p.`, `pp.`, `chap.`, or `chapter` in every locale; the CSL style
 and locale determine the displayed label. Numeric groups with locators

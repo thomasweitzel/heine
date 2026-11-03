@@ -730,4 +730,6 @@ mod tests {
         assert!(formatted.bibliography.contains("&lt;script&gt;"));
         assert!(!formatted.bibliography.contains("<script>"));
     }
+
+    mod feasibility;
 }
