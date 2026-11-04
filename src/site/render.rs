@@ -72,6 +72,7 @@ impl Site {
                     feeds: self.feeds.clone(),
                     search: self.search.clone(),
                     series: self.series.clone(),
+                    publications: self.publications.clone(),
                 },
             ),
             self.localization.clone(),

@@ -31,8 +31,16 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Added
+
+- **Publication catalogs.** Templates can list and select works from local
+  BibTeX files, sharing bibliography inputs with page citations.
+
 ### Fixed
 
+- **Bibliography aliases.** Conflicting keys and aliases now fail with both
+  declarations instead of resolving a citation to the wrong work.
+  **Migration:** Remove or rename each conflicting alias.
 - **Bibliography URLs.** An assembled URL no longer fails because unrelated
   bibliography text contains consecutive hyphens.
 

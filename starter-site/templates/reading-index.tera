@@ -1,0 +1,13 @@
+{% extends "kit/starter/section-index.tera" %}
+
+{% block content %}
+  {{ super() }}
+  <section class="prose">
+    <h2>{{ t(id="reading-publications") }}</h2>
+    <ul>
+      {% for work in publications() %}
+        <li>{{ work.title }}{% if work.date %} ({{ work.date.text }}){% endif %}{% if work.journal %}, {{ work.journal }}{% endif %}{% if work.publisher %}, {{ work.publisher | join(sep=", ") }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endblock %}

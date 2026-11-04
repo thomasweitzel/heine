@@ -96,8 +96,9 @@ build is required for those changes.
 ## Deferred work
 
 Note-generating styles need a shared numbering and punctuation plan with both
-footnote modes and reliable position handling. Publication catalogs need a
-separate contract for fields, custom metadata, filtering, ordering, and links.
+footnote modes and reliable position handling. The [publication catalog
+exploration](publication-catalog.md) examines fields, custom metadata,
+selection, ordering, and links separately.
 Uncited works, multiple citation sources or segments, per-item affixes, and
 numbered document cross-references also need separate checked relationships.
 

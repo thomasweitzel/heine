@@ -46,6 +46,7 @@ pub(super) struct TemplateRuntime {
     feeds: Arc<FeedCatalog>,
     search: Arc<SearchCatalog>,
     series: Arc<SeriesCatalog>,
+    publications: Option<crate::site::PublicationCatalog>,
     localization: Arc<Localization>,
     highlight_css: Option<String>,
     table_scroll_message: Option<String>,
@@ -53,6 +54,7 @@ pub(super) struct TemplateRuntime {
     source_aware_renders: Arc<Mutex<Vec<SourceAwareRender>>>,
     prepared_markdown: Arc<Mutex<BTreeMap<String, String>>>,
     bibliography: Arc<Mutex<Option<BibliographyRender>>>,
+    publication_error: Arc<Mutex<Option<crate::site::PublicationMappingError>>>,
 }
 
 #[derive(Debug)]
@@ -121,6 +123,7 @@ impl From<TemplateResources> for TemplateRuntime {
             feeds,
             search,
             series,
+            publications,
         } = resources.relationships;
         Self {
             assets: resources.asset_links,
@@ -135,6 +138,7 @@ impl From<TemplateResources> for TemplateRuntime {
             feeds,
             search,
             series,
+            publications,
             localization: resources.localization,
             highlight_css: resources.highlight_css,
             table_scroll_message: resources.table_scroll_message,
@@ -142,11 +146,32 @@ impl From<TemplateResources> for TemplateRuntime {
             source_aware_renders: Arc::new(Mutex::new(Vec::new())),
             prepared_markdown: Arc::new(Mutex::new(BTreeMap::new())),
             bibliography: Arc::new(Mutex::new(None)),
+            publication_error: Arc::new(Mutex::new(None)),
         }
     }
 }
 
 impl TemplateRuntime {
+    pub(super) fn record_publication_error(
+        &self,
+        error: crate::site::PublicationMappingError,
+    ) -> tera::Error {
+        let message = error.to_string();
+        if let Ok(mut slot) = self.publication_error.lock() {
+            *slot = Some(error);
+        }
+        tera::Error::message(message)
+    }
+
+    pub(super) fn take_publication_error(&self) -> Option<crate::site::PublicationMappingError> {
+        self.publication_error
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+    }
+    pub(super) fn publications(&self) -> Option<&crate::site::PublicationCatalog> {
+        self.publications.as_ref()
+    }
     pub(super) fn begin_bibliography(
         &self,
         citations: Option<&crate::site::CitationView>,

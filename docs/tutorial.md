@@ -666,6 +666,9 @@ When an article cites published works, the [citations guide](citations.md)
 shows how to select local bibliography and CSL files, write checked references,
 and place a reference list in the template.
 
+The [publication catalogs guide](publications.md) shows how templates can
+also present works from those BibTeX files, including uncited works.
+
 When one image needs light and dark visual variants, use a native Markdown
 `picture` block rather than template markup. The
 [color-scheme picture guide](markdown-pictures.md) shows the checked copied

@@ -1,4 +1,4 @@
-template = "section-index.tera"
+template = "reading-index.tera"
 title = "Lektüre"
 description = "Eine Lektüre von Heinrich Heines Nachtgedanken, über Mutter, Heimat und Ferne."
 summary = "Eine Lektüre von Heinrich Heines Nachtgedanken."

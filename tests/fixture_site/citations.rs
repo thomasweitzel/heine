@@ -112,6 +112,414 @@ fn configured_fixture() -> Fixture {
 }
 
 #[test]
+fn publication_view_example_renders_partial_metadata() {
+    let fixture = configured_fixture();
+    fixture.write("data/publications.json", r#"{"items":[{"key":"paper","title":"A Study","authors":["Alice Smith","Bob García"],"editors":[],"date":{"text":"2022-07"},"journal":"Example Journal","book_title":null},{"key":"chapter","title":"A Chapter","authors":[],"editors":[{"role":"editor","names":["Morgan Jones"]}],"date":null,"journal":null,"book_title":"Collected Research"},{"key":"minimal","title":null,"authors":[],"editors":[],"date":null,"journal":null,"book_title":null}]}"#);
+    fixture.write("templates/page.tera", r#"{{ markdown(content='main') }}{{ bibliography() }}{% for work in data.publications.items %}<p>{% if work.title %}{{ work.title }}{% else %}{{ work.key }}{% endif %}{% if work.authors %}: {{ work.authors | join(sep=', ') }}{% elif work.editors %}{% for group in work.editors %}: {{ group.names | join(sep=', ') }}{% endfor %}{% endif %}{% if work.date %} ({{ work.date.text }}){% endif %}{% if work.journal %}, {{ work.journal }}{% elif work.book_title %}, {{ work.book_title }}{% endif %}</p>{% endfor %}"#);
+    build_at(fixture.path(), BuildMode::Full).expect("publication view example builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(
+        output.contains("<p>A Study: Alice Smith, Bob García (2022-07), Example Journal</p>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<p>A Chapter: Morgan Jones, Collected Research</p>"),
+        "{output}"
+    );
+    assert!(output.contains("<p>minimal</p>"), "{output}");
+}
+
+#[test]
+fn publication_catalog_renders_without_page_citations() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[publications]\nbibliography=['works.bib']\nextra_fields=['code']\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template='page.tera'\ncontent.main='index.md'\n",
+    );
+    fixture.write("content/en/index.md", "Publications.\n");
+    fixture.write("citations/works.bib", "@article{paper,ids={alias},title={Example},author={Smith, Alice},year={2024},code={https://example.org/code}}\n@book{other,title={Other}}\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}{% for work in publications() %}{{ work.key }}:{{ work.title }}|{% endfor %}{% set selected = publication(key='alias') %}{{ selected.key }}:{{ selected.authors | join(sep=', ') }}:{{ selected.year }}:{{ selected.extra.code }}");
+    build_at(fixture.path(), BuildMode::Full).expect("catalog builds independently of citations");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(output.contains("paper:Example|other:Other|"), "{output}");
+    assert!(
+        output.contains("paper:Alice Smith:2024:https://example.org/code"),
+        "{output}"
+    );
+    fixture.write("templates/page.tera", "{{ publication(key='missing') }}");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("unknown key must fail");
+    assert!(format!("{error:?}").contains("missing"));
+}
+
+#[test]
+fn publication_catalog_reports_configuration_and_input_errors() {
+    for (config, expected) in [
+        ("[publications]\nbibliography=[]\n", "at least one"),
+        (
+            "[publications]\nbibliography=['works.bib']\nextra_fields=['Code']\n",
+            "lowercase",
+        ),
+        (
+            "[publications]\nbibliography=['works.bib']\nextra_fields=['code','code']\n",
+            "unique",
+        ),
+        (
+            "[publications]\nbibliography=['missing.bib']\n",
+            "missing.bib",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        fixture.write("heine.toml", config);
+        fixture.write(
+            "content/en/index.page",
+            "template='page.tera'\ncontent.main='index.md'\n",
+        );
+        fixture.write("content/en/index.md", "Hello.\n");
+        fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+        let error =
+            build_at(fixture.path(), BuildMode::Full).expect_err("invalid configuration must fail");
+        let diagnostic = format!("{error:?}");
+        assert!(diagnostic.contains(expected), "{diagnostic}");
+        assert!(diagnostic.contains("heine.toml"), "{diagnostic}");
+        if expected == "missing.bib" {
+            assert!(diagnostic.contains("read citation input"), "{diagnostic}");
+        }
+    }
+}
+
+#[test]
+fn publication_functions_require_configuration_and_check_arguments() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template='page.tera'\ncontent.main='index.md'\n",
+    );
+    fixture.write("content/en/index.md", "Hello.\n");
+    for template in ["{{ publications() }}", "{{ publication(key='work') }}"] {
+        fixture.write("templates/page.tera", template);
+        let error =
+            build_at(fixture.path(), BuildMode::Full).expect_err("missing catalog must fail");
+        assert!(format!("{error:?}").contains("configure [publications]"));
+    }
+    fixture.write("templates/page.tera", "{{ publications(unknown=true) }}");
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("unexpected argument must fail");
+    assert!(format!("{error:?}").contains("unknown"));
+}
+
+#[test]
+fn publication_catalog_maps_partial_fields_and_sorts_years() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[publications]\nbibliography=['works.bib']\nextra_fields=['abstract']\n",
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template='page.tera'\ncontent.main='index.md'\n",
+    );
+    fixture.write("content/en/index.md", "Publications.\n");
+    fixture.write("citations/works.bib", "@custom{range,author={van der Waals, Johannes and {Research Group}},date={2020/2022},abstract={A study}}\n@book{later,editor={Smith, Alice},year={2024},publisher={First and Second}}\n@book{future,date={forthcoming}}\n");
+    fixture.write("templates/page.tera", "{% for work in publications() | sort(attribute='year') | reverse %}{{ work.key }}={{ work.type }}{% if work.year is none %}:none{% else %}:{{ work.year }}{% endif %}{% if work.date %}:{{ work.date.text }}{% endif %}{% if work.authors %}:{{ work.authors | join(sep=',') }}{% endif %}{% for group in work.editors %}:{{ group.role }}={{ group.names | join(sep=',') }}{% endfor %}{% if work.publisher %}:{{ work.publisher | join(sep=',') }}{% endif %}{% if work.extra.abstract is defined %}:{{ work.extra.abstract }}{% endif %}|{% endfor %}");
+    build_at(fixture.path(), BuildMode::Full).expect("mapped works build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(
+        output
+            .contains("range=custom:none:2020/2022:Johannes van der Waals,Research Group:A study|"),
+        "{output}"
+    );
+    assert!(
+        output.contains("later=book:2024:2024:editor=Alice Smith:First,Second|"),
+        "{output}"
+    );
+    assert!(output.contains("future=book:none:forthcoming|"), "{output}");
+}
+
+#[test]
+fn publication_catalog_reports_invalid_legacy_year_at_source() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[publications]\nbibliography=['works.bib']\n");
+    fixture.write(
+        "content/en/index.page",
+        "template='page.tera'\ncontent.main='index.md'\n",
+    );
+    fixture.write("content/en/index.md", "Publications.\n");
+    fixture.write(
+        "citations/works.bib",
+        "@book{work,\n title={Example},\n year={forthcoming}\n}\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{% set work = publication(key='work') %}{{ work.title }}",
+    );
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("invalid legacy year must fail");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("works.bib"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("invalid bibliography field"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("page.tera"), "{diagnostic}");
+}
+
+#[test]
+fn publication_mapping_error_in_markdown_component_reports_all_sources() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[publications]\nbibliography=['works.bib']\n");
+    fixture.write(
+        "content/en/index.page",
+        "template='page.tera'\ncontent.main='index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        ":::component[site.note]\nA body.\n:::\n",
+    );
+    fixture.write(
+        "citations/works.bib",
+        "@book{work,\n title={Example},\n year={forthcoming}\n}\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    fixture.write("templates/components.tera", "{% component site.note() %}{% set work=publication(key='work') %}{{ work.title }}{{ body }}{% endcomponent site.note %}");
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("invalid legacy year must fail");
+    let diagnostic = format!("{error:?}");
+    for expected in [
+        "components.tera",
+        "index.md",
+        "works.bib",
+        "invalid bibliography field",
+    ] {
+        assert!(diagnostic.contains(expected), "{diagnostic}");
+    }
+}
+
+#[test]
+fn publication_link_shapes_resolve_only_assets_rendered_by_the_template() {
+    for typed in [false, true] {
+        let fixture = configured_fixture();
+        fixture.write("locales/en/site.ftl", "pdf = PDF\ncode = Code\n");
+        fixture.write("content/assets/paper.pdf", "paper");
+        let data = if typed {
+            r#"
+[[works]]
+title = "Visible"
+selected = true
+links = [{ kind = "asset", target = "assets/paper.pdf", label = "pdf" }, { kind = "external", target = "https://example.org/code", label = "code" }]
+
+[[works]]
+title = "Hidden"
+selected = false
+links = [{ kind = "asset", target = "assets/missing.pdf", label = "pdf" }]
+"#
+        } else {
+            r#"
+[[works]]
+title = "Visible"
+selected = true
+pdf = "assets/paper.pdf"
+code = "https://example.org/code"
+
+[[works]]
+title = "Hidden"
+selected = false
+pdf = "assets/missing.pdf"
+code = "https://example.org/other"
+"#
+        };
+        fixture.write("data/publications.toml", data);
+        let links = if typed {
+            r#"{% for link in work.links %}{% if link.kind == 'asset' %}{% set item = asset(id=link.target) %}<a href="{{ item.url }}">{{ t(id=link.label) }}</a>{% elif link.kind == 'external' %}<a href="{{ link.target }}">{{ t(id=link.label) }}</a>{% endif %}{% endfor %}"#
+        } else {
+            r#"{% set pdf = asset(id=work.pdf) %}<a href="{{ pdf.url }}">{{ t(id='pdf') }}</a><a href="{{ work.code }}">{{ t(id='code') }}</a>"#
+        };
+        let template = format!(
+            "{{{{ markdown(content='main') }}}}{{{{ bibliography() }}}}{{% for work in data.publications.works %}}{{% if work.selected %}}<p>{{{{ work.title }}}}{links}</p>{{% endif %}}{{% endfor %}}"
+        );
+        fixture.write("templates/page.tera", &template);
+        build_at(fixture.path(), BuildMode::Full).expect("only selected work is rendered");
+        let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+        assert!(output.contains("assets/paper.pdf"), "{output}");
+        assert!(output.contains("https://example.org/code"), "{output}");
+        assert!(!output.contains("assets/missing.pdf"), "{output}");
+
+        fixture.write(
+            "data/publications.toml",
+            &data.replace("https://example.org/code", "not a URL"),
+        );
+        build_at(fixture.path(), BuildMode::Full).expect("template external links are not checked");
+        let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+        assert!(output.contains("href=\"not a URL\""), "{output}");
+
+        if typed {
+            fixture.write(
+                "data/publications.toml",
+                &data.replace("kind = \"external\"", "kind = \"unknown\""),
+            );
+            build_at(fixture.path(), BuildMode::Full)
+                .expect("generic data has no link-kind schema");
+            let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+            assert!(!output.contains("https://example.org/code"), "{output}");
+        }
+        fixture.write(
+            "data/publications.toml",
+            &data.replace("selected = false", "selected = true"),
+        );
+        let error =
+            build_at(fixture.path(), BuildMode::Full).expect_err("rendered missing asset fails");
+        assert!(format!("{error:?}").contains("assets/missing.pdf"));
+    }
+}
+
+#[test]
+fn publication_links_in_site_data_are_not_validated_as_urls() {
+    let fixture = configured_fixture();
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}{{ bibliography() }}<a href=\"{{ data.publications.code }}\">Code</a>");
+    for value in ["not a URL", "javascript:alert(1)"] {
+        fixture.write("data/publications.toml", &format!("code='{value}'\n"));
+        build_at(fixture.path(), BuildMode::Full).expect("a template link is rendered as authored");
+        let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+        assert!(output.contains(&format!("href=\"{value}\"")), "{output}");
+    }
+}
+
+#[test]
+fn publication_data_can_be_sorted_by_year_in_a_template() {
+    let fixture = configured_fixture();
+    // This stands in for the proposed publications() result, not an implemented API.
+    fixture.write("data/publications.json", r#"{"items":[{"key":"older","year":2020,"date":{"text":"2020"},"authors":["Johannes Diderik van der Waals","Jane Doe Jr"]},{"key":"undated","year":null,"date":null,"authors":[]},{"key":"range","year":null,"date":{"text":"2020/2022"},"authors":["Research Group"]},{"key":"forthcoming","year":null,"date":{"text":"forthcoming"},"authors":[]},{"key":"newer","year":2024,"date":{"text":"2024"},"authors":[]},{"key":"zero","year":0,"date":{"text":"0000"},"authors":[]}]}"#);
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}{{ bibliography() }}{% for work in data.publications.items | sort(attribute='year') | reverse %}{% if work.year is none %}{% else %}{{ work.key }}|{% endif %}{% endfor %}{% for work in data.publications.items %}{% if work.year is none %}{{ work.key }}|{% endif %}{% endfor %}");
+    build_at(fixture.path(), BuildMode::Full).expect("publication years are sortable");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(
+        output.contains("newer|older|zero|undated|range|forthcoming|"),
+        "{output}"
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}{{ bibliography() }}{% for work in data.publications.items %}{% if work.authors %}{{ work.authors | join(sep=', ') }}{% endif %}{% if work.date %}: {{ work.date.text }}{% endif %}|{% endfor %}");
+    build_at(fixture.path(), BuildMode::Full).expect("publication names and dates render");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(
+        output.contains("Johannes Diderik van der Waals, Jane Doe Jr: 2020"),
+        "{output}"
+    );
+    assert!(output.contains("Research Group: 2020/2022"), "{output}");
+    assert!(output.contains(": forthcoming"), "{output}");
+}
+
+#[test]
+fn curated_site_data_can_resolve_keys_with_template_lookup() {
+    let fixture = configured_fixture();
+    fixture.write(
+        "data/publications.toml",
+        "[works.\"ACISP:SKSI25\"]\ntitle='Example'\n\n[works.\"ACISP:LiSun25\"]\ntitle='Second'\n",
+    );
+    fixture.write(
+        "data/curated.toml",
+        "ids=['ACISP:LiSun25', 'ACISP:SKSI25']\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}{{ bibliography() }}<h2>Selected</h2>{% for id in data.curated.ids %}{{ data.publications.works[id].title }}|{% endfor %}");
+    build_at(fixture.path(), BuildMode::Full).expect("curated keys resolve in site data");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(
+        output.contains("<h2>Selected</h2>Second|Example|"),
+        "{output}"
+    );
+    fixture.write("data/curated.toml", "ids=['ACISP:LiSun25', 'missing']\n");
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("missing key fails during rendering");
+    let diagnostic = format!("{error:?}");
+    assert!(
+        diagnostic.contains("missing") || diagnostic.contains("works[id]"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn curated_publications_from_site_data_follow_selected_key_order() {
+    let fixture = configured_fixture();
+    fixture.write(
+        "data/publications.toml",
+        "[[items]]\nkey='work'\ntitle='Example'\n\n[[items]]\nkey='other'\ntitle='Second'\n",
+    );
+    fixture.write("data/curated.toml", "ids=['other', 'work', 'missing']\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}{{ bibliography() }}<h2>Selected</h2>{% for id in data.curated.ids %}{% for work in data.publications.items %}{% if work.key == id %}{{ work.title }}|{% endif %}{% endfor %}{% endfor %}");
+    build_at(fixture.path(), BuildMode::Full).expect("site data selection builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(
+        output.contains("<h2>Selected</h2>Second|Example|"),
+        "{output}"
+    );
+}
+
+#[test]
+fn publication_list_from_site_data_is_independent_of_bibtex() {
+    let fixture = configured_fixture();
+    fixture.write("citations/works.bib", "@book{work,title={Example},author={Smith, Alice},year={2024}}\n@article{other,title={Second},author={Lee, Robin},year={2023}}\n");
+    fixture.write(
+        "data/publications.toml",
+        r#"
+[[items]]
+key = "work"
+title = "Example"
+author = "Alice Smith"
+year = 2024
+kind = "book"
+selected = true
+pdf = "assets/work.pdf"
+
+[[items]]
+key = "other"
+title = "Second"
+author = "Robin Lee"
+year = 2023
+kind = "article"
+selected = false
+pdf = "assets/other.pdf"
+"#,
+    );
+    fixture.write("content/assets/work.pdf", "work");
+    fixture.write("content/assets/other.pdf", "other");
+    fixture.write("templates/page.tera", r#"{{ markdown(content='main') }}{{ bibliography() }}
+<h2>Selected</h2>{% for work in data.publications.items %}{% if work.selected %}<p>{{ work.title }}</p>{% endif %}{% endfor %}
+<h2>All</h2>{% for work in data.publications.items %}{% set pdf = asset(id=work.pdf) %}<p>{{ work.author }}: {{ work.title }} ({{ work.year }}, {{ work.kind }}) <a href="{{ pdf.url }}">PDF</a></p>{% endfor %}"#);
+    build_at(fixture.path(), BuildMode::Full).expect("data-backed publication page builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(
+        output.contains("<h2>Selected</h2><p>Example</p>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("Alice Smith: Example (2024, book)"),
+        "{output}"
+    );
+    assert!(
+        output.contains("Robin Lee: Second (2023, article)"),
+        "{output}"
+    );
+    assert!(output.contains("assets/work.pdf"), "{output}");
+    fixture.write("citations/works.bib", "@book{work,title={Changed},author={Smith, Alice},year={2024}}\n@article{other,title={Second},author={Lee, Robin},year={2023}}\n");
+    build_at(fixture.path(), BuildMode::Full).expect("independent data can become stale");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    assert!(output.contains(">Changed</a>"), "{output}");
+    assert!(
+        output.contains("Alice Smith: Example (2024, book)"),
+        "{output}"
+    );
+    let data_path = fixture.path().join("data/publications.toml");
+    let data = fs::read_to_string(data_path)
+        .unwrap()
+        .replace("assets/work.pdf", "assets/missing.pdf");
+    fixture.write("data/publications.toml", &data);
+    let error =
+        build_at(fixture.path(), BuildMode::Full).expect_err("missing publication asset fails");
+    assert!(format!("{error:?}").contains("assets/missing.pdf"));
+}
+
+#[test]
 fn citations_render_in_lists_tables_and_blockquotes() {
     let fixture = configured_fixture();
     fixture.write("heine.toml", "[markdown]\nextensions=['tables']\n");
@@ -396,6 +804,25 @@ fn duplicate_keys_report_both_bibliography_files() {
     assert!(diagnostic.contains("works.bib"), "{diagnostic}");
     assert!(diagnostic.contains("other.bib"), "{diagnostic}");
     assert!(diagnostic.contains("first declaration"), "{diagnostic}");
+}
+
+#[test]
+fn conflicting_aliases_report_both_bibliography_files() {
+    let fixture = configured_fixture();
+    fixture.write("content/en/index.page", "template='page.tera'\ncontent.main='index.md'\n[citations]\ncontent='main'\nbibliography=['works.bib', 'other.bib']\nstyle='style.csl'\n");
+    fixture.write(
+        "citations/other.bib",
+        "@book{other,ids={work},title={Other}}\n",
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("conflicting alias must fail");
+    let diagnostic = format!("{error:?}");
+    assert!(diagnostic.contains("works.bib"), "{diagnostic}");
+    assert!(diagnostic.contains("other.bib"), "{diagnostic}");
+    assert!(diagnostic.contains("first declaration"), "{diagnostic}");
+    assert!(
+        diagnostic.contains("declared more than once"),
+        "{diagnostic}"
+    );
 }
 
 #[test]

@@ -7,6 +7,40 @@ use super::{arguments, runtime::TemplateRuntime};
 const MAX_DIAGNOSTIC_NAMES: usize = 10;
 
 pub(super) fn register(tera: &mut tera::Tera, runtime: &TemplateRuntime) {
+    let publications_runtime = runtime.clone();
+    tera.register_function(
+        "publications",
+        move |kwargs: tera::Kwargs, _: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("publications", &kwargs, &[])?;
+            let catalog = publications_runtime.publications().ok_or_else(|| {
+                tera::Error::message("configure [publications] to use publications()")
+            })?;
+            let works = catalog
+                .all()
+                .map_err(|e| publications_runtime.record_publication_error(e))?;
+            tera::Value::try_from_serializable(&works)
+                .map_err(|_| tera::Error::message("Heine publications view is not serializable"))
+        },
+    );
+    let publication_runtime = runtime.clone();
+    tera.register_function(
+        "publication",
+        move |kwargs: tera::Kwargs, _: &tera::State| -> tera::TeraResult<tera::Value> {
+            arguments::only("publication", &kwargs, &["key"])?;
+            let key = kwargs.must_get::<&str>("key")?;
+            let catalog = publication_runtime.publications().ok_or_else(|| {
+                tera::Error::message("configure [publications] to use publication()")
+            })?;
+            let work = catalog
+                .get(key)
+                .map_err(|e| publication_runtime.record_publication_error(e))?
+                .ok_or_else(|| {
+                    tera::Error::message(format!("publication {key:?} was not found"))
+                })?;
+            tera::Value::try_from_serializable(&work)
+                .map_err(|_| tera::Error::message("Heine publication view is not serializable"))
+        },
+    );
     let asset_runtime = runtime.clone();
     tera.register_function(
         "asset",

@@ -165,6 +165,7 @@ pub(crate) struct TemplateRelationships {
     feeds: std::sync::Arc<FeedCatalog>,
     search: std::sync::Arc<SearchCatalog>,
     series: std::sync::Arc<SeriesCatalog>,
+    publications: Option<crate::site::PublicationCatalog>,
 }
 
 /// Resolved indexes exposed through checked template resource functions.
@@ -182,6 +183,7 @@ pub(crate) struct TemplateIndexes {
     pub(crate) feeds: std::sync::Arc<FeedCatalog>,
     pub(crate) search: std::sync::Arc<SearchCatalog>,
     pub(crate) series: std::sync::Arc<SeriesCatalog>,
+    pub(crate) publications: Option<crate::site::PublicationCatalog>,
 }
 
 /// Values deliberately exposed to one template render. This is the boundary
@@ -298,6 +300,7 @@ impl TemplateRelationships {
             feeds: indexes.feeds,
             search: indexes.search,
             series: indexes.series,
+            publications: indexes.publications,
         }
     }
 }
@@ -319,7 +322,26 @@ pub(crate) struct TemplateDiagnostic {
     #[help]
     help: Option<String>,
     #[related]
-    related: Vec<MarkdownComponentCall>,
+    related: Vec<RelatedTemplateSource>,
+}
+
+#[derive(Debug, Diagnostic, Error)]
+enum RelatedTemplateSource {
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Component(#[from] MarkdownComponentCall),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Publication(#[from] PublicationSource),
+}
+
+#[derive(Debug, Diagnostic, Error)]
+#[error("bibliography field used here")]
+struct PublicationSource {
+    #[source_code]
+    source_code: miette::NamedSource<String>,
+    #[label("invalid bibliography field")]
+    span: miette::SourceSpan,
 }
 
 #[derive(Debug, Diagnostic, Error)]
@@ -414,8 +436,10 @@ impl TemplateEngine {
         })?;
         let context =
             tera::Context::from_serialize(&context).expect("render context is serializable");
+        let _ = self.runtime.take_publication_error();
         let prepared = self.prepare_component_markdown(&context, rendering);
-        if let Err(error) = prepared {
+        if let Err(mut error) = prepared {
+            self.attach_publication_error(&mut error);
             let _ = self.runtime.finish_prepared_markdown();
             let _ = self.runtime.finish_source_aware_renders();
             return Err(error);
@@ -424,14 +448,16 @@ impl TemplateEngine {
             .tera
             .render(template.as_str(), &context)
             .map_err(|source| {
-                Error::from_tera(
+                let mut diagnostic = Error::from_tera(
                     "render",
                     Path::new(template.as_str()),
                     &self.sources,
                     source,
                     Some(rendering),
                     self.canonical_urls_configured,
-                )
+                );
+                self.attach_publication_error(&mut diagnostic);
+                diagnostic
             });
         let source_aware_renders =
             self.runtime
@@ -483,6 +509,21 @@ impl TemplateEngine {
             ));
         }
         Ok(rendered)
+    }
+
+    fn attach_publication_error(&self, diagnostic: &mut Error) {
+        if let Some(error) = self.runtime.take_publication_error()
+            && let Some((path, text, span)) = error.location
+            && let Error::Detailed(detail) = diagnostic
+        {
+            detail.related.push(
+                PublicationSource {
+                    source_code: miette::NamedSource::new(path, text),
+                    span: span.into(),
+                }
+                .into(),
+            );
+        }
     }
 
     fn prepare_component_markdown(
@@ -770,7 +811,7 @@ impl Error {
                             canonical_urls_configured,
                         );
                         if let Self::Detailed(template) = &mut diagnostic {
-                            template.related.push(call_location);
+                            template.related.push(call_location.into());
                         }
                         diagnostic
                     }

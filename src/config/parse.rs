@@ -58,6 +58,7 @@ pub(super) struct RawSiteConfig {
     feeds: BTreeMap<toml::Spanned<String>, RawFeedDefinition>,
     #[serde(default)]
     search: BTreeMap<toml::Spanned<String>, RawSearchDefinition>,
+    publications: Option<super::PublicationsConfig>,
     #[serde(default)]
     renderers: BTreeMap<toml::Spanned<String>, renderer::RawProfile>,
     kit: Option<RawKitSelection>,
@@ -280,6 +281,31 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
     type Error = ConfigValueError;
 
     fn try_from(raw: RawSiteConfig) -> Result<Self, Self::Error> {
+        if let Some(publications) = &raw.publications {
+            if publications.bibliography.get_ref().is_empty() {
+                return Err(ConfigValueError {
+                    span: publications.bibliography.span().into(),
+                    message: "publications.bibliography must contain at least one file".into(),
+                });
+            }
+            let mut seen = BTreeSet::new();
+            for field in &publications.extra_fields {
+                let name = field.get_ref();
+                if name.is_empty()
+                    || !name
+                        .bytes()
+                        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+                    || !seen.insert(name)
+                {
+                    return Err(ConfigValueError {
+                        span: field.span().into(),
+                        message:
+                            "publication extra fields must be unique lowercase ASCII field names"
+                                .into(),
+                    });
+                }
+            }
+        }
         let default_locale_span = raw.i18n.default_locale.span();
         let default_locale_value = raw.i18n.default_locale.into_inner();
         let default_locale: Locale =
@@ -935,6 +961,7 @@ impl TryFrom<RawSiteConfig> for SiteConfig {
             search: SearchConfig {
                 definitions: search,
             },
+            publications: raw.publications,
             renderers,
             kit,
         })

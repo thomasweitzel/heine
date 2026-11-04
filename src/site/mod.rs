@@ -6,6 +6,8 @@
 
 mod citation_inputs;
 pub(crate) use citation_inputs::CitationView;
+pub(crate) use citation_inputs::PublicationCatalog;
+pub(crate) use citation_inputs::PublicationMappingError;
 mod collation;
 pub(crate) mod collection;
 mod feed;
@@ -112,6 +114,7 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) series: Option<&'a SeriesConfig>,
     pub(crate) feeds: FeedsConfig,
     pub(crate) search: SearchConfig,
+    pub(crate) publications: Option<&'a crate::config::PublicationsConfig>,
     pub(crate) site: &'a SiteSettings,
     pub(crate) sitemap: Option<&'a SitemapConfig>,
     pub(crate) deployment: &'a DeploymentCatalog,
@@ -190,6 +193,15 @@ pub(crate) enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     CitationInput(#[from] Box<loader::CitationInputDiagnostic>),
+    #[error("invalid publications configuration: {message}")]
+    #[diagnostic(code(heine::publications::invalid))]
+    PublicationInput {
+        message: String,
+        #[source_code]
+        source_code: Arc<miette::NamedSource<String>>,
+        #[label("publication input")]
+        span: miette::SourceSpan,
+    },
     #[error(transparent)]
     #[diagnostic(transparent)]
     SitemapDirectoryOverride(#[from] Box<loader::SitemapDirectoryOverride>),
@@ -292,6 +304,7 @@ pub(crate) struct Site {
     sitemap: Option<sitemap::Sitemap>,
     feeds: std::sync::Arc<feed::Catalog>,
     search: std::sync::Arc<search::Catalog>,
+    publications: Option<PublicationCatalog>,
     renderer_resources: Vec<page::RendererResource>,
 }
 
@@ -311,6 +324,7 @@ impl Site {
             series: series_config,
             feeds: feed_config,
             search: search_config,
+            publications: publication_config,
             site: site_settings,
             sitemap: sitemap_config,
             deployment,
@@ -348,6 +362,44 @@ impl Site {
             site_settings.time_zone().cloned(),
             diagnostics,
         )?);
+        let mut citation_inputs = citation_inputs::InputCache::default();
+        let publications = publication_config
+            .map(|config| {
+                let root = content_root
+                    .parent()
+                    .unwrap_or(content_root)
+                    .join("citations");
+                citation_inputs
+                    .publication_catalog(&root, config)
+                    .map_err(|error| {
+                        if let citation_inputs::SettingsError::Bibliography(bib_error) = &error
+                            && let Some(report) =
+                                loader::citation_input_diagnostic(bib_error, &root, diagnostics)
+                        {
+                            return Error::CitationInput(Box::new(report));
+                        }
+                        let span = match &error {
+                            citation_inputs::SettingsError::Input { span, .. } => span.clone(),
+                            _ => config.bibliography.span(),
+                        };
+                        let mut message = error.to_string();
+                        let mut cause = std::error::Error::source(&error);
+                        while let Some(source) = cause {
+                            message.push_str(": ");
+                            message.push_str(&source.to_string());
+                            cause = source.source();
+                        }
+                        Error::PublicationInput {
+                            message,
+                            source_code: config
+                                .source
+                                .clone()
+                                .expect("configuration source is attached"),
+                            span: span.into(),
+                        }
+                    })
+            })
+            .transpose()?;
         let locales = locales::load(locales::Inputs {
             content_root,
             diagnostics,
@@ -360,6 +412,7 @@ impl Site {
             markdown: markdown_renderer.config(),
             localization: &localization,
             publication,
+            citation_inputs: &mut citation_inputs,
         })?;
         let mut pages = locales.pages;
         let excluded_drafts = std::sync::Arc::new(locales.excluded_drafts);
@@ -648,6 +701,7 @@ impl Site {
             sitemap: sitemap.map(|(sitemap, _)| sitemap),
             feeds: std::sync::Arc::new(feeds),
             search: std::sync::Arc::new(search),
+            publications,
             renderer_resources,
         })
     }

@@ -308,6 +308,29 @@ exposing UTC RFC 3339 text to templates. `format_date()` converts those
 timestamps back into the editorial time zone before it formats their calendar
 date, so a local midnight remains the authored publication day.
 
+## Publication catalog
+
+`[publications]` selects a nonempty `bibliography` array of local BibTeX paths
+relative to `citations/`. Optional `extra_fields` lists unique lowercase ASCII
+field names containing letters, digits, or underscores. Selected files are
+resolved together and checked during site loading.
+
+`publications()` returns entries in bibliography order. `publication(key=...)`
+returns one entry by key or `ids` alias. Both require catalog configuration;
+an unknown key is an error. An entry provides `key`, lowercase `type`, nullable
+`title`, ordered `authors`, `editors` with `role` and `names`, nullable `date`
+with `text`, nullable numeric `year`, nullable `journal`, `book_title`, `doi`,
+and `url`, a `publisher` list, and an `extra` map of requested fields. A range
+or unparsed date has no numeric year. The template decides presentation and
+which entries to show. See [publication catalogs](publications.md).
+
+Known entry types use the library's lowercase canonical name; unknown types
+retain their lowercase name. Names use given name, prefix, family name, and
+suffix order. `and others` is exposed as the name `others`. Editor roles use
+the library's lowercase names and default to `editor`. The date text comes
+from `date`, or from `year` when no date exists. An unparsed `date` remains
+text, while an invalid legacy `year` fails when that work is rendered.
+
 ## Citations
 
 A page can select one unsegmented Markdown content input with a `[citations]`
@@ -337,7 +360,8 @@ periods is rejected when a reachable citation rule can strip periods from a
 locator. Bibliography URLs must use HTTP or HTTPS and must not contain
 credentials. Citation-shaped text in code, raw HTML contents, and renderer
 directive bodies remains literal, as does an unclosed citation bracket.
-BibTeX `ids` aliases resolve to their canonical entries. Duplicate CSL macro
+BibTeX `ids` aliases resolve to their canonical entries. Keys and aliases must
+be unique across the selected bibliography files. Duplicate CSL macro
 names are rejected. The bibliography parser changes consecutive hyphens
 within a single BibTeX value fragment, so Heine reports them in URLs rather
 than publish a changed link. Hyphens assembled from separate fragments are
@@ -687,6 +711,8 @@ namespace. See [Kits](kits.md).
 
 | Function               | Use                                                                                                   | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 |------------------------|-------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `publications` | `publications()` | All configured bibliography entries in source order. See [publication catalog](#publication-catalog). |
+| `publication` | `publication(key="work")` | One entry by its key or alias. A missing key fails at the call. |
 | `asset`                | `asset(id="assets/logo.svg")`                                                                         | A copied asset in the current locale: `url`, `relative_url`, `absolute_url` when configured, optional `integrity`, `width`, `height`, and optional `licensing` (`record`, `copyrights`, `expressions`, `comments`, `license_texts`). Shared assets use the `assets/` prefix.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `attributions`         | `attributions()`                                                                                      | Deterministic inventory of declared copied assets and renderer resources. Each item has `artifact` (`output_path`, `url`, `relative_url`, `absolute_url` when configured, `kind`, `media_type`) and `licensing` (`record`, `copyrights`, `expressions`, `comments`, `license_texts`). Renderer resources also have ordered `sources`: each source gives its page `url`, `relative_url`, optional `absolute_url`, and `locale`, plus the declared Markdown `input`, request `kind`, and accessibility `text`. Copied assets have an empty `sources` list. Each license text has `id`, `url`, `relative_url`, and `absolute_url` when configured; `output_path` is the locale-qualified published path, not an `asset()` lookup ID. |
 | `bibliography`         | `bibliography()`                                                                                      | Trusted HTML for the current page’s cited works. A page with citations must place it exactly once; Heine checks that the output remains intact. See [citations](#citations).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
