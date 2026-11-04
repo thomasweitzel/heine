@@ -5,6 +5,10 @@ compatibility promise or a commitment to a particular interface. Before work
 starts, it needs a concrete use case, an issue, a design, tests, documentation,
 and a cohesive starter-site example where one fits naturally.
 
+Sass compilation, image transformation, a generic query language,
+template-side page generation, and feature-parity work are not planned without
+a concrete Heine use case.
+
 ## Later
 
 - **Kit distribution:** publish a small, curated kit catalog only after kit
@@ -16,7 +20,7 @@ and a cohesive starter-site example where one fits naturally.
   collection when a concrete site establishes its bucket and route contract.
 - **Collection-specific membership weights:** model a page's distinct curated
   position in more than one weight-ordered collection without overloading its
-  directory sibling weight.
+  directory sibling weight or introducing an implicit fallback.
 - **Dependency-aware incremental builds** and, if large sites justify it,
   streaming rendering into the staging tree while preserving atomic
   publication.
