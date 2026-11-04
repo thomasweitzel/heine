@@ -45,6 +45,21 @@ dropped a malformed URL during conversion. Heine checks URLs before conversion.
 The investigation did not establish a general normalization rule. Heine
 reports escapes such as `\&` and asks authors to write URL characters
 literally; it also rejects consecutive hyphens that the parser would change.
+`biblatex` exposes resolved chunks and permits replacing an entry's fields,
+but a replacement would have to recover the intended URL across authored
+fields, abbreviations, and inherited values before Hayagriva converts it.
+That API alone does not establish that such recovery preserves every URL, so
+the checks remain in place.
+
+The `resolved_url_spans_do_not_always_identify_only_the_url` and
+`url_span_can_include_unrelated_hyphens` tests show why the hyphen check must
+use raw input. A resolved chunk assembled from an abbreviation and a literal
+can have a span that covers unrelated entries between them. Heine checks the
+actual raw URL fields and referenced abbreviations, avoiding a false rejection
+when unrelated text contains `--`.
+After bibliography parsing, URL checks follow entry order. A hyphen error is
+ordered at the entry that declares the URL, even when an earlier entry inherits
+it. Its diagnostic points to the actual fragment containing the hyphens.
 
 Per-item prefixes and suffixes need more work: collapsed and reordered output
 does not always expose the mapping needed to attach them without changing
@@ -58,6 +73,85 @@ sampled comparison with Pandoc selected the non-`ibid` branch. Sorting and
 locators can affect the relevant processor sequence, so a document-specific
 exception needs further evidence. Heine conservatively rejects reachable
 position conditions that it cannot handle reliably.
+
+In Hayagriva 0.10.1, the final position calculation compares each sorted item
+with the preceding item, including items within a group and the last item of a
+previous group. A narrower check would need to account for that ordering,
+repeated keys, locators, and processor transformations before it could safely
+permit a style such as Chicago author-date. The existing style-level check
+therefore remains in place.
+
+### Position handling
+
+The `ibid_position_follows_previous_item_inside_and_across_groups` test
+confirms that Hayagriva uses the last item within or across groups when it
+selects a position branch. A guard limited to adjacent single-item groups would
+miss both cases. For single-item groups, the
+`ibid_single_item_locator_transitions` test agrees with the CSL specification
+and Pandoc 3.12.1 for the sampled locator changes. The
+`ibid_single_item_citation_with_position_dependent_sort` and
+`ibid_page_plan_reuses_first_reference_order_in_both_footnote_modes` tests add
+sorting and footnote cases. They do not establish a general safe exception.
+
+Tests using the bundled Chicago author-date style match Pandoc for sampled
+citation groups and locators, including untitled chapter and journal entries.
+The `instrumented_chicago_position_branch_for_genre_entries` test does not
+reach the style's chapter or journal position checks with those inputs. Its
+forced chapter control reaches a marker, but the journal control does not.
+Hayagriva 0.10.1 also does not map some CSL types used along the style's
+position-dependent paths. These observations do not prove that all such paths
+are unreachable, so Heine retains the style-level restriction.
+
+### Author-date disambiguation
+
+Hayagriva 0.10.1 can leave citations to different works indistinguishable.
+With Alice Smith and Bob Smith, both dated 2020, the bundled APA style produces
+`(Smith, 2020)` for each author and omits their given names from the
+bibliography. The
+`apa_distinct_authors_can_render_ambiguous_citations_in_page_plan` test
+reproduces this through Heine's accepted style path. The citation guide tells
+authors to review affected output; Heine does not currently diagnose it.
+
+The `chicago_disambiguation_style_roundtrip_and_sequence` test shows that
+Hayagriva's output can also change with citation sequence. With three Smith
+works, `a, b, c` leaves all entries as `Smith 2020`; the sequence `a, a, b,
+b, c, c, a` yields distinct year suffixes. Style serialization and the English
+locale did not change those results. The
+`chicago_ambiguous_citations_remain_ambiguous_in_both_footnote_modes` test
+exercises citations with locators and a repeated authored footnote through a
+page plan. It bypasses the current style guard and does not describe an
+accepted Chicago build.
+
+Pandoc 3.12.1, using the same serialized Chicago style and bibliography,
+distinguishes the authors by initials and Alice's two works by year suffix in
+both sequences. With the same serialized APA style, it also distinguishes the
+authors in the sampled works. Different formatting alone is not the concern:
+the important distinction is whether a citation identifies its work.
+Hayagriva's open [issue 470](https://github.com/typst/hayagriva/issues/470)
+reports related name-disambiguation problems; the tests do not establish that
+it has the same cause. Its open [issue 507](https://github.com/typst/hayagriva/issues/507)
+reports a separate limit involving ambiguous groups.
+
+### Potential checks
+
+Comparing whole citation strings misses ambiguities when locators differ. In
+`apa_different_locators_hide_ambiguous_authors`, page 12 and page 13 produce
+different strings but still identify both authors only as Smith. Hayagriva's
+structured output exposes name and date metadata, including the underlying
+given names. The test-only `apa_metadata_collision_probe` compares rendered
+name and date elements and catches the sampled collision, including a group.
+It also falsely flags two correctly suffixed works: in this APA output, the
+year suffix appears outside the date element. The suffix and locator are both
+marked as generic text, so treating neighboring text as a suffix would be a
+style-dependent heuristic.
+
+Adding locator-free requests to the same driver is not an independent check.
+The `diagnostic_citation_requests_change_document_disambiguation` test shows
+that extra requests change the authored citation output, even when the added
+items are hidden. These samples do not establish a dependable general guard;
+Heine does not introduce one based on them. Tests recording the processor's
+current problematic output should be revisited when Hayagriva changes, not
+used to require the problem to persist.
 
 A structural scan of 80 independent bundled styles found reachable `ibid` or
 `ibid-with-locator` conditions in four of 75 in-text styles and all five note

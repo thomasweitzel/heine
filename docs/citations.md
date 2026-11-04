@@ -47,8 +47,18 @@ suppresses an inherited setting. `content` is resolved separately for each
 page. A dependent style needs `parent_style`, a path to its local independent
 parent. A `locale` value overrides the page locale for CSL formatting.
 
+Heine passes that locale to Hayagriva, which uses terms defined by the CSL
+style and its bundled CSL locale data. The bundled data covers a finite set of
+locales, not every locale Heine accepts. Hayagriva looks for the requested
+locale and an applicable language fallback; a term it cannot find can fall
+back to US English. These terms do not come from the site's Fluent messages.
+The style decides which terms to display and whether to use their short or long
+forms.
+
 Citation groups use semicolons. Locators accept `p.`, `pp.`, `chap.`, and
-`chapter`. A numeric group with a locator expands instead of collapsing.
+`chapter` in every locale. These identify the kind of locator; the CSL style
+and locale determine its displayed label. A numeric group with a locator
+expands instead of collapsing.
 Other collapsed groups with locators are rejected. Prefixes, suffixes, and
 note styles are not supported. Citation rules that can reach `ibid`,
 `ibid-with-locator`, or `near-note` are rejected. A locator containing periods
@@ -58,11 +68,26 @@ literal; use `\[@smith2024]` to write citation-shaped prose literally. An
 unclosed bracket such as `[@smith2024` remains literal Markdown. Citations in ordinary
 and margin footnotes and in Markdown block components are supported.
 
+Heine's fixture tests exercise representative APA and IEEE styles. Passing
+those examples does not establish conformance for every use of either style.
+In particular, Hayagriva can fail to distinguish different authors with the
+same surname in author-date citations. For example, works by Alice Smith and
+Bob Smith from 2020 can both appear as “Smith, 2020,” with neither given name
+in the bibliography. Heine does not currently detect this. Review the rendered
+citations and their reference entries when authors share a surname, especially
+when their works have the same year. Hayagriva tracks related
+[name-disambiguation problems](https://github.com/typst/hayagriva/issues/470).
+
+BibTeX `ids` aliases identify the same work as its key. Keys and aliases must
+be unique across the selected bibliography files; Heine reports both
+declarations if they conflict.
+
 Bibliography URLs must be absolute HTTP or HTTPS URLs without credentials.
 Write URL characters literally, for example `&` rather than `\&`; use URL
 percent encoding where the URL requires it.
-The current bibliography parser cannot preserve consecutive hyphens in URLs;
-Heine reports them so an author can use a verified percent-encoded URL.
+The bibliography parser changes consecutive hyphens within a single BibTeX
+value fragment. Heine reports them in URLs so an author can use a verified
+percent-encoded URL. Hyphens assembled from separate fragments are preserved.
 The CSL output adapter rejects unsupported output and URLs. The generated
 bibliography is a list with `csl-bibliography` and `csl-entry` classes. It
 also exposes `csl-first` and `csl-content` classes and layout data attributes

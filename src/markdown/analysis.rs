@@ -85,7 +85,7 @@ pub(crate) fn analyze(
 }
 
 #[cfg(test)]
-pub(super) fn observe_citations(
+pub(crate) fn observe_citations(
     input: &str,
     config: &MarkdownConfig,
     citations: &mut super::citation::Collector,

@@ -15,6 +15,8 @@ use thiserror::Error;
 use crate::source_path::LogicalPath;
 
 pub(super) mod bibliography;
+mod catalog;
+pub(crate) use catalog::{PublicationCatalog, PublicationMappingError};
 mod output;
 pub(super) mod policy;
 pub(super) mod processor;
@@ -198,6 +200,25 @@ impl PagePlan {
 }
 
 impl InputCache {
+    pub(super) fn publication_catalog(
+        &mut self,
+        root: &Path,
+        config: &crate::config::PublicationsConfig,
+    ) -> Result<PublicationCatalog, SettingsError> {
+        Ok(PublicationCatalog::new(
+            load_bibliography(
+                root,
+                config.bibliography.get_ref(),
+                &mut self.bibliographies,
+            )?,
+            config
+                .extra_fields
+                .iter()
+                .map(|field| field.get_ref().clone())
+                .collect(),
+        ))
+    }
+
     pub(super) fn plan(
         &mut self,
         settings: &Settings,
@@ -308,6 +329,49 @@ pub(super) enum SettingsError {
     ParentMismatch,
 }
 
+fn load_bibliography(
+    root: &Path,
+    selections: &[toml::Spanned<String>],
+    cache: &mut BTreeMap<BibliographyKey, Arc<BibliographyInputs>>,
+) -> Result<Arc<BibliographyInputs>, SettingsError> {
+    if selections.is_empty() {
+        return Err(SettingsError::EmptyBibliography);
+    }
+    let key = BibliographyKey {
+        root: root.to_path_buf(),
+        files: selections
+            .iter()
+            .map(|item| item.get_ref().clone())
+            .collect(),
+    };
+    if let Some(inputs) = cache.get(&key) {
+        return Ok(Arc::clone(inputs));
+    }
+    let sources = selections
+        .iter()
+        .map(|selection| {
+            read(root, selection.get_ref())
+                .map(|text| Source {
+                    path: selection.get_ref().clone(),
+                    text,
+                })
+                .map_err(|source| SettingsError::Input {
+                    span: selection.span(),
+                    source,
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let resolved = bibliography::resolve(&sources)?;
+    let inputs = Arc::new(BibliographyInputs {
+        sources,
+        root: root.to_path_buf(),
+        resolved,
+        converted: OnceLock::new(),
+    });
+    cache.insert(key, Arc::clone(&inputs));
+    Ok(inputs)
+}
+
 impl Settings {
     #[cfg(test)]
     pub(super) fn load(&self, root: &Path) -> Result<Inputs, SettingsError> {
@@ -324,9 +388,7 @@ impl Settings {
                 span: self.content.span(),
             });
         }
-        if self.bibliography.is_empty() {
-            return Err(SettingsError::EmptyBibliography);
-        }
+        let bibliography = load_bibliography(root, &self.bibliography, cache)?;
         let load_source = |selection: &toml::Spanned<String>| {
             read(root, selection.get_ref())
                 .map(|text| Source {
@@ -337,32 +399,6 @@ impl Settings {
                     span: selection.span(),
                     source,
                 })
-        };
-        let key = BibliographyKey {
-            root: root.to_path_buf(),
-            files: self
-                .bibliography
-                .iter()
-                .map(|item| item.get_ref().clone())
-                .collect(),
-        };
-        let bibliography = if let Some(inputs) = cache.get(&key) {
-            Arc::clone(inputs)
-        } else {
-            let sources = self
-                .bibliography
-                .iter()
-                .map(load_source)
-                .collect::<Result<Vec<_>, _>>()?;
-            let resolved = bibliography::resolve(&sources)?;
-            let inputs = Arc::new(BibliographyInputs {
-                sources,
-                root: root.to_path_buf(),
-                resolved,
-                converted: OnceLock::new(),
-            });
-            cache.insert(key, Arc::clone(&inputs));
-            inputs
         };
         let parse_style = |selection: &toml::Spanned<String>| {
             let source = load_source(selection)?;
@@ -553,6 +589,10 @@ mod tests {
                 (Path::new("page"), ""),
             )
             .unwrap();
+        let shared =
+            load_bibliography(dir.path(), &setting.bibliography, &mut cache.bibliographies)
+                .unwrap();
+        assert!(Arc::ptr_eq(&first.inputs.bibliography, &shared));
         let second = cache
             .plan(
                 &setting,
@@ -730,4 +770,7 @@ mod tests {
         assert!(formatted.bibliography.contains("&lt;script&gt;"));
         assert!(!formatted.bibliography.contains("<script>"));
     }
+
+    mod feasibility;
+    mod publication_feasibility;
 }

@@ -25,6 +25,9 @@ output_dir = "public/my-project"
 [assets]
 integrity = "sha384"
 
+[publications]
+bibliography = ["heine.bib"]
+
 [licensing]
 required = true
 

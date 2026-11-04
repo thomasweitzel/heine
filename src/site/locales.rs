@@ -50,6 +50,7 @@ pub(super) struct Inputs<'a> {
     pub(super) markdown: &'a MarkdownConfig,
     pub(super) localization: &'a Localization,
     pub(super) publication: PublicationMode,
+    pub(super) citation_inputs: &'a mut super::citation_inputs::InputCache,
 }
 
 pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
@@ -65,6 +66,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
         markdown,
         localization,
         publication,
+        citation_inputs,
     } = inputs;
     validate_root(content_root, i18n)?;
     let shared_root = content_root.join("assets");
@@ -80,7 +82,6 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
     let mut entries_by_locale = BTreeMap::new();
     let mut content_inputs = BTreeSet::new();
     let mut draft_uses_margin_footnotes = false;
-    let mut citation_inputs = super::citation_inputs::InputCache::default();
 
     for locale in i18n.locales() {
         let root = content_root.join(locale.to_string());
@@ -137,7 +138,7 @@ pub(super) fn load(inputs: Inputs<'_>) -> Result<LocalizedContent, Error> {
                 draft,
                 loader::PageLoadContext {
                     project_content_root: content_root,
-                    citation_inputs: &mut citation_inputs,
+                    citation_inputs,
                     content_root: &root,
                     diagnostics,
                     locale,

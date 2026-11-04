@@ -369,9 +369,9 @@ need. The cases below identify the part Heine should support: a reusable
 presentation around authored Markdown that raw HTML or segments plus a
 template component express poorly.
 
-| Case                                                           | Current approach                                         | Why it may be insufficient                                                                                                                               |
-|----------------------------------------------------------------|----------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Note or disclosure with links, a list, or a footnote reference | Ordinary Markdown, raw HTML, or a page-specific template | Raw HTML loses Markdown structure. A template moves the surrounding prose and its order out of the source.                                               |
+| Case                                                           | Current approach                                         | Why it may be insufficient                                                                                                                             |
+|----------------------------------------------------------------|----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Note or disclosure with links, a list, or a footnote reference | Ordinary Markdown, raw HTML, or a page-specific template | Raw HTML loses Markdown structure. A template moves the surrounding prose and its order out of the source.                                             |
 | Reusable figure with a Markdown caption or explanation         | `:::picture`, raw HTML, or a page-specific template      | The existing picture directive remains better for an image-only case. The feature matters only when the authored body has ordinary Markdown structure. |
 
 These cases guide the public examples and acceptance tests. Zola establishes

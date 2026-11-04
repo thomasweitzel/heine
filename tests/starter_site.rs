@@ -701,6 +701,7 @@ fn assert_authored_pages_and_legal_output(output: &Path) {
     assert!(!reading.contains("language-navigation"), "{reading}");
     let reading_index =
         fs::read_to_string(output.join("de/lesen/index.html")).expect("reading index");
+    assert_reading_publications(&reading_index);
     assert!(
         reading_index.contains("href=\"../../de/lesen/nachtgedanken/index.html\""),
         "{reading_index}"
@@ -768,6 +769,30 @@ fn starter_kit_reference_site_materializes_as_an_ordinary_site() {
     let reading = fs::read_to_string(output.join("de/lesen/nachtgedanken/index.html"))
         .expect("reference-site reading");
     assert_reading_citations(&reading);
+    let reading_index = fs::read_to_string(output.join("de/lesen/index.html"))
+        .expect("reference-site reading index");
+    assert_reading_publications(&reading_index);
+}
+
+fn assert_reading_publications(reading_index: &str) {
+    assert!(
+        reading_index.contains(
+            "Nachtgedanken erschien zunächst in einer Zeitung und später in einer Gedichtsammlung."
+        ),
+        "{reading_index}"
+    );
+    assert!(
+        reading_index.contains("<h2>Ausgaben und Veröffentlichungen</h2>"),
+        "{reading_index}"
+    );
+    assert!(
+        reading_index.contains("Nachtgedanken (1843), Zeitung für die elegante Welt"),
+        "{reading_index}"
+    );
+    assert!(
+        reading_index.contains("Neue Gedichte (1844), Hoffmann und Campe"),
+        "{reading_index}"
+    );
 }
 
 fn assert_reading_citations(reading: &str) {

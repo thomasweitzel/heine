@@ -193,6 +193,7 @@ pub(crate) fn build_at_with_publication_in_runtime(
         series: config.series(),
         feeds: config.feeds().clone(),
         search: config.search().clone(),
+        publications: config.publications(),
         site: config.site(),
         sitemap: config.sitemap(),
         deployment: &deployment,

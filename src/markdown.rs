@@ -46,6 +46,8 @@ pub(crate) mod render;
 mod renderer_request;
 mod search_text;
 pub(crate) use analysis::MarkdownFacts;
+#[cfg(test)]
+pub(crate) use analysis::observe_citations;
 pub(crate) use class_list::HtmlClassList;
 pub(crate) use component::ComponentPlan;
 use highlighting::Highlighter;

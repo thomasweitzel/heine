@@ -70,31 +70,35 @@ forms are diagnosed.
 A locator containing a period is rejected when a reachable style rule can
 strip it. These restrictions address observed processor behavior, not a claim
 that all other CSL styles conform. See the [processor findings](citations-feasibility.md#note-styles-and-position-conditions).
+In particular, an accepted author-date style can leave different authors with
+the same surname indistinguishable in both citations and the bibliography.
+Heine does not currently detect this; the [investigation report](citations-feasibility.md)
+records the examples and the limits of the checks considered.
 
 Bibliography URLs must be absolute HTTP or HTTPS URLs without credentials.
 Heine checks them before conversion because the processor can discard invalid
 URLs. URL fields are literal: an escaped character such as `\&` receives a
 source-located diagnostic rather than being silently rewritten. Consecutive
-hyphens also produce an error because the parser would change them. See the
-[URL findings](citations-feasibility.md#formatting-and-links).
+hyphens within a single value fragment also produce an error because the parser
+would change them. See the [URL findings](citations-feasibility.md#formatting-and-links).
 
 ## Remaining work
 
 The fixture tests exercise representative numeric and author-date styles, and
 the starter site's German reading cites the poem's newspaper and book
 publications. Third-party notices have been regenerated for the locked
-dependencies. The large-corpus investigation measured resolution work, not
-build time or memory; its results and limitations are in the investigation
-report. A runtime and memory comparison remains available for a later
-performance review.
+dependencies. The large-corpus investigation measured resolution work, build
+time, and peak memory on a local fixture. Its results and limitations are in
+the investigation report.
 Quick builds do not fully track citation inputs or changed selections; a full
 build is required for those changes.
 
 ## Deferred work
 
 Note-generating styles need a shared numbering and punctuation plan with both
-footnote modes and reliable position handling. Publication catalogs need a
-separate contract for fields, custom metadata, filtering, ordering, and links.
+footnote modes and reliable position handling. The [publication catalog
+exploration](publication-catalog.md) examines fields, custom metadata,
+selection, ordering, and links separately.
 Uncited works, multiple citation sources or segments, per-item affixes, and
 numbered document cross-references also need separate checked relationships.
 

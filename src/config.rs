@@ -51,8 +51,19 @@ pub(crate) struct SiteConfig {
     sitemap: Option<SitemapConfig>,
     feeds: FeedsConfig,
     search: SearchConfig,
+    publications: Option<PublicationsConfig>,
     renderers: renderer::Profiles,
     kit: Option<kit::Selection>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PublicationsConfig {
+    pub(crate) bibliography: toml::Spanned<Vec<toml::Spanned<String>>>,
+    #[serde(default)]
+    pub(crate) extra_fields: Vec<toml::Spanned<String>>,
+    #[serde(skip)]
+    pub(crate) source: Option<Arc<NamedSource<String>>>,
 }
 
 impl SiteConfig {
@@ -101,6 +112,10 @@ impl SiteConfig {
 
     pub(crate) fn assets(&self) -> &AssetConfig {
         &self.assets
+    }
+
+    pub(crate) fn publications(&self) -> Option<&PublicationsConfig> {
+        self.publications.as_ref()
     }
 
     pub(crate) fn licensing(&self) -> &LicensingConfig {
@@ -1053,6 +1068,9 @@ impl SiteConfig {
         self.licensing.attach_source(licensing_source.clone());
         self.renderers.attach_source(licensing_source);
         let collection_source = Arc::new(diagnostics.named_source(path, source, "TOML"));
+        if let Some(publications) = &mut self.publications {
+            publications.source = Some(collection_source.clone());
+        }
         for definition in self.collections.definitions.values_mut() {
             definition.source = Some(collection_source.clone());
         }

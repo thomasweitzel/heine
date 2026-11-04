@@ -255,6 +255,9 @@ fn real_style_layout_and_escaped_title() {
     );
 }
 
+#[cfg(test)]
+mod feasibility;
+
 #[test]
 fn four_bundled_styles_render_representative_entries() {
     use hayagriva::{

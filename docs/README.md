@@ -35,6 +35,7 @@ the rendered example, its authored files, and the relevant guide.
 - [Table of contents](table-of-contents.md): add navigation from a page's
   Markdown headings.
 - [Citations](citations.md): cite local bibliography entries and place a reference list.
+- [Publication catalogs](publications.md): present works from local BibTeX files.
 - [Margin footnotes](margin-footnotes.md): place ordinary Markdown footnotes
   beside their references when the layout allows it.
 - [Markdown block components](markdown-components.md): wrap authored Markdown

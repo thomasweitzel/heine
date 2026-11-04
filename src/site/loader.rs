@@ -1582,7 +1582,7 @@ struct CitationInputRelated {
     span: SourceSpan,
 }
 
-fn citation_input_diagnostic(
+pub(super) fn citation_input_diagnostic(
     error: &super::citation_inputs::bibliography::Error,
     root: &Path,
     paths: &crate::source_diagnostic::DiagnosticPaths,
@@ -1596,7 +1596,8 @@ fn citation_input_diagnostic(
             },
             None,
         ),
-        BibError::Duplicate { first, second, .. } => (second.clone(), Some(first)),
+        BibError::Duplicate { first, second, .. }
+        | BibError::AliasCollision { first, second, .. } => (second.clone(), Some(first)),
         BibError::InvalidUrl { location, .. }
         | BibError::Cycle { location }
         | BibError::TooDeep { location }

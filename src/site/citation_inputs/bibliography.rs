@@ -37,6 +37,12 @@ pub(in crate::site) enum Error {
         first: Location,
         second: Location,
     },
+    #[error("bibliography key or alias {key:?} is declared more than once")]
+    AliasCollision {
+        key: String,
+        first: Location,
+        second: Location,
+    },
     #[error("cyclic bibliography relationship")]
     Cycle { location: Location },
     #[error("bibliography relationship exceeds {MAX_LINKS} links")]
@@ -323,9 +329,13 @@ fn check_inheritance(raw: &RawBibliography<'_>, files: &[FileOffset<'_>]) -> Res
             .collect(),
     };
     let parsed = Bibliography::from_raw(probe).map_err(|source| parse_error(files, source))?;
-    let mut indices = BTreeMap::<String, usize>::new();
+    let mut indices: BTreeMap<String, (usize, &Range<usize>)> = raw
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| (entry.v.key.v.to_owned(), (index, &entry.v.key.span)))
+        .collect();
     for (index, entry) in raw.entries.iter().enumerate() {
-        indices.insert(entry.v.key.v.to_owned(), index);
         if let Some(field) = entry
             .v
             .fields
@@ -342,7 +352,20 @@ fn check_inheritance(raw: &RawBibliography<'_>, files: &[FileOffset<'_>]) -> Res
                         location: location(files, field.value.span.clone()),
                     })?;
             for alias in aliases {
-                indices.insert(alias, index);
+                let span = &field.value.span;
+                if let Some((_, existing)) = indices.get(&alias) {
+                    let (first, second) = if existing.start <= span.start {
+                        ((*existing).clone(), span.clone())
+                    } else {
+                        (span.clone(), (*existing).clone())
+                    };
+                    return Err(Error::AliasCollision {
+                        key: alias,
+                        first: location(files, first),
+                        second: location(files, second),
+                    });
+                }
+                indices.insert(alias, (index, span));
             }
         }
     }
@@ -363,15 +386,15 @@ fn check_inheritance(raw: &RawBibliography<'_>, files: &[FileOffset<'_>]) -> Res
             };
             if field_name == "crossref" {
                 if let Ok(key) = item.get_as::<String>(probe_name)
-                    && let Some(&target) = indices.get(key.as_str())
+                    && let Some((target, _)) = indices.get(key.as_str())
                 {
-                    graph[index].push((target, field.value.span.clone()));
+                    graph[index].push((*target, field.value.span.clone()));
                 }
             } else if let Ok(keys) = item.get_as::<Vec<String>>(probe_name) {
                 graph[index].extend(keys.iter().filter_map(|key| {
                     indices
                         .get(key.as_str())
-                        .map(|&target| (target, field.value.span.clone()))
+                        .map(|(target, _)| (*target, field.value.span.clone()))
                 }));
             }
         }
@@ -406,36 +429,79 @@ struct Prepared<'a> {
     files: Vec<FileOffset<'a>>,
 }
 
+fn first_url_hyphen_error(
+    raw: &RawBibliography<'_>,
+    files: &[FileOffset<'_>],
+) -> Option<(usize, Error)> {
+    if !raw.entries.iter().any(|entry| {
+        entry
+            .v
+            .fields
+            .iter()
+            .any(|field| field.key.v.eq_ignore_ascii_case("url"))
+    }) {
+        return None;
+    }
+    let definitions: BTreeMap<_, _> = raw
+        .abbreviations
+        .iter()
+        .map(|item| (item.key.v, &item.value.v))
+        .collect();
+    for (index, entry) in raw.entries.iter().enumerate() {
+        // biblatex retains the last field with a given case-insensitive name.
+        let Some(field) = entry
+            .v
+            .fields
+            .iter()
+            .rev()
+            .find(|field| field.key.v.eq_ignore_ascii_case("url"))
+        else {
+            continue;
+        };
+        let mut pending: Vec<_> = field.value.v.iter().rev().collect();
+        while let Some(chunk) = pending.pop() {
+            match chunk.v {
+                RawChunk::Normal(text) => {
+                    if let Some(offset) = text.find("--") {
+                        let start = chunk.span.start + offset;
+                        return Some((index, Error::InvalidUrl {
+                            location: location(files, start..start + 2),
+                            message: "consecutive hyphens in a URL cannot be preserved by the bibliography parser; use a verified percent-encoded URL".into(),
+                        }));
+                    }
+                }
+                RawChunk::Abbreviation(name) => {
+                    if let Some(value) = definitions.get(name) {
+                        pending.extend(value.iter().rev());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 impl Prepared<'_> {
     fn finish(self) -> Result<Bibliography, Error> {
         if self.files.is_empty() {
             return Ok(Bibliography::new());
         }
+        // Attribute a hyphen error to the entry that declares the URL. Other
+        // URL errors are reported in resolved entry order after parsing.
+        let mut hyphen_error = first_url_hyphen_error(&self.raw, &self.files);
         let bibliography =
             Bibliography::from_raw(self.raw).map_err(|source| parse_error(&self.files, source))?;
-        for entry in bibliography.iter() {
+        for (index, entry) in bibliography.iter().enumerate() {
+            if hyphen_error
+                .as_ref()
+                .is_some_and(|(entry, _)| *entry == index)
+                && let Some((_, error)) = hyphen_error.take()
+            {
+                return Err(error);
+            }
             let Some(chunks) = entry.get("url") else {
                 continue;
             };
-            for chunk in chunks {
-                if let Some(file) = self
-                    .files
-                    .iter()
-                    .rev()
-                    .find(|file| file.start <= chunk.span.start)
-                    && let Some(authored) = file.source.text.get(
-                        chunk.span.start.saturating_sub(file.start)
-                            ..chunk.span.end.saturating_sub(file.start),
-                    )
-                    && let Some(index) = authored.find("--")
-                {
-                    let start = chunk.span.start - file.start + index;
-                    return Err(Error::InvalidUrl {
-                        location: Location { path: file.source.path.clone(), span: start..start + 2 },
-                        message: "consecutive hyphens in a URL cannot be preserved by the bibliography parser; use a verified percent-encoded URL".into(),
-                    });
-                }
-            }
             let span = chunks.first().map_or(0..0, |chunk| chunk.span.clone());
             let value = entry.url().map_err(|error| Error::InvalidUrl {
                 location: location(&self.files, span.clone()),
@@ -532,6 +598,183 @@ mod tests {
             path: path.into(),
             text: text.into(),
         }
+    }
+
+    #[test]
+    fn resolved_url_spans_do_not_always_identify_only_the_url() {
+        let sources = [input(
+            "urls.bib",
+            "@string{host={https://example.org/a--b}}\n\
+             @book{literal,url={https://example.org/a--b?x=1\\&y=2}}\n\
+             @book{macro,url=host # {?x=1\\&y=2}}\n\
+             @xdata{parent,url=host}\n\
+             @book{inherited,xdata={parent}}\n",
+        )];
+        let raw = RawBibliography::parse(&sources[0].text).unwrap();
+        let bibliography = Bibliography::from_raw(raw).unwrap();
+        let literal = bibliography.get("literal").unwrap();
+        assert_eq!(literal.url().unwrap(), "https://example.org/a–b?x=1\\&y=2");
+        let literal_span = literal.get("url").unwrap()[0].span.clone();
+        assert_eq!(
+            &sources[0].text[literal_span],
+            "https://example.org/a--b?x=1\\&y=2"
+        );
+        let assembled = bibliography.get("macro").unwrap();
+        assert_eq!(assembled.url().unwrap(), literal.url().unwrap());
+        let assembled_span = assembled.get("url").unwrap()[0].span.clone();
+        assert!(sources[0].text[assembled_span].contains("@book{literal"));
+        let inherited = bibliography.get("inherited").unwrap();
+        assert_eq!(inherited.url().unwrap(), "https://example.org/a–b");
+        let inherited_span = inherited.get("url").unwrap()[0].span.clone();
+        assert_eq!(&sources[0].text[inherited_span], "https://example.org/a--b");
+    }
+
+    #[test]
+    fn url_span_can_include_unrelated_hyphens() {
+        let sources = [input(
+            "urls.bib",
+            "@string{host={https://example.org}}\n\
+             @book{unrelated,title={A--B}}\n\
+             @book{work,url=host # {/path}}\n",
+        )];
+        let prepared = prepare(&sources).unwrap();
+        let bibliography = Bibliography::from_raw(prepared.raw).unwrap();
+        let entry = bibliography.get("work").unwrap();
+        assert_eq!(entry.url().unwrap(), "https://example.org/path");
+        let span = entry.get("url").unwrap()[0].span.clone();
+        assert!(sources[0].text[span].contains("A--B"));
+        assert!(resolve(&sources).is_ok());
+    }
+
+    #[test]
+    fn url_hyphen_error_points_to_the_abbreviation_definition() {
+        let sources = [
+            input("shared.bib", "@string{host={https://example.org/a--b}}\n"),
+            input("works.bib", "@book{work,url=host # {/path}}\n"),
+        ];
+        let Err(Error::InvalidUrl { location, .. }) = resolve(&sources) else {
+            panic!("URL hyphens must be rejected");
+        };
+        assert_eq!(location.path, "shared.bib");
+        assert_eq!(&sources[0].text[location.span], "--");
+    }
+
+    #[test]
+    fn url_checks_follow_field_and_abbreviation_overrides() {
+        let sources = [input(
+            "works.bib",
+            "@string{host={https://example.org/a--b}}\n\
+             @string{host={https://example.org/good}}\n\
+             @book{parent,url=host}\n\
+             @book{child,crossref={parent},url={https://example.org/a--b},URL={https://example.org/child}}\n",
+        )];
+        let bibliography = resolve(&sources).unwrap();
+        assert_eq!(
+            bibliography.get("parent").unwrap().url().unwrap(),
+            "https://example.org/good"
+        );
+        assert_eq!(
+            bibliography.get("child").unwrap().url().unwrap(),
+            "https://example.org/child"
+        );
+    }
+
+    #[test]
+    fn url_checks_use_the_last_abbreviation_definition_across_files() {
+        let sources = [
+            input(
+                "first.bib",
+                "@string{host={https://example.org/good}}\n@book{work,url=host}\n",
+            ),
+            input("last.bib", "@string{host={https://example.org/a--b}}\n"),
+        ];
+        let Err(Error::InvalidUrl { location, .. }) = resolve(&sources) else {
+            panic!("the effective URL must be rejected");
+        };
+        assert_eq!(location.path, "last.bib");
+        assert_eq!(&sources[1].text[location.span], "--");
+    }
+
+    #[test]
+    fn rejects_collisions_between_keys_and_aliases_in_either_order() {
+        for (first, second) in [
+            ("@book{a,title={A}}", "@book{b,ids={a},title={B}}"),
+            ("@book{b,ids={a},title={B}}", "@book{a,title={A}}"),
+            (
+                "@book{a,ids={shared},title={A}}",
+                "@book{b,ids={shared},title={B}}",
+            ),
+        ] {
+            let sources = [input("first.bib", first), input("second.bib", second)];
+            let Err(Error::AliasCollision {
+                key,
+                first: first_location,
+                second: second_location,
+            }) = resolve(&sources)
+            else {
+                panic!("colliding key or alias must fail");
+            };
+            assert!(key == "a" || key == "shared");
+            assert_eq!(first_location.path, "first.bib");
+            assert_eq!(second_location.path, "second.bib");
+            assert!(first[first_location.span].contains(&key));
+            assert!(second[second_location.span].contains(&key));
+        }
+    }
+
+    #[test]
+    fn rejects_aliases_repeated_within_one_entry() {
+        for value in ["a", "other, other"] {
+            let source = input("works.bib", &format!("@book{{a,ids={{{value}}}}}"));
+            assert!(matches!(
+                resolve(&[source]),
+                Err(Error::AliasCollision { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn url_hyphens_from_separate_fragments_are_preserved() {
+        let sources = [input(
+            "works.bib",
+            "@string{prefix={https://example.org/a-}}\n@book{work,url=prefix # {-b}}\n",
+        )];
+        let bibliography = resolve(&sources).unwrap();
+        assert_eq!(
+            bibliography.get("work").unwrap().url().unwrap(),
+            "https://example.org/a--b"
+        );
+    }
+
+    #[test]
+    fn inherited_hyphen_error_is_ordered_at_the_parent_declaration() {
+        let sources = [input(
+            "works.bib",
+            "@inbook{child,crossref={parent}}\n\
+             @book{other,url={not a url}}\n\
+             @book{parent,url={https://example.org/a--b}}\n",
+        )];
+        let Err(Error::InvalidUrl { location, .. }) = resolve(&sources) else {
+            panic!("invalid URL must fail");
+        };
+        assert_eq!(&sources[0].text[location.span], "not a url");
+    }
+
+    #[test]
+    fn url_diagnostics_follow_parse_then_entry_order() {
+        let sources = [input(
+            "works.bib",
+            "@book{first,url={not a url}}\n@book{second,url={https://example.org/a--b}}\n",
+        )];
+        let Err(Error::InvalidUrl { location, .. }) = resolve(&sources) else {
+            panic!("invalid URL must fail");
+        };
+        assert_eq!(&sources[0].text[location.span], "not a url");
+        let sources = [input(
+            "works.bib",
+            "@book{first,url={https://example.org/a--b}}\n@book{second,title=undefined}\n",
+        )];
+        assert!(matches!(resolve(&sources), Err(Error::Parse { .. })));
     }
 
     #[test]

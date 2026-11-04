@@ -54,10 +54,10 @@ float.
 The two rendering boundaries deliberately choose their locale from different
 sources:
 
-| Where a value is formatted | Locale Heine uses |
-|---|---|
-| `format_number()`, `format_date()`, `format_time()`, or `format_datetime()` in a template | The locale of the page being rendered |
-| A Fluent placeable, `NUMBER()`, or `DATETIME()` inside `t()` | The locale of the bundle that supplied the resolved message |
+| Where a value is formatted                                                                | Locale Heine uses                                           |
+|-------------------------------------------------------------------------------------------|-------------------------------------------------------------|
+| `format_number()`, `format_date()`, `format_time()`, or `format_datetime()` in a template | The locale of the page being rendered                       |
+| A Fluent placeable, `NUMBER()`, or `DATETIME()` inside `t()`                              | The locale of the bundle that supplied the resolved message |
 
 The second rule keeps a fallback message coherent. An English fallback message
 on a German page retains English prose, grammar, digits, and date conventions.
