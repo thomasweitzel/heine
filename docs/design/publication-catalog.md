@@ -13,9 +13,9 @@ it in a publication list and in citations. Heine checks the inputs and makes
 publication facts available before templates render. The site owns the page,
 its selection and presentation; the catalog does not generate pages.
 
-## Proposed author and template contract
+## Author and template contract
 
-This example illustrates a single site-wide catalog backed by one or more local BibTeX files. A catalog
+This example uses one site-wide catalog backed by local BibTeX files. A catalog
 does not require citations on the page or a CSL style.
 
 ```toml
@@ -31,7 +31,7 @@ bibliography rules. Each entry, including an uncited work or a proceedings
 entry used as a parent, is available; Heine does not guess which entries
 are publications to exclude. Input errors fail a full build, even if no
 template calls a catalog function. If citations and the catalog select the
-same files in the same order, they should share the resolved bibliography.
+same files in the same order, they share the resolved bibliography.
 The selected files must parse and resolve in full even when a template displays
 only some works. Filtering entries later cannot bypass an unsupported preamble
 or malformed file. This follows the existing bibliography boundary, which
@@ -62,7 +62,7 @@ Heine does not infer authorship or decide which entries belong on the page.
 }
 ```
 
-A template could call `publications()` for a list in bibliography source order
+A template can call `publications()` for a list in bibliography source order
 or use `publication(key=...)` to resolve one work. A missing key fails at
 the template call. For example, `data/featured.toml` could contain an
 author-ordered list:
@@ -92,7 +92,7 @@ keys = ["paper", "another-work"]
 {% endfor %}
 ```
 
-The full list could loop over `publications()` and use the same presentation.
+The full list can loop over `publications()` and use the same presentation.
 
 The site supplies the Fluent message and decides that its `pdf` field
 contains a Heine asset ID. `asset()` checks that ID when the call executes;
@@ -105,21 +105,21 @@ works the loop reaches are checked by its `publication()` and `asset()` calls;
 the catalog does not claim that the whole `data.featured.keys` list was
 checked before rendering.
 
-### Proposed work view
+### Work view
 
-| Field | Proposed meaning |
-|---|---|
-| `key` | The canonical BibTeX entry key. |
-| `type` | The `biblatex` entry type in lowercase. Known types use the library's canonical name; for an unknown type, use the text retained in `EntryType::Unknown`, since its display formatter returns `unknown`. |
-| `title` | Plain text derived from the resolved title, or null when absent. |
-| `authors` | An ordered list of display-name strings; an absent author is an empty list. Heine uses `biblatex`'s person display behavior. |
-| `editors` | An ordered list of objects with `role` and `names`, where `names` is an ordered list of display-name strings. Roles use the library's lowercase text, including unknown roles; a missing role defaults to `editor`. An absent editor is an empty list. |
-| `date` | Null when absent; otherwise an object with `text` from the resolved date field, or the year field when no date is present. |
-| `year` | The numeric year of a single parsed date, or null for a missing, unparsed, or range date. |
-| `journal`, `book_title` | Separate plain-text venue facts, each null when absent. The journal uses the library's journal-field aliases. |
-| `publisher` | An ordered list of plain-text publishers, empty when absent, using the library's publisher parsing. |
-| `doi`, `url` | Authored identifier and resolved URL values when present. Heine does not fetch either; turning a DOI into a link requires an explicit policy. |
-| `extra` | A map containing only fields explicitly named by `extra_fields` and present on the entry. Keys are lowercase field names and values are resolved plain strings, not trusted HTML. |
+| Field                   | Meaning                                                                                                                                                                                                                                                |
+|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `key`                   | The canonical BibTeX entry key.                                                                                                                                                                                                                        |
+| `type`                  | The `biblatex` entry type in lowercase. Known types use the library's canonical name; for an unknown type, use the text retained in `EntryType::Unknown`, since its display formatter returns `unknown`.                                               |
+| `title`                 | Plain text derived from the resolved title, or null when absent.                                                                                                                                                                                       |
+| `authors`               | An ordered list of display-name strings; an absent author is an empty list. Heine uses `biblatex`'s person display behavior.                                                                                                                           |
+| `editors`               | An ordered list of objects with `role` and `names`, where `names` is an ordered list of display-name strings. Roles use the library's lowercase text, including unknown roles; a missing role defaults to `editor`. An absent editor is an empty list. |
+| `date`                  | Null when absent; otherwise an object with `text` from the resolved date field, or the year field when no date is present.                                                                                                                             |
+| `year`                  | The numeric year of a single parsed date, or null for a missing, unparsed, or range date.                                                                                                                                                              |
+| `journal`, `book_title` | Separate plain-text venue facts, each null when absent. The journal uses the library's journal-field aliases.                                                                                                                                          |
+| `publisher`             | An ordered list of plain-text publishers, empty when absent, using the library's publisher parsing.                                                                                                                                                    |
+| `doi`, `url`            | Authored identifier and resolved URL values when present. Heine does not fetch either; turning a DOI into a link requires an explicit policy.                                                                                                          |
+| `extra`                 | A map containing only fields explicitly named by `extra_fields` and present on the entry. Keys are lowercase field names and values are resolved plain strings, not trusted HTML.                                                                      |
 
 The library displays a person as given name, prefix, family name, then suffix,
 omitting absent parts. The tested examples are `Johannes Diderik van der Waals`,
@@ -223,18 +223,18 @@ different file lists. Converting the full list costs time and output space propo
 the exposed fields of all N works per call. Converting one work costs time and
 output space proportional to that work's exposed fields. Keyed lookup avoids
 constructing a full view merely to select a few works. The template
-engine may copy or serialize returned values, so implementation must inspect
-that boundary and avoid repeating full-catalog conversions. These are
-complexity estimates, not measured time or memory guarantees.
+engine serializes returned values, so repeated calls repeat full-catalog
+conversion. These are complexity estimates, not measured time or memory
+guarantees.
 
 The `publication_keys_and_selected_fields_use_the_resolved_bibliography` test
 confirms source-order keys, explicit selected-key order, repeated keys, and a
 missing lookup at the library boundary. The
 `publication_view_example_renders_partial_metadata` fixture renders the
 proposed value shapes from ordinary site data for an article, an editor-only
-chapter, and a minimal entry. It does not implement or validate the proposed
-catalog functions. Together with the sample below, these tests provide a basis
-for an implementation; they do not establish every name or date mapping.
+chapter, and a minimal entry. That earlier fixture exercises site data rather
+than the catalog functions. Catalog fixture tests now exercise the implemented
+functions and field mappings.
 
 ## What people publish and present
 
@@ -335,13 +335,13 @@ has no declared relationship saying that the data record and BibTeX entry
 describe the same work. An author can also maintain a JSON or TOML list without
 any BibTeX input, in which case this duplication does not arise.
 
-| Need | Site data today | A BibTeX-backed catalog would need to provide |
-|---|---|---|
-| Full and selected lists | A list, authored order, and template conditions | A list and a checked way to identify the selected subset |
-| Titles, authors, dates, and types | Authored directly in data | A documented mapping from resolved BibTeX, including missing values |
-| Local PDFs | Asset IDs resolved by `asset()` in the template | A defined relationship to checked assets, without assuming arbitrary paths are asset IDs |
-| Citations and publication entries | Two independent inputs can duplicate and disagree | One selected bibliography as the source of shared facts |
-| Layout and labels | Site-owned template | The same site-owned template control |
+| Need                              | Site data today                                   | A BibTeX-backed catalog would need to provide                                            |
+|-----------------------------------|---------------------------------------------------|------------------------------------------------------------------------------------------|
+| Full and selected lists           | A list, authored order, and template conditions   | A list and a checked way to identify the selected subset                                 |
+| Titles, authors, dates, and types | Authored directly in data                         | A documented mapping from resolved BibTeX, including missing values                      |
+| Local PDFs                        | Asset IDs resolved by `asset()` in the template   | A defined relationship to checked assets, without assuming arbitrary paths are asset IDs |
+| Citations and publication entries | Two independent inputs can duplicate and disagree | One selected bibliography as the source of shared facts                                  |
+| Layout and labels                 | Site-owned template                               | The same site-owned template control                                                     |
 
 This comparison supports a narrower goal than a publication-page framework:
 expose bibliographic facts and their identity to the template so that an
@@ -362,7 +362,7 @@ The test includes a corporate author, an entry without authors, and an entry
 with neither a date nor an identifier. It does not establish presentation or
 diagnostic behavior for all names, dates, fields, and entry types.
 
-The proposed work view above uses these findings. Its display names follow
+The work view above uses these findings. Its display names follow
 `biblatex`; they are not a promise of CSL formatting. Dates preserve the
 resolved date or year text, including ranges and unparsed values. Legacy
 separate month and day fields do not become part of that display text in the
@@ -448,16 +448,15 @@ a checked asset or external link. Conversely, Heine's existing bibliography
 a semicolon-separated list is rejected. A catalog that reuses this input
 boundary inherits that limitation.
 
-One small candidate is to expose authored supporting-link fields as ordinary
-strings and let templates choose how to use them. Sites that mean a field to
+The catalog exposes selected supporting-link fields as ordinary strings and
+lets templates choose how to use them. Sites that mean a field to
 name an asset can call `asset()` with its value, just as they do with site
 data; this checks the asset when rendered. A site can instead keep a separate
 keyed list of asset IDs for works whose BibTeX `pdf` field uses a different
 convention. This does not require Heine to infer whether a string is a URL, a
 path relative to the bibliography, or an asset ID. It also means unrendered
 links are not checked as relationships, and arbitrary external link strings
-need a separate contract if Heine is to validate them. Test those trade-offs
-before choosing this candidate.
+need a separate contract if Heine is to validate them.
 
 Another option is an explicit per-work link declaration that distinguishes an
 asset ID from an external URL and supplies a site-owned label. Heine could
@@ -466,12 +465,12 @@ model, including for works no template happens to render. This checks a
 stronger relationship, but introduces additional configuration and must define
 how the declaration identifies a work, handles multiple links and locales,
 and interacts with fields already in BibTeX. Do not add it solely to avoid a
-template call if the simpler candidate meets the use case.
+template call when the current approach meets the use case.
 
 A third option is to declare that a named field contains asset IDs and check
 that field for every work. This avoids per-work link configuration but needs a
 rule for shared assets, locale overlays, and fallback before the check can be
-defined. The initial candidate leaves this stronger relationship to a later
+defined. The catalog leaves this stronger relationship to a later
 design rather than guessing which locales must have an asset.
 
 ### Worked comparison
@@ -537,7 +536,7 @@ which motivated testing both LaTeX text and a local attachment path.
 For the sampled text, `biblatex` converts the accent macros to `ü` and `é`,
 `\&` to `&`, and `--` to an en dash. It preserves `~` and the unsupported
 `\textit{example}` command in the plain text. It presents `and others` as a
-second name, `others`. The proposed view follows these results; it does not
+second name, `others`. The work view follows these results; it does not
 turn retained commands into HTML or infer an author-list abbreviation. Authors
 who need different presentation can adjust their bibliography or template.
 These observations cover the sample, not every LaTeX command or export.
@@ -566,8 +565,8 @@ in the statistics file. The statistics bibliography contains fields listing
 article, PDF, and code addresses together. These counts are a rough indication
 of input shape, not a parse or a link-validity check. In particular, silently
 splitting every semicolon would be an unproven interpretation of a URL field.
-The catalog should document the existing single-URL limitation and avoid
-inventing a new URL parser to accommodate this corpus.
+The catalog uses the existing single-URL check rather than inventing a new
+URL parser to accommodate this corpus.
 
 For reproducibility, the downloaded files had these SHA-256 hashes:
 
@@ -590,12 +589,12 @@ Formatting every publication through CSL would reuse a known standard but
 would not by itself expose custom links or give a template control over each
 field. Exposing only raw fields would retain flexibility but could push
 normalization, inheritance, escaping, and inconsistent interpretation into
-every template. Neither choice should be accepted without testing the actual
-site examples.
+every template. The implemented view follows the evidence from the site
+examples while leaving CSL-formatted catalog entries for a later decision.
 
 Do not add network lookup, DOI resolution by fetching a service, automatic
 output pages, JavaScript search, citation metrics, a general query language,
 or compatibility with every external theme as part of this exploration.
 Those are independent choices. No rule here requires a fixed size for the
-evidence set: broaden it when the proposed contract leaves an important user
-case or library behavior unclear.
+evidence set: broaden it when a future contract leaves an important user case
+or library behavior unclear.
