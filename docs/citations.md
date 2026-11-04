@@ -78,6 +78,10 @@ citations and their reference entries when authors share a surname, especially
 when their works have the same year. Hayagriva tracks related
 [name-disambiguation problems](https://github.com/typst/hayagriva/issues/470).
 
+BibTeX `ids` aliases identify the same work as its key. Keys and aliases must
+be unique across the selected bibliography files; Heine reports both
+declarations if they conflict.
+
 Bibliography URLs must be absolute HTTP or HTTPS URLs without credentials.
 Write URL characters literally, for example `&` rather than `\&`; use URL
 percent encoding where the URL requires it.

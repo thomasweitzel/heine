@@ -37,6 +37,12 @@ pub(in crate::site) enum Error {
         first: Location,
         second: Location,
     },
+    #[error("bibliography key or alias {key:?} is declared more than once")]
+    AliasCollision {
+        key: String,
+        first: Location,
+        second: Location,
+    },
     #[error("cyclic bibliography relationship")]
     Cycle { location: Location },
     #[error("bibliography relationship exceeds {MAX_LINKS} links")]
@@ -323,9 +329,13 @@ fn check_inheritance(raw: &RawBibliography<'_>, files: &[FileOffset<'_>]) -> Res
             .collect(),
     };
     let parsed = Bibliography::from_raw(probe).map_err(|source| parse_error(files, source))?;
-    let mut indices = BTreeMap::<String, usize>::new();
+    let mut indices: BTreeMap<String, (usize, &Range<usize>)> = raw
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| (entry.v.key.v.to_owned(), (index, &entry.v.key.span)))
+        .collect();
     for (index, entry) in raw.entries.iter().enumerate() {
-        indices.insert(entry.v.key.v.to_owned(), index);
         if let Some(field) = entry
             .v
             .fields
@@ -342,7 +352,20 @@ fn check_inheritance(raw: &RawBibliography<'_>, files: &[FileOffset<'_>]) -> Res
                         location: location(files, field.value.span.clone()),
                     })?;
             for alias in aliases {
-                indices.insert(alias, index);
+                let span = &field.value.span;
+                if let Some((_, existing)) = indices.get(&alias) {
+                    let (first, second) = if existing.start <= span.start {
+                        ((*existing).clone(), span.clone())
+                    } else {
+                        (span.clone(), (*existing).clone())
+                    };
+                    return Err(Error::AliasCollision {
+                        key: alias,
+                        first: location(files, first),
+                        second: location(files, second),
+                    });
+                }
+                indices.insert(alias, (index, span));
             }
         }
     }
@@ -363,15 +386,15 @@ fn check_inheritance(raw: &RawBibliography<'_>, files: &[FileOffset<'_>]) -> Res
             };
             if field_name == "crossref" {
                 if let Ok(key) = item.get_as::<String>(probe_name)
-                    && let Some(&target) = indices.get(key.as_str())
+                    && let Some((target, _)) = indices.get(key.as_str())
                 {
-                    graph[index].push((target, field.value.span.clone()));
+                    graph[index].push((*target, field.value.span.clone()));
                 }
             } else if let Ok(keys) = item.get_as::<Vec<String>>(probe_name) {
                 graph[index].extend(keys.iter().filter_map(|key| {
                     indices
                         .get(key.as_str())
-                        .map(|&target| (target, field.value.span.clone()))
+                        .map(|(target, _)| (*target, field.value.span.clone()))
                 }));
             }
         }
@@ -670,6 +693,44 @@ mod tests {
         };
         assert_eq!(location.path, "last.bib");
         assert_eq!(&sources[1].text[location.span], "--");
+    }
+
+    #[test]
+    fn rejects_collisions_between_keys_and_aliases_in_either_order() {
+        for (first, second) in [
+            ("@book{a,title={A}}", "@book{b,ids={a},title={B}}"),
+            ("@book{b,ids={a},title={B}}", "@book{a,title={A}}"),
+            (
+                "@book{a,ids={shared},title={A}}",
+                "@book{b,ids={shared},title={B}}",
+            ),
+        ] {
+            let sources = [input("first.bib", first), input("second.bib", second)];
+            let Err(Error::AliasCollision {
+                key,
+                first: first_location,
+                second: second_location,
+            }) = resolve(&sources)
+            else {
+                panic!("colliding key or alias must fail");
+            };
+            assert!(key == "a" || key == "shared");
+            assert_eq!(first_location.path, "first.bib");
+            assert_eq!(second_location.path, "second.bib");
+            assert!(first[first_location.span].contains(&key));
+            assert!(second[second_location.span].contains(&key));
+        }
+    }
+
+    #[test]
+    fn rejects_aliases_repeated_within_one_entry() {
+        for value in ["a", "other, other"] {
+            let source = input("works.bib", &format!("@book{{a,ids={{{value}}}}}"));
+            assert!(matches!(
+                resolve(&[source]),
+                Err(Error::AliasCollision { .. })
+            ));
+        }
     }
 
     #[test]
