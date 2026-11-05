@@ -113,12 +113,12 @@ features composed in one site rather than introduced one at a time. Extract the
 archive, change into its top-level directory, and run the executable downloaded
 from the [Download page](https://heine.rs/download/):
 
-Its [source tour](starter-site/README.md#what-this-site-demonstrates) maps each
-demonstrated feature to its rendered page, source files, and focused guide.
-
 ```bash
 /path/to/heine --root .
 ```
+
+Its [source tour](starter-site/README.md#what-this-site-demonstrates) maps each
+demonstrated feature to its rendered page, source files, and focused guide.
 
 Its `public/` directory is generated output. If it already contains unrelated
 files, explicitly adopt and replace it with:

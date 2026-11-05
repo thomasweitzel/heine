@@ -36,7 +36,7 @@ editorial-zone times and date-times. The
 still excludes units, relative time, browser-selected time zones, and
 per-event time zones. The separate [percentage and currency
 design](design/percentage-and-currency-formatting.md) preserves those
-deliberate later extensions until ICU4X provides stable APIs.
+deliberate later extensions until the locale-formatting APIs they need are stable.
 
 ### Redirect aliases
 

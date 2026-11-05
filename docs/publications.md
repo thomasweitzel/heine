@@ -36,13 +36,13 @@ and HTTPS checks; template escaping alone does not check a URL scheme.
 
 Heine resolves all selected files together, including cross-references. An
 invalid input fails the build even if a template displays only a few entries.
-`biblatex` converts common accents and some LaTeX commands, but unsupported
+Heine converts common accents and some LaTeX commands, but unsupported
 commands can remain in the plain text. It displays BibTeX `and others` as the
 name `others`. A full build is required after catalog or bibliography changes;
 quick builds do not track these changes completely.
 
 An unparsed `date`, such as `date = {forthcoming}`, remains available as text.
-The legacy `year` field must contain a year that `biblatex` can parse;
+The legacy `year` field must contain a year Heine can parse;
 `year = {forthcoming}` causes a mapping error when the work is rendered.
 
 `publication(key=...)` converts only the selected work. Each `publications()`

@@ -1,6 +1,6 @@
 # Publication catalogs
 
-## Status and question
+## Status and decision
 
 The initial catalog is implemented. This record retains the design and the
 evidence behind its boundaries. Heine can present works from local BibTeX
@@ -12,6 +12,11 @@ The goal is to let an author maintain bibliographic information once and use
 it in a publication list and in citations. Heine checks the inputs and makes
 publication facts available before templates render. The site owns the page,
 its selection and presentation; the catalog does not generate pages.
+
+The catalog exposes all resolved entries in source order and lets templates
+select individual works by key. Sites own their presentation and any links
+made from additional fields. The sections after the contract preserve the
+evidence and alternatives that led to this boundary.
 
 ## Author and template contract
 
@@ -343,14 +348,15 @@ any BibTeX input, in which case this duplication does not arise.
 | Citations and publication entries | Two independent inputs can duplicate and disagree | One selected bibliography as the source of shared facts                                  |
 | Layout and labels                 | Site-owned template                               | The same site-owned template control                                                     |
 
-This comparison supports a narrower goal than a publication-page framework:
+This comparison supported a narrower goal than a publication-page framework:
 expose bibliographic facts and their identity to the template so that an
 author need not copy those facts into `data/`. It does not show that Heine
 needs built-in grouping, client-side filters, generated pages, or a general
-query language. It also does not establish the syntax of a catalog view, how
-curation should be declared, or how an optional PDF field becomes an asset ID.
+query language. The comparison alone did not establish a catalog syntax,
+curation mechanism, or how an optional PDF field becomes an asset ID; the
+contract above records the resulting decisions.
 
-## Candidate fields
+## Field investigation
 
 The test-only `candidate_publication_view_uses_resolved_fields_without_csl`
 probes a view assembled directly from resolved `biblatex` entries. It is not

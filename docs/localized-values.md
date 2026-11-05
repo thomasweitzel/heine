@@ -10,9 +10,9 @@ for the locale currently being rendered.
 ```
 
 For example, this renders as `1,234,567.89` in `en-US` and
-`1.234.567,89` in `de-DE`. The formatter uses Heine's bundled ICU data, never
-the operating system locale, so the same checked build produces the same text
-on every machine.
+`1.234.567,89` in `de-DE`. Heine uses bundled locale data rather than the
+operating system locale, so the same checked build produces the same text on
+every machine.
 
 ## Template numbers
 
@@ -88,7 +88,7 @@ download-size = Download size: { NUMBER($size, maximumFractionDigits: 1) }
 `NUMBER()` accepts the three checked decimal presentation options
 `useGrouping`, `minimumFractionDigits`, and `maximumFractionDigits`. It rejects
 other options instead of silently ignoring them. Heine formats both a bare
-placeable and `NUMBER()` with the same bundled ICU data as `format_number()`.
+placeable and `NUMBER()` with the same bundled locale data as `format_number()`.
 
 Fluent uses `f64` for its selector engine. Before `t()` passes a numeric value
 to Fluent, Heine verifies that the number survives that conversion exactly. A
@@ -138,9 +138,9 @@ Both functions use the site's editorial time zone and the locale of the page:
 ```
 
 Every style is `short`, `medium`, or `long`; `medium` is the default. A
-combined value chooses its date and time styles separately. Heine uses the
-ordinary ICU date and time field sets, which do not add a time-zone label. A
-rendered time therefore implies the site's configured editorial time zone.
+combined value chooses its date and time styles separately. These styles do not
+add a time-zone label, so a rendered time implies the site's configured
+editorial time zone.
 Per-event time zones are not supported: write an event's zone in surrounding
 localized prose when it differs from that editorial policy.
 

@@ -13,9 +13,13 @@ A collection has three parts: define its ordering once, add pages to
 it, then read it from a template. This example lists English blog posts newest
 first.
 
-First, define the collection in `heine.toml`:
+First, define the collection in `heine.toml`. Publication times are local, so
+set the site's editorial time zone too if it is not already configured:
 
 ```toml
+[site]
+time_zone = "Europe/Berlin"
+
 [collections.posts]
 order = "published-desc"
 ```
@@ -26,6 +30,7 @@ Then add a rendered page to it:
 # content/en/blog/first.page
 template = "post.tera"
 title = "First post"
+summary = "A short introduction to the site."
 published = 2026-08-14T09:30:00
 collections = ["posts"]
 ```
@@ -45,10 +50,8 @@ Finally, let a listing template read the collection:
 {% endfor %}
 ```
 
-`page_ids` is the already ordered list of logical page IDs. `page(id=id)`
-looks up each member's render-facing data and creates its checked URL. This
-keeps one authoritative page representation without copying the whole site
-into every template render.
+`page_ids` is the ordered list of page IDs. For each ID, `page(id=id)` gives
+the template the post's title, summary, and checked URL.
 
 For a directory of posts, put `collections = ["posts"]` in its
 `_directory.toml` under `[pages]` instead of repeating it on every page. Give
