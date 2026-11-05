@@ -1,18 +1,38 @@
 # Published-artifact licensing
 
-Use published-artifact licensing when a copied file or a separate renderer
-resource needs published rights information or an attribution page. Heine
-follows a REUSE-compatible convention: a declaration stays beside one
-[copied asset](glossary.md#copied-asset), or a named record supplies facts for
-an exact asset set and renderer resources. Heine publishes the matching license
-texts and exposes the declared information to Tera templates. The site author
-remains responsible for whether those declarations fit a particular work or
-use.
+Use published-artifact licensing to publish rights information for a copied
+file or a separate renderer resource. Heine publishes the declared license
+texts and makes attribution information available to Tera templates. The site
+author remains responsible for choosing declarations that fit each work and
+its use.
 
 The [tutorial's published-artifact licensing step](tutorial.md#11-add-published-artifact-licensing-and-attributions)
 shows the same convention in a working site.
 
-## Layout
+## License one copied asset
+
+For an individual [copied asset](glossary.md#copied-asset), place a declaration
+in a `.license` file beside it and supply the corresponding license text:
+
+```text
+content/assets/fonts/example.woff2
+content/assets/fonts/example.woff2.license
+LICENSES/OFL-1.1.txt
+```
+
+For example, the sidecar can contain:
+
+```text
+SPDX-FileCopyrightText: 2026 Example Font Authors
+SPDX-License-Identifier: OFL-1.1
+```
+
+Heine copies the font and license text to the output. The sidecar is not
+copied; templates can use its information to build an attribution page. This
+follows a REUSE-compatible convention. For several files with the same facts,
+or for renderer resources, use the shared declarations described below.
+
+## License texts and sidecars
 
 Put each license text directly in the optional project-root `LICENSES/`
 directory. Its filename is an SPDX license or exception identifier, or a local
@@ -23,15 +43,9 @@ the site author chooses and provides the text that backs each declaration.
 Look up standard identifiers in the [SPDX License List](https://spdx.org/licenses/);
 use its exact identifier as the filename stem.
 
-Put a sidecar named `<asset filename>.license` next to every copied asset that
-needs an attribution. A sidecar is never copied as an asset. It must contain at
-least one copyright notice and one SPDX expression:
-
-```text
-SPDX-FileCopyrightText: 2001-2021 The STIX Fonts Project Authors
-SPDX-License-Identifier: OFL-1.1
-SPDX-FileComment: https://github.com/stipub/stixfonts
-```
+Put a sidecar named `<asset filename>.license` next to each copied asset that
+needs an attribution. It must contain at least one copyright notice and one
+SPDX expression.
 
 The `.license` suffix is reserved for this purpose: a file with that suffix
 cannot itself be a copied asset.

@@ -6,20 +6,19 @@ Accepted and implemented. This record defines a narrow alternative to
 templating whole Markdown files.
 
 The [rejected Tera-fragment design](markdown-template-fragments.md) explains
-why a Tera program embedded in Markdown is not suitable for Heine. This record
-asks whether Heine can provide one useful capability that Zola's
-pre-Markdown-templating model makes convenient: a block component that wraps
-authored Markdown.
+why a Tera program embedded in Markdown is not suitable for Heine. Block
+components provide a narrower way to wrap authored Markdown while preserving
+its place in the document and the resolved Site model.
 
-## Question
+## Decision and motivation
 
-Can an author place a named block component that wraps authored Markdown while
-Heine still analyzes that body once as authored Markdown and keeps the resolved
-Site model stable?
+An author can place a named block component around Markdown. Heine analyzes
+the body with the surrounding source and passes its rendered HTML to the
+component for presentation.
 
 Zola 0.23 demonstrates that Markdown-wrapping components are useful. It
 enables them by templating content before Markdown parsing. That established
-use is enough reason to pursue this narrow Heine design. It does not establish
+use motivated this narrow Heine design. It does not establish
 that broad content templating, arbitrary Tera programs in Markdown, or every
 kind of Zola component fits Heine.
 
@@ -30,11 +29,11 @@ literal arguments and authored Markdown. Heine analyzes that body as ordinary
 Markdown, then gives the component its rendered HTML only to present
 around it.
 
-When present, the body remains part of the page's Markdown document. Its
+The body remains part of the page's Markdown document. Its
 headings, links, ordinary footnotes, search text, word count, and reading time
 come from the authored source, regardless of the component's
-presentation. A component could add surrounding HTML and presentation, but
-could not create Markdown facts or reparse the body. Page summaries remain
+presentation. A component can add surrounding HTML and presentation, but
+cannot create Markdown facts or reparse the body. Page summaries remain
 authored metadata; they are never derived from Markdown.
 
 For example:

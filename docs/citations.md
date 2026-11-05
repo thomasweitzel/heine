@@ -1,13 +1,30 @@
 # Citations
 
 [Citations](glossary.md#citation) connect Markdown references to works in local
-BibTeX files. Heine
-checks citation keys while it analyzes the selected Markdown source, formats
-citations with a CSL style, and lets the page template place the reference
-list. It does not fetch bibliography entries or styles.
+BibTeX files. Heine checks citation keys in the selected Markdown source,
+formats citations with a Citation Style Language (CSL) style, and lets the
+page template place the reference list. It does not fetch bibliography entries
+or styles.
 
-Put `references.bib` and an independent CSL style, such as `numeric.csl`, in
-`citations/` at the site root. Select them in the page file:
+Create `citations/references.bib` at the site root:
+
+```bibtex
+@book{smith2024,
+  author = {Smith, Alice},
+  title = {An Example Study},
+  year = {2024}
+}
+
+@book{jones2023,
+  author = {Jones, Robin},
+  title = {Another Study},
+  year = {2023}
+}
+```
+
+Copy the starter site's `citations/reading.csl` to your site's `citations/`
+directory. This independent numeric style works with the example. Select the
+files in the page file:
 
 ```toml
 template = "page.tera"
@@ -16,10 +33,10 @@ content.main = "article.md"
 [citations]
 content = "main"
 bibliography = ["references.bib"]
-style = "numeric.csl"
+style = "reading.csl"
 ```
 
-Write references in the selected Markdown:
+Write references in `article.md`, the selected Markdown input:
 
 ```markdown
 One account [@smith2024] describes the result.
@@ -47,13 +64,12 @@ suppresses an inherited setting. `content` is resolved separately for each
 page. A dependent style needs `parent_style`, a path to its local independent
 parent. A `locale` value overrides the page locale for CSL formatting.
 
-Heine passes that locale to Hayagriva, which uses terms defined by the CSL
-style and its bundled CSL locale data. The bundled data covers a finite set of
-locales, not every locale Heine accepts. Hayagriva looks for the requested
-locale and an applicable language fallback; a term it cannot find can fall
-back to US English. These terms do not come from the site's Fluent messages.
-The style decides which terms to display and whether to use their short or long
-forms.
+Heine uses terms defined by the CSL style and its bundled CSL locale data. The
+bundled data covers a finite set of locales, not every locale Heine accepts.
+Heine looks for the selected locale and an applicable language fallback; a
+term it cannot find can fall back to US English. These terms do not come from
+the site's Fluent messages. The style decides which terms to display and
+whether to use their short or long forms.
 
 Citation groups use semicolons. Locators accept `p.`, `pp.`, `chap.`, and
 `chapter` in every locale. These identify the kind of locator; the CSL style
@@ -70,13 +86,14 @@ and margin footnotes and in Markdown block components are supported.
 
 Heine's fixture tests exercise representative APA and IEEE styles. Passing
 those examples does not establish conformance for every use of either style.
-In particular, Hayagriva can fail to distinguish different authors with the
+In particular, citations can fail to distinguish different authors with the
 same surname in author-date citations. For example, works by Alice Smith and
 Bob Smith from 2020 can both appear as “Smith, 2020,” with neither given name
 in the bibliography. Heine does not currently detect this. Review the rendered
 citations and their reference entries when authors share a surname, especially
-when their works have the same year. Hayagriva tracks related
-[name-disambiguation problems](https://github.com/typst/hayagriva/issues/470).
+when their works have the same year. See the
+[upstream name-disambiguation issue](https://github.com/typst/hayagriva/issues/470)
+for its status.
 
 BibTeX `ids` aliases identify the same work as its key. Keys and aliases must
 be unique across the selected bibliography files; Heine reports both
@@ -88,7 +105,7 @@ percent encoding where the URL requires it.
 The bibliography parser changes consecutive hyphens within a single BibTeX
 value fragment. Heine reports them in URLs so an author can use a verified
 percent-encoded URL. Hyphens assembled from separate fragments are preserved.
-The CSL output adapter rejects unsupported output and URLs. The generated
+Heine rejects unsupported CSL output and URLs. The generated
 bibliography is a list with `csl-bibliography` and `csl-entry` classes. It
 also exposes `csl-first` and `csl-content` classes and layout data attributes
 for site styles. CSL styles may supply their own numbers; the starter kit hides
