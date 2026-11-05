@@ -279,8 +279,8 @@ fn validate_ordering_data(
         CollectionOrder::PublishedAsc | CollectionOrder::PublishedDesc => {
             for id in ids {
                 let page = &pages[id];
-                let membership = membership(page, name);
                 if page.metadata.published.is_none() {
+                    let membership = membership(page, name);
                     return Err(Box::new(MissingPublished {
                         page: id.to_string(),
                         collection: name.to_string(),
