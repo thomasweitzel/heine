@@ -8,7 +8,7 @@ repository = "https://github.com/thomasweitzel/heine/"
 homepage = "https://heine.rs/"
 readme = "README.md"
 license = "EUPL-1.2+"
-keywords = ["static-site-generator", "ssg", "markdown", "website"]
+keywords = ["static-site", "ssg", "markdown", "website"]
 categories = ["command-line-utilities", "web-programming"]
 
 [dependencies]

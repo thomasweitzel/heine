@@ -1,37 +1,36 @@
 # Releasing Heine
 
-This procedure produces reviewed release artifacts from a signed source tag.
-It has two stages because the GitHub repository remains private until Heine is
-ready to be published. The private stage rehearses the same packaging and
-platform builds that a public release will use. The public stage adds GitHub
-Release assets and provenance attestations.
+This procedure publishes a reviewed source release, platform archives on
+GitHub, and the source package on crates.io. A signed tag identifies the
+source used for both publications.
 
 The maintainer decides that a release is ready and creates the signed tag.
-Automation builds, checks, packages, and, once the repository is public,
-publishes the corresponding artifacts. It does not decide a version, edit a
-changelog, or create a tag.
+Automation builds, checks, packages, and publishes the GitHub artifacts. The
+maintainer prepares the source, creates the tag, and publishes to crates.io.
 
-## First public release
+Follow the sections in order: prepare and tag the source, inspect the GitHub
+release, publish the crate, and update the documentation site. The workflow
+structure and recovery sections provide details when a run needs investigation.
 
-Before publishing the repository and the first crate release:
+## Initial repository setup
+
+For a new repository that is still private, complete this setup before its
+first public release:
 
 1. Review the Git history, repository metadata, and private Actions runs for
    material that should not be public. Actions history becomes visible when
    the repository becomes public. Remove unneeded private rehearsal runs.
-2. Confirm that the `heine` name is available on crates.io or belongs to the
-   intended publishing account. Sign in, verify the account email, and set up
-   Cargo authentication without adding credentials to the repository.
-3. Rehearse the release workflow against the reviewed commit while the
+2. Rehearse the release workflow against the reviewed commit while the
    repository is private. Inspect the archives and checksums. Keep the new
    release tag off GitHub until the repository is public, so its first push
    triggers the public release workflow.
-4. Make the repository public, check that Actions is enabled, and configure
+3. Make the repository public, check that Actions is enabled, and configure
    the tag and immutable-release protections described below. Confirm that
    repository settings allow the workflow's publication permissions.
-5. Push the reviewed commit and signed tag, inspect the resulting release,
+4. Push the reviewed commit and signed tag, inspect the resulting release,
    verify its assets and attestations, and publish the crate separately with
    `cargo publish --locked`. A crates.io version cannot be replaced.
-6. Update the documentation site's version and canonical documents, then
+5. Update the documentation site's version and canonical documents, then
    publish it only after the GitHub release links resolve. Verify the deployed
    links and checksum instructions.
 
@@ -153,16 +152,13 @@ Perform these steps on the reviewed release branch, normally `main`.
      <<<"$features"
    ```
 
-5. Before the first crates.io publication, confirm that `Cargo.toml` has the
+5. Before each crates.io publication, confirm that `Cargo.toml` has the
    public canonical `repository` URL and accurate description, categories,
-   keywords, license, and Rust version. Then run:
+   keywords, license, and Rust version.
 
-   ```bash
-   cargo publish --dry-run
-   ```
-
-   Crate publication is separate from a GitHub binary release. Do not publish
-   a crate merely because binary artifacts are ready.
+   Check keywords against the [crates.io manifest requirements](https://doc.rust-lang.org/cargo/reference/manifest.html#the-keywords-field).
+   Keywords may contain at most 20 ASCII characters. The publication dry run
+   described below cannot catch every registry-side rejection.
 
 6. Commit the release preparation, push it to Forgejo, then mirror the same
    commit to GitHub. Create, verify, and push a signed annotated tag only after
@@ -180,9 +176,9 @@ Perform these steps on the reviewed release branch, normally `main`.
    The tag identifies the reviewed source revision from which artifacts are
    built. Verify it before pushing, even when ordinary commits are signed.
 
-## Stage one: private repository rehearsal
+## Optional: private repository rehearsal
 
-While `thomasweitzel/heine` is private, the release workflow is a rehearsal
+For a private repository, the release workflow is a rehearsal
 tool. Start it manually for a selected signed tag or reviewed commit. It must:
 
 1. run the same formatting, Clippy, test, package, binary-help, and starter-site
@@ -287,10 +283,10 @@ rehearsal runs and any failed exploratory runs. The source commits, signed tags,
 and committed workflow definition remain in Git history, so run rehearsals only
 from source that is suitable to become public.
 
-## Stage two: public GitHub releases
+## Public GitHub releases
 
-After `thomasweitzel/heine` becomes public, the same signed-tag workflow gains
-its publication job. A pushed `v<version>` tag must:
+For a public repository, the signed-tag workflow runs its publication job. A
+pushed `v<version>` tag must:
 
 1. build and validate the complete artifact set from the tagged commit;
 2. generate and verify `SHA256SUMS` after all archives exist;
@@ -337,6 +333,7 @@ already pushed tag:
 
 ```bash
 gh release create "v<version>" dist/* \
+  --repo thomasweitzel/heine \
   --title "Heine <version>" \
   --verify-tag \
   --notes "$(cat "$RUNNER_TEMP/release-notes.md")" \
@@ -369,9 +366,71 @@ attestation that binds the release to its asset set:
 gh release verify v<version> --repo thomasweitzel/heine
 ```
 
-Finally, update the version and canonical documents for `heine.rs`. Its download
-page links directly to the GitHub Release assets. Publish the site after the
-assets exist, then check the rendered download page and every linked file.
+Confirm on the GitHub release page that all seven files are present and the
+release is marked immutable. A normal release has no pre-release label; create
+a discussion only when one is wanted.
+
+## Publish to crates.io
+
+GitHub releases do not update crates.io. Publish every crate version separately
+after reviewing the GitHub release. Crates.io stores the package source, while
+GitHub distributes the platform binaries and starter site.
+
+For the first publication, sign in to [crates.io](https://crates.io/) with the
+publishing GitHub account, verify the account email, and check that the `heine`
+name is available to that account. Create an API token with the permission to
+publish a new crate. Later publications require permission to publish updates.
+Run `cargo login` and enter the token at its prompt. Keep the token out of the
+repository, shell history, logs, and messages. See the [Cargo publishing
+guide](https://doc.rust-lang.org/cargo/reference/publishing.html) for account
+and authentication details.
+
+Publish from the exact tagged commit. If the working checkout has moved on,
+create a separate worktree, substituting the release version:
+
+```bash
+git worktree add --detach /tmp/heine-release-<version> v<version>
+cd /tmp/heine-release-<version>
+git status --short --branch
+git rev-parse HEAD
+git rev-parse 'v<version>^{commit}'
+```
+
+The worktree must be clean and the commit IDs must match. Inspect the package
+and perform a dry run before uploading:
+
+```bash
+cargo package --locked --list
+cargo publish --locked --dry-run
+cargo publish --locked
+```
+
+The final command uploads a permanent version. A dry run builds the package but
+cannot test all checks that crates.io applies to an actual upload. If Cargo
+times out while waiting for the index after uploading, check crates.io before
+trying again; the upload may have succeeded. Once published, check the version
+on the [Heine crate page](https://crates.io/crates/heine) and with:
+
+```bash
+cargo search heine --limit 3
+cargo info heine@<version>
+```
+
+If crates.io rejects an upload, read the registry error and confirm whether
+the version exists before retrying. Correct the source and repeat the package
+checks. Never move a published GitHub tag. Prefer a new release version when
+the correction changes release source. If an unpublished crate version must be
+published from a different commit for a metadata-only correction, explicitly
+record and review the difference, publish from a clean commit, and carry the
+correction into `main`. The GitHub tag and that crate then identify different
+commits, so do not claim otherwise.
+
+## Update the documentation site
+
+Update the version and canonical documents for `heine.rs`. Its download page
+links directly to the GitHub Release assets. Publish the site after the assets
+exist, then check the rendered download page and every linked file. Confirm
+the crates.io link and installation instructions after the crate is available.
 
 ## Recover from a failed, canceled, or timed-out run
 
@@ -393,6 +452,11 @@ For a public tag run, first inspect the GitHub Release state:
    Verify its checksums and provenance, then create a release for the existing
    tag with those exact files. Include the release facts and verification
    instructions described above; do not substitute a private rehearsal build.
+   In GitHub Actions, open the successful tag run and download `release-dist`
+   before its seven-day retention expires. In **Releases**, create a draft for
+   the existing tag, attach all seven individual files, and review their names,
+   checksums, notes, and provenance before publishing. Immutable-release
+   protection applies when the draft is published.
 2. If a draft exists, inspect it. The GitHub CLI creates a draft before it
    uploads assets, so a timeout during publication can leave a partial draft.
    Delete that draft before rerunning the publication job. Immutable-release
