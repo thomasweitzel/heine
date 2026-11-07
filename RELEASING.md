@@ -11,6 +11,32 @@ Automation builds, checks, packages, and, once the repository is public,
 publishes the corresponding artifacts. It does not decide a version, edit a
 changelog, or create a tag.
 
+## First public release
+
+Before publishing the repository and the first crate release:
+
+1. Review the Git history, repository metadata, and private Actions runs for
+   material that should not be public. Actions history becomes visible when
+   the repository becomes public. Remove unneeded private rehearsal runs.
+2. Confirm that the `heine` name is available on crates.io or belongs to the
+   intended publishing account. Sign in, verify the account email, and set up
+   Cargo authentication without adding credentials to the repository.
+3. Rehearse the release workflow against the reviewed commit while the
+   repository is private. Inspect the archives and checksums. Keep the new
+   release tag off GitHub until the repository is public, so its first push
+   triggers the public release workflow.
+4. Make the repository public, check that Actions is enabled, and configure
+   the tag and immutable-release protections described below. Confirm that
+   repository settings allow the workflow's publication permissions.
+5. Push the reviewed commit and signed tag, inspect the resulting release,
+   verify its assets and attestations, and publish the crate separately with
+   `cargo publish --locked`. A crates.io version cannot be replaced.
+6. Update the documentation site's version and canonical documents, then
+   publish it only after the GitHub release links resolve. Verify the deployed
+   links and checksum instructions.
+
+Public visibility and crate publication are separate maintainer decisions.
+
 ## Release artifacts
 
 Every public release provides these files. `<version>` is the Cargo package
@@ -182,7 +208,10 @@ cannot create the public provenance attestations that users later verify with
 GitHub CLI. Do not describe a private workflow artifact as attested.
 
 Before making the repository public, run at least one complete rehearsal from
-the exact tag and inspect all archives:
+the reviewed release commit and inspect all archives. The signed release tag
+must name this commit, but do not push that new tag to GitHub while the
+repository is private: pushing an already existing tag after publication does
+not trigger a new tag-push workflow.
 
 ```bash
 sha256sum --check SHA256SUMS
@@ -340,9 +369,9 @@ attestation that binds the release to its asset set:
 gh release verify v<version> --repo thomasweitzel/heine
 ```
 
-Finally, update `heine.rs` to point to the GitHub Release downloads and publish
-the release documentation and checksums there. Check the rendered download page
-and every linked file after deployment.
+Finally, update the version and canonical documents for `heine.rs`. Its download
+page links directly to the GitHub Release assets. Publish the site after the
+assets exist, then check the rendered download page and every linked file.
 
 ## Recover from a failed, canceled, or timed-out run
 

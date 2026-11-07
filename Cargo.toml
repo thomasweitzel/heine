@@ -1,6 +1,6 @@
 [package]
 name = "heine"
-version = "0.12.0"
+version = "0.12.1"
 edition = "2024"
 rust-version = "1.88"
 description = "A small, checked static-site generator"
@@ -18,14 +18,14 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 semver = "1.0.28"
 thiserror = "2.0.21"
-toml = "1.1.8"
-toml_edit = "0.25.17"
+toml = "1.2.1"
+toml_edit = "0.25.19"
 tera = { version = "2.4.0", features = ["glob_fs"] }
 walkdir = "2.5.0"
 pulldown-cmark = { version = "0.13.6", default-features = false, features = ["html"] }
 html5ever = "0.40.1"
 pulldown-latex = "0.8.0"
-giallo = { version = "0.5.2", features = ["dump"] }
+giallo = { version = "0.6.0", features = ["dump"] }
 image = { version = "0.25.10", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 base64 = "0.23.1"
 sha2 = "0.11.1"
@@ -33,7 +33,7 @@ quick-xml = "0.42.0"
 tempfile = "3.27.0"
 axum = "0.8.9"
 mime_guess = "2.0.5"
-mime = "0.3.17"
+mime = "0.3.18"
 notify = "8.2.1"
 percent-encoding = "2.3.2"
 tokio = { version = "1.54.1", features = ["fs", "io-util", "net", "rt-multi-thread", "sync", "time"] }
@@ -52,7 +52,7 @@ icu_calendar = "2.4.0"
 icu_locale = "2.4.0"
 icu_collator = { version = "2.4.0", features = ["compiled_data"] }
 spdx = "0.13.6"
-jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
+jiff = { version = "0.2.39", default-features = false, features = ["std", "tzdb-bundle-always"] }
 url = "2.5.8"
 biblatex = "0.12.0"
 hayagriva = { version = "0.10.1", features = ["archive"] }
