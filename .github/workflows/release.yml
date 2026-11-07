@@ -467,6 +467,7 @@ jobs:
           EOF
 
           gh release create "v$VERSION" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
             --title "Heine $VERSION" \
             --verify-tag \
             --notes "$(cat "$RUNNER_TEMP/release-notes.md")" \
