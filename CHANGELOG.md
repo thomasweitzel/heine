@@ -31,6 +31,21 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-07
+
+### Fixed
+
+- **MathML escaping.** Less-than signs, ampersand operators, and custom operator
+  names are escaped in generated MathML, preserving their meaning and preventing
+  operator names from being interpreted as HTML.
+- **Root indices.** The reference now explains how to group a multi-part root
+  index to avoid incorrect output from the built-in TeX parser.
+
+### Changed
+
+- **Syntax highlighting.** The updated highlighter improves highlighting for
+  some CSS constructs and changes how some code fragments are colored.
+
 ## [0.12.0] - 2026-11-04
 
 ### Added

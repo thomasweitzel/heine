@@ -492,6 +492,10 @@ The following boundaries are part of the current contract:
 syntax-highlighting behavior described in the [`heine.toml`](#heinetoml)
 table. They do not add a general client-side JavaScript or CSS pipeline.
 
+With `math = "mathml"`, group a root index that contains more than one term:
+write `\sqrt[{n+1}]{x}` instead of `\sqrt[n+1]{x}`. The current TeX parser can
+place part of an ungrouped index outside the root without reporting an error.
+
 ## Renderer adapters
 
 A [renderer profile](glossary.md#renderer-profile) lives in the root

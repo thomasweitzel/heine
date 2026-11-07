@@ -2391,6 +2391,73 @@ fn markdown_extensions_and_mathml_are_rendered_when_enabled() {
 }
 
 #[test]
+fn mathml_escapes_operator_characters_without_double_escaping_text() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nmath = 'mathml'\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        r"$x < y$ $x \lt y$ $x \And y$ $x \with y$ $\text{a < b & c}$
+
+$\operatorname{</math><script>alert(1)</script>}$
+$\operatorname{<}$ $\operatorname{&}$
+$x \not< y$ $x \not\And y$
+$\sqrt[{n+1}]{x}$
+
+$$x < y \And z$$
+",
+    );
+    fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert_eq!(output.matches("<mo>&lt;</mo>").count(), 3, "{output}");
+    assert_eq!(output.matches("<mo>&amp;</mo>").count(), 3, "{output}");
+    assert!(output.contains("<mo>&lt;\u{338}</mo>"), "{output}");
+    assert!(output.contains("<mo>&amp;\u{338}</mo>"), "{output}");
+    assert!(
+        output.contains("<mi mathvariant=\"normal\">&lt;</mi>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("<mi mathvariant=\"normal\">&amp;</mi>"),
+        "{output}"
+    );
+    assert!(
+        output.contains(
+            "<mroot><mrow><mi>x</mi></mrow><mrow><mi>n</mi><mo>+</mo><mn>1</mn></mrow></mroot>"
+        ),
+        "{output}"
+    );
+    assert!(
+        output.contains("<mtext>a &lt; b &amp; c</mtext>"),
+        "{output}"
+    );
+    assert!(
+        output.contains("&lt;/math&gt;&lt;script&gt;alert(1)&lt;/script&gt;"),
+        "{output}"
+    );
+    assert!(!output.contains("<script>"), "{output}");
+    assert!(!output.contains("<mo><</mo>"), "{output}");
+    assert!(!output.contains("<mo>&</mo>"), "{output}");
+
+    let document = format!("<root>{output}</root>");
+    let mut reader = quick_xml::Reader::from_str(&document);
+    loop {
+        match reader.read_event().expect("well-formed MathML fragment") {
+            quick_xml::events::Event::Eof => break,
+            quick_xml::events::Event::Text(text) => {
+                quick_xml::escape::unescape(text.as_ref()).expect("valid character references");
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
 fn ordinary_footnote_references_need_definitions() {
     let fixture = Fixture::new();
     fixture.write("heine.toml", "[markdown]\nextensions = ['footnotes']\n");

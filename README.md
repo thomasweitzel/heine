@@ -21,6 +21,12 @@ See the [Download page](https://heine.rs/download/) for release artifacts and
 the complete starter site. The [documentation overview](docs/README.md) starts
 with a first site and tutorial, then groups the focused guides by task.
 
+To build and install Heine from crates.io with Rust, run:
+
+```bash
+cargo install heine --locked
+```
+
 Use your usual tools for CSS and JavaScript processing, media transformation,
 deployment, audits, and external services. Heine reads their final files and
 builds the pages and relationships it can check from them.
