@@ -388,7 +388,11 @@ For a public tag run, first inspect the GitHub Release state:
 
 1. If no release exists, a transient runner or network failure may be rerun
    from the same workflow run. The rerun uses the same committed workflow and
-   tagged source.
+   tagged source. If the tagged workflow itself cannot publish, obtain the
+   assembled artifact from that tag's successful build and attestation jobs.
+   Verify its checksums and provenance, then create a release for the existing
+   tag with those exact files. Include the release facts and verification
+   instructions described above; do not substitute a private rehearsal build.
 2. If a draft exists, inspect it. The GitHub CLI creates a draft before it
    uploads assets, so a timeout during publication can leave a partial draft.
    Delete that draft before rerunning the publication job. Immutable-release
