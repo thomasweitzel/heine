@@ -701,7 +701,7 @@ formats the selected message; a message may ignore an argument
 it does not use.
 
 Template inheritance and components use Tera2's own syntax; the
-[tutorial](tutorial.md#reuse-the-pager-as-a-tera2-component) shows one
+[tutorial](tutorial.md#optional-reuse-the-pager-as-a-tera2-component) shows one
 component. Heine does not provide a configuration or plugin hook for
 registering site-defined Rust filters or functions. The function and filter
 tables below are the complete Heine additions to a template environment.
