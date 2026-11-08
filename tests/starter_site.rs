@@ -825,6 +825,7 @@ fn starter_kit_reference_site_materializes_as_an_ordinary_site() {
         "{guide}"
     );
     let sitemap = fs::read_to_string(output.join("sitemap.xml")).expect("reference-site sitemap");
+    assert!(output.join("blog/page/2.html").is_file());
     assert!(!sitemap.contains("/blog/page/"), "{sitemap}");
     let reading = fs::read_to_string(output.join("de/lesen/nachtgedanken/index.html"))
         .expect("reference-site reading");
