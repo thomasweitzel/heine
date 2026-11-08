@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+
 //! A small static-site generator.  Input parsing, the resolved site model,
 //! template-facing values, rendering, and output writing deliberately live at
 //! separate boundaries so future transformations do not need filesystem access.

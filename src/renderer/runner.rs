@@ -490,7 +490,8 @@ fn wait_for_process(
     child: &mut std::process::Child,
     timeout_seconds: u64,
 ) -> Result<std::process::ExitStatus, String> {
-    let deadline = Instant::now() + Duration::from_secs(timeout_seconds);
+    let started = Instant::now();
+    let timeout = Duration::from_secs(timeout_seconds);
     loop {
         if let Some(status) = child
             .try_wait()
@@ -498,7 +499,7 @@ fn wait_for_process(
         {
             return Ok(status);
         }
-        if Instant::now() >= deadline {
+        if started.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!(

@@ -1057,6 +1057,33 @@ arguments = ["-c", "sleep 3"]
     assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
 }
 
+#[test]
+fn stream_renderer_accepts_the_largest_toml_timeout() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("copy", "['body']", "html").replace(
+            "timeout_seconds = 10",
+            "timeout_seconds = 9223372036854775807",
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", ":::render[copy]\nhello\n:::\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("large timeout does not overflow");
+    let output =
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("rendered page");
+    assert!(output.contains("hello"), "{output}");
+}
+
 #[cfg(unix)]
 #[test]
 fn stream_input_failure_terminates_the_direct_renderer() {
