@@ -112,6 +112,68 @@ fn configured_fixture() -> Fixture {
 }
 
 #[test]
+fn citation_and_markdown_state_is_isolated_between_pages() {
+    let fixture = configured_fixture();
+    fixture.write(
+        "citations/works.bib",
+        "@book{work, title={First Work}}\n@book{other, title={Second Work}}\n",
+    );
+    fixture.write("content/en/index.md", "First page [@work].\n");
+    fixture.write("content/en/second.page", "template='page.tera'\ncontent.main='second.md'\n[citations]\ncontent='main'\nbibliography=['works.bib']\nstyle='style.csl'\n");
+    fixture.write("content/en/second.md", "Second page [@other].\n");
+    fixture.write(
+        "content/en/plain.page",
+        "template='plain.tera'\ncontent.main='plain.md'\n",
+    );
+    fixture.write("content/en/plain.md", "Plain page.\n");
+    fixture.write(
+        "templates/page.tera",
+        "{{ markdown(content='main') }}{{ bibliography() }}",
+    );
+    fixture.write("templates/plain.tera", "{{ markdown(content='main') }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("all pages build");
+    let first = fs::read_to_string(fixture.path().join("public/index.html")).unwrap();
+    let second = fs::read_to_string(fixture.path().join("public/second.html")).unwrap();
+    let plain = fs::read_to_string(fixture.path().join("public/plain.html")).unwrap();
+    let first_bibliography = first
+        .split_once("csl-bibliography")
+        .expect("first bibliography")
+        .1;
+    let second_bibliography = second
+        .split_once("csl-bibliography")
+        .expect("second bibliography")
+        .1;
+    assert!(
+        first.contains("First page") && first.contains("First Work"),
+        "{first}"
+    );
+    assert!(
+        !first.contains("Second Work") && !first.contains("Plain page"),
+        "{first}"
+    );
+    assert!(
+        second.contains("Second page") && second.contains("Second Work"),
+        "{second}"
+    );
+    assert!(
+        !second.contains("First Work") && !second.contains("Plain page"),
+        "{second}"
+    );
+    assert!(first_bibliography.contains("First Work"), "{first}");
+    assert!(!first_bibliography.contains("Second Work"), "{first}");
+    assert!(second_bibliography.contains("Second Work"), "{second}");
+    assert!(!second_bibliography.contains("First Work"), "{second}");
+    assert!(plain.contains("Plain page"), "{plain}");
+    assert!(
+        !plain.contains("csl-bibliography")
+            && !plain.contains("First Work")
+            && !plain.contains("Second Work"),
+        "{plain}"
+    );
+}
+
+#[test]
 fn publication_view_example_renders_partial_metadata() {
     let fixture = configured_fixture();
     fixture.write("data/publications.json", r#"{"items":[{"key":"paper","title":"A Study","authors":["Alice Smith","Bob García"],"editors":[],"date":{"text":"2022-07"},"journal":"Example Journal","book_title":null},{"key":"chapter","title":"A Chapter","authors":[],"editors":[{"role":"editor","names":["Morgan Jones"]}],"date":null,"journal":null,"book_title":"Collected Research"},{"key":"minimal","title":null,"authors":[],"editors":[],"date":null,"journal":null,"book_title":null}]}"#);
