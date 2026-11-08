@@ -1059,6 +1059,42 @@ arguments = ["-c", "sleep 3"]
 
 #[cfg(unix)]
 #[test]
+fn stream_input_failure_terminates_the_direct_renderer() {
+    let fixture = Fixture::new();
+    let marker = fixture.path().join("renderer-survived");
+    let script = format!(
+        "exec 0<&-; sleep 2; printf survived > '{}'",
+        marker.display()
+    );
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "[renderers.close]\nprotocol = 'stream'\nprogram = 'sh'\ntimeout_seconds = 10\ncache_identity = 'close-1'\ninputs = ['body']\nresult = 'html'\n[renderers.close.block]\narguments = ['-c', {}]\n",
+            serde_json::to_string(&script).expect("shell argument")
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        &format!(":::render[close]\n{}\n:::\n", "x".repeat(1_048_576)),
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("closed renderer input fails");
+    assert!(format!("{error:?}").contains("could not write renderer input"));
+    std::thread::sleep(std::time::Duration::from_millis(2500));
+    assert!(!marker.exists(), "renderer continued after input failure");
+}
+
+#[cfg(unix)]
+#[test]
 fn workspace_renderer_stages_body_files_and_bundles_in_an_isolated_layout() {
     let fixture = Fixture::new();
     fixture.write(

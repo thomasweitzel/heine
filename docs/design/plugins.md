@@ -597,11 +597,12 @@ rendering failure.
 
 ### Execution limits and workspace retention
 
-Every external bridge declares a positive maximum duration for one renderer
-request. There is no unbounded default. A renderer that needs more time must
-ask for it explicitly in its bridge configuration. When the duration expires,
-Heine stops waiting, attempts to terminate the direct child process, and fails
-the request at its authored location while retaining the last complete output.
+Every external bridge declares a positive timeout for waiting on the direct
+child. For stream profiles, the wait starts after the input write finishes;
+a renderer that stops reading can block that write. A descendant holding an
+output pipe open can delay output collection after the direct child exits.
+When the child wait expires, Heine attempts to terminate the direct child and
+fails the request at its authored location before output replacement.
 
 Terminating a direct child is portable. Reliably terminating arbitrary
 descendant process trees is not a cross-platform guarantee without additional
