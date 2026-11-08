@@ -33,6 +33,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Development server output.** A closed terminal output stream no longer
+  causes the server to panic while reporting status or diagnostics.
 - **Starter kit reference site.** Synchronize the copyable reference site
   with the maintained starter site.
 - **Asset and renderer edge cases.** Version-like asset names without a base
