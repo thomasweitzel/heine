@@ -385,12 +385,15 @@ fn not_found() -> Response {
 }
 
 fn internal_error(path: impl Into<PathBuf>, source: io::Error) -> Response {
-    eprintln!(
-        "{:?}",
-        Report::new(RequestError {
-            path: path.into(),
-            source,
-        })
+    super::write_message(
+        io::stderr().lock(),
+        format_args!(
+            "{:?}",
+            Report::new(RequestError {
+                path: path.into(),
+                source,
+            })
+        ),
     );
     empty_response(StatusCode::INTERNAL_SERVER_ERROR)
 }

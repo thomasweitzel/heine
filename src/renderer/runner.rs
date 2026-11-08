@@ -262,11 +262,17 @@ pub(crate) fn run_workspace(
     let result = match (result, cleanup) {
         (Ok(result), Ok(())) => result,
         (Ok(result), Err(cleanup)) => {
-            eprintln!("renderer workspace cleanup warning: {cleanup}");
+            let _ = writeln!(
+                std::io::stderr().lock(),
+                "renderer workspace cleanup warning: {cleanup}"
+            );
             result
         }
         (Err(error), Err(cleanup)) => {
-            eprintln!("renderer workspace cleanup warning: {cleanup}");
+            let _ = writeln!(
+                std::io::stderr().lock(),
+                "renderer workspace cleanup warning: {cleanup}"
+            );
             return Err(error);
         }
         (Err(error), Ok(())) => return Err(error),

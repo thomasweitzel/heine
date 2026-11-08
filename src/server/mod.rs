@@ -9,7 +9,7 @@ mod reload;
 mod watch;
 
 use std::{
-    fs, io,
+    fmt, fs, io,
     net::{IpAddr, SocketAddr, TcpListener},
     path::{Path, PathBuf},
     sync::Arc,
@@ -25,6 +25,10 @@ use crate::{
 };
 
 pub(crate) use crate::output::INTERNAL_DIRECTORY;
+
+fn write_message(mut destination: impl io::Write, message: fmt::Arguments<'_>) {
+    let _ = writeln!(destination, "{message}");
+}
 
 /// Options for the local development server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -224,9 +228,12 @@ pub(crate) fn serve(root: &Path, options: ServeOptions) -> miette::Result<()> {
     let address = listener
         .local_addr()
         .map_err(|source| miette::Report::new(Error::ListenerAddress { source }))?;
-    println!(
-        "Serving {}",
-        display_url(address, initial.base_path.as_str())
+    write_message(
+        io::stdout().lock(),
+        format_args!(
+            "Serving {}",
+            display_url(address, initial.base_path.as_str())
+        ),
     );
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -314,6 +321,24 @@ pub(super) fn next_generation(generation: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_output_tolerates_a_closed_pipe() {
+        struct ClosedPipe;
+        impl io::Write for ClosedPipe {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        write_message(ClosedPipe, format_args!("Rebuilt site"));
+        let mut output = Vec::new();
+        write_message(&mut output, format_args!("Rebuilt site"));
+        assert_eq!(output, b"Rebuilt site\n");
+    }
 
     #[test]
     fn rejects_privileged_port() {

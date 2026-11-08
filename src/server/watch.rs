@@ -151,9 +151,12 @@ fn watch_loop(
                 generation = next_generation(generation);
                 kit_paths.clone_from(&build.kit_paths);
                 let _ = published.send(PublishedSite::from_build(build, generation));
-                println!("{}", rebuild_message(Timestamp::now(), &changed_paths));
+                super::write_message(
+                    std::io::stdout().lock(),
+                    format_args!("{}", rebuild_message(Timestamp::now(), &changed_paths)),
+                );
             }
-            Err(error) => eprintln!("{error:?}"),
+            Err(error) => super::write_message(std::io::stderr().lock(), format_args!("{error:?}")),
         }
     }
 }
@@ -181,12 +184,15 @@ fn changed_source_paths(
 }
 
 fn report_observation_error(root: &Path, source: notify::Error) {
-    eprintln!(
-        "{:?}",
-        Report::new(Error::Observe {
-            path: root.into(),
-            source,
-        })
+    super::write_message(
+        std::io::stderr().lock(),
+        format_args!(
+            "{:?}",
+            Report::new(Error::Observe {
+                path: root.into(),
+                source,
+            })
+        ),
     );
 }
 
@@ -312,6 +318,129 @@ mod tests {
     };
 
     static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn rebuild_coordinator_survives_a_closed_stdout_pipe() {
+        struct ChildGuard {
+            child: std::process::Child,
+            running: bool,
+        }
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                if self.running {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                }
+            }
+        }
+
+        const CHILD_ROOT: &str = "HEINE_CLOSED_STDOUT_TEST_ROOT";
+        if let Some(root) = std::env::var_os(CHILD_ROOT) {
+            let root = PathBuf::from(root);
+            let build = BuildOptions::new(crate::BuildMode::Full);
+            let (initial, runtime) =
+                crate::build_at_with_renderer_runtime(&root, build).expect("initial build");
+            let (published, mut receiver) = watch::channel(PublishedSite::from_build(initial, 0));
+            let (events, incoming) = mpsc::channel();
+            let watcher = notify::recommended_watcher(|_| {}).expect("watcher");
+            let coordinator_root = root.clone();
+            let coordinator = thread::spawn(move || {
+                watch_loop(
+                    coordinator_root,
+                    watcher,
+                    incoming,
+                    published,
+                    build,
+                    None,
+                    runtime,
+                );
+            });
+            fs::write(root.join("ready"), "ready").expect("signal readiness");
+            let deadline = std::time::Instant::now() + Duration::from_secs(15);
+            while !root.join("continue").exists() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "parent did not continue"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+            let template = root.join("templates/page.tera");
+            for (generation, text) in [(1, "first"), (2, "second")] {
+                fs::write(&template, text).expect("change template");
+                events
+                    .send(Ok(Event::new(EventKind::Any).add_path(template.clone())))
+                    .expect("send change");
+                let deadline = std::time::Instant::now() + Duration::from_secs(15);
+                while receiver.borrow_and_update().generation < generation {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "rebuild did not complete"
+                    );
+                    thread::sleep(Duration::from_millis(10));
+                }
+                assert_eq!(
+                    fs::read_to_string(root.join("public/index.html")).unwrap(),
+                    text
+                );
+            }
+            drop(events);
+            coordinator
+                .join()
+                .expect("coordinator survives closed stdout");
+            // The test harness also writes to stdout after a test. Exit before it
+            // encounters the deliberately closed pipe.
+            std::process::exit(0);
+        }
+
+        let root = tempfile::tempdir().expect("site root");
+        fs::create_dir_all(root.path().join("content/en")).unwrap();
+        fs::create_dir(root.path().join("templates")).unwrap();
+        fs::write(root.path().join("heine.toml"), "[site]\ntime_zone='Europe/Berlin'\n[i18n]\ndefault_locale='en'\n[i18n.locales.en]\ndirection='ltr'\n").unwrap();
+        fs::write(
+            root.path().join("content/en/index.page"),
+            "template='page.tera'\n",
+        )
+        .unwrap();
+        fs::write(root.path().join("templates/page.tera"), "initial").unwrap();
+        let mut child = ChildGuard {
+            child: std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "server::watch::tests::rebuild_coordinator_survives_a_closed_stdout_pipe",
+                    "--nocapture",
+                ])
+                .env(CHILD_ROOT, root.path())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .expect("start child test"),
+            running: true,
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while !root.path().join("ready").exists() {
+            if let Some(status) = child.child.try_wait().unwrap() {
+                child.running = false;
+                panic!("child exited before readiness: {status}");
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("child did not become ready");
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        drop(child.child.stdout.take());
+        fs::write(root.path().join("continue"), "continue").unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(35);
+        loop {
+            if let Some(status) = child.child.try_wait().unwrap() {
+                child.running = false;
+                assert!(status.success(), "child failed: {status}");
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("child did not finish");
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
 
     #[test]
     fn observation_failures_explain_how_to_recover() {
