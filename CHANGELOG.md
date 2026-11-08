@@ -33,6 +33,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Starter kit reference site.** Keep its About page headings, component
+  example, and sitemap settings consistent with the starter site.
 - **Asset and renderer edge cases.** Version-like asset names without a base
   name are copied normally, and very large renderer timeouts no longer cause
   an overflow.
