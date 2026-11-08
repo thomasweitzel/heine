@@ -31,6 +31,18 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Asset and renderer edge cases.** Version-like asset names without a base
+  name are copied normally, and very large renderer timeouts no longer cause
+  an overflow.
+- **Renderer diagnostics and cleanup.** Heine now bounds retained renderer
+  standard error while continuing to drain it, and attempts to terminate and
+  reap the direct renderer if writing its input fails.
+- **Output recovery diagnostics.** If publication fails and Heine cannot
+  restore the previous output, the error now identifies its backup and both
+  filesystem failures.
+
 ## [0.12.1] - 2026-11-07
 
 ### Fixed

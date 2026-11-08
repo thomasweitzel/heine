@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used))]
+
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};

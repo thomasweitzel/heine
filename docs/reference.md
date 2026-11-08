@@ -31,6 +31,15 @@ A site root contains `heine.toml`, `content/`, and `templates/`; `citations/`, `
 
 `--quick` does not apply to `serve`.
 
+A full build stages a complete output tree before replacing the previous
+output. Replacement uses two renames, so the output path can be briefly
+unavailable. If replacement fails, Heine attempts to restore the previous
+tree; its diagnostic identifies the backup if restoration also fails. An
+interruption can leave staging or backup directories behind. If backup cleanup
+fails after replacement, the new output remains published. See the
+[architecture overview](architecture.md#the-build-pipeline) for the build
+sequence.
+
 ## `heine.toml`
 
 `heine.toml` is required. Its `[i18n]` section is required; other sections and
@@ -592,9 +601,12 @@ A request may instead select a page-owned `[render.<name>] file = "…"`
 declaration when the profile accepts `"file"`; declared files are read as
 renderer input and are never published as copied assets. Stream programs read
 their input on standard input and write one replacement to standard output.
-Heine captures bounded standard-error text for a failed program and terminates
-the direct child when it exceeds `timeout_seconds`. It does not manage a
-renderer's descendant process tree.
+Heine retains up to 8 KiB of standard error and continues draining the stream;
+the diagnostic marks truncated output. `timeout_seconds` limits the wait for
+the direct child after Heine has written stream input. It does not bound a
+blocked input write or the wait for pipes kept open by descendants. Heine
+attempts to terminate the direct child on timeout or input-write failure; it
+does not manage a renderer's descendant process tree.
 
 Heine caches successful renderer results below `.heine/cache/renderers/v1/`,
 outside published output. The key includes the profile identity and effective

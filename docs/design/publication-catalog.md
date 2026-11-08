@@ -509,13 +509,13 @@ silently omits an unrecognized kind because its conditional has no matching
 branch. The fixture confirms that adding a `kind` field to ordinary data does
 not make it a checked declaration.
 
-| Question | Template-resolved fields | Possible model-checked declaration |
-|---|---|---|
-| Local asset | `asset()` checks it when the template renders the work | Heine could check every declared asset while resolving the catalog |
-| External link | A template string is escaped, but its URL is not checked | Heine could check a declared URL's syntax and permitted scheme |
-| Multiple links | The site chooses fields or its own list shape | The public contract must define repeated links, labels, and kinds |
+| Question              | Template-resolved fields                                            | Possible model-checked declaration                                                          |
+|-----------------------|---------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| Local asset           | `asset()` checks it when the template renders the work              | Heine could check every declared asset while resolving the catalog                          |
+| External link         | A template string is escaped, but its URL is not checked            | Heine could check a declared URL's syntax and permitted scheme                              |
+| Multiple links        | The site chooses fields or its own list shape                       | The public contract must define repeated links, labels, and kinds                           |
 | Input and maintenance | BibTeX fields can be used where the site gives them a known meaning | A declaration needs an explicit work key and link data, potentially repeating BibTeX fields |
-| Diagnostics | A rendered missing asset fails at the template call | A model check could point at a link declaration, including for unrendered works |
+| Diagnostics           | A rendered missing asset fails at the template call                 | A model check could point at a link declaration, including for unrendered works             |
 
 The model-checked column describes a possible feature; it has not been
 implemented or tested. Both approaches still leave external link availability

@@ -42,6 +42,12 @@ also have the browser-output authority of trusted project templates. Review the
 program, every fixed argument, and every declared file or bundle input before
 you grant permission.
 
+The configured timeout limits the wait for the direct child. For stream
+profiles, Heine writes the input before starting that wait; a program that
+stops reading can block the build. A descendant that keeps an output pipe open
+can also delay completion after the direct child exits. Heine does not manage
+descendant processes, so renderer wrappers must manage their own children.
+
 Every build that selects a renderer request needs explicit permission:
 
 ```bash

@@ -198,8 +198,8 @@ a different suffix, so Heine exposes its checked canonical URL without claiming
 a representation type it cannot establish.
 
 Feed output escapes XML markup and rejects XML-forbidden control characters
-before publication. It is included in the same full-build staging and
-atomic publication step as other managed output. Quick builds do not regenerate
+before publication. It is included in the same staged full-build output as
+other managed files. Quick builds do not regenerate
 feeds, because they do not reconstruct complete collection and
 output relationships.
 

@@ -59,6 +59,53 @@ fn builds_explicit_locale_trees_with_data_fallback_and_translation_groups() {
 }
 
 #[test]
+fn shared_template_data_stays_localized_and_refreshes_between_builds() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[i18n]\ndefault_locale = 'en'\n[i18n.locales.en]\ndirection = 'ltr'\n[i18n.locales.de]\ndirection = 'ltr'\n",
+    );
+    for page in [
+        "content/en/index.page",
+        "content/en/other.page",
+        "content/de/index.page",
+    ] {
+        fixture.write(page, "template = 'page.html'\n");
+    }
+    fixture.write("data/site.json", r#"{"title":"<Shared>"}"#);
+    fixture.write("data/en/navigation.toml", "label = 'English'\n");
+    fixture.write("data/de/navigation.toml", "label = 'Deutsch'\n");
+    fixture.write(
+        "templates/page.html",
+        "{{ data.site.title }}|{{ locale_data.navigation.label }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("first build");
+    for (path, expected) in [
+        ("public/index.html", "&lt;Shared&gt;|English"),
+        ("public/other.html", "&lt;Shared&gt;|English"),
+        ("public/de/index.html", "&lt;Shared&gt;|Deutsch"),
+    ] {
+        assert_eq!(
+            fs::read_to_string(fixture.path().join(path)).expect("rendered page"),
+            expected
+        );
+    }
+
+    fixture.write("data/site.json", r#"{"title":"Updated"}"#);
+    fixture.write("data/de/navigation.toml", "label = 'Neu'\n");
+    build_at(fixture.path(), BuildMode::Full).expect("second build");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("English page"),
+        "Updated|English"
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/de/index.html")).expect("German page"),
+        "Updated|Neu"
+    );
+}
+
+#[test]
 fn renders_each_locale_with_its_configured_text_direction() {
     let fixture = Fixture::new();
     fixture.write(

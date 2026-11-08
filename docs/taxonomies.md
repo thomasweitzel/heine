@@ -118,7 +118,7 @@ terms. A term listing exists only for a term that has at least one rendered
 member. Later pagers always use the fixed `page` route segment shown above and
 the term template; authored `pagination.segment` settings do not apply to
 taxonomy listings. All generated routes participate in normal output ownership,
-portable-path checks, collision detection, atomic publication, and
+portable-path checks, collision detection, staged publication, and
 base-path-aware URL generation.
 
 Both configured templates are checked on every build, including an empty

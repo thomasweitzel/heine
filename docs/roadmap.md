@@ -22,7 +22,7 @@ a concrete Heine use case.
   position in more than one weight-ordered collection without overloading its
   directory sibling weight or introducing an implicit fallback.
 - **Dependency-aware incremental builds** and, if large sites justify it,
-  streaming rendering into the staging tree while preserving atomic
+  streaming rendering into the staging tree while preserving staged
   publication.
 
 ## Under consideration

@@ -77,7 +77,7 @@ retain older fingerprinted files for an explicit policy period: a browser or CDN
 may still hold earlier HTML, and durable references in Atom entries, newsletters,
 social previews, citations, or bookmarks can name an older asset for much longer.
 Rolling back to earlier HTML has the same requirement: its fingerprinted assets
-must still exist. Heine's full builds atomically publish only the current
+must still exist. Heine's full builds stage and publish only the current
 managed output tree and remove stale local files. That tree is not an archive,
 and Heine cannot make a deployment system retain prior public assets.
 

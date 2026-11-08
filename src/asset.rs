@@ -1141,7 +1141,7 @@ fn process_versioned(
     let Ok(version) = version.parse() else {
         return;
     };
-    if version == 0 {
+    if matches!(base, "" | "." | "..") || version == 0 {
         return;
     }
     let mut key = path.with_file_name(base);

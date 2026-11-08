@@ -95,7 +95,7 @@ inheritable.
 `heine serve --drafts` uses the configured output directory, just as ordinary
 serving does. Its output is local development output, not a second publication
 format. After previewing, run a normal complete `heine` build before deploying
-from that directory. The normal full build atomically replaces the preview
+from that directory. The normal full build replaces the preview
 tree and removes draft output.
 
 `--drafts` composes with the existing `serve` options such as `--host`,
@@ -243,7 +243,7 @@ normally and keeps the previous successful development-server output in place.
 - Drafts do not suppress independent source-tree, asset, license, deployment,
   configuration, or descriptor checks.
 - Heine does not preserve a stale draft preview when a normal full build is
-  requested. Atomic full publication replaces the entire managed output tree.
+  requested. A full build replaces the entire managed output tree.
 
 ## Starter site and documentation
 
@@ -290,7 +290,7 @@ The public documentation needs:
   the link call site.
 - `heine serve --drafts` includes the same draft in all page relationships,
   checks it fully, and exposes `page.draft = true`.
-- A normal complete build after preview atomically removes preview-only draft
+- A normal complete build after preview removes preview-only draft
   output.
 - Quick-build tests demonstrate that draft-state transitions require a full
   build and cannot claim complete output.

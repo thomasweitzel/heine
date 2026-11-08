@@ -1057,6 +1057,69 @@ arguments = ["-c", "sleep 3"]
     assert!(diagnostic.contains("content/en/index.md:1"), "{diagnostic}");
 }
 
+#[test]
+fn stream_renderer_accepts_the_largest_toml_timeout() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &stream_copy_profile("copy", "['body']", "html").replace(
+            "timeout_seconds = 10",
+            "timeout_seconds = 9223372036854775807",
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", ":::render[copy]\nhello\n:::\n");
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect("large timeout does not overflow");
+    let output =
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("rendered page");
+    assert!(output.contains("hello"), "{output}");
+}
+
+#[cfg(unix)]
+#[test]
+fn stream_input_failure_terminates_the_direct_renderer() {
+    let fixture = Fixture::new();
+    let marker = fixture.path().join("renderer-survived");
+    let script = format!(
+        "exec 0<&-; sleep 2; printf survived > '{}'",
+        marker.display()
+    );
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "[renderers.close]\nprotocol = 'stream'\nprogram = 'sh'\ntimeout_seconds = 10\ncache_identity = 'close-1'\ninputs = ['body']\nresult = 'html'\n[renderers.close.block]\narguments = ['-c', {}]\n",
+            serde_json::to_string(&script).expect("shell argument")
+        ),
+    );
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        &format!(":::render[close]\n{}\n:::\n", "x".repeat(1_048_576)),
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+
+    let error = heine::build_at_with_options(
+        fixture.path(),
+        heine::BuildOptions::new(BuildMode::Full).allow_external_renderers(),
+    )
+    .expect_err("closed renderer input fails");
+    assert!(format!("{error:?}").contains("could not write renderer input"));
+    std::thread::sleep(std::time::Duration::from_millis(2500));
+    assert!(!marker.exists(), "renderer continued after input failure");
+}
+
 #[cfg(unix)]
 #[test]
 fn workspace_renderer_stages_body_files_and_bundles_in_an_isolated_layout() {

@@ -17,6 +17,32 @@ fn asset_helper_resolves_versioned_assets_and_integrity() {
 }
 
 #[test]
+fn version_like_assets_without_a_base_name_are_copied_normally() {
+    let fixture = Fixture::new();
+    fixture.write("content/en/index.page", "template = 'page.tera'\n");
+    fixture.write("content/en/.v1", "first");
+    fixture.write("content/en/.v1.css", "second");
+    fixture.write("content/en/..v1.css", "third");
+    fixture.write("content/en/...v1.css", "fourth");
+    fixture.write("content/en/css/.v1.css", "nested");
+    fixture.write("content/en/css/.theme.v2.css", "hidden versioned");
+    fixture.write("content/en/css/styles.v2.css", "versioned");
+    fixture.write(
+        "templates/page.tera",
+        "{% set a = asset(id='.v1') %}{% set b = asset(id='.v1.css') %}{% set c = asset(id='css/.v1.css') %}{% set d = asset(id='css/styles.css') %}{% set e = asset(id='css/.theme.css') %}{{ a.url }}|{{ b.url }}|{{ c.url }}|{{ d.url }}|{{ e.url }}",
+    );
+
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("page output"),
+        "/.v1|/.v1.css|/css/.v1.css|/css/styles.v2.css|/css/.theme.v2.css"
+    );
+    for name in [".v1", ".v1.css", "..v1.css", "...v1.css", "css/.v1.css"] {
+        assert!(fixture.path().join("public").join(name).is_file());
+    }
+}
+
+#[test]
 fn quick_builds_rerender_pages_when_asset_versions_change() {
     let fixture = Fixture::new();
     fixture.write("content/en/index.page", "template = 'page.tera'\n");

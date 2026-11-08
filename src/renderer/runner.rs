@@ -93,6 +93,30 @@ impl RendererRuntime {
 }
 
 const WORKSPACE_SESSION_PREFIX: &str = "heine-renderer-session-";
+const STDERR_LIMIT: usize = 8192;
+
+struct RendererStderr {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn read_renderer_stderr(mut stderr: impl Read) -> std::io::Result<RendererStderr> {
+    let mut bytes = Vec::new();
+    let mut buffer = [0; 8192];
+    let mut truncated = false;
+    loop {
+        let count = match stderr.read(&mut buffer) {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            result => result?,
+        };
+        if count == 0 {
+            return Ok(RendererStderr { bytes, truncated });
+        }
+        let retained = count.min(STDERR_LIMIT - bytes.len());
+        bytes.extend_from_slice(&buffer[..retained]);
+        truncated |= retained < count;
+    }
+}
 
 #[derive(Debug)]
 struct WorkspaceManager {
@@ -337,11 +361,8 @@ fn execute_workspace_process(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("could not start renderer: {error}"))?;
-    let mut stderr = child.stderr.take().expect("piped renderer stderr");
-    let stderr_reader = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stderr.read_to_end(&mut bytes).map(|_| bytes)
-    });
+    let stderr = child.stderr.take().expect("piped renderer stderr");
+    let stderr_reader = thread::spawn(move || read_renderer_stderr(stderr));
     let status = wait_for_process(&mut child, profile.timeout_seconds)?;
     let stderr = read_process_output(stderr_reader, "diagnostics")?;
     if status.success() {
@@ -436,21 +457,25 @@ fn execute_stream(
         .spawn()
         .map_err(|error| format!("could not start renderer: {error}"))?;
     let mut stdout = child.stdout.take().expect("piped renderer stdout");
-    let mut stderr = child.stderr.take().expect("piped renderer stderr");
+    let stderr = child.stderr.take().expect("piped renderer stderr");
     let stdout_reader = thread::spawn(move || {
         let mut bytes = Vec::new();
         stdout.read_to_end(&mut bytes).map(|_| bytes)
     });
-    let stderr_reader = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stderr.read_to_end(&mut bytes).map(|_| bytes)
-    });
-    child
+    let stderr_reader = thread::spawn(move || read_renderer_stderr(stderr));
+    if let Err(error) = child
         .stdin
         .take()
         .expect("piped renderer stdin")
         .write_all(input)
-        .map_err(|error| format!("could not write renderer input: {error}"))?;
+    {
+        let cleanup = stop_renderer(&mut child);
+        let mut message = format!("could not write renderer input: {error}");
+        if let Err(error) = cleanup {
+            message.push_str(&format!("; could not terminate and reap renderer: {error}"));
+        }
+        return Err(message.into());
+    }
     let status = wait_for_process(&mut child, profile.timeout_seconds)?;
     let stdout = read_process_output(stdout_reader, "output")?;
     let stderr = read_process_output(stderr_reader, "diagnostics")?;
@@ -465,7 +490,8 @@ fn wait_for_process(
     child: &mut std::process::Child,
     timeout_seconds: u64,
 ) -> Result<std::process::ExitStatus, String> {
-    let deadline = Instant::now() + Duration::from_secs(timeout_seconds);
+    let started = Instant::now();
+    let timeout = Duration::from_secs(timeout_seconds);
     loop {
         if let Some(status) = child
             .try_wait()
@@ -473,7 +499,7 @@ fn wait_for_process(
         {
             return Ok(status);
         }
-        if Instant::now() >= deadline {
+        if started.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!(
@@ -484,10 +510,23 @@ fn wait_for_process(
     }
 }
 
-fn read_process_output(
-    reader: thread::JoinHandle<std::io::Result<Vec<u8>>>,
+fn stop_renderer(child: &mut std::process::Child) -> std::io::Result<()> {
+    if child.try_wait()?.is_some() {
+        return Ok(());
+    }
+    if let Err(error) = child.kill() {
+        if child.try_wait()?.is_some() {
+            return Ok(());
+        }
+        return Err(error);
+    }
+    child.wait().map(|_| ())
+}
+
+fn read_process_output<T>(
+    reader: thread::JoinHandle<std::io::Result<T>>,
     kind: &str,
-) -> Result<Vec<u8>, String> {
+) -> Result<T, String> {
     reader
         .join()
         .map_err(|_| format!("renderer {kind} reader panicked"))
@@ -496,8 +535,11 @@ fn read_process_output(
         })
 }
 
-fn renderer_exit_error(status: std::process::ExitStatus, stderr: &[u8]) -> RendererError {
-    let output = String::from_utf8_lossy(&stderr[..stderr.len().min(8192)]).into_owned();
+fn renderer_exit_error(status: std::process::ExitStatus, stderr: &RendererStderr) -> RendererError {
+    let mut output = String::from_utf8_lossy(&stderr.bytes).into_owned();
+    if stderr.truncated {
+        output.push_str("\n[renderer diagnostics truncated]");
+    }
     RendererError {
         message: format!("renderer exited with {status}"),
         diagnostics: (!output.trim().is_empty()).then_some(output),
@@ -507,6 +549,35 @@ fn renderer_exit_error(status: std::process::ExitStatus, stderr: &[u8]) -> Rende
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renderer_stderr_retains_a_prefix_and_drains_the_stream() {
+        let input = vec![b'x'; STDERR_LIMIT * 3];
+        let mut reader = std::io::Cursor::new(&input);
+        let stderr = read_renderer_stderr(&mut reader).expect("stderr is read");
+        assert_eq!(stderr.bytes, vec![b'x'; STDERR_LIMIT]);
+        assert!(stderr.truncated);
+        assert_eq!(reader.position(), input.len() as u64);
+
+        let exact = read_renderer_stderr(&input[..STDERR_LIMIT]).expect("exact stderr is read");
+        assert_eq!(exact.bytes.len(), STDERR_LIMIT);
+        assert!(!exact.truncated);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn renderer_failure_identifies_truncated_stderr() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let stderr = RendererStderr {
+            bytes: b"renderer error".to_vec(),
+            truncated: true,
+        };
+        let error = renderer_exit_error(std::process::ExitStatus::from_raw(1 << 8), &stderr);
+        let diagnostics = error.diagnostics.expect("renderer diagnostics");
+        assert!(diagnostics.contains("renderer error"));
+        assert!(diagnostics.contains("diagnostics truncated"));
+    }
 
     #[test]
     fn workspace_manager_reuses_a_cleaned_slot_for_one_profile() {

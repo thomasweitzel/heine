@@ -582,9 +582,9 @@ impl Site {
         .map_err(|error| Error::Search(Box::new(error)))?;
         let mut renderer_resources = group_renderer_resources(
             pages
-                .values()
-                .flat_map(|pages| pages.values())
-                .flat_map(|page| page.renderer_resources.iter().cloned()),
+                .values_mut()
+                .flat_map(|pages| pages.values_mut())
+                .flat_map(|page| std::mem::take(&mut page.renderer_resources)),
         )?;
         attach_renderer_licensing(&mut renderer_resources, &licensing_records)?;
         let pagers = pagination::Catalog::from_tasks(&tasks, &taxonomy_tasks, series.tasks());

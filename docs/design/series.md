@@ -187,7 +187,7 @@ For a non-default locale, the normal locale prefix precedes the same paths.
 The listing's first page uses `index.html`; later pages use the existing
 pagination segment and page number. Heine emits literal output-file URLs, not
 directory URLs. Standard output ownership, portable-path checks, collision
-detection, atomic full publication, quick-build constraints, and sitemap
+detection, staged full publication, quick-build constraints, and sitemap
 inventory rules apply unchanged.
 
 Series output is independent of collections, taxonomies, feeds, and search

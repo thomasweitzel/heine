@@ -20,7 +20,7 @@ authored inputs
     -> Markdown analysis and derived page facts
     -> template rendering
     -> staged output
-    -> atomic publication
+    -> staged publication
 ```
 
 Heine first discovers the inputs below the site root, assigns them their
@@ -41,9 +41,15 @@ or a taxonomy. They can choose how to present those views, but they cannot
 invent output ownership or change the relationships that Heine has already
 resolved.
 
-Finally, a full build writes the complete managed output to a staging tree. It
-publishes that tree only after every render succeeds, so a failed build leaves
-the previous published output intact.
+Finally, a full build writes the complete managed output to a staging tree.
+Failures before replacement leave the previous output intact. To replace an
+existing tree, Heine renames it to a backup and then renames the staging tree
+into place. The output path can be briefly unavailable between those operations.
+If publication fails, Heine attempts to restore the backup; if restoration
+also fails, the diagnostic identifies the backup. An interruption can leave a
+staging or backup directory behind. Heine does not guarantee crash recovery.
+If cleanup fails after publication, the new output is in place and the
+diagnostic identifies the remaining backup.
 
 ## What a full build guarantees
 

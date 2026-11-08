@@ -51,7 +51,7 @@ claims together with pages, assets, and generated resources before writing, so
 a deployment file cannot silently overwrite another output producer. The
 reserved [`__heine/`](glossary.md#heine) namespace remains unavailable.
 
-Full builds atomically publish a complete output tree. Consequently, removing
+Full builds stage and publish a complete output tree. Consequently, removing
 `deploy/google1234567890.html` removes its generated counterpart on the next
 full build. Quick builds update changed, present deployment files, but - as with
 all quick-build inputs - do not remove output for deleted or renamed files. Run
