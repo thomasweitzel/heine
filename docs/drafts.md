@@ -40,7 +40,7 @@ participate in publication.
 
 `heine serve --drafts` writes the configured output directory, not a separate
 preview tree. Before deployment, run a normal complete `heine` build. Its
-atomic publication replaces preview output and removes draft files.
+staged publication replaces preview output and removes draft files.
 
 `heine --quick` remains an incomplete local update. After changing `draft`,
 run a full build: a quick build can retain old page files and relationships

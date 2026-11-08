@@ -31,6 +31,12 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Output recovery diagnostics.** If publication fails and Heine cannot
+  restore the previous output, the error now identifies its backup and both
+  filesystem failures.
+
 ## [0.12.1] - 2026-11-07
 
 ### Fixed

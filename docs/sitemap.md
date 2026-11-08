@@ -97,7 +97,7 @@ public/sitemap.xml
 ```
 
 The file is a Heine-generated resource. It participates in output collision
-checking and is published as part of the same complete, atomic output tree as
+checking and is published as part of the same staged full-build output as
 the rest of the site. A conflicting copied asset, deployment file, license
 text, page, or other generated resource is a build error.
 
@@ -145,7 +145,7 @@ limit, Heine reports that canonical page URL instead of writing an oversized
 sitemap.
 
 Every child is a generated-output claim and participates in the same collision
-checks and atomic publication as `sitemap.xml`. If an individual canonical URL
+checks and staged publication as `sitemap.xml`. If an individual canonical URL
 would reach the Sitemap Protocol's 2,048-character URL limit, Heine reports
 the responsible rendered route instead of emitting an invalid entry.
 The same limits apply to the sitemap index; an inventory too large for one

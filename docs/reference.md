@@ -31,6 +31,15 @@ A site root contains `heine.toml`, `content/`, and `templates/`; `citations/`, `
 
 `--quick` does not apply to `serve`.
 
+A full build stages a complete output tree before replacing the previous
+output. Replacement uses two renames, so the output path can be briefly
+unavailable. If replacement fails, Heine attempts to restore the previous
+tree; its diagnostic identifies the backup if restoration also fails. An
+interruption can leave staging or backup directories behind. If backup cleanup
+fails after replacement, the new output remains published. See the
+[architecture overview](architecture.md#the-build-pipeline) for the build
+sequence.
+
 ## `heine.toml`
 
 `heine.toml` is required. Its `[i18n]` section is required; other sections and

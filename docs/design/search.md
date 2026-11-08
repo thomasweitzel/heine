@@ -446,7 +446,7 @@ collection membership is resolved. The search domain then:
 6. writes JSON as generated files in the ordinary output plan.
 
 The template runtime receives only resolved index views. The output domain owns
-the JSON bytes, safe output paths, collision checks, staging, and atomic
+the JSON bytes, safe output paths, collision checks, staging, and
 publication. Search extraction does not enter Tera and does not observe page
 rendering results.
 
@@ -454,7 +454,7 @@ Because a complete index depends on collection relationships and every chosen
 member, quick builds do not update search indexes. A quick build retains its
 existing incomplete-output contract. Full builds and `heine serve` rebuild the
 complete index before publication. A full build stages a complete managed
-output tree and atomically replaces the prior tree, so superseded
+output tree and replaces the prior tree, so superseded
 digest-named search indexes disappear with other stale managed output. Quick
 builds never create a new search-index filename, so they cannot accumulate
 superseded index files either.

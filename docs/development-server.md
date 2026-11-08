@@ -35,7 +35,7 @@ add `--drafts`:
 This includes drafts in the same complete resolved site as published pages, so
 their links, collections, feeds, indexes, and navigation are truthful for the
 preview. It writes the ordinary configured output directory. Run a normal full
-`heine` build before deploying from that directory, which atomically replaces
+`heine` build before deploying from that directory, which replaces
 the preview output without drafts.
 
 ## What it serves

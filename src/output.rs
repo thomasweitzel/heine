@@ -523,9 +523,16 @@ pub(crate) enum Error {
         #[source]
         source: io::Error,
     },
-    #[error("could not restore previous output {path} after publication failed")]
+    #[error(
+        "could not restore previous output {path} after publication failed: {publication}; previous output remains at {backup}"
+    )]
+    #[diagnostic(help(
+        "restore the previous output from the backup after resolving the filesystem error"
+    ))]
     Restore {
         path: PathBuf,
+        backup: PathBuf,
+        publication: io::Error,
         #[source]
         source: io::Error,
     },

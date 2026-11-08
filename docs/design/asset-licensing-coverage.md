@@ -324,7 +324,7 @@ successfully resolved catalog.
 
 License texts continue to be copied unchanged under `LICENSES/` and participate
 in normal output ownership and collision checks. A group changes no license
-text output, and no separate group file is published. Full builds atomically
+text output, and no separate group file is published. Full builds
 replace the managed output tree. This feature does not create a server route,
 new generated resource, or template-owned output.
 

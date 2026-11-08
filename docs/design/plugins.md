@@ -474,7 +474,7 @@ Requests with the same returned bytes and extension share one generated output
 file.
 
 A full build stages only the current resolved renderer-resource inventory, then
-atomically replaces the managed output tree. When a refreshed renderer returns
+replaces the managed output tree. When a refreshed renderer returns
 different bytes, the superseded digest file therefore disappears with the
 previous output tree; public renderer resources need no separate garbage
 collector.
@@ -667,7 +667,8 @@ future dependency-aware incremental builds. Renderer execution is serialized
 with the synchronous build pipeline. A renderer failure is a build failure at
 the relevant directive, source declaration, or input source span. It includes
 the renderer profile name, exit status where relevant, and bounded standard
-error. A failed build leaves the previous complete output available.
+error. A renderer failure occurs before output replacement, leaving the
+previous output available.
 
 Renderer-source, renderer-profile, and renderer-configuration changes require
 a full build to update relationships and remove superseded generated output.
@@ -760,7 +761,7 @@ An implementation must include focused and fixture-site coverage for:
   results; result-shape validation; event-based XML declaration and doctype
   removal that preserves CDATA and processing instructions for embedded XML;
   unchanged resource bytes; one-primary-resource enforcement; output
-  collisions; base paths; locale routes; integrity interactions; and atomic
+  collisions; base paths; locale routes; integrity interactions; and staged
   publication;
 - generated-resource licensing records, required-coverage diagnostics before
   renderer execution, and attribution provenance for separately published
