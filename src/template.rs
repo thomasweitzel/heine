@@ -198,11 +198,34 @@ pub(crate) struct RenderContext<'a> {
     pub(crate) taxonomy: Option<crate::site::TaxonomyView>,
     pub(crate) series: Option<crate::site::SeriesView>,
     pub(crate) pagination: Option<crate::site::PaginationView<'a>>,
-    pub(crate) data: &'a serde_json::Value,
-    pub(crate) locale_data: &'a serde_json::Value,
+    pub(crate) data: &'a TemplateData<'a>,
+    pub(crate) locale_data: &'a TemplateData<'a>,
     pub(crate) root: &'a str,
     #[serde(rename = "__heine_runtime")]
     pub(crate) runtime: RuntimeContext<'a>,
+}
+
+/// Converts immutable site data once, when a render first needs it.
+pub(crate) struct TemplateData<'a> {
+    source: &'a serde_json::Value,
+    value: std::cell::OnceCell<tera::Value>,
+}
+
+impl<'a> TemplateData<'a> {
+    pub(crate) fn new(source: &'a serde_json::Value) -> Self {
+        Self {
+            source,
+            value: std::cell::OnceCell::new(),
+        }
+    }
+}
+
+impl Serialize for TemplateData<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.value
+            .get_or_init(|| tera::Value::from_serializable(self.source))
+            .serialize(serializer)
+    }
 }
 
 /// Kit-owned defaults after root configuration has supplied checked overrides.
@@ -1041,8 +1064,55 @@ fn quoted_template_string(value: &str) -> Option<(&str, usize)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{TemplateName, component_body_may_hide, remove_component_body_marker};
+    use super::{
+        TemplateData, TemplateName, component_body_may_hide, remove_component_body_marker,
+    };
     use tera::Context;
+
+    #[test]
+    fn shared_template_data_preserves_values_and_reuses_conversion() {
+        #[derive(serde::Serialize)]
+        struct DataContext<T> {
+            data: T,
+        }
+
+        let source = serde_json::json!({
+            "title": "<script>unsafe</script>",
+            "nested": [null, true, 42, "text"],
+        });
+        let shared = TemplateData::new(&source);
+        assert!(shared.value.get().is_none());
+        let expected = Context::from_serialize(&DataContext { data: &source })
+            .expect("source context serializes");
+        let first = Context::from_serialize(&DataContext { data: &shared })
+            .expect("shared context serializes");
+        let cached = shared.value.get().expect("data is converted");
+        let second = Context::from_serialize(&DataContext { data: &shared })
+            .expect("shared context serializes again");
+        assert_eq!(first, expected);
+        assert_eq!(second, expected);
+        assert!(std::ptr::eq(
+            cached,
+            shared.value.get().expect("cached data")
+        ));
+
+        let mut tera = tera::Tera::default();
+        tera.add_raw_template("page.html", "{{ data.title }}")
+            .expect("template parses");
+        let expected_output = tera
+            .render("page.html", &expected)
+            .expect("original renders");
+        assert!(expected_output.contains("&lt;script&gt;"));
+        assert_eq!(
+            tera.render("page.html", &first).expect("shared renders"),
+            expected_output
+        );
+        assert_eq!(
+            tera.render("page.html", &second)
+                .expect("shared renders again"),
+            expected_output
+        );
+    }
 
     #[test]
     fn bibliography_template_prototype_tracks_calls_and_preserved_output() {

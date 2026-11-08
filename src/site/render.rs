@@ -12,8 +12,8 @@ use crate::{
     markdown::Renderer as MarkdownRenderer,
     output::{GeneratedFile, OutputPath},
     template::{
-        KitView, LocaleView, RenderContext, RuntimeContext, TemplateEngine, TemplateIndexes,
-        TemplateRelationships, TemplateResources,
+        KitView, LocaleView, RenderContext, RuntimeContext, TemplateData, TemplateEngine,
+        TemplateIndexes, TemplateRelationships, TemplateResources,
     },
 };
 
@@ -95,6 +95,12 @@ impl Site {
         )?;
         self.validate_templates(&engine)?;
         let kit = selected_kit.map(KitView::from);
+        let data = TemplateData::new(self.data.value());
+        let locale_data = self
+            .locale_data
+            .iter()
+            .map(|(locale, data)| (locale, TemplateData::new(data.value())))
+            .collect::<std::collections::BTreeMap<_, _>>();
         // Every known render task produces at most one file. Reserve the
         // structural outputs too; optional generated resources grow this only
         // by a small, bounded amount.
@@ -180,8 +186,8 @@ impl Site {
                     taxonomy: None,
                     series: None,
                     pagination,
-                    data: self.data.value(),
-                    locale_data: self.locale_data[&task.locale].value(),
+                    data: &data,
+                    locale_data: &locale_data[&task.locale],
                     root: &root,
                     runtime: RuntimeContext {
                         locale: task.locale.to_string(),
@@ -236,8 +242,8 @@ impl Site {
                     taxonomy: Some(task.taxonomy_view(&base_path, canonical_urls.as_ref(), &root)),
                     series: None,
                     pagination,
-                    data: self.data.value(),
-                    locale_data: self.locale_data[&task.locale].value(),
+                    data: &data,
+                    locale_data: &locale_data[&task.locale],
                     root: &root,
                     runtime: RuntimeContext {
                         locale: task.locale.to_string(),
@@ -311,8 +317,8 @@ impl Site {
                             &root,
                         )
                     }),
-                    data: self.data.value(),
-                    locale_data: self.locale_data[&task.locale].value(),
+                    data: &data,
+                    locale_data: &locale_data[&task.locale],
                     root: &root,
                     runtime: RuntimeContext {
                         locale: task.locale.to_string(),
