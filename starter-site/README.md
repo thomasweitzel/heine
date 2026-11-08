@@ -63,6 +63,9 @@ adapter explicitly extends one public `kit/starter/…` template.
 `kits/starter/site/` is the kit's copyable reference-site snapshot. It shows
 the root inputs a new site receives after installing the kit. It is not a
 second runtime input tree: Heine ignores it while building this starter site.
+When changing shared site inputs, update both copies. The starter-site tests
+check that their files match, excluding workspace-only files and generated
+performance posts.
 See the [kit guide](../docs/kits.md) for the package and customization model.
 
 ## Reusing the starter material

@@ -11,6 +11,55 @@ mod temp_dir;
 use temp_dir::TestDirectory;
 
 #[test]
+fn starter_kit_reference_site_matches_shared_starter_inputs() {
+    use std::collections::BTreeSet;
+
+    let starter = Path::new(env!("CARGO_MANIFEST_DIR")).join("starter-site");
+    let reference = starter.join("kits/starter/site");
+    let files = |root: &Path, starter_root: bool| -> BTreeSet<_> {
+        let performance_posts = root.join("content/en/performance-posts");
+        walkdir::WalkDir::new(root)
+            .into_iter()
+            .filter_entry(|entry| {
+                if starter_root && entry.path().starts_with(&performance_posts) {
+                    return false;
+                }
+                if starter_root && entry.depth() == 1 {
+                    return !matches!(
+                        entry.file_name().to_str(),
+                        Some(".gitignore" | ".heine" | "README.md" | "kits" | "public" | "scripts")
+                    );
+                }
+                true
+            })
+            .map(|entry| entry.expect("shared starter input"))
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| {
+                entry
+                    .path()
+                    .strip_prefix(root)
+                    .expect("starter path")
+                    .to_owned()
+            })
+            .collect()
+    };
+    let starter_files = files(&starter, true);
+    let reference_files = files(&reference, false);
+    assert_eq!(
+        starter_files, reference_files,
+        "shared starter file inventory differs"
+    );
+    for path in starter_files {
+        assert!(
+            fs::read(starter.join(&path)).expect("starter input")
+                == fs::read(reference.join(&path)).expect("reference input"),
+            "starter input differs: {}",
+            path.display()
+        );
+    }
+}
+
+#[test]
 fn builds_the_documented_starter_site() {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("starter-site");
     let temporary = TestDirectory::new();
@@ -766,6 +815,18 @@ fn starter_kit_reference_site_materializes_as_an_ordinary_site() {
     assert!(output.join("de/404.html").is_file());
     assert!(output.join("assets/css/styles.v2.css").is_file());
     assert!(output.join("LICENSES/OFL-1.1.txt").is_file());
+    for path in ["about/index.html", "de/about/index.html"] {
+        let about = fs::read_to_string(output.join(path)).expect("reference-site About page");
+        assert_eq!(about.matches("<h1").count(), 1, "{path}: {about}");
+    }
+    let guide = fs::read_to_string(output.join("heine/index.html")).expect("reference-site guide");
+    assert!(
+        guide.contains("content-note content-note-context"),
+        "{guide}"
+    );
+    let sitemap = fs::read_to_string(output.join("sitemap.xml")).expect("reference-site sitemap");
+    assert!(output.join("blog/page/2.html").is_file());
+    assert!(!sitemap.contains("/blog/page/"), "{sitemap}");
     let reading = fs::read_to_string(output.join("de/lesen/nachtgedanken/index.html"))
         .expect("reference-site reading");
     assert_reading_citations(&reading);

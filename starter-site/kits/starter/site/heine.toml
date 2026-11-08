@@ -18,6 +18,7 @@ time_zone = "Europe/Berlin"
 
 [sitemap]
 hreflang = true
+include_pagers = false
 
 [build]
 output_dir = "public/my-project"
