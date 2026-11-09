@@ -41,9 +41,9 @@ sitemap generation itself. Without it, pages may not declare `published` or
 implicit UTC or machine-local default: `Z` appears only when Heine serializes
 an already resolved authored instant as UTC.
 
-The timezone is site-wide. Heine does not infer one from a locale, languages are
+The time zone is site-wide. Heine does not infer one from a locale, languages are
 not geographic regions, and pages do not override it in this version. A site
-therefore chooses one editorial timezone for its publication chronology.
+therefore chooses one editorial time zone for its publication chronology.
 
 `[sitemap]` without `site.origin` is an error. A sitemap must contain absolute
 URLs, and guessing an eventual deployment host would make generated output
@@ -154,9 +154,8 @@ part of the initial feature.
 
 ## Publication chronology
 
-Sitemap timestamps and Atom feeds need a statement about publication,
-not a generic calendar date. Heine therefore replaces the existing `date` page
-field with these optional fields:
+Sitemap timestamps and Atom feeds use page publication times. Declare these
+optional fields when you know them:
 
 ```toml
 # content/en/blog/first.page
@@ -184,7 +183,7 @@ ambiguous local time at the template boundary.
 Heine never uses the build machine's time zone. A named IANA zone makes the
 intended interpretation of source dates unambiguous and accounts for
 daylight-saving changes. Heine resolves it using a bundled, versioned IANA
-timezone database, not the host's zoneinfo files, so the same Heine version
+time-zone database, not the host's zoneinfo files, so the same Heine version
 produces the same instant on every supported platform.
 
 A local date-time that never occurred during a clock change is an error. A

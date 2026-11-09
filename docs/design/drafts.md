@@ -8,7 +8,7 @@ This record retains the design rationale and accepted boundaries.
 
 ## Decision
 
-Heine will give an authored rendered page one explicit unpublished state:
+Heine gives an authored rendered page one explicit unpublished state:
 
 ```toml
 # content/en/blog/new-article.page

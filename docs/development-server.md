@@ -67,16 +67,19 @@ HTML responses; it never writes that client into generated output.
 
 ## Rebuilds and reloads
 
-The server watches `content/`, `data/`, `deploy/`, `LICENSES/`, `locales/`,
-`templates/`, and `heine.toml`. It performs a full build for a detected change.
+The server watches `content/`, `citations/`, `data/`, `deploy/`, `LICENSES/`,
+`locales/`, `templates/`, `heine.toml`, and the selected kit's runtime inputs.
+It performs a full build for a detected change.
 After a successful publication, it reloads connected HTML pages. A browser
 that reconnects after a successful rebuild, including after a laptop wakes,
 also receives a reload when its page was built from an older generation.
 
-If a rebuild fails, Heine prints the diagnostic in the terminal, keeps the
-previous successful output available, and does not reload the browser. A
-watcher error identifies the watched project root and suggests saving again or
-running a full build.
+If a rebuild fails before publication, Heine prints the diagnostic in the
+terminal, leaves the previous output available, and does not reload the
+browser. Publication and recovery failures have additional consequences, as
+described in the [architecture overview](architecture.md#the-build-pipeline).
+A watcher error identifies the watched project root and suggests saving again
+or running a full build.
 
 Full publication replaces the output tree with two renames. During the
 interval in which the directory changes names, the server retries a missing

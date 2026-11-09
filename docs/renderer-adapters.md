@@ -68,10 +68,13 @@ before building, for example with `katex --version`, `typst --version`, or
 environment identity. Change it after changing a renderer or a meaningful part
 of its environment.
 
-When a renderer fails, Heine labels the complete authored request and presents
-the program's diagnostic output separately. Heine preserves that output as the
-renderer emitted it. For a workspace request with a body, paths and line
-numbers in that output refer to the isolated staged input.
+Heine identifies a failed renderer request at its authored location. When the
+program exits unsuccessfully, Heine also presents any captured standard error
+separately. It retains up to 8 KiB, marks truncation, and replaces invalid UTF-8
+with replacement characters. Other failures, such as a timeout or an input-write
+error, report the failure without attaching the captured standard error. For a
+workspace request with a body, paths and line numbers in that output refer to
+the isolated staged input.
 
 An embedded SVG request may add a normalized `class` list to its checked root
 element. This lets site CSS style the SVG without a wrapper. HTML and MathML

@@ -2,22 +2,22 @@
 
 ## Status
 
-This is the accepted and implemented design for copied-asset licensing coverage.
-It extends Heine's optional REUSE-compatible asset-sidecar support. Its
-original shared-group syntax was superseded by named records in the later
+This record preserves the original design for copied-asset licensing coverage.
+It extended Heine's optional REUSE-compatible asset-sidecar support. Its
+shared-group syntax was superseded by named records in the later
 [published-artifact licensing design](published-artifact-licensing.md), which
 also extends coverage to separate renderer resources. The
 [published-artifact licensing guide](../asset-licensing.md) and
 [reference](../reference.md#licenses-and-asset-sidecars) define the current
 user-facing contract.
 
-The configuration examples below record the original design and are not current
-authoring syntax.
+The following sections describe the original decision and its rationale. They
+are a historical record, not the current authoring or template contract.
 
 ## Decision
 
-Heine will let a site require a checked licensing declaration for every copied
-asset it publishes:
+The original design let a site require a checked licensing declaration for
+every copied asset it published:
 
 ```toml
 [licensing]

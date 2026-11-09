@@ -131,12 +131,11 @@ omitting absent parts. The tested examples are `Johannes Diderik van der Waals`,
 `Jane Doe Jr`, and the braced organization `Research Group`. BibTeX
 `and others` is exposed as the name `others`.
 
-These fields are a starting point for a small useful view, not a promise that
-all BibTeX constructs can be flattened faithfully. In particular, the probe
-does not establish how mathematical title content should be represented.
+These fields do not represent every BibTeX construct faithfully. Mathematical
+title content remains plain text; the catalog does not render it as math.
 Templates receive ordinary values subject to autoescaping. Authors should not
-use raw filters for untrusted input. The view should avoid an additional
-Hayagriva conversion when only structured facts are requested.
+use raw filters for untrusted input. A catalog alone does not require a
+Hayagriva library; citation processing does.
 
 ### Selection, checking, and limits
 
@@ -165,7 +164,7 @@ For a newest-first list, a template can sort the result of `publications()` by
 same value shape with site data. Tera
 places null values first after a reverse sort, so the template must separate
 them if it wants undated works last. Date ranges retain their display text and
-have no single year under this proposal; the site may choose their placement.
+have no single year in the catalog; the site may choose their placement.
 The equivalent template structure tested by the fixture is:
 
 ```tera
@@ -185,7 +184,7 @@ The `publication_names_and_date_ranges_follow_biblatex` test confirms that
 the library retains a name particle and suffix, displays the sampled
 organization name, and recognizes a date range. The existing partial-metadata
 test covers an unparsed date. Display names follow the library; no separate
-name parser or guessed date is proposed.
+name parser or guessed date is added.
 
 The `extra_fields` list makes sites opt in to additional lowercase field
 names; an absent field is omitted from `extra`. It does not interpret a value
@@ -306,23 +305,20 @@ upstream [issue about `shorthand`](https://github.com/typst/hayagriva/issues/190
 illustrates that individual BibTeX fields can be omitted by conversion; it is
 not evidence that the catalog's custom fields will be added upstream.
 
-## Candidate boundary
+## Chosen boundary
 
-Investigate a render-facing view built from the existing resolved bibliography,
-with a deliberate mapping for the fields the catalog promises. Reuse the
-build-scoped input cache and the existing local-path, parsing, inheritance,
-alias, cycle, and URL checks where they apply. A catalog must work without a
-page citation setting or CSL style. If citations and a catalog select the same
-inputs, they should share resolved inputs without making one depend on the
-other's rendered output.
+The catalog maps the existing resolved bibliography into a render-facing view.
+It reuses the build-scoped input cache and the existing local-path, parsing,
+inheritance, alias, cycle, and URL checks where they apply. A catalog works
+without a page citation setting or CSL style. Citations and a catalog that
+select the same inputs share resolved inputs without depending on each other's
+rendered output.
 
-The `biblatex` and Hayagriva representations have different strengths. Do not
-silently switch between their versions of a field or promise lossless raw
-BibTeX through a normalized view. If the catalog exposes a custom field, define
-its source and meaning and test inherited values. Keep unknown fields and
-library limitations visible during design; a field belongs in the public view
-only when its meaning and presentation are useful and supportable. Document
-unsupported constructs rather than building another BibTeX parser.
+The catalog reads its facts from resolved `biblatex` entries; citation
+formatting uses Hayagriva's converted representation. The catalog does not
+promise lossless raw BibTeX. Its opt-in extra fields expose resolved text
+without assigning a meaning such as URL or asset ID. The public contract above
+documents the fields and their limitations.
 
 ## Comparison with site data
 
@@ -375,11 +371,9 @@ separate month and day fields do not become part of that display text in the
 first version. Local asset relationships remain explicit template calls.
 Mathematical chunks remain plain text, not rendered mathematics.
 
-Direct access to the resolved `biblatex` view can avoid constructing a second
-Hayagriva library when CSL output is not requested. Whether and how to cache
-the render-facing view is a separate implementation decision; this test does
-not measure its time or memory. The work view specifies unknown entry types and
-absent fields above.
+Direct access to the resolved `biblatex` view avoids constructing a Hayagriva
+library when CSL output is not requested. The work view specifies unknown
+entry types and absent fields above; this test does not measure time or memory.
 
 ## Selection and ordering
 
