@@ -481,7 +481,10 @@ arbitrary trusted text. The `markdown(content="…")` function reads one named,
 unsegmented Markdown declaration from the current authored page. Use the
 function for a page's selected [table of contents](table-of-contents.md) or
 [margin-footnote](margin-footnotes.md) source so its heading IDs, local note
-instances, and page facts agree.
+instances, and page facts agree. Renderer directives also require this function
+so Heine can insert their results. The function reads from the current page;
+content obtained from another page must not contain renderer directives when
+passed to the filter.
 The following boundaries are part of the current contract:
 
 | Behavior                              | Current rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -769,10 +772,10 @@ configured light and dark Giallo themes and includes the corresponding
 `prefers-color-scheme: dark` rule; it is not a copied or user-authored asset.
 It is available only when `[markdown.highlighting]` is configured.
 
-| Filter       | Input           | Result                                                                                                                                                                                                                     |
-|--------------|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `markdown`   | text            | Trusted HTML rendered under `[markdown]` settings. It cannot render an exact source selected for a table of contents, margin footnotes, citations, or block components; use `markdown(content="…")` for that page content. |
-| `latest`     | copied asset ID | URL for the highest versioned matching asset                                                                                                                                                                               |
-| `dimensions` | copied asset ID | `width` and `height` for an image, or no dimensions for a known non-image                                                                                                                                                  |
+| Filter       | Input           | Result                                                                                                                                                                                                                        |
+|--------------|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `markdown`   | text            | Trusted HTML under `[markdown]` settings. Use `markdown(content="…")` for the current page when its content needs source-aware rendering. Content from another page cannot use the filter if it contains renderer directives. |
+| `latest`     | copied asset ID | URL for the highest versioned matching asset                                                                                                                                                                                  |
+| `dimensions` | copied asset ID | `width` and `height` for an image, or no dimensions for a known non-image                                                                                                                                                     |
 
 For `latest` and `dimensions`, a relative input is resolved from `page.dir`; a leading `/` makes it locale-root-relative.

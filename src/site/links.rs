@@ -4,7 +4,11 @@
 //! Keeping rendered views, output targets, and deliberately excluded drafts
 //! together ensures every lookup observes one publication boundary.
 
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use crate::{
     config::{BasePath, CanonicalUrls},
@@ -25,6 +29,7 @@ pub(crate) struct PageCatalog {
     views: Arc<BTreeMap<Locale, BTreeMap<PageId, PageView>>>,
     targets: Arc<BTreeMap<Locale, BTreeMap<PageId, OutputPath>>>,
     excluded_drafts: Arc<BTreeMap<Locale, BTreeMap<PageId, PathBuf>>>,
+    renderer_markers: Arc<BTreeSet<String>>,
 }
 
 impl PageCatalog {
@@ -35,6 +40,7 @@ impl PageCatalog {
     ) -> Self {
         let mut views = BTreeMap::new();
         let mut targets = BTreeMap::new();
+        let mut renderer_markers = BTreeSet::new();
         for (locale, pages) in pages {
             let mut locale_views = BTreeMap::new();
             let mut locale_targets = BTreeMap::new();
@@ -42,7 +48,9 @@ impl PageCatalog {
                 if let Some(output) = page.output_path.clone() {
                     locale_targets.insert(id.clone(), output);
                 }
-                locale_views.insert(id, page.into_view(canonical_urls));
+                let view = page.into_view(canonical_urls);
+                renderer_markers.extend(view.renderer_markers().map(str::to_owned));
+                locale_views.insert(id, view);
             }
             views.insert(locale.clone(), locale_views);
             targets.insert(locale, locale_targets);
@@ -51,6 +59,7 @@ impl PageCatalog {
             views: Arc::new(views),
             targets: Arc::new(targets),
             excluded_drafts,
+            renderer_markers: Arc::new(renderer_markers),
         }
     }
 
@@ -103,6 +112,19 @@ impl PageCatalog {
 
     pub(crate) fn view(&self, locale: &Locale, id: &PageId) -> Option<&PageView> {
         self.views.get(locale)?.get(id)
+    }
+
+    pub(crate) fn contains_renderer_marker(&self, input: &str) -> bool {
+        let Some(marker) = self.renderer_markers.first() else {
+            return false;
+        };
+        // Every marker contains a fixed-size SHA-256 digest. Looking up only
+        // complete markers keeps literal examples from being rejected.
+        input.match_indices("⟦heine-renderer-").any(|(start, _)| {
+            input
+                .get(start..start.saturating_add(marker.len()))
+                .is_some_and(|candidate| self.renderer_markers.contains(candidate))
+        })
     }
 
     pub(crate) fn output_path(&self, locale: &Locale, id: &PageId) -> Option<&OutputPath> {

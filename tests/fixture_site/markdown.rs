@@ -47,6 +47,93 @@ arguments = {arguments}
 }
 
 #[test]
+fn markdown_filter_rejects_renderer_markers_and_named_content_renders_them() {
+    let fixture = Fixture::new();
+    let profile = format!(
+        "{}\n[renderers.copy.inline]\narguments = {}\n",
+        stream_copy_profile("copy", "[\"body\"]", "html"),
+        if cfg!(windows) {
+            "[\"/C\", \"more\"]"
+        } else {
+            "[]"
+        }
+    );
+    fixture.write("heine.toml", &profile);
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    let options = || heine::BuildOptions::new(BuildMode::Full).allow_external_renderers();
+
+    for markdown in [
+        "Before :render[copy]`<span>rendered</span>` after\n",
+        "Before\n\n:::render[copy]\n<span>rendered</span>\n:::\n\nAfter\n",
+    ] {
+        fixture.write("content/en/index.md", markdown);
+        fixture.write("templates/page.tera", "{{ page.content.main | markdown }}");
+        let error = heine::build_at_with_options(fixture.path(), options())
+            .expect_err("renderer content cannot pass through the generic filter");
+        let diagnostic = format!("{error:?}");
+        assert!(
+            diagnostic.contains("markdown(content=\"…\")"),
+            "{diagnostic}"
+        );
+
+        fixture.write(
+            "templates/page.tera",
+            "{{ 'ordinary text' | markdown }}{{ markdown(content='main') }}",
+        );
+        heine::build_at_with_options(fixture.path(), options())
+            .expect("named content and unrelated filtered text render");
+        let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+        assert!(output.contains("<p>ordinary text</p>"), "{output}");
+        assert!(output.contains("<span>rendered</span>"), "{output}");
+        assert!(!output.contains("⟦heine-renderer-"), "{output}");
+    }
+}
+
+#[test]
+fn markdown_filter_rejects_renderer_content_from_another_page() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        &format!(
+            "{}\n[collections.posts]\norder = 'id-asc'\n[taxonomies.tags]\ncollection = 'posts'\npath = 'tags'\nindex_template = 'taxonomy-index.tera'\nterm_template = 'taxonomy-term.tera'\nper_page = 20\n",
+            stream_copy_profile("copy", "[\"body\"]", "html")
+        ),
+    );
+    fixture.write(
+        "content/en/other.page",
+        "template = 'other.tera'\ncontent.main = 'other.md'\ncollections = ['posts']\n[taxonomies]\ntags = ['example']\n",
+    );
+    fixture.write(
+        "content/en/other.md",
+        ":::render[copy]\n<span>rendered</span>\n:::\n",
+    );
+    fixture.write("templates/other.tera", "{{ markdown(content='main') }}");
+    fixture.write("content/en/index.page", "template = 'home.tera'\n");
+    let other_content = "{% set other = page(id='other') %}{{ other.content.main | markdown }}";
+    let options = || heine::BuildOptions::new(BuildMode::Full).allow_external_renderers();
+
+    for (home, taxonomy) in [(other_content, "ok"), ("ok", other_content)] {
+        fixture.write("templates/home.tera", home);
+        fixture.write("templates/taxonomy-index.tera", taxonomy);
+        fixture.write("templates/taxonomy-term.tera", "ok");
+        let error = heine::build_at_with_options(fixture.path(), options())
+            .expect_err("another page's renderer content cannot pass through the filter");
+        let diagnostic = format!("{error:?}");
+        assert!(
+            diagnostic.contains("markdown(content=\"…\")"),
+            "{diagnostic}"
+        );
+        assert!(
+            diagnostic.contains("or use content without renderer"),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
 fn renderer_requests_resolve_profiles_before_markdown_renders() {
     let fixture = Fixture::new();
     fixture.write(

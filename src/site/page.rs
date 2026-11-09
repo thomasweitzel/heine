@@ -1210,6 +1210,13 @@ pub(crate) struct PageView {
 }
 
 impl PageView {
+    pub(crate) fn renderer_markers(&self) -> impl Iterator<Item = &str> {
+        self.renderer_replacements
+            .values()
+            .flatten()
+            .map(|replacement| replacement.marker())
+    }
+
     pub(crate) fn component_markdown_names(&self) -> impl Iterator<Item = &str> {
         self.component_plans.keys().map(String::as_str)
     }

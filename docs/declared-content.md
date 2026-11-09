@@ -17,7 +17,11 @@ main = "article.md"
 
 Keep this form when the text belongs together. It is the clearest choice for a
 page body, and it is required when that Markdown source supplies a table of
-contents, margin footnotes, or citations, or contains block components.
+contents, margin footnotes, or citations, or contains block components or
+renderer directives. For those features, render the input with
+`markdown(content="main")` instead of the filter shown above.
+This function renders a declaration on the current page. To use content from
+another page with the filter, choose content without renderer directives.
 
 Some pages need a different arrangement. Their prose still belongs in one
 authored document, but the template needs to place named parts in different
