@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-09
+
 ### Fixed
 
 - **Renderer directives in Markdown.** Heine now reports an error when a
