@@ -53,7 +53,7 @@ fields use the following defaults.
 | `site.base_path`                                  | string               | `"/"`                                 | ASCII absolute URL directory path; starts and ends with `/`; uppercase percent escapes only; no encoded separators or dot segments                                         | Prefix for base-path-aware `url` values, including `asset()`, `page()`, and taxonomy links             |
 | `site.origin`                                     | string               | absent                                | Absolute `http` or `https` origin only: host and optional port, without credentials, query, fragment, or deployment path                                                   | Required by sitemaps, Atom feeds, and templates that directly render `site.url` or `absolute_url`      |
 | `site.time_zone`                                  | string               | absent                                | IANA time-zone name such as `"Europe/Berlin"`; resolved from Heine's bundled database                                                                                      | Resolves authored `published` and `updated` local times deterministically                              |
-| `build.output_dir`                                | string               | `"public"`                            | Non-empty relative path with portable filename components; cannot be `content/`, `data/`, `deploy/`, `LICENSES/`, `templates/`, `locales/`, or a descendant                | Generated output directory relative to site root                                                       |
+| `build.output_dir`                                | string               | `"public"`                            | Non-empty relative path with portable filename components; cannot be `content/`, `citations/`, `data/`, `deploy/`, `LICENSES/`, `templates/`, `locales/`, or a descendant  | Generated output directory relative to site root                                                       |
 | `assets.integrity`                                | string               | absent                                | `"sha256"`, `"sha384"`, `"sha512"`                                                                                                                                         | Enables Subresource Integrity values from `asset()`                                                    |
 | `licensing.required`                              | boolean              | absent                                | `true` only; `false` is a checked error                                                                                                                                    | Requires one licensing declaration for every eligible published artifact                               |
 | `licensing.records.<id>`                          | table                | `[]`                                  | ID starts with a lowercase ASCII letter, then uses lowercase ASCII letters, digits, `_`, or `-`; SPDX fields follow sidecar rules                                          | Reusable declared licensing facts                                                                      |
@@ -89,7 +89,7 @@ fields use the following defaults.
 | `taxonomies.<name>.per_page`                      | integer              | required                              | Positive integer                                                                                                                                                           | Members on each generated term-listing page                                                            |
 | `taxonomies.<name>.sitemap`                       | boolean              | absent                                | Only `false`; requires `[sitemap]`                                                                                                                                         | Excludes the taxonomy index, term listings, and their pagers from the sitemap                          |
 | `taxonomies.<name>.counterparts.<group>.<locale>` | string               | absent                                | An existing literal term for a configured locale; each non-empty `<group>` name has at least two locale members, and a locale-term pair occurs in at most one group        | Declares a cross-locale term counterpart                                                               |
-| `sitemap`                                         | table                | absent                                | Empty table; requires `site.origin`                                                                                                                                        | Generates canonical sitemap output                                                                     |
+| `sitemap`                                         | table                | absent                                | Table; requires `site.origin`                                                                                                                                              | Generates canonical sitemap output                                                                     |
 | `sitemap.hreflang`                                | boolean              | `false`                               | Only `true`; requires `[sitemap]`; applies only to explicit sitemap-included `translationid` counterparts                                                                  | Adds locale-sorted XHTML sitemap alternates for authored page counterparts                             |
 | `sitemap.include_pagers`                          | boolean              | `true`                                | Only `false`; requires `[sitemap]`                                                                                                                                         | Excludes derived pager pages while retaining each listing's first page                                 |
 | `markdown.extensions`                             | array of strings     | `[]`                                  | Unique subset of `"tables"`, `"strikethrough"`, `"task_lists"`, `"footnotes"`                                                                                              | Enables Markdown extensions                                                                            |
@@ -112,8 +112,8 @@ fields use the following defaults.
 | `renderers.<name>.materializations`               | array of strings     | required for SVG                      | Non-empty subset of `"embedded"`, `"resource"`; otherwise absent                                                                                                           | Supported SVG result forms                                                                             |
 | `renderers.<name>.default_output`                 | string               | sole SVG output form                  | Required for SVG with both output forms; one of the declared forms; otherwise absent                                                                                       | Default SVG result form                                                                                |
 | `renderers.<name>.licensing_record`               | string               | absent                                | Names a declared licensing record; allowed only when the profile can produce a resource                                                                                    | Default licensing facts for separate resources                                                         |
-| `renderers.<name>.inline.arguments`               | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                                 | Enables inline requests                                                                                |
-| `renderers.<name>.block.arguments`                | array of strings     | absent                                | Fixed arguments, no workspace placeholders                                                                                                                                 | Enables block requests                                                                                 |
+| `renderers.<name>.inline.arguments`               | array of strings     | absent                                | Fixed arguments; workspace placeholders follow the protocol rules                                                                                                          | Enables inline requests                                                                                |
+| `renderers.<name>.block.arguments`                | array of strings     | absent                                | Fixed arguments; workspace placeholders follow the protocol rules                                                                                                          | Enables block requests                                                                                 |
 | `renderers.<name>.<placement>.light.arguments`    | array of strings     | picture placement required            | Fixed arguments; workspace placeholders retain their normal rules                                                                                                          | Light picture invocation                                                                               |
 | `renderers.<name>.<placement>.dark.arguments`     | array of strings     | picture placement required            | Fixed arguments; workspace placeholders retain their normal rules                                                                                                          | Dark picture invocation                                                                                |
 
@@ -147,11 +147,11 @@ collection's display order. The complete document is content-hashed by default;
 `--quick` does not update it. See [search indexes](search.md) for the JSON and
 browser-boundary contract.
 
-The complete set of accepted theme names is in
+Theme names for the latest Giallo release are in
 [Giallo's source README](https://docs.rs/crate/giallo/latest/source/README.md)
-under “Themes”; the linked source matches Heine's bundled registry.
-Use those exact names; Heine reports an unknown name at its configuration
-location.
+under “Themes”. A released Heine binary uses its bundled Giallo version, so its
+available themes may differ from that list. Heine reports an unknown name at
+its configuration location.
 
 ## Search indexes
 
@@ -198,11 +198,12 @@ the document URL, or search all sections as one document by joining their
 texts. The source text includes headings, link labels, image alternatives,
 code, and recognized math source. Source-authored raw HTML adds text nodes and
 `img` `alt` values, while markup, comments, URLs, attributes, and `script`,
-`style`, or `template` contents do not contribute. Soft and hard Markdown
-breaks remain line feeds; entering or leaving a structural Markdown block and
-an image alternative become two line feeds. Inline Markdown and inline HTML
-keep authored adjacency. Heine does not lower-case, tokenize, stem, truncate,
-or derive text from rendered HTML.
+`style`, or `template` contents do not contribute. A renderer block's authored
+directive text and body can contribute; its returned output does not. Soft and
+hard Markdown breaks remain line feeds; entering or leaving a structural
+Markdown block and an image alternative become two line feeds. Inline Markdown
+and inline HTML keep authored adjacency. Heine does not lower-case, tokenize,
+stem, truncate, or derive text from rendered HTML.
 
 ## Markdown facts
 
@@ -481,7 +482,10 @@ arbitrary trusted text. The `markdown(content="…")` function reads one named,
 unsegmented Markdown declaration from the current authored page. Use the
 function for a page's selected [table of contents](table-of-contents.md) or
 [margin-footnote](margin-footnotes.md) source so its heading IDs, local note
-instances, and page facts agree.
+instances, and page facts agree. Renderer directives also require this function
+so Heine can insert their results. The function reads from the current page;
+content obtained from another page must not contain renderer directives when
+passed to the filter.
 The following boundaries are part of the current contract:
 
 | Behavior                              | Current rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -520,8 +524,11 @@ MathML, SVG, image, picture, and link result profiles when they declare a fixed-
 inline or block variant. HTML must be UTF-8. MathML and embedded or published
 SVG must be well-formed XML with `math` and `svg` document elements
 respectively; Heine strips XML declarations and doctypes before embedding.
-When a renderer fails, Heine labels its complete Markdown request and presents
-the program's diagnostic output separately without rewriting it. For a
+Heine identifies a failed renderer request at its authored location. When the
+program exits unsuccessfully, Heine also presents any captured standard error
+separately. It retains up to 8 KiB, marks truncation, and replaces invalid UTF-8
+with replacement characters. Other failures, such as a timeout or an input-write
+error, report the failure without attaching the captured standard error. For a
 workspace body request, paths and line numbers in that output refer to the
 isolated staged input.
 
@@ -539,9 +546,10 @@ failed processes, and timeouts fail at the request. Heine removes the temporary
 workspace after execution when the operating system permits it. If cleanup
 fails, Heine retains that workspace slot, warns about its path, and retries
 cleanup before another request uses the slot.
-SVG, image, picture, and link resource requests publish one non-empty primary output as
-`heine-renderers/sha256-<digest>.<extension>`. The digest names the returned
-bytes, so identical results share one generated file. Heine replaces image
+An SVG resource, image, or link request publishes one non-empty result as
+`heine-renderers/sha256-<digest>.<extension>`. A picture request publishes a
+light and a dark resource. Each digest names the returned bytes, so identical
+results share one generated file. Heine replaces image
 requests with an `img` element using the required `alt` text and link requests
 with an `a` element using the required `label` text. Resource bytes remain
 outside the copied-asset namespace, but they participate in published-artifact
@@ -575,6 +583,9 @@ result = "html"
 
 [renderers.katex.inline]
 arguments = ["--format", "htmlAndMathml"]
+
+[renderers.katex.block]
+arguments = ["--display-mode", "--format", "htmlAndMathml"]
 ```
 
 Use an inline request:
@@ -683,9 +694,9 @@ they are scoped to the locale currently being rendered unless noted otherwise.
 | `kit`               | `null` without a selected kit. Otherwise `extra` holds the kit manifest defaults overlaid by checked root `[kit.extra]` settings. Kit templates and root adapters can read this value; it does not expose the manifest or filesystem paths.                                                                                                                                                                                 |
 | `site`              | `url` is present only when `site.origin` is configured. It is the canonical site root formed from the origin and base path, including the trailing slash. Templates never receive the raw origin. See [absolute URLs](absolute-urls.md).                                                                                                                                                                                    |
 | `locale`            | `code` is the configured BCP-47 locale; `direction` is its configured `"ltr"` or `"rtl"` value. Use both on the document element.                                                                                                                                                                                                                                                                                           |
-| `page`              | An authored page's `id`, `path`, `filename`, `dir`, `subdirs`, `content`, `markdown`, `title`, `description`, `summary`, `authors`, `published`, `updated`, `extra`, `directory`, `taxonomies`, `series`, `toc`, `footnotes`, `draft`, `weight`, `translations`, and `absolute_url`; `null` for generated templates. `path` and `filename` are absent without rendering. `absolute_url` is present only with `site.origin`. |
+| `page`              | An authored page's `id`, `path`, `filename`, `dir`, `subdirs`, `content`, `markdown`, `title`, `description`, `summary`, `authors`, `published`, `updated`, `extra`, `directory`, `taxonomies`, `series`, `toc`, `footnotes`, `draft`, `weight`, `translations`, and `absolute_url`; `null` for taxonomy and Series templates. Authored listing pagers retain their page. `absolute_url` requires `site.origin`.            |
 | `page.markdown`     | Facts keyed by declared Markdown content name. Each record has deterministic `word_count` and nullable `reading_time`; non-Markdown inputs are absent. See [word counts and reading time](markdown-facts.md).                                                                                                                                                                                                               |
-| `page.draft`        | `true` for an authored draft included through `heine serve --drafts`, otherwise `false`. It never appears for a generated template. See [drafts](drafts.md).                                                                                                                                                                                                                                                                |
+| `page.draft`        | `true` for an authored draft included through `heine serve --drafts`, otherwise `false`. Authored listing pagers retain this value; taxonomy and Series templates have no page. See [drafts](drafts.md).                                                                                                                                                                                                                    |
 | `page.toc`          | `null` unless the authored page has an effective table-of-contents setting. Otherwise `content` names the selected declaration and `headings` is the source-order array of `level`, `depth`, `text`, and `fragment`. See [table of contents](table-of-contents.md).                                                                                                                                                         |
 | `page.footnotes`    | `null` unless the authored page has an effective margin-footnote setting. Otherwise `content` names the selected declaration. Render that source exactly once through `markdown(content="…")`. See [margin footnotes](margin-footnotes.md).                                                                                                                                                                                 |
 | `page.directory`    | `id`, `title`, `description`, `summary`, and `extra` from the immediate directory descriptor.                                                                                                                                                                                                                                                                                                                               |
@@ -769,10 +780,10 @@ configured light and dark Giallo themes and includes the corresponding
 `prefers-color-scheme: dark` rule; it is not a copied or user-authored asset.
 It is available only when `[markdown.highlighting]` is configured.
 
-| Filter       | Input           | Result                                                                                                                                                                                                                     |
-|--------------|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `markdown`   | text            | Trusted HTML rendered under `[markdown]` settings. It cannot render an exact source selected for a table of contents, margin footnotes, citations, or block components; use `markdown(content="…")` for that page content. |
-| `latest`     | copied asset ID | URL for the highest versioned matching asset                                                                                                                                                                               |
-| `dimensions` | copied asset ID | `width` and `height` for an image, or no dimensions for a known non-image                                                                                                                                                  |
+| Filter       | Input           | Result                                                                                                                                                                                                                        |
+|--------------|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `markdown`   | text            | Trusted HTML under `[markdown]` settings. Use `markdown(content="…")` for the current page when its content needs source-aware rendering. Content from another page cannot use the filter if it contains renderer directives. |
+| `latest`     | copied asset ID | URL for the highest versioned matching asset                                                                                                                                                                                  |
+| `dimensions` | copied asset ID | `width` and `height` for an image, or no dimensions for a known non-image                                                                                                                                                     |
 
 For `latest` and `dimensions`, a relative input is resolved from `page.dir`; a leading `/` makes it locale-root-relative.

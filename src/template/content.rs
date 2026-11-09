@@ -40,9 +40,14 @@ pub(super) fn register(
               state: &tera::State|
               -> tera::TeraResult<tera::Value> {
             arguments::only("markdown", &kwargs, &[])?;
+            if markdown_runtime.contains_renderer_marker(input) {
+                return Err(tera::Error::message(
+                    "Markdown containing a renderer directive cannot use the markdown filter; render that content on its own page with markdown(content=\"…\"), or use content without renderer directives",
+                ));
+            }
             if markdown_runtime.is_selected_source(state, input)? {
                 return Err(tera::Error::message(
-                    "this page's selected source-aware Markdown content must use markdown(content=\"…\") so Heine can apply its checked rendering plan",
+                    "this page's source-aware Markdown content must use markdown(content=\"…\") so Heine can apply its checked rendering plan",
                 ));
             }
             let locale = markdown_runtime.locale(state)?;

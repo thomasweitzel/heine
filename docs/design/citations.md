@@ -54,7 +54,8 @@ The template renders the selected source once and places `bibliography()` once.
 Heine verifies that the complete bibliography survives template rendering; a
 call count alone cannot detect a discarded or duplicated result. Citations link
 to the bibliography section. The reference list contains cited works and its
-heading belongs to the template.
+heading belongs to the template. The separate [publication catalog](publication-catalog.md)
+exposes bibliography facts for lists that can include uncited works.
 
 ## Processor boundary
 
@@ -82,7 +83,7 @@ source-located diagnostic rather than being silently rewritten. Consecutive
 hyphens within a single value fragment also produce an error because the parser
 would change them. See the [URL findings](citations-feasibility.md#formatting-and-links).
 
-## Remaining work
+## Evidence and build behavior
 
 The fixture tests exercise representative numeric and author-date styles, and
 the starter site's German reading cites the poem's newspaper and book
@@ -96,11 +97,10 @@ build is required for those changes.
 ## Deferred work
 
 Note-generating styles need a shared numbering and punctuation plan with both
-footnote modes and reliable position handling. The [publication catalog
-exploration](publication-catalog.md) examines fields, custom metadata,
-selection, ordering, and links separately.
-Uncited works, multiple citation sources or segments, per-item affixes, and
-numbered document cross-references also need separate checked relationships.
+footnote modes and reliable position handling. Including uncited works in a
+page's citation bibliography, multiple citation sources or segments, per-item
+affixes, and numbered document cross-references also need separate checked
+relationships.
 
 ## Prior art
 

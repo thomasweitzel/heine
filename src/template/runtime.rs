@@ -581,6 +581,10 @@ impl TemplateRuntime {
         Ok(selected_toc || selected_footnotes || selected_component || selected_citations)
     }
 
+    pub(super) fn contains_renderer_marker(&self, input: &str) -> bool {
+        self.page_catalog.contains_renderer_marker(input)
+    }
+
     pub(super) fn margin_footnote_labels(
         &self,
         state: &tera::State,

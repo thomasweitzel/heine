@@ -7,7 +7,7 @@ set into generated term listings.
 
 ```text
 collection      = which rendered pages participate, in one explicit order
-taxonomy        = named partitioning of that collection by explicit terms
+taxonomy        = named grouping of that collection by explicit terms
 term            = one ordered subset of the collection
 pagination      = slices a term listing into generated output pages
 ```

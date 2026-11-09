@@ -32,9 +32,10 @@ text and punctuation unambiguous. `width` and `height` use TOML integers.
 | `caption` | Optional visible plain text. When present, Heine wraps the picture in a native `figure` and emits it as `figcaption`. |
 | `class`   | Optional non-empty HTML class-token string. Heine normalizes ASCII whitespace and rejects repeated tokens.            |
 
-The two sources must be copied assets below `content/`. Heine rejects an
-external URL, a raw public URL, a page reference, or an unknown asset ID at the
-field that names it. This retains the usual asset relationship: locale
+The two sources must be copied assets. They can come from `content/` or from
+public assets of the selected kit. Heine rejects an external URL, a raw public
+URL, a page reference, or an unknown asset ID at the field that names it.
+This retains the usual asset relationship: locale
 resolution, `base_path`, versioned URLs, dimensions, and copied-asset licensing
 all remain coherent.
 
@@ -69,6 +70,7 @@ An author may set integer HTML dimensions explicitly:
 alt = "Heine wordmark"
 light = "asset:assets/images/heine-light.svg"
 dark = "asset:assets/images/heine-dark.svg"
+caption = "Heine wordmark in light and dark forms."
 width = 480
 height = 120
 :::

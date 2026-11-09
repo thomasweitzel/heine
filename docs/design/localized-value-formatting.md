@@ -11,13 +11,13 @@ deferred proposals.
 
 ## Decision
 
-Heine will add one locale-aware value-formatting domain for these values:
+Heine provides one locale-aware value-formatting domain for these values:
 
 - decimal numbers;
 - calendar dates;
 - instants rendered as a time or a date and time.
 
-Tera template functions and Fluent formatting functions will use the same
+Tera template functions and Fluent formatting functions use the same
 domain and compiled CLDR data. Tera accepts every checked canonical decimal.
 Fluent accepts the checked subset that its current `f64` selector model can
 represent exactly. Within that subset, the same canonical value, locale,

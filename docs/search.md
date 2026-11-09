@@ -73,6 +73,10 @@ assets, or an inferred `content.main` body. See the
 [reference](reference.md#search-indexes) for the full JSON shape and extraction
 rules.
 
+Renderer requests are analyzed as authored Markdown, not as their generated
+output. A block request's directive text and body can therefore appear in the
+index; the renderer's returned content does not.
+
 Each structural Markdown block and image alternative remains separate in the
 extracted text, including a nested list below a labeled list item. Inline
 Markdown and inline HTML keep the adjacency that the author wrote.

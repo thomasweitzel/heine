@@ -8,9 +8,15 @@ The maintainer decides that a release is ready and creates the signed tag.
 Automation builds, checks, packages, and publishes the GitHub artifacts. The
 maintainer prepares the source, creates the tag, and publishes to crates.io.
 
-Follow the sections in order: prepare and tag the source, inspect the GitHub
-release, publish the crate, and update the documentation site. The workflow
-structure and recovery sections provide details when a run needs investigation.
+For an established public repository, follow these steps in order:
+
+1. [Prepare and tag the source](#prepare-the-source-release).
+2. [Inspect the GitHub release](#public-github-releases), its assets, and attestations.
+3. [Publish to crates.io](#publish-to-cratesio).
+4. [Update the documentation site](#update-the-documentation-site).
+
+The initial setup, private rehearsal, workflow structure, and recovery sections
+provide details when they apply.
 
 ## Initial repository setup
 

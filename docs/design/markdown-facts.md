@@ -8,7 +8,7 @@ contract. This record retains the design rationale and accepted boundaries.
 
 ## Decision
 
-Heine will derive two source-level facts for every declared Markdown input:
+Heine derives two source-level facts for every declared Markdown input:
 
 - `word_count`, a deterministic count of readable Markdown text; and
 - `reading_time`, an optional whole-minute estimate derived from that count.

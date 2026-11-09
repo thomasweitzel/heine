@@ -162,9 +162,10 @@ markup.
 
 ### Copied asset
 
-A regular file below `content/` that is neither a `.page` file nor a file
-declared by a page's `[content]` table. Heine copies it to its corresponding
-generated output path. Templates use `asset()` to link to one safely.
+A regular file that Heine copies to a generated output path. It can come from
+`content/` or a selected kit's assets. A `.page` file or a file declared by a
+page's `[content]` table is not a copied asset. Templates use `asset()` to link
+to an accessible asset.
 
 ### Color-scheme picture
 

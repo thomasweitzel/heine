@@ -42,9 +42,9 @@ site template.
 
 External renderers are a deliberate trust boundary. Read the
 [renderer-adapter guide](renderer-adapters.md) before adapting a command that
-you did not write or inspect. In particular, keep every program, argument,
-file input, and bundle input fixed in `heine.toml`. Markdown supplies only the
-checked request body and declared inputs.
+you did not write or inspect. The profile fixes the program and its arguments
+in `heine.toml`. A page declares any file or bundle inputs, and Markdown
+supplies a checked request body or selects one of those declared inputs.
 
 ### When a build refuses to run a renderer
 
@@ -186,10 +186,12 @@ element. Load the rendered page in a browser, then switch the operating system
 or browser between light and dark color schemes. The formulas should retain a
 transparent background while their foreground changes.
 
-If Typst reports an error, Heine shows the full Markdown request and preserves
-Typst's output beneath it. The isolated input file named by Typst's diagnostic
-is a temporary workspace file, not the Markdown page itself. The failure
-rejects the build; Heine does not publish an inline error replacement.
+If Typst exits with an error, Heine identifies the Markdown request and shows
+captured standard error separately. Output can be truncated or contain
+replacement characters; see the [renderer-adapter guide](renderer-adapters.md)
+for diagnostic and timeout behavior. A path in Typst's diagnostic names a
+temporary workspace file, not the Markdown page itself. The failure rejects
+the build; Heine does not publish an inline error replacement.
 
 ## Typst embedded SVG mathematics that follows prose color
 
@@ -419,11 +421,12 @@ stylesheet:
 {% endif %}
 ```
 
-The initial `page` guard matters because generated taxonomy, pagination, feed,
-and series pages do not have authored page metadata. The `is defined` test
-keeps pages without `extra.katex` valid, and the final value test loads KaTeX
-only for `true`. The stylesheet's relative font URLs remain correct because
-the stylesheet and `fonts/` directory retain their sibling layout.
+The initial `page` guard matters because generated taxonomy and Series
+templates do not have an authored page. Pagers for an authored listing retain
+that listing's page metadata. The `is defined` test keeps pages without
+`extra.katex` valid, and the final value test loads KaTeX only for `true`.
+The stylesheet's relative font URLs remain correct because the stylesheet and
+`fonts/` directory retain their sibling layout.
 
 ### Configure the profile
 

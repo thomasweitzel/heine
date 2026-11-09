@@ -13,7 +13,7 @@ implicit mixed-language feed.
 ## Smallest configuration
 
 Feeds need canonical absolute URLs, so configure an origin. Publication times
-also need an editorial timezone:
+also need an editorial time zone:
 
 ```toml
 # heine.toml

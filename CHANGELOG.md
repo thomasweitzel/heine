@@ -31,8 +31,16 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-09
+
 ### Fixed
 
+- **Renderer directives in Markdown.** Heine now reports an error when a
+  template passes content containing a renderer directive to the `markdown`
+  filter. The filter receives text without the page context needed to insert
+  the renderer's result; previously, this produced incorrect output.
+  **Migration:** For the current page, use `markdown(content="…")`. When
+  filtering another page's content, use content without renderer directives.
 - **Development server output.** A closed terminal output stream no longer
   causes the server to panic while reporting status or diagnostics.
 - **Starter kit reference site.** Synchronize the copyable reference site

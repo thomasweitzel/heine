@@ -8,7 +8,7 @@ retains the design rationale and accepted boundaries.
 
 ## Decision
 
-Heine will provide an opt-in, page-owned **margin-footnote presentation** for
+Heine provides an opt-in, page-owned **margin-footnote presentation** for
 ordinary Markdown footnotes. The author continues to use the standard
 reference and definition syntax enabled by the existing `footnotes` Markdown
 extension. Heine checks the selected source's footnote graph and renders every
@@ -88,10 +88,10 @@ segmented, or belongs to a page without a template, Heine likewise reports an
 error at the authored setting.
 
 `marker_message` is ordinary root-owned configuration and uses the normal
-Fluent lookup rules. A future kit reference site may select a prefixed kit
-message, such as `paper-footnote-marker`; a root resource may override that
-entry under the ordinary kit message rules. Margin footnotes add no separate
-kit message namespace or precedence rule.
+Fluent lookup rules. The starter site selects the kit's
+`starter-footnote-marker` message; a root resource may override that entry
+under the ordinary kit message rules. Margin footnotes add no separate kit
+message namespace or precedence rule.
 
 Directories may provide the same complete default:
 

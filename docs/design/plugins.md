@@ -666,10 +666,11 @@ the `.heine/` directory.
 Renderer inputs participate in full builds, development-server watching, and
 future dependency-aware incremental builds. Renderer execution is serialized
 with the synchronous build pipeline. A renderer failure is a build failure at
-the relevant directive, source declaration, or input source span. It includes
-the renderer profile name, exit status where relevant, and bounded standard
-error. A renderer failure occurs before output replacement, leaving the
-previous output available.
+the relevant directive, source declaration, or input source span. It names the
+renderer profile. An unsuccessful process exit includes its status and any
+captured standard error, bounded to 8 KiB; timeouts and input-write failures do
+not attach captured standard error. A renderer failure occurs before output
+replacement, leaving the previous output available.
 
 Renderer-source, renderer-profile, and renderer-configuration changes require
 a full build to update relationships and remove superseded generated output.

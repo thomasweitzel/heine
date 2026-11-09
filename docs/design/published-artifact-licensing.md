@@ -10,24 +10,23 @@ record rather than repeat those fields.
 ## Problem
 
 Before this change, Heine could identify every copied asset that it would
-publish. A site could
-attach REUSE-style SPDX facts with a sidecar or an exact licensing group, and
-`required = true` makes an undeclared copied asset a build error.
+publish. A site could attach REUSE-style SPDX facts with a sidecar or an exact
+licensing group, and `required = true` made an undeclared copied asset a build
+error.
 
-That model ended at the copied-asset boundary. A renderer adapter can publish a
-PDF, image, or resource-materialized SVG below `heine-renderers/`. Heine owns
-that file's output path, bytes, and Markdown request, but it cannot attach a
-licensing declaration to the file. Renderer resources also fell outside
+That model ended at the copied-asset boundary. A renderer adapter could publish
+a PDF, image, or resource-materialized SVG below `heine-renderers/`. Heine
+owned that file's output path, bytes, and Markdown request, but could not attach
+a licensing declaration to the file. Renderer resources also fell outside
 required copied-asset coverage.
 
 A documentation site may, for example, publish a CC-BY report PDF or a diagram
 that incorporates licensed third-party icons. Its readers can download the
-file independently of the page that introduced it. Today, the site has three
-unsatisfactory choices: maintain a separate unchecked attribution list, treat
+file independently of the page that introduced it. Before this feature, the
+site had three choices: maintain a separate unchecked attribution list, treat
 the result as an ordinary copied asset and give up the checked renderer
-relationship, or pre-render it into `content/`. The last two options can
-require committed build output or make every build depend on an external
-renderer.
+relationship, or pre-render it into `content/`. Those choices either left the
+declaration unchecked or separated the published file from the renderer request.
 
 The missing relationship is narrow: an author needs to connect one renderer
 resource that Heine publishes with one declared set of copyright and SPDX
@@ -55,7 +54,7 @@ kind this design covers.
 
 ## Two complementary responsibilities
 
-This proposal does not make Heine a general repository-compliance tool.
+This feature does not make Heine a general repository-compliance tool.
 
 ### Repository sources
 

@@ -72,17 +72,18 @@ validation and output behavior:
   declaration chooses its inputs. Declared inputs are not copied.
 - **Configuration, locale trees, and the selected kit** establish site-wide
   behavior, localized identity, and the available presentation boundary.
-- **Citation inputs** hold local bibliographies and CSL styles. They are
-  checked for the selected pages and are not published as source files.
+- **Citation inputs** hold local bibliographies and CSL styles. Pages select
+  them for citations, and a publication catalog can also select bibliographies.
+  These inputs are checked and are not published as source files.
 - **Data** supplies global structured values to templates. It is not published
   and does not provide arbitrary filesystem access.
 - **Templates and Fluent messages** describe presentation. Templates receive
   resolved views, and messages hold reader-facing text.
 - **Generated resources** consume resolved facts. Listings, feeds, sitemaps,
   search documents, and renderer resources each have an explicit output claim.
-- **Output-attached files** include deployment files and optional license
-  declarations. They attach to the copied output inventory without becoming
-  pages or template-controlled output.
+- **Deployment files** are copied to fixed output paths for the hosting
+  environment. License declarations attach to copied assets and separate
+  renderer resources, while license texts are published as files.
 
 This separation lets a template link to a known page without creating one, and
 lets Markdown refer to a checked asset without gaining unrestricted file

@@ -44,8 +44,8 @@ the rendered example, its authored files, and the relevant guide.
   variants of one authored image.
 - [Word counts and reading time](markdown-facts.md): show deterministic word
   counts and opt-in, locale-specific reading-time estimates.
-- [Localized numbers](localized-values.md): format numbers consistently in
-  Tera and Fluent messages.
+- [Localized values](localized-values.md): format numbers, dates, and times
+  in Tera and Fluent messages.
 - [Kits](kits.md): install a checked presentation package and adapt its public
   templates from the site root.
 

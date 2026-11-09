@@ -9,7 +9,7 @@ boundary: the browser search experience remains site-owned.
 
 ## Decision
 
-Heine will generate checked, locale-local JSON **search document indexes**
+Heine generates checked, locale-local JSON **search document indexes**
 from one or more configured collections. An index is a deterministic set of
 source-derived documents, not a JavaScript search engine and not a generated
 search page.
@@ -260,12 +260,12 @@ segment-marker HTML comments contribute nothing, while all segment bodies do.
 This preserves the rule that search is about the page's declared Markdown
 source, not about guessing which segment a template presents.
 
-The initial feature does not inspect non-Markdown declared content, arbitrary
-template data, rendered HTML, copied files, or template source. It also does
-not extract text from future external renderer requests by treating their raw
-syntax as prose. A renderer adapter may later return a declared source-text
-contribution through its own checked contract; that extension must identify
-which text belongs in search.
+The index does not inspect non-Markdown declared content, arbitrary template
+data, rendered HTML, copied files, or template source. Renderer requests are
+analyzed as authored Markdown: a block request's directive text and body can
+contribute to the index, but its returned output does not. A future contract
+for renderer-provided search text would need to identify which returned text
+belongs in search.
 
 ## Template contract
 

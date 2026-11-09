@@ -79,9 +79,9 @@ an implicit policy for another language.
 The count comes from parsed Markdown before templates render it. It includes
 prose in headings, paragraphs, quotations, lists, tables, links, image
 alternatives, and footnote definitions. It excludes Markdown syntax, URLs,
-comments, recognized math expressions, and fenced code blocks. Code is
-intentionally excluded because comprehension time, rather than reading speed,
-normally determines how long it takes to understand.
+comments, recognized math expressions, and fenced or indented code blocks.
+Inline code is counted. Code blocks are excluded because comprehension time,
+rather than reading speed, normally determines how long they take to understand.
 
 Trusted raw HTML contributes its textual content, but not markup, attributes,
 URLs, comments, or `script`, `style`, and `template` contents. A color-scheme
