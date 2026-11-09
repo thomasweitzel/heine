@@ -376,6 +376,11 @@ Confirm on the GitHub release page that all seven files are present and the
 release is marked immutable. A normal release has no pre-release label; create
 a discussion only when one is wanted.
 
+Edit the published release notes to add a **Changes** section from the
+matching version in `CHANGELOG.md`. Keep the release facts and download
+verification instructions. GitHub permits edits to release notes after an
+immutable release is published; its tag and assets remain protected.
+
 ## Publish to crates.io
 
 GitHub releases do not update crates.io. Publish every crate version separately
