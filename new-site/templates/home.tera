@@ -1,0 +1,9 @@
+{% extends "base.tera" %}
+{% block content %}
+<div class="introduction">
+  {% set profile = asset(id="assets/images/profile.svg") %}
+  <img class="profile" src="{{ profile.url }}" width="160" height="160" alt="">
+  <div class="prose">{{ markdown(content="main") }}</div>
+</div>
+{% set blog = page(id="blog/index") %}<p><a href="{{ blog.url }}">{{ t(id="nav-blog") }}</a></p>
+{% endblock %}

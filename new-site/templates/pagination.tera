@@ -1,0 +1,13 @@
+{% if pagination and pagination.page_count > 1 %}
+  <nav class="pagination" aria-label="{{ t(id="pagination-label") }}">
+    {% for item in pagination.navigation %}
+      {% if item.kind == "gap" %}
+        <span aria-hidden="true">…</span>
+      {% elif item.current %}
+        <span aria-current="page">{{ item.page_number }}</span>
+      {% else %}
+        <a href="{{ item.relative_url }}">{{ item.page_number }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+{% endif %}

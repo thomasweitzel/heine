@@ -1,0 +1,38 @@
+{% extends "base.tera" %}
+{% block content %}
+<article class="prose">
+  <h1>{{ page.title }}</h1>
+  {% if page.toc and page.toc.headings %}
+    <nav class="toc" aria-label="{{ t(id="toc-label") }}">
+      <p>{{ t(id="toc-label") }}</p>
+      <ul>
+        {% for heading in page.toc.headings %}
+          <li class="toc-depth-{{ heading.depth }}"><a href="#{{ heading.fragment }}">{{ heading.text }}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+  {% endif %}
+
+  {{ markdown(content="main") }}
+
+  {% if page.taxonomies.tags %}
+    <p class="tags">
+      {% for tag in page.taxonomies.tags %}
+        <a href="{{ tag.relative_url }}">{{ tag.name }}</a>
+      {% endfor %}
+    </p>
+  {% endif %}
+
+  {% for membership in page.series %}
+    <nav class="series-navigation" aria-label="{{ t(id="series-navigation", title=membership.title) }}">
+      <p><a href="{{ membership.relative_url }}">{{ membership.title }}</a></p>
+      {% if membership.previous %}
+        <a href="{{ membership.previous.relative_url }}">{{ t(id="series-previous") }}: {{ membership.previous.title }}</a>
+      {% endif %}
+      {% if membership.next %}
+        <a href="{{ membership.next.relative_url }}">{{ t(id="series-next") }}: {{ membership.next.title }}</a>
+      {% endif %}
+    </nav>
+  {% endfor %}
+</article>
+{% endblock %}

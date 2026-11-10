@@ -33,6 +33,12 @@ builds the pages and relationships it can check from them.
 
 ## First site
 
+To create a small site with a blog and search, run `heine new my-site`, change
+to the new directory, and run `heine serve`. The destination must not already
+exist. The generated README explains how to customize the site.
+
+To build a site from individual files instead, follow the steps below.
+
 A minimal site has a configuration file, one locale tree, and one template:
 
 ```text

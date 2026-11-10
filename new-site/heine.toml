@@ -1,0 +1,33 @@
+[i18n]
+default_locale = "en"
+[i18n.locales.en]
+direction = "ltr"
+
+[collections.posts]
+order = "id-desc"
+
+[taxonomies.tags]
+collection = "posts"
+path = "tags"
+index_template = "tags.tera"
+term_template = "tag.tera"
+per_page = 10
+
+[search.site]
+collections = ["posts"]
+path = "search/index.json"
+
+[markdown]
+extensions = ["tables", "strikethrough", "footnotes"]
+math = "mathml"
+
+[markdown.tables]
+scroll_message = "table-scroll"
+
+[licensing.records.site-assets]
+SPDX-FileCopyrightText = "2026 Thomas Weitzel"
+SPDX-License-Identifier = "MIT"
+
+[[licensing.groups]]
+assets = ["assets/css/site.css", "assets/js/search.js"]
+licensing_record = "site-assets"

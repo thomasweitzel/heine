@@ -1,0 +1,3 @@
+template = "article.tera"
+title = "About"
+content.main = "about.md"

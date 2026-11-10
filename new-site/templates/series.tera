@@ -1,0 +1,12 @@
+{% extends "base.tera" %}
+{% block title %}{{ series.title }}{% endblock %}
+{% block content %}
+<h1>{{ series.title }}</h1>
+{% if series.description %}<p>{{ series.description }}</p>{% endif %}
+<ol start="{{ pagination.first_item_number }}">
+  {% for item in pagination.pages %}
+    <li><a href="{{ item.relative_url }}">{{ item.title }}</a></li>
+  {% endfor %}
+</ol>
+{% include "pagination.tera" %}
+{% endblock %}

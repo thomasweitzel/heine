@@ -10,6 +10,7 @@ guides and the [reference](../reference.md) instead.
 - [Absolute URLs](absolute-urls.md)
 - [Citations](citations.md)
 - [Copied-asset licensing coverage](asset-licensing-coverage.md)
+- [Creating a new site](new-site.md)
 - [Draft publication](drafts.md)
 - [Kits](kits.md)
 - [Localized value formatting](localized-value-formatting.md)

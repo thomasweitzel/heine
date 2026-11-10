@@ -32,6 +32,10 @@ Files that declare another license remain under that license. In particular,
 the bundled STIX font is licensed under OFL-1.1, and the historical Heinrich
 Heine portraits retain their public-domain declarations in adjacent sidecars.
 
+The copyable material in `new-site/`, including its profile illustration, is
+also available under MIT. Separately declared resources retain their own terms.
+Its `LICENSES/MIT.txt` accompanies the generated site.
+
 ## Sites built with Heine
 
 Using Heine does not by itself license an independently authored site under

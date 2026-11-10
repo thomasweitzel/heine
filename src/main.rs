@@ -1,6 +1,6 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used))]
 
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use miette::IntoDiagnostic;
@@ -33,6 +33,11 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Create a new site in a directory that does not exist yet.
+    New {
+        /// New site directory; its parent must exist.
+        path: PathBuf,
+    },
     /// Build, serve, and live-reload a site for local development.
     Serve(ServeArgs),
 }
@@ -78,10 +83,30 @@ fn port(value: &str) -> Result<u16, String> {
 
 fn main() -> miette::Result<()> {
     let cli = Cli::parse();
+    if let Some(Command::New { path }) = &cli.command {
+        if cli.root.is_some()
+            || cli.quick
+            || cli.clean_output
+            || cli.allow_external_renderers
+            || cli.refresh_renderers
+        {
+            return Err(miette::miette!(
+                "build and serve options do not apply to `heine new`"
+            ));
+        }
+        heine::create_new_site(path).into_diagnostic()?;
+        writeln!(
+            std::io::stdout(),
+            "Created site:\n{}\nChange to that directory and run `heine serve`.",
+            path.display()
+        )
+        .into_diagnostic()?;
+        return Ok(());
+    }
     let cwd = std::env::current_dir().into_diagnostic()?;
     let root_argument = match &cli.command {
         Some(Command::Serve(args)) => args.root.clone(),
-        None => cli.root,
+        Some(Command::New { .. }) | None => cli.root,
     };
     let root = match root_argument.or_else(|| heine::find_site_root(&cwd)) {
         Some(root) => root,

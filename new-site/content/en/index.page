@@ -1,0 +1,3 @@
+template = "home.tera"
+title = "Home"
+content.main = "home.md"
