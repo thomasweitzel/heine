@@ -15,6 +15,7 @@ mod licensing;
 mod locale;
 mod localization;
 mod markdown;
+mod new_site;
 mod output;
 mod project;
 mod renderer;
@@ -34,6 +35,7 @@ use crate::{
     site::{BuildOptions as SiteBuildOptions, PublicationMode, Site},
 };
 
+pub use new_site::{CreateError as NewSiteError, create as create_new_site};
 pub use server::ServeOptions;
 pub use site::BuildMode;
 

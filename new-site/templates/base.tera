@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="{{ locale.code }}" dir="{{ locale.direction }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ page.title }}{% endblock %} · {{ t(id="site-name") }}</title>
+  {% set css = asset(id="assets/css/site.css") %}
+  <link rel="stylesheet" href="{{ css.url }}">
+</head>
+<body>
+  <header class="site-header">
+    {% set home = page(id="index") %}<a class="site-name" href="{{ home.url }}">{{ t(id="site-name") }}</a>
+    <nav aria-label="{{ t(id="nav-label") }}">
+      {% set about = page(id="about") %}<a href="{{ about.url }}">{{ t(id="nav-about") }}</a>
+      {% set blog = page(id="blog/index") %}<a href="{{ blog.url }}">{{ t(id="nav-blog") }}</a>
+      {% set search_page = page(id="search/index") %}<a href="{{ search_page.url }}">{{ t(id="nav-search") }}</a>
+    </nav>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <footer><p><a href="https://heine.rs/">{{ t(id="footer-built-with") }}</a></p></footer>
+</body>
+</html>

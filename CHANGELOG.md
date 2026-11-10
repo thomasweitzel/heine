@@ -31,6 +31,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Added
+
+- **New sites.** `heine new <path>` creates a small, editable site without a
+  network connection or external tools. The destination must not exist.
+
 ## [0.12.2] - 2026-11-09
 
 ### Fixed

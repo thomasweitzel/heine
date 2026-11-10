@@ -1,0 +1,7 @@
+template = "article.tera"
+title = "Making room for ideas"
+summary = "A few words on keeping track of what matters."
+collections = ["posts"]
+content.main = "main.md"
+[taxonomies]
+tags = ["Notes"]

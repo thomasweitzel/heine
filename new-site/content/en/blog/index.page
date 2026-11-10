@@ -1,0 +1,6 @@
+template = "blog.tera"
+title = "Blog"
+collections = []
+[pagination]
+collection = "posts"
+per_page = 10

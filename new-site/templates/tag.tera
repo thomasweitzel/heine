@@ -1,0 +1,14 @@
+{% extends "base.tera" %}
+{% block title %}{{ taxonomy.term.name }}{% endblock %}
+{% block content %}
+<h1>{{ taxonomy.term.name }}</h1>
+<ol class="post-list">
+  {% for post in pagination.pages %}
+    <li>
+      <h2><a href="{{ post.relative_url }}">{{ post.title }}</a></h2>
+      {% if post.summary %}<p>{{ post.summary }}</p>{% endif %}
+    </li>
+  {% endfor %}
+</ol>
+{% include "pagination.tera" %}
+{% endblock %}

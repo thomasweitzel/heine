@@ -14,6 +14,12 @@ arbitrary structured data.
 
 A site root contains `heine.toml`, `content/`, and `templates/`; `citations/`, `data/`, `deploy/`, `LICENSES/`, and `locales/` are optional. Without `--root`, Heine checks the current directory and each parent directory. It never searches child directories.
 
+`heine new <path>` creates an independent starting site at a destination that
+does not exist. Its parent must already exist. The command works offline and
+does not accept build or serve options. If creation fails, Heine attempts
+non-recursive cleanup and reports entries it cannot remove. Interruption can
+leave a partial site.
+
 | Command       | Option                       | Default                    | Allowed values     | Effect                                                                                                                                                                                                  |
 |---------------|------------------------------|----------------------------|--------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `heine`       | `--root <path>`              | nearest ancestor site root | existing site root | Selects the site root                                                                                                                                                                                   |

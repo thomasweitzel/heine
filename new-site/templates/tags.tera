@@ -1,0 +1,10 @@
+{% extends "base.tera" %}
+{% block title %}{{ t(id="nav-tags") }}{% endblock %}
+{% block content %}
+<h1>{{ t(id="nav-tags") }}</h1>
+<ul>
+  {% for term in taxonomy.terms %}
+    <li><a href="{{ term.relative_url }}">{{ term.name }}</a> ({{ term.count }})</li>
+  {% endfor %}
+</ul>
+{% endblock %}

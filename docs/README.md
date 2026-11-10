@@ -6,6 +6,9 @@ and one template. The [tutorial](tutorial.md) continues from that point and
 builds a multilingual blog with content, assets, data, listings, pagination,
 and tags.
 
+For a ready-to-edit single-language site, run `heine new my-site` and follow
+the README in the generated directory.
+
 When you return with a specific task, use the guides below. The
 [reference](reference.md) gives the exact contract for every setting and
 template value, while the [glossary](glossary.md) explains Heine terms.

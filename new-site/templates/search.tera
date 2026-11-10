@@ -1,0 +1,28 @@
+{% extends "base.tera" %}
+{% block content %}
+<h1>{{ page.title }}</h1>
+{% set index = search(name="site") %}
+<form
+    class="search-form"
+    role="search"
+    data-search-url="{{ index.url }}"
+    data-loading="{{ t(id="search-loading") }}"
+    data-results-zero="{{ t(id="search-results", attribute="zero", count="__count__") }}"
+    data-results-one="{{ t(id="search-results", attribute="one", count="__count__") }}"
+    data-results-two="{{ t(id="search-results", attribute="two", count="__count__") }}"
+    data-results-few="{{ t(id="search-results", attribute="few", count="__count__") }}"
+    data-results-many="{{ t(id="search-results", attribute="many", count="__count__") }}"
+    data-results-other="{{ t(id="search-results", attribute="other", count="__count__") }}"
+    data-no-results="{{ t(id="search-none") }}"
+    data-failure="{{ t(id="search-failure") }}">
+  <label for="search-query">{{ t(id="search-label") }}</label>
+  <input id="search-query" name="q" type="search" dir="auto"
+         placeholder="{{ t(id="search-placeholder") }}" autocomplete="off">
+</form>
+<p class="search-status" role="status" aria-live="polite"></p>
+<ol class="search-results"></ol>
+<nav class="pagination search-pagination" aria-label="{{ t(id="search-pagination") }}" hidden></nav>
+<noscript><p>{{ t(id="search-no-javascript") }}</p></noscript>
+{% set script = asset(id="assets/js/search.js") %}
+<script src="{{ script.url }}" defer></script>
+{% endblock %}
