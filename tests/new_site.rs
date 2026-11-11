@@ -35,6 +35,43 @@ fn command_creates_a_buildable_site_and_rejects_existing_destinations() {
     ] {
         assert!(site.join("public").join(file).is_file(), "missing {file}");
     }
+    let blog = fs::read_to_string(site.join("public/blog/index.html")).expect("blog");
+    assert!(
+        blog.find("A place to begin").expect("first post")
+            < blog.find("Making room for ideas").expect("second post")
+    );
+    assert!(blog.contains("January 2, 2026"), "{blog}");
+    let post = fs::read_to_string(site.join("public/blog/first/index.html")).expect("post");
+    assert!(post.contains("January 2, 2026"), "{post}");
+    let tag = fs::read_to_string(site.join("public/tags/Notes.html")).expect("tag listing");
+    assert!(tag.contains("January 2, 2026"), "{tag}");
+    let about = fs::read_to_string(site.join("public/about.html")).expect("about");
+    assert!(!about.contains("class=\"post-date\""), "{about}");
+    let index = fs::read_dir(site.join("public/search"))
+        .expect("search directory")
+        .map(|entry| entry.expect("search entry").path())
+        .find(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .expect("search index");
+    let index: serde_json::Value =
+        serde_json::from_slice(&fs::read(index).expect("read index")).expect("parse index");
+    let documents = index["documents"].as_array().expect("documents");
+    let first = documents
+        .iter()
+        .find(|document| document["title"] == "A place to begin")
+        .expect("first post in index");
+    assert_eq!(
+        first["description"],
+        "A first note on making a space of your own."
+    );
+    assert!(
+        first["sections"][0]["text"]
+            .as_str()
+            .expect("section text")
+            .contains("ideas")
+    );
     let before = fs::read(site.join("README.md")).expect("read README");
     let again = Command::new(binary)
         .arg("new")
@@ -93,8 +130,26 @@ fn prepared_templates_support_series_toc_math_and_pagination() {
     heine::create_new_site(&site).expect("create site");
 
     let readme = fs::read_to_string(site.join("README.md")).expect("README");
+    let post_example = readme
+        .split("## Add a post")
+        .nth(1)
+        .expect("post section")
+        .split("```toml\n")
+        .nth(1)
+        .expect("post example")
+        .split("```")
+        .next()
+        .expect("post example end");
+    let example_dir = site.join("content/en/blog/my-post");
+    fs::create_dir(&example_dir).expect("example post directory");
+    fs::write(example_dir.join("index.page"), post_example).expect("example post settings");
+    fs::write(example_dir.join("main.md"), "A post from the README.\n").expect("example post");
+    let series_readme = readme
+        .split("## Add a Series")
+        .nth(1)
+        .expect("Series section");
     let code = |language: &str, index: usize| {
-        readme
+        series_readme
             .split(&format!("```{language}\n"))
             .nth(index + 1)
             .expect("documented example")

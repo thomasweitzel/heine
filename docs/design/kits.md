@@ -142,9 +142,9 @@ Markdown `render` requests and declare the profiles they select in its copied
 their system. A selected kit's runtime resources never add, replace, or run a
 profile in an existing root configuration.
 
-Heine does not initially provide a package resolver, an installer, or a
-`heine new` command. Copying remains visible. A later convenience
-command may automate this procedure without changing its semantics.
+Heine does not provide a package resolver or kit installer. Copying remains
+visible. The [`heine new` command](new-site.md) creates an independent site;
+it does not install or select a kit.
 
 ## Developing and packaging a kit
 

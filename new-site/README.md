@@ -11,6 +11,32 @@ layout is in `templates/`, the stylesheet and search script are in
 `content/assets/images/`. The site starts in English; add another configured
 locale and its Fluent messages when you need a translation.
 
+## Add a post
+
+Create a directory under `content/en/blog/`, for example `my-post/`. Add an
+`index.page` file there:
+
+```toml
+template = "article.tera"
+title = "My post"
+published = 2026-01-03T12:00:00
+summary = "A short introduction for the blog listing."
+description = "A short description for search results."
+collections = ["posts"]
+content.main = "main.md"
+
+[taxonomies]
+tags = ["Notes"]
+```
+
+Write the post in `main.md` in the same directory. The blog lists posts by
+publication date, newest first. Posts with the same publication time are
+ordered by page ID. Replace the sample dates. Publication times use UTC until
+you set `time_zone` in `heine.toml` to your editorial time zone.
+The summary appears in listings. Search uses the description when it cannot
+show a matching excerpt. See the [collections guide](https://heine.rs/docs/collections/)
+for other ordering options.
+
 ## Add a Series
 
 Add this to `heine.toml`:
