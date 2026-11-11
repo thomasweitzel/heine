@@ -1,6 +1,8 @@
 template = "article.tera"
 title = "A place to begin"
 summary = "A first note on making a space of your own."
+description = "A first note on making a space of your own."
+published = 2026-01-02T12:00:00
 collections = ["posts"]
 content.main = "main.md"
 [taxonomies]

@@ -257,9 +257,12 @@ fn assert_site_shell_and_search(output: &Path) {
         !search_script.contains("summaryAddsMatch"),
         "{search_script}"
     );
-    assert!(!search_script.contains("doc.summary"), "{search_script}");
     assert!(
-        search_script.contains("anchor.href = resultTarget(doc, passage?.section)"),
+        search_script.contains("summarySearchText"),
+        "{search_script}"
+    );
+    assert!(
+        search_script.contains("anchor.href = resultTarget(doc, support?.section)"),
         "{search_script}"
     );
     assert!(

@@ -102,10 +102,14 @@ without ordinary word boundaries use the preferred edge directly. These limits
 bound context rather than matching text itself, so an unusually long query can
 make an excerpt exceed its context values.
 
-The example matches each query term at the start of a word. It gives title
-matches priority, adds context from matching Markdown when it can, and falls
-back to a page description for a title-only match. Its exact ranking and
-excerpt choices are site policy, not part of Heine's search-index contract.
+The example matches each query term at the start of a word in the title,
+description, summary, or Markdown. Terms can match different fields. It gives
+title matches priority and chooses a text source that matches the most query
+terms not already shown in the title. When coverage is equal, a Markdown
+section takes precedence over a description or summary. When the title matches
+every term, the result shows the description, summary, or the beginning of the
+Markdown text, in that order. Its exact ranking and excerpt choices are site
+policy, not part of Heine's search-index contract.
 
 Search indexes are rebuilt by full builds and `heine serve`. `--quick` leaves
 the previously published index unchanged, because it cannot safely establish

@@ -127,7 +127,7 @@ h2 {
     margin-bottom: .25rem;
 }
 
-.post-list p, .search-result-excerpt {
+.post-list p, .post-date, .search-result-excerpt {
     color: var(--muted);
 }
 

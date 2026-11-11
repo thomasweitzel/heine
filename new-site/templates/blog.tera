@@ -5,6 +5,7 @@
   {% for post in pagination.pages %}
     <li>
       <h2><a href="{{ post.relative_url }}">{{ post.title }}</a></h2>
+      <p class="post-date"><time datetime="{{ post.published }}">{{ format_date(value=post.published, style="long") }}</time></p>
       {% if post.summary %}<p>{{ post.summary }}</p>{% endif %}
     </li>
   {% endfor %}

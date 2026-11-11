@@ -1,6 +1,8 @@
 template = "article.tera"
 title = "Making room for ideas"
 summary = "A few words on keeping track of what matters."
+description = "A few words on keeping track of what matters."
+published = 2026-01-01T12:00:00
 collections = ["posts"]
 content.main = "main.md"
 [taxonomies]

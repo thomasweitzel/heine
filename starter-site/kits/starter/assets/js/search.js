@@ -94,6 +94,8 @@
           // Heine writes this index in page-ID order. Keep that order for ties.
           searchOrder,
           titleSearchText: normalize(doc.title || ""),
+          descriptionSearchText: normalize(doc.description || ""),
+          summarySearchText: normalize(doc.summary || ""),
           searchSections: doc.sections.map((section) => ({
             ...section,
             displayText: joinUnspacedLineBreaks(section.text.normalize("NFC"))
@@ -131,16 +133,16 @@
     return !wordCharacter.test(previous) || unspacedCharacter.test(current);
   }
 
-  function matchPositions(text, fragment) {
-    const positions = [];
+  function occurrences(text, fragment) {
+    let count = 0;
     let position = text.indexOf(fragment);
     while (position >= 0) {
       if (startsWord(characterBefore(text, position), characterAt(text, position))) {
-        positions.push(position);
+        count += 1;
       }
-      position = text.indexOf(fragment, position + fragment.length);
+      position = text.indexOf(fragment, position + 1);
     }
-    return positions;
+    return count;
   }
 
   function characterMatchPositions(characters, fragment) {
@@ -153,10 +155,6 @@
       }
     }
     return positions;
-  }
-
-  function occurrences(text, fragment) {
-    return matchPositions(text, fragment).length;
   }
 
   function matchingSections(sections, fragments) {
@@ -176,18 +174,64 @@
     ));
   }
 
-  function scoreDocument(doc, fragments) {
+  function collectMatches(doc, fragments) {
     const sections = matchingSections(doc.searchSections, fragments);
+    const descriptionMatches = fragments.map((fragment) => occurrences(doc.descriptionSearchText, fragment) > 0);
+    const summaryMatches = fragments.map((fragment) => occurrences(doc.summarySearchText, fragment) > 0);
+    const titleMatches = fragments.map((fragment) => occurrences(doc.titleSearchText, fragment) > 0);
+    return { sections, descriptionMatches, summaryMatches, titleMatches };
+  }
+
+  function scoreDocument(matches) {
+    const { sections, descriptionMatches, summaryMatches, titleMatches } = matches;
     let score = 0;
-    for (const [index, fragment] of fragments.entries()) {
-      if (occurrences(doc.titleSearchText, fragment)) score += 3;
-      else if (sections.some((candidate) => candidate.counts[index])) score += 1;
+    for (const [index] of titleMatches.entries()) {
+      if (titleMatches[index]) score += 3;
+      else if (sections.some((candidate) => candidate.counts[index])
+        || descriptionMatches[index] || summaryMatches[index]) score += 1;
       else return null;
     }
-    return {
-      score: score + Math.min(sections[0]?.occurrences || 0, 3),
-      section: sections[0]?.section,
-    };
+    return score + Math.min(sections[0]?.occurrences || 0, 3);
+  }
+
+  function supportingText(doc, matches, fragments) {
+    const { sections, descriptionMatches, summaryMatches, titleMatches } = matches;
+    const relevant = titleMatches.map((matches) => !matches);
+    if (!relevant.some(Boolean)) {
+      return { text: doc.description || doc.summary || introduction(doc.searchSections) };
+    }
+
+    // Prefer context that explains terms not already visible in the title.
+    const coverage = (matches) => matches.reduce((count, matchesTerm, index) => (
+      count + (relevant[index] && matchesTerm ? 1 : 0)
+    ), 0);
+    let bestCoverage = 0;
+    let bestOccurrences = 0;
+    let bestOrder = Infinity;
+    let selected;
+    for (const candidate of sections) {
+      const candidateCoverage = coverage(candidate.counts);
+      const candidateOccurrences = candidate.counts.reduce((total, count, index) => (
+        total + (relevant[index] ? count : 0)
+      ), 0);
+      if (candidateCoverage > bestCoverage || (candidateCoverage > 0
+        && candidateCoverage === bestCoverage && (candidateOccurrences > bestOccurrences
+          || (candidateOccurrences === bestOccurrences && candidate.order < bestOrder)))) {
+        bestCoverage = candidateCoverage;
+        bestOccurrences = candidateOccurrences;
+        bestOrder = candidate.order;
+        selected = { section: candidate.section };
+      }
+    }
+    for (const [text, fieldMatches] of [[doc.description, descriptionMatches], [doc.summary, summaryMatches]]) {
+      const candidateCoverage = coverage(fieldMatches);
+      if (candidateCoverage > bestCoverage) {
+        bestCoverage = candidateCoverage;
+        selected = { text };
+      }
+    }
+    if (!selected?.section) return selected;
+    return bestPassage(selected.section, fragments.filter((_, index) => relevant[index]));
   }
 
   function navigationPages(current, total) {
@@ -212,6 +256,15 @@
     const name = `results${category[0].toUpperCase()}${category.slice(1)}`;
     const template = labels[name] || labels.resultsOther;
     return template.replace("__count__", numberFormatter.format(count));
+  }
+
+  function extendToWordEnd(characters, end, latest) {
+    while (end < latest && wordCharacter.test(characters[end - 1] || "")
+      && wordCharacter.test(characters[end])
+      && !unspacedCharacter.test(characters[end - 1]) && !unspacedCharacter.test(characters[end])) {
+      end += 1;
+    }
+    return end;
   }
 
   function passageCandidates(section, fragments) {
@@ -261,10 +314,7 @@
       && !unspacedCharacter.test(characters[start - 1]) && !unspacedCharacter.test(characters[start])) {
       start -= 1;
     }
-    while (end < latest && wordCharacter.test(characters[end])
-      && !unspacedCharacter.test(characters[end - 1]) && !unspacedCharacter.test(characters[end])) {
-      end += 1;
-    }
+    end = extendToWordEnd(characters, end, latest);
     return [{
       section,
       text: `${start ? "…" : ""}${characters.slice(start, end).join("")}${end < characters.length ? "…" : ""}`,
@@ -276,6 +326,16 @@
     return passageCandidates(section, fragments)[0];
   }
 
+  function introduction(sections) {
+    const text = sections.find((section) => section.displayText)?.displayText;
+    if (!text) return undefined;
+    const characters = Array.from(text);
+    const end = Math.min(characters.length, contextAfter);
+    const latest = Math.min(characters.length, contextAfterMaximum);
+    const boundary = extendToWordEnd(characters, end, latest);
+    return `${characters.slice(0, boundary).join("")}${boundary < characters.length ? "…" : ""}`;
+  }
+
   function resultTarget(doc, section) {
     const target = new URL(doc.url, window.location.origin);
     if (section?.fragment) target.hash = section.fragment;
@@ -283,12 +343,12 @@
   }
 
   function resultLink(result, fragments) {
-    const { doc, section } = result;
-    const passage = bestPassage(section, fragments);
+    const { doc, matches } = result;
+    const support = supportingText(doc, matches, fragments);
     const item = document.createElement("li");
     const anchor = document.createElement("a");
     anchor.className = "search-result";
-    anchor.href = resultTarget(doc, passage?.section);
+    anchor.href = resultTarget(doc, support?.section);
     const heading = document.createElement("h2");
     heading.className = "search-result-heading";
     if (doc.draft && labels.draftMarker) {
@@ -302,7 +362,7 @@
     title.textContent = doc.title || doc.url;
     heading.append(title);
     anchor.append(heading);
-    const excerptText = passage?.text || doc.description;
+    const excerptText = support?.text || doc.description || doc.summary;
     if (excerptText) {
       const excerpt = document.createElement("p");
       excerpt.className = "search-result-excerpt";
@@ -318,16 +378,18 @@
     node.href = searchUrl(query, page);
     node.textContent = page;
     node.addEventListener("click", (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       setUrl(query, page, false);
-      render(query, page);
+      render(query, page, node);
     });
     return node;
   }
 
-  function renderNavigation(query, current, total) {
+  function renderNavigation(query, current, total, restoreFocus) {
     navigation.replaceChildren();
     navigation.hidden = total <= 1;
+    let currentPage;
     let previous = 0;
     for (const page of navigationPages(current, total)) {
       if (page > previous + 1) {
@@ -340,13 +402,16 @@
       if (page === current) {
         node.textContent = page;
         node.setAttribute("aria-current", "page");
+        node.setAttribute("tabindex", "-1");
+        currentPage = node;
       }
       navigation.append(node);
       previous = page;
     }
+    if (restoreFocus && !navigation.hidden) currentPage?.focus({ preventScroll: true });
   }
 
-  async function render(query, requestedPage) {
+  async function render(query, requestedPage, focusOrigin) {
     const generation = ++renderGeneration;
     const normalized = normalize(query);
     if (!normalized) {
@@ -363,8 +428,9 @@
       const documentsForSearch = await source;
       if (generation !== renderGeneration) return;
       const matching = documentsForSearch.map((doc) => {
-        const match = scoreDocument(doc, fragments);
-        return match && { doc, ...match };
+        const matches = collectMatches(doc, fragments);
+        const score = scoreDocument(matches);
+        return score === null ? null : { doc, matches, score };
       }).filter(Boolean)
         .sort((left, right) => right.score - left.score || left.doc.searchOrder - right.doc.searchOrder);
       if (generation !== renderGeneration) return;
@@ -374,7 +440,7 @@
       results.replaceChildren(...matching.slice((page - 1) * pageSize, page * pageSize)
         .map((result) => resultLink(result, fragments)));
       status.textContent = matching.length ? resultCount(matching.length) : labels.noResults;
-      renderNavigation(query, page, total);
+      renderNavigation(query, page, total, focusOrigin && document.activeElement === focusOrigin);
     } catch (_) {
       if (generation !== renderGeneration) return;
       results.replaceChildren();
@@ -403,6 +469,7 @@
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    window.clearTimeout(debounce);
     setUrl(input.value, 1, false);
     render(input.value, 1);
   });

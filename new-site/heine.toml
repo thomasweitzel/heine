@@ -1,10 +1,15 @@
+[site]
+# The starting site uses UTC because your time zone is not known yet.
+# Change this to the time zone you use when writing publication dates.
+time_zone = "Etc/UTC"
+
 [i18n]
 default_locale = "en"
 [i18n.locales.en]
 direction = "ltr"
 
 [collections.posts]
-order = "id-desc"
+order = "published-desc"
 
 [taxonomies.tags]
 collection = "posts"

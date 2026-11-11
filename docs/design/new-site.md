@@ -85,7 +85,8 @@ layout and search.
 ## Capabilities without showcase content
 
 Configure the blog collection, tags, search, and listing pagination so the
-two posts form a working site. A second pagination page need not exist until
+two posts form a working site. Posts are ordered by publication date and show
+their localized dates. A second pagination page need not exist until
 there are enough posts. Supply Series listing templates, page navigation, and
 messages, but do not configure a Series or generate an empty Series index.
 The article layout includes a direct Series navigation hook, and the README
@@ -142,8 +143,9 @@ source directories are not preserved. Heine creates ordinary files and
 directories with platform filesystem APIs and permissions. It does not copy
 executable bits or other source metadata.
 
-The generated site includes a README that identifies the editable content,
-templates, assets, and Fluent messages. It explains Series setup, the site
+The generated site includes a README that explains how to add and date a post
+and identifies the editable content, templates, assets, and Fluent messages.
+It explains Series setup, the site
 origin and the separate configuration needed for a sitemap or feed, licensing
 of the supplied material, and the independent-snapshot maintenance model.
 

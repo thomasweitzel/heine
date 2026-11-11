@@ -31,10 +31,20 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-12
+
 ### Added
 
 - **New sites.** `heine new <path>` creates a small, editable site without a
   network connection or external tools. The destination must not exist.
+- **Example search.** The shared search client also matches page descriptions
+  and summaries, making pages discoverable by their introductory text.
+
+### Fixed
+
+- **Example search interactions.** Overlapping word-start matches are found,
+  modified clicks on pagination links retain normal browser behavior, and
+  keyboard focus remains in pagination after a page change.
 
 ## [0.12.2] - 2026-11-09
 
