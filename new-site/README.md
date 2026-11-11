@@ -33,9 +33,10 @@ Write the post in `main.md` in the same directory. The blog lists posts by
 publication date, newest first. Posts with the same publication time are
 ordered by page ID. Replace the sample dates. Publication times use UTC until
 you set `time_zone` in `heine.toml` to your editorial time zone.
-The summary appears in listings. Search uses the description when it cannot
-show a matching excerpt. See the [collections guide](https://heine.rs/docs/collections/)
-for other ordering options.
+The summary appears in listings. Search matches both the description and
+summary as well as the post text, and shows relevant context for each result.
+See the [collections guide](https://heine.rs/docs/collections/) for other
+ordering options.
 
 ## Add a Series
 
