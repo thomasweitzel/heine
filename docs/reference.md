@@ -1,7 +1,7 @@
 # Heine reference
 
 This is the complete current contract for Heine-authored files, command
-options, and template values. Start with the [README](../README.md) or
+options, and template values. Start with the [first-site guide](first-site.md) or
 [tutorial](tutorial.md) when building a site for the first time; use this page
 to look up exact fields, defaults, constraints, functions, and filters. The
 [glossary](glossary.md) defines Heine-specific vocabulary used below.

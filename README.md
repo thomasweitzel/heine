@@ -35,7 +35,8 @@ builds the pages and relationships it can check from them.
 
 To create a small site with a blog and search, run `heine new my-site`, change
 to the new directory, and run `heine serve`. The destination must not already
-exist. The generated README explains how to customize the site.
+exist. The generated README explains how to customize the site; the
+[first-site guide](docs/first-site.md) introduces the generated files.
 
 To build a site from individual files instead, follow the steps below.
 

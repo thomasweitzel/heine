@@ -5,9 +5,9 @@ previous one and leaves the site usable. It introduces Heine's main public
 concepts; focused guides and the [reference](reference.md) provide the complete
 rules when you need them.
 
-If you completed [First site](../README.md#first-site), your site already
-matches step 1. Read that step as a recap, then begin applying changes at step
-2.
+Start with the minimal site in step 1, even if you have already created a site
+with `heine new`. The generated site has a different structure. Use a separate
+directory for this tutorial so your existing site stays available.
 
 The final site has Markdown posts, copied assets, shared data, English and
 German pages, localized UI text, a post collection, pagination, and tags.
@@ -18,7 +18,7 @@ For a larger working example, see [`starter-site/`](../starter-site).
 Create this site root:
 
 ```text
-my-site/
+tutorial-site/
 ├── heine.toml
 ├── content/
 │   └── en/
@@ -54,14 +54,14 @@ title = "My site"
 Run a full build:
 
 ```bash
-/path/to/heine --root /path/to/my-site
+/path/to/heine --root /path/to/tutorial-site
 ```
 
 Then start the development server in a second terminal and leave it running as
 you follow the tutorial:
 
 ```bash
-/path/to/heine serve --root /path/to/my-site
+/path/to/heine serve --root /path/to/tutorial-site
 ```
 
 Open the local address it prints, normally `http://127.0.0.1:1111/`. Each later
@@ -746,7 +746,7 @@ declaration, enable `required = true` in `[licensing]`.
 The server was started in step 1. If it is not running, start it with:
 
 ```bash
-/path/to/heine serve --root /path/to/my-site
+/path/to/heine serve --root /path/to/tutorial-site
 ```
 
 It performs a full build before serving the generated output and reloads open
@@ -754,8 +754,7 @@ HTML pages after a successful rebuild. It starts with port `1111`, then tries
 the next available unprivileged port. See the
 [development-server guide](development-server.md) for base paths, live reload,
 and media range requests, the [reference](reference.md#site-root-and-commands)
-for command options, and the [README](../README.md#build-behavior) for full and
-quick-build behavior.
+for command options and full and quick-build behavior.
 
 ## Common first problems
 

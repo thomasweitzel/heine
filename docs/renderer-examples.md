@@ -35,7 +35,7 @@ accessibility information it can carry.
 
 ## Before you begin
 
-Install Heine and create a site as described in the [first-site guide](../README.md#first-site).
+Install Heine and create a site as described in the [first-site guide](first-site.md).
 The examples add renderer profiles to that site's `heine.toml`, Markdown to a
 page below `content/`, and CSS to the stylesheet loaded by the selected kit or
 site template.

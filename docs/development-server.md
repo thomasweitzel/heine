@@ -101,4 +101,4 @@ confirm it may be replaced, then use:
 ```
 
 `--clean-output` applies only to that initial build. Read the
-[build behavior](../README.md#build-behavior) section before using it.
+[build behavior](reference.md#site-root-and-commands) in the reference before using it.
