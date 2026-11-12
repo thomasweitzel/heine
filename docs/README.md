@@ -1,13 +1,9 @@
 # Heine documentation
 
-Start with the smallest working site, then add the pieces your site needs.
-The [First site](../README.md#first-site) page shows how to create one page
-and one template. The [tutorial](tutorial.md) continues from that point and
-builds a multilingual blog with content, assets, data, listings, pagination,
-and tags.
-
-For a ready-to-edit single-language site, run `heine new my-site` and follow
-the README in the generated directory.
+The [first-site guide](first-site.md) creates a ready-to-edit site with
+`heine new`. To learn the building blocks, follow the [tutorial](tutorial.md),
+which starts with a separate minimal site and grows it into a multilingual
+blog with content, assets, data, listings, pagination, and tags.
 
 When you return with a specific task, use the guides below. The
 [reference](reference.md) gives the exact contract for every setting and
