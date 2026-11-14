@@ -280,19 +280,20 @@ fn transformed_events_with_citations(
     let mut footnote_definition_depth = 0usize;
     let mut transformed_events = Vec::with_capacity(events.len());
     for (event, span) in events {
-        let transformed = transform_event(
-            (event.clone(), span.clone()),
-            links,
-            &mut anchors,
-            &mut task_labels,
-            footnote_definition_depth == 0,
-            Some(&mut ordinary_footnotes),
-        )?;
-        match event {
+        let outside_footnote = footnote_definition_depth == 0;
+        match &event {
             Event::Start(Tag::FootnoteDefinition(_)) => footnote_definition_depth += 1,
             Event::End(TagEnd::FootnoteDefinition) => footnote_definition_depth -= 1,
             _ => {}
         }
+        let transformed = transform_event(
+            (event, span.clone()),
+            links,
+            &mut anchors,
+            &mut task_labels,
+            outside_footnote,
+            Some(&mut ordinary_footnotes),
+        )?;
         transformed_events.push((transformed, span));
     }
     let events = highlight_code_blocks(transformed_events, renderer.highlighter.as_deref())?;
