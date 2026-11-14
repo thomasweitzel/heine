@@ -71,7 +71,9 @@ pub(super) fn transform(
     let mut events = events.into_iter();
 
     while let Some((event, span)) = events.next() {
-        if !matches!(event, Event::Start(pulldown_cmark::Tag::Paragraph)) {
+        if !matches!(event, Event::Start(pulldown_cmark::Tag::Paragraph))
+            || !starts_directive(&input[span.clone()])
+        {
             output.push((event.into_static(), span));
             continue;
         }
