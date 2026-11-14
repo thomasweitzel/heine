@@ -762,7 +762,9 @@ impl Page {
                     },
                 )));
             }
-            let mut transformed = input.to_owned();
+            let mut transformed =
+                (!matches!(self.content.get(name), Some(Value::String(value)) if value == input))
+                    .then(|| input.to_owned());
             let mut replacements = Vec::new();
             let mut rebases = Vec::new();
             let needs_rebase = self
@@ -992,10 +994,14 @@ impl Page {
                 if needs_rebase {
                     rebases.push((request.span.clone(), marker.len()));
                 }
-                transformed.replace_range(request.span.clone(), &marker);
+                transformed
+                    .get_or_insert_with(|| input.to_owned())
+                    .replace_range(request.span.clone(), &marker);
                 replacements.push(replacement);
             }
-            rendered_content.insert(name.clone(), transformed);
+            if let Some(transformed) = transformed {
+                rendered_content.insert(name.clone(), transformed);
+            }
             if !rebases.is_empty() {
                 let offsets = crate::markdown::rebase::Rebase::new(&rebases).map_err(|span| {
                     Box::new(crate::markdown::source_error(
