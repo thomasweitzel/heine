@@ -251,7 +251,10 @@ fn transformed_events_with_citations(
     replacements: &[super::RendererReplacement],
     citations: &[super::citation::Replacement],
 ) -> Result<Vec<(Event<'static>, std::ops::Range<usize>)>, RenderError> {
-    if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config()) {
+    let events: Vec<_> = Parser::new_ext(input, options(renderer.config()))
+        .into_offset_iter()
+        .collect();
+    if let Some((label, span)) = unresolved_footnote_reference(input, renderer.config(), &events) {
         return Err(RenderError::Footnote { label, span });
     }
     let mut anchors = anchors.unwrap_or_default().iter();
@@ -271,9 +274,6 @@ fn transformed_events_with_citations(
         assets,
         pages,
     };
-    let events = Parser::new_ext(input, options(renderer.config()))
-        .into_offset_iter()
-        .collect();
     let events = picture::transform(input, events, assets)?;
     let events = apply_renderer_replacements(events, replacements);
     let events = super::citation::replace_events(events, citations)?;

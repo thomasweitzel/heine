@@ -809,6 +809,7 @@ pub(super) fn validate_event(
 fn unresolved_footnote_reference(
     input: &str,
     config: &MarkdownConfig,
+    events: &[(Event<'_>, Range<usize>)],
 ) -> Option<(String, Range<usize>)> {
     if !config.extensions().contains(&MarkdownExtension::Footnotes) {
         return None;
@@ -816,7 +817,7 @@ fn unresolved_footnote_reference(
     let mut scanner = UnresolvedFootnoteReferenceScanner::default();
     let mut in_code_block = false;
     let mut picture_paragraph_depth = 0usize;
-    for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
+    for (event, span) in events {
         if picture_paragraph_depth > 0 {
             if matches!(event, Event::End(TagEnd::Paragraph)) {
                 picture_paragraph_depth -= 1;
@@ -832,33 +833,19 @@ fn unresolved_footnote_reference(
         }
         match event {
             Event::Start(Tag::CodeBlock(_)) => {
-                let _ = scan_unresolved_footnote_event(
-                    &mut scanner,
-                    &event,
-                    &span,
-                    input,
-                    in_code_block,
-                );
+                let _ =
+                    scan_unresolved_footnote_event(&mut scanner, event, span, input, in_code_block);
                 in_code_block = true;
             }
             Event::End(TagEnd::CodeBlock) => {
-                let _ = scan_unresolved_footnote_event(
-                    &mut scanner,
-                    &event,
-                    &span,
-                    input,
-                    in_code_block,
-                );
+                let _ =
+                    scan_unresolved_footnote_event(&mut scanner, event, span, input, in_code_block);
                 in_code_block = false;
             }
             _ => {
-                if let Some(reference) = scan_unresolved_footnote_event(
-                    &mut scanner,
-                    &event,
-                    &span,
-                    input,
-                    in_code_block,
-                ) {
+                if let Some(reference) =
+                    scan_unresolved_footnote_event(&mut scanner, event, span, input, in_code_block)
+                {
                     return Some(reference);
                 }
             }
