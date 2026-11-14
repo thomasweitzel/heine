@@ -57,13 +57,11 @@ impl ExtraValueKind {
 /// established that a kit selection exists. `toml_edit` retains the spans for
 /// nested values that serde's generic TOML values do not expose.
 pub(super) fn parse_selection(source: &str) -> Result<ExtraSchema, ValueError> {
-    let document = source
-        .parse::<toml_edit::DocumentMut>()
-        .map_err(|error| ValueError {
-            span: (0, 0).into(),
-            message: format!("could not inspect kit extra settings: {error}"),
-        })?;
-    let Some(kit) = document.get("kit") else {
+    let document = toml_edit::Document::parse(source).map_err(|error| ValueError {
+        span: (0, 0).into(),
+        message: format!("could not inspect kit extra settings: {error}"),
+    })?;
+    let Some(kit) = document.as_table().get("kit") else {
         return Ok(ExtraSchema::default());
     };
     let kit = kit.as_table().ok_or_else(|| ValueError {
@@ -208,13 +206,11 @@ fn extra_value_to_json(value: &ExtraValue) -> serde_json::Value {
     }
 }
 pub(super) fn parse_schema(source: &str) -> Result<ExtraSchema, ValueError> {
-    let document = source
-        .parse::<toml_edit::DocumentMut>()
-        .map_err(|error| ValueError {
-            span: (0, 0).into(),
-            message: format!("could not inspect kit extra schema: {error}"),
-        })?;
-    let Some(extra) = document.get("extra") else {
+    let document = toml_edit::Document::parse(source).map_err(|error| ValueError {
+        span: (0, 0).into(),
+        message: format!("could not inspect kit extra schema: {error}"),
+    })?;
+    let Some(extra) = document.as_table().get("extra") else {
         return Ok(ExtraSchema::default());
     };
     let table = extra.as_table().ok_or_else(|| ValueError {
@@ -350,5 +346,33 @@ mod tests {
             let error = parse_schema(source).expect_err("invalid extra schema");
             assert!(error.message.contains(expected), "{}", error.message);
         }
+    }
+
+    #[test]
+    fn retains_nested_selection_and_array_element_spans() {
+        let source = "[kit.extra.navigation]\nitems = ['first', 'second']\n";
+        let schema = parse_selection(source).expect("selection");
+        let ExtraValueKind::Table(navigation) = &schema.values["navigation"].kind else {
+            panic!("navigation table");
+        };
+        let ExtraValueKind::Array(items) = &navigation["items"].kind else {
+            panic!("items array");
+        };
+        let span = items[1].span;
+        assert_eq!(
+            &source[span.offset()..span.offset() + span.len()],
+            "'second'"
+        );
+    }
+
+    #[test]
+    fn reports_the_mixed_schema_array_element_at_its_source() {
+        let source = "[extra.navigation]\nitems = [1, 'wrong']\n";
+        let error = parse_schema(source).expect_err("mixed array");
+        let span = error.span;
+        assert_eq!(
+            &source[span.offset()..span.offset() + span.len()],
+            "'wrong'"
+        );
     }
 }

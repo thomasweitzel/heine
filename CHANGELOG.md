@@ -36,6 +36,11 @@ are corrected only to repair an error or explain a missed material migration.
 - **Getting started.** The first-site guide introduces `heine new`; the
   tutorial builds a separate minimal site to explain Heine's building blocks.
 
+### Fixed
+
+- **Kit setting diagnostics.** Errors involving individual kit extra values
+  now point to the affected value, and manifest reports explain the error.
+
 ## [0.13.0] - 2026-11-12
 
 ### Added

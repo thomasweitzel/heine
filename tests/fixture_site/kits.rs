@@ -838,3 +838,58 @@ fn merges_checked_kit_extra_defaults_and_root_overrides() {
         "{error:?}"
     );
 }
+
+#[test]
+fn kit_extra_errors_point_to_nested_values_in_their_authored_files() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "heine.toml",
+        "[kit]\nname = 'paper'\n\n[kit.extra.navigation]\nitems = ['ok', 42]\n",
+    );
+    write_manifest(
+        &fixture,
+        &format!(
+            "{}\n[extra.navigation]\nitems = ['default']\n",
+            manifest("1.2.3", COMPATIBLE_HEINE)
+        ),
+    );
+    write_page(&fixture);
+
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("mixed override");
+    let report = format!("{error:?}");
+    assert!(report.contains("heine.toml"), "{report}");
+    assert!(report.contains("items = ['ok', 42]"), "{report}");
+    assert!(report.contains("one TOML value type"), "{report}");
+
+    fixture.write("heine.toml", "[kit]\nname = 'paper'\n");
+    write_manifest(
+        &fixture,
+        &format!(
+            "{}\n[extra.navigation]\nitems = [1, 'wrong']\n",
+            manifest("1.2.3", COMPATIBLE_HEINE)
+        ),
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("mixed schema");
+    let report = format!("{error:?}");
+    assert!(report.contains("kit.toml"), "{report}");
+    assert!(report.contains("items = [1, 'wrong']"), "{report}");
+    assert!(report.contains("kit.toml:7:13"), "{report}");
+    assert!(report.contains("one TOML value type"), "{report}");
+
+    fixture.write(
+        "heine.toml",
+        "[kit]\nname = 'paper'\n\n[kit.extra.navigation]\ncompact = 'wrong'\n",
+    );
+    write_manifest(
+        &fixture,
+        &format!(
+            "{}\n[extra.navigation]\ncompact = true\n",
+            manifest("1.2.3", COMPATIBLE_HEINE)
+        ),
+    );
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("override type mismatch");
+    let report = format!("{error:?}");
+    assert!(report.contains("heine.toml:5:11"), "{report}");
+    assert!(report.contains("compact = 'wrong'"), "{report}");
+    assert!(report.contains("must remain a boolean"), "{report}");
+}
