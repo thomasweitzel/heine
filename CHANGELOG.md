@@ -31,6 +31,8 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-15
+
 ### Changed
 
 - **Getting started.** The first-site guide introduces `heine new`; the
