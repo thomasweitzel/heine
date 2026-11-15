@@ -38,6 +38,9 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Development-server publication.** When the new site is published but
+  cleanup of the previous output fails, the server now reloads clients and
+  uses the new site's settings while reporting the leftover backup.
 - **Segmented Markdown.** Named segments remain available as structured page
   content in templates after Markdown analysis. Heine reports an error for
   renderer directives and block components in segmented Markdown, and for a

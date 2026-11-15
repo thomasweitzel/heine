@@ -22,6 +22,8 @@ use miette::Diagnostic;
 use miette::{NamedSource, SourceSpan};
 use thiserror::Error;
 
+#[cfg(test)]
+pub(crate) use publication::fail_next_backup_cleanup;
 pub(crate) use target::OutputTarget;
 pub(crate) use writer::{CopiedFiles, OutputWriter};
 

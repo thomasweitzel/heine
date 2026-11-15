@@ -12,6 +12,24 @@ use std::{
 
 static STAGING_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(test)]
+thread_local! {
+    static FAIL_BACKUP_CLEANUP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn fail_next_backup_cleanup() {
+    FAIL_BACKUP_CLEANUP.with(|failure| failure.set(true));
+}
+
+fn remove_backup(path: &Path) -> io::Result<()> {
+    #[cfg(test)]
+    if FAIL_BACKUP_CLEANUP.with(|failure| failure.replace(false)) {
+        return Err(io::Error::other("injected backup cleanup failure"));
+    }
+    fs::remove_dir_all(path)
+}
+
 pub(super) struct StagingDirectory {
     path: PathBuf,
     output: PathBuf,
@@ -60,7 +78,7 @@ impl StagingDirectory {
         self.publish_with(
             replace_existing,
             |from, to| fs::rename(from, to),
-            |path| fs::remove_dir_all(path),
+            remove_backup,
         )
     }
 
