@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn segmented_facts_follow_each_segments_markdown_boundaries() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[reading_time.words_per_minute]\nen = 2\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "<!-- segment: first -->\nOne\n\n```text\nignored\n<!-- segment: second -->\nTwo three\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ page.markdown.main.word_count }}|{{ page.markdown.main.reading_time }}",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("segmented facts build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert_eq!(output, "3|2");
+}
+
+#[test]
 fn exposes_per_input_unicode_word_counts_and_opt_in_reading_time() {
     let fixture = Fixture::new();
     fixture.write(

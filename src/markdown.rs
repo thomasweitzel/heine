@@ -450,6 +450,11 @@ pub(crate) enum RenderError {
     RendererOffsets { span: Range<usize> },
     #[error("Markdown block component error: {message}")]
     Component { message: String, span: Range<usize> },
+    #[error("{kind} cannot occur in segmented Markdown")]
+    SegmentedDirective {
+        kind: &'static str,
+        span: Range<usize>,
+    },
     #[error("Markdown block directives cannot appear inside a {container} yet")]
     DirectivePlacement {
         container: &'static str,
@@ -536,6 +541,7 @@ pub(crate) struct SourceAnalysisInputs<'a> {
     pub(crate) collect_search_sections: bool,
     pub(crate) renderer_sources: &'a BTreeMap<String, crate::renderer::Source>,
     pub(crate) citations: Option<&'a mut citation::Collector>,
+    pub(crate) scan_renderer_requests: bool,
 }
 
 /// Derives page facts and validates checked transformations while the original
@@ -552,6 +558,7 @@ pub(crate) fn analyze_source_with_links(
             pages: inputs.pages,
             renderer_sources: inputs.renderer_sources,
             citations: inputs.citations,
+            scan_renderer_requests: inputs.scan_renderer_requests,
         },
         inputs.words_per_minute,
         inputs.fragments,
@@ -560,6 +567,49 @@ pub(crate) fn analyze_source_with_links(
         inputs.display_path,
     )
     .map_err(|error| Box::new(source_error(inputs.display_path, inputs.input, error)))
+}
+
+/// Analyze independently rendered segments in their authored order.
+pub(crate) fn analyze_segmented_source(
+    inputs: SourceAnalysisInputs<'_>,
+    ranges: &[Range<usize>],
+) -> Result<analysis::MarkdownAnalysis, Box<SourceError>> {
+    let mut segments = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        check_segmented_directives(inputs.display_path, inputs.input, range)?;
+        let segment = &inputs.input[range.clone()];
+        let result = analyze_source_with_links(SourceAnalysisInputs {
+            display_path: inputs.display_path,
+            input: segment,
+            renderer: inputs.renderer,
+            assets: inputs.assets,
+            pages: inputs.pages,
+            words_per_minute: None,
+            fragments: None,
+            collect_search_sections: inputs.collect_search_sections,
+            renderer_sources: inputs.renderer_sources,
+            citations: None,
+            scan_renderer_requests: false,
+        })
+        .map_err(|mut diagnostic| {
+            diagnostic.span = (
+                diagnostic.span.offset() + range.start,
+                diagnostic.span.len(),
+            )
+                .into();
+            diagnostic.source_code = crate::source_diagnostic::named_source_at_display_path(
+                inputs.display_path,
+                inputs.input,
+                "Markdown",
+            );
+            diagnostic
+        })?;
+        segments.push(result);
+    }
+    Ok(analysis::MarkdownAnalysis::combine_segments(
+        segments,
+        inputs.words_per_minute,
+    ))
 }
 
 pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceError {
@@ -663,6 +713,12 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
             "use a top-level :::component[name key = value] block with a non-empty Markdown body".into(),
             span.clone(),
         ),
+        RenderError::SegmentedDirective { kind, span } => (
+            "directive",
+            format!("{kind} in segmented Markdown"),
+            "move this directive into an unsegmented Markdown source rendered with markdown(content=\"…\")".into(),
+            span.clone(),
+        ),
         RenderError::DirectivePlacement { container, span } => (
             "directive",
             format!("block directive in a {container}"),
@@ -731,6 +787,44 @@ pub(crate) fn citation_configuration_error(
         span: span.into(),
         help: "choose a compatible local CSL style or adjust its selection".into(),
     }
+}
+
+/// Check each independently rendered segment while retaining authored spans.
+fn check_segmented_directives(
+    path: &Path,
+    source: &str,
+    range: &Range<usize>,
+) -> Result<(), Box<SourceError>> {
+    let segment = &source[range.clone()];
+    let located = |error| {
+        let mut diagnostic = source_error(path, segment, error);
+        diagnostic.span = (
+            diagnostic.span.offset() + range.start,
+            diagnostic.span.len(),
+        )
+            .into();
+        diagnostic.source_code =
+            crate::source_diagnostic::named_source_at_display_path(path, source, "Markdown");
+        Box::new(diagnostic)
+    };
+    if let Some(plan) = ComponentPlan::parse(segment).map_err(located)?
+        && let Some(call) = plan.calls().first()
+    {
+        return Err(located(RenderError::SegmentedDirective {
+            kind: "Markdown block component",
+            span: call.header_span.clone(),
+        }));
+    }
+    if let Some(request) = renderer_request::parse(segment)
+        .map_err(|error| located(RenderError::RendererRequest(error)))?
+        .first()
+    {
+        return Err(located(RenderError::SegmentedDirective {
+            kind: "renderer directive",
+            span: request.span(),
+        }));
+    }
+    Ok(())
 }
 
 fn directive_placement_help(container: &str) -> String {

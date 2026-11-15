@@ -38,6 +38,11 @@ are corrected only to repair an error or explain a missed material migration.
 
 ### Fixed
 
+- **Segmented Markdown.** Named segments remain available as structured page
+  content in templates after Markdown analysis. Heine reports an error for
+  renderer directives and block components in segmented Markdown, and for a
+  segmented source selected for margin footnotes. Link checks, search text,
+  and word counts now respect each segment's Markdown boundaries.
 - **Kit setting diagnostics.** Errors involving individual kit extra values
   now point to the affected value, and manifest reports explain the error.
 

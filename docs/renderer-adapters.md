@@ -22,7 +22,7 @@ empty closing fence of the same length or longer. Each request selects one
 profile from the root `heine.toml`. Block requests must be ordinary top-level
 Markdown blocks. Heine rejects a request in a list item or block quote, or a
 paragraph continuation, until it defines how that structure should contain the
-replacement.
+replacement. Inline and block requests require an unsegmented Markdown source.
 
 A profile's `protocol` controls how Heine supplies the checked input. A
 `stream` profile receives one input on standard input and writes one result to

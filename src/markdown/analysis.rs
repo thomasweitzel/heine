@@ -65,6 +65,28 @@ pub(crate) struct MarkdownAnalysis {
     pub(crate) renderer_requests: Vec<renderer_request::ResolvedRequest>,
 }
 
+impl MarkdownAnalysis {
+    pub(super) fn combine_segments(
+        segments: impl IntoIterator<Item = Self>,
+        words_per_minute: Option<NonZeroU64>,
+    ) -> Self {
+        let mut word_count = 0;
+        let mut search_sections = Vec::new();
+        for segment in segments {
+            word_count += segment.facts.word_count;
+            search_sections.extend(segment.search_sections);
+        }
+        Self {
+            facts: MarkdownFacts {
+                word_count,
+                reading_time: words_per_minute.map(|rate| word_count.div_ceil(rate.get())),
+            },
+            search_sections,
+            renderer_requests: Vec::new(),
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn analyze(
     input: &str,
@@ -102,6 +124,7 @@ pub(super) struct ValidationInputs<'a> {
     pub(super) pages: &'a PageLinks,
     pub(super) renderer_sources: &'a std::collections::BTreeMap<String, crate::renderer::Source>,
     pub(super) citations: Option<&'a mut super::citation::Collector>,
+    pub(super) scan_renderer_requests: bool,
 }
 
 pub(super) fn analyze_and_validate(
@@ -127,6 +150,7 @@ pub(super) fn analyze_and_validate(
         Some(Validation {
             renderer: validation.renderer,
             renderer_sources: validation.renderer_sources,
+            scan_renderer_requests: validation.scan_renderer_requests,
             links: TransformLinks {
                 math: validation.renderer.config().math(),
                 assets: Some(validation.assets),
@@ -141,6 +165,7 @@ pub(super) fn analyze_and_validate(
 struct Validation<'a> {
     renderer: &'a Renderer,
     renderer_sources: &'a std::collections::BTreeMap<String, crate::renderer::Source>,
+    scan_renderer_requests: bool,
     links: TransformLinks<'a>,
 }
 
@@ -153,7 +178,12 @@ fn analyze_inner(
     mut citations: Option<&mut super::citation::Collector>,
 ) -> Result<MarkdownAnalysis, RenderError> {
     let (fragments, collect_search_sections) = search;
-    let renderer_requests = renderer_request::parse(input)?;
+    let renderer_requests = if validation.is_none_or(|validation| validation.scan_renderer_requests)
+    {
+        renderer_request::parse(input)?
+    } else {
+        Vec::new()
+    };
     let resolved_renderer_requests = validation
         .map(|validation| {
             renderer_request::validate(

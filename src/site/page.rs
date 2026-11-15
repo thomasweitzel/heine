@@ -18,7 +18,7 @@ use crate::{
     asset::{AssetLicensing, AssetLinks},
     author::AuthorName,
     config::{CollectionName, SeriesName, TaxonomyName},
-    content::MarkdownSource,
+    content::{MarkdownInput, MarkdownSource},
     markdown::{MarginFootnotePlan, Renderer as MarkdownRenderer, SourceAnalysisInputs, TocPlan},
     output::{OutputPath, UrlPath},
     site::PageLinks,
@@ -364,7 +364,7 @@ pub(super) struct Page {
     pub(super) markdown_content: BTreeSet<String>,
     /// Original declared Markdown inputs are retained for source-derived
     /// generated resources such as search, not for template rendering.
-    pub(super) markdown_sources: BTreeMap<String, MarkdownSource>,
+    pub(super) markdown_sources: BTreeMap<String, MarkdownInput>,
     pub(super) renderer_sources: BTreeMap<String, crate::renderer::Source>,
     pub(super) renderer_requests: BTreeMap<String, Vec<crate::markdown::ResolvedRequest>>,
     pub(super) renderer_replacements: BTreeMap<String, Vec<crate::markdown::RendererReplacement>>,
@@ -617,30 +617,31 @@ impl Page {
         let mut search_sections = collect_search_sections.then(BTreeMap::new);
         let mut renderer_resources = Vec::new();
         for (name, source) in &self.markdown_sources {
-            let mut component_plan = if let Some(plan) = self.component_plans.remove(name) {
-                crate::markdown::ComponentPlan::check_placement(&source.source).map_err(
-                    |error| {
-                        Box::new(crate::markdown::source_error(
-                            &source.display_path,
-                            &source.source,
-                            error,
-                        ))
-                    },
-                )?;
-                Some(plan)
-            } else {
-                crate::markdown::ComponentPlan::parse(&source.source).map_err(|error| {
+            let authored = source.text(&self.content[name]);
+            let segmented = !self.content[name].is_string();
+            let mut component_plan = if segmented {
+                None
+            } else if let Some(plan) = self.component_plans.remove(name) {
+                crate::markdown::ComponentPlan::check_placement(authored).map_err(|error| {
                     Box::new(crate::markdown::source_error(
                         &source.display_path,
-                        &source.source,
+                        authored,
+                        error,
+                    ))
+                })?;
+                Some(plan)
+            } else {
+                crate::markdown::ComponentPlan::parse(authored).map_err(|error| {
+                    Box::new(crate::markdown::source_error(
+                        &source.display_path,
+                        authored,
                         error,
                     ))
                 })?
             };
-            let input = component_plan.as_ref().map_or(
-                source.source.as_str(),
-                crate::markdown::ComponentPlan::normalized,
-            );
+            let input = component_plan
+                .as_ref()
+                .map_or(authored, crate::markdown::ComponentPlan::normalized);
             let fragments = self
                 .toc
                 .as_ref()
@@ -651,7 +652,7 @@ impl Page {
                 .as_ref()
                 .filter(|plan| plan.content == *name)
                 .map(|_| crate::markdown::citation::Collector::with_headings(fragments.is_some()));
-            let analysis = crate::markdown::analyze_source_with_links(SourceAnalysisInputs {
+            let analysis_inputs = SourceAnalysisInputs {
                 display_path: &source.display_path,
                 input,
                 renderer,
@@ -662,12 +663,21 @@ impl Page {
                 collect_search_sections,
                 renderer_sources: &self.renderer_sources,
                 citations: citation_collector.as_mut(),
-            })?;
+                scan_renderer_requests: !segmented,
+            };
+            let analysis = if segmented {
+                crate::markdown::analyze_segmented_source(
+                    analysis_inputs,
+                    &crate::content::segment_ranges(authored),
+                )?
+            } else {
+                crate::markdown::analyze_source_with_links(analysis_inputs)?
+            };
             if let Some(collector) = citation_collector {
                 if let Some(problem) = collector.problems.into_iter().next() {
                     return Err(Box::new(crate::markdown::source_error(
                         &source.display_path,
-                        &source.source,
+                        authored,
                         crate::markdown::RenderError::Citation {
                             message: problem.message.to_owned(),
                             span: problem.span,
@@ -681,7 +691,7 @@ impl Page {
                             if !plan.contains_key(key) {
                                 return Err(Box::new(crate::markdown::source_error(
                                     &source.display_path,
-                                    &source.source,
+                                    authored,
                                     crate::markdown::RenderError::Citation {
                                         message: format!("unknown citation key {key:?}"),
                                         span: span.clone(),
@@ -695,7 +705,7 @@ impl Page {
                         if let Some(span) = error.citation_span() {
                             Box::new(crate::markdown::source_error(
                                 &source.display_path,
-                                &source.source,
+                                authored,
                                 crate::markdown::RenderError::Citation {
                                     message: error.to_string(),
                                     span,
@@ -728,7 +738,7 @@ impl Page {
             if !analysis.renderer_requests.is_empty() && !renderer.allows_external_renderers() {
                 return Err(Box::new(crate::markdown::source_error(
                     &source.display_path,
-                    &source.source,
+                    authored,
                     crate::markdown::RenderError::RendererPermission {
                         span: analysis.renderer_requests[0].span.clone(),
                     },
@@ -742,7 +752,7 @@ impl Page {
             {
                 return Err(Box::new(crate::markdown::source_error(
                     &source.display_path,
-                    &source.source,
+                    authored,
                     crate::markdown::RenderError::RendererResourcePage {
                         span: request.span.clone(),
                     },
@@ -756,14 +766,14 @@ impl Page {
             {
                 return Err(Box::new(crate::markdown::source_error(
                     &source.display_path,
-                    &source.source,
+                    authored,
                     crate::markdown::RenderError::RendererLicensing {
                         span: request.span.clone(),
                     },
                 )));
             }
             let mut transformed =
-                (!matches!(self.content.get(name), Some(Value::String(value)) if value == input))
+                matches!(self.content.get(name), Some(Value::String(value)) if value != input)
                     .then(|| input.to_owned());
             let mut replacements = Vec::new();
             let mut rebases = Vec::new();
@@ -783,7 +793,7 @@ impl Page {
                 .then(|| {
                     Arc::new(NamedSource::new(
                         source.display_path.display().to_string(),
-                        source.source.clone(),
+                        authored.to_owned(),
                     ))
                 });
             for request in analysis.renderer_requests.iter().rev() {
@@ -847,7 +857,7 @@ impl Page {
                 let process_error = |error| {
                     Box::new(crate::markdown::source_error(
                         &source.display_path,
-                        &source.source,
+                        authored,
                         crate::markdown::renderer_process_error(
                             error,
                             profile.uses_workspace()
@@ -999,14 +1009,16 @@ impl Page {
                     .replace_range(request.span.clone(), &marker);
                 replacements.push(replacement);
             }
-            if let Some(transformed) = transformed {
+            if let Some(transformed) = transformed
+                && self.content.get(name).is_some_and(Value::is_string)
+            {
                 rendered_content.insert(name.clone(), transformed);
             }
             if !rebases.is_empty() {
                 let offsets = crate::markdown::rebase::Rebase::new(&rebases).map_err(|span| {
                     Box::new(crate::markdown::source_error(
                         &source.display_path,
-                        &source.source,
+                        authored,
                         crate::markdown::RenderError::RendererOffsets { span },
                     ))
                 })?;
@@ -1014,7 +1026,7 @@ impl Page {
                     plan.rebase(&offsets).map_err(|span| {
                         Box::new(crate::markdown::source_error(
                             &source.display_path,
-                            &source.source,
+                            authored,
                             crate::markdown::RenderError::Citation {
                                 message: "citation overlaps a renderer directive".into(),
                                 span,
@@ -1030,7 +1042,7 @@ impl Page {
                     plan.rebase(&offsets).map_err(|span| {
                         Box::new(crate::markdown::source_error(
                             &source.display_path,
-                            &source.source,
+                            authored,
                             crate::markdown::RenderError::MarginFootnote {
                                 message: "margin footnote overlaps a renderer directive".into(),
                                 span,
@@ -1042,7 +1054,7 @@ impl Page {
                     plan.rebase(&offsets).map_err(|span| {
                         Box::new(crate::markdown::source_error(
                             &source.display_path,
-                            &source.source,
+                            authored,
                             crate::markdown::RenderError::Component {
                                 message: "renderer directive crosses a component boundary".into(),
                                 span,
@@ -1053,7 +1065,13 @@ impl Page {
             }
             if let Some(plan) = component_plan {
                 component_plans.insert(name.clone(), plan);
-                component_sources.insert(name.clone(), source.clone());
+                component_sources.insert(
+                    name.clone(),
+                    MarkdownSource {
+                        display_path: source.display_path.clone(),
+                        source: authored.to_owned(),
+                    },
+                );
             }
             facts.insert(name.clone(), analysis.facts);
             renderer_requests.insert(name.clone(), analysis.renderer_requests);
