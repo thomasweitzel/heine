@@ -335,7 +335,7 @@ Install the pinned KaTeX package, inspect its supported flags, and verify that
 the CLI accepts the HTML-and-MathML output form. On Linux, macOS, or WSL, run:
 
 ```bash
-npm install --prefix /opt/katex katex@0.19.0
+npm install --prefix /opt/katex katex@0.19.1
 node /opt/katex/node_modules/katex/cli.js --version
 node /opt/katex/node_modules/katex/cli.js --help
 printf 'x^2' | node /opt/katex/node_modules/katex/cli.js --format htmlAndMathml >/dev/null
@@ -345,7 +345,7 @@ On native Windows, run the equivalent commands in PowerShell:
 
 ```powershell
 $katexRoot = "$env:LOCALAPPDATA\heine\katex"
-npm install --prefix $katexRoot katex@0.19.0
+npm install --prefix $katexRoot katex@0.19.1
 node "$katexRoot/node_modules/katex/cli.js" --version
 node "$katexRoot/node_modules/katex/cli.js" --help
 'x^2' | node "$katexRoot/node_modules/katex/cli.js" --format htmlAndMathml | Out-Null
@@ -357,7 +357,7 @@ The last command prints the slash-normalized absolute path to use in
 that file directly avoids npm's platform-specific `.bin` shims.
 
 Use the reported version in the profile's `cache_identity`. The rest of this
-guide uses 0.19.0 as a concrete example. The final command verifies the
+guide uses 0.19.1 as a concrete example. The final command verifies the
 `htmlAndMathml` value used by the profile, rather than assuming that the CLI
 and JavaScript API accept the same format names.
 
@@ -437,7 +437,7 @@ Add this profile to `heine.toml`:
 protocol = "stream"
 program = "node"
 timeout_seconds = 10
-cache_identity = "katex-0.19.0"
+cache_identity = "katex-0.19.1"
 inputs = ["body"]
 result = "html"
 

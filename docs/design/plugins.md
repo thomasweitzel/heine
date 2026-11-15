@@ -115,7 +115,7 @@ placement:
 protocol = "stream"
 program = "java"
 timeout_seconds = 20
-cache_identity = "plantuml-1.2026.8"
+cache_identity = "plantuml-1.2026.10"
 inputs = ["body", "file"]
 result = "svg"
 materializations = ["embedded", "resource"]
@@ -128,7 +128,7 @@ arguments = ["-jar", "/opt/plantuml.jar", "--svg", "-pipe"]
 protocol = "stream"
 program = "katex"
 timeout_seconds = 10
-cache_identity = "katex-0.19.0"
+cache_identity = "katex-0.19.1"
 inputs = ["body", "file"]
 result = "html"
 

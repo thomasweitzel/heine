@@ -91,7 +91,7 @@ the Markdown request must provide alternative text:
 protocol = "stream"
 program = "java"
 timeout_seconds = 20
-cache_identity = "plantuml-1.2026.8"
+cache_identity = "plantuml-1.2026.10"
 inputs = ["body", "file"]
 result = "svg"
 materializations = ["resource"]
