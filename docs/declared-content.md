@@ -100,5 +100,5 @@ defines the marker syntax and value shape.
 
 Segments are not a Markdown syntax tree. A segmented Markdown input cannot be
 the source selected for a table of contents, margin footnotes, or citations,
-or contain block components. These features need one unsegmented source
-rendered exactly once with `markdown(content="…")`.
+or contain block components or renderer directives. These features need one
+unsegmented source rendered exactly once with `markdown(content="…")`.

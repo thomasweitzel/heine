@@ -101,14 +101,13 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 pub(super) fn parse(input: &str) -> Result<Vec<Request>, Error> {
+    if !input.contains(":render[") {
+        return Ok(Vec::new());
+    }
     let mut requests = Vec::new();
     let mut offset = 0;
     let mut fenced: Option<(u8, usize)> = None;
-    let raw_html = if input.contains(":render[") {
-        raw_html_ranges(input)
-    } else {
-        Vec::new()
-    };
+    let raw_html = raw_html_ranges(input);
     while offset < input.len() {
         let line_end = input[offset..]
             .find('\n')
@@ -864,6 +863,8 @@ arguments = ["--format", "htmlAndMathml"]
 
     #[test]
     fn requires_well_formed_headers_and_closing_delimiters() {
+        let error = parse(":::render[plantuml\n").expect_err("block header lacks close");
+        assert!(error.message.contains("closing ]"));
         let error = parse(":render[katex output]`x`").expect_err("option lacks value");
         assert!(error.message.contains("name = value"));
         let error = parse(":::render[plantuml]\nsource\n").expect_err("block lacks close");

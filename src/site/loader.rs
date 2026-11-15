@@ -650,7 +650,10 @@ pub(super) fn load_page(
     };
     let footnote_input = if let Some(config) = footnotes_config {
         let settings = config.settings;
-        let Some(markdown) = markdown_sources.get(&settings.content) else {
+        let Some(markdown) = markdown_sources
+            .get(&settings.content)
+            .filter(|_| content.get(&settings.content).is_some_and(Value::is_string))
+        else {
             return Err(invalid(
                 config.path,
                 config.source,
@@ -665,19 +668,20 @@ pub(super) fn load_page(
             .map(crate::config::MarginFootnotesConfig::marker_message)
             .ok_or_else(|| invalid(config.path, config.source, settings.span,
                 "margin footnotes require markdown.margin_footnotes.marker_message in heine.toml"))?;
-        Some((settings, markdown, marker))
+        let authored = markdown.text(&content[&settings.content]);
+        Some((settings, markdown, authored, marker))
     } else {
         None
     };
 
     let mut component_plans = BTreeMap::new();
-    if let Some((settings, source, _)) = &footnote_input
-        && source.source.contains(":::component[")
-        && let Some(plan) = crate::markdown::ComponentPlan::parse_for_planning(&source.source)
-            .map_err(|error| {
+    if let Some((settings, source, authored, _)) = &footnote_input
+        && authored.contains(":::component[")
+        && let Some(plan) =
+            crate::markdown::ComponentPlan::parse_for_planning(authored).map_err(|error| {
                 Error::Markdown(Box::new(crate::markdown::source_error(
                     &source.display_path,
-                    &source.source,
+                    authored,
                     error,
                 )))
             })?
@@ -688,7 +692,7 @@ pub(super) fn load_page(
         && !component_plans.contains_key(&settings.content)
         && footnote_input
             .as_ref()
-            .is_none_or(|(footnotes, _, _)| footnotes.content != settings.content)
+            .is_none_or(|(footnotes, _, _, _)| footnotes.content != settings.content)
         && markdown.contains(":::component[")
         && let Ok(Some(plan)) = crate::markdown::ComponentPlan::parse_for_planning(markdown)
     {
@@ -701,14 +705,14 @@ pub(super) fn load_page(
         let input = component_plans
             .get(&settings.content)
             .map_or(markdown, |plan| plan.normalized());
-        if let Some((_, source, marker)) = footnote_input
+        if let Some((_, source, authored, marker)) = footnote_input
             .as_ref()
-            .filter(|(footnotes, _, _)| footnotes.content == settings.content)
+            .filter(|(footnotes, _, _, _)| footnotes.content == settings.content)
         {
             let (toc, notes) = crate::markdown::margin_footnotes::plan_with_toc(
                 &source.display_path,
                 settings.content.clone(),
-                (input, &source.source),
+                (input, authored),
                 context.markdown,
                 (*marker).to_owned(),
                 settings.min_level,
@@ -726,17 +730,17 @@ pub(super) fn load_page(
             )
         }
     });
-    let footnotes = if let Some((settings, source, marker)) = footnote_input {
+    let footnotes = if let Some((settings, source, authored, marker)) = footnote_input {
         let input = component_plans
             .get(&settings.content)
-            .map_or(source.source.as_str(), |plan| plan.normalized());
+            .map_or(authored, |plan| plan.normalized());
         Some(
             match shared_footnotes {
                 Some(result) => result,
                 None => crate::markdown::margin_footnotes::plan(
                     &source.display_path,
                     settings.content.clone(),
-                    (input, &source.source),
+                    (input, authored),
                     context.markdown,
                     marker.to_owned(),
                 ),

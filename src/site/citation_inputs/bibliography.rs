@@ -289,6 +289,15 @@ fn check_abbreviations(raw: &RawBibliography<'_>, files: &[FileOffset<'_>]) -> R
 }
 
 fn check_inheritance(raw: &RawBibliography<'_>, files: &[FileOffset<'_>]) -> Result<(), Error> {
+    if !raw.entries.iter().any(|entry| {
+        entry.v.fields.iter().any(|field| {
+            ["crossref", "xdata", "ids"]
+                .iter()
+                .any(|name| field.key.v.eq_ignore_ascii_case(name))
+        })
+    }) {
+        return Ok(());
+    }
     // Let biblatex interpret abbreviated values, while renaming relationships
     // prevents its recursive inheritance resolver from following them yet.
     let probe = RawBibliography {
@@ -598,6 +607,21 @@ mod tests {
             path: path.into(),
             text: text.into(),
         }
+    }
+
+    #[test]
+    fn bibliography_without_relationships_still_reports_invalid_fields() {
+        let sources = [input(
+            "works.bib",
+            "@book{first,title={Valid}}\n@book{second,title=unknown}\n",
+        )];
+        let error = resolve(&sources).expect_err("unknown abbreviation");
+        let Error::Parse { path, source } = error else {
+            panic!("expected bibliography parse error");
+        };
+        assert_eq!(path, "works.bib");
+        assert!(source.to_string().contains("unknown"));
+        assert_eq!(&sources[0].text[source.span], "unknown");
     }
 
     #[test]

@@ -40,10 +40,7 @@ use crate::{
     asset::{
         AssetCatalog, AssetSources, RendererAttribution, RendererAttributionSource, SharedAssets,
     },
-    config::{
-        BasePath, CollectionsConfig, FeedsConfig, I18nConfig, LicensingConfig, SearchConfig,
-        SeriesConfig, SiteConfig, SiteSettings, SitemapConfig, TaxonomiesConfig,
-    },
+    config::{BasePath, I18nConfig, SiteConfig},
     content,
     data::SiteData,
     deploy::Catalog as DeploymentCatalog,
@@ -108,20 +105,10 @@ pub(crate) struct LoadInputs<'a> {
     pub(crate) diagnostics: &'a crate::source_diagnostic::DiagnosticPaths,
     pub(crate) data: SiteData,
     pub(crate) locale_data: BTreeMap<Locale, SiteData>,
-    pub(crate) i18n: I18nConfig,
-    pub(crate) collections: CollectionsConfig,
-    pub(crate) taxonomies: TaxonomiesConfig,
-    pub(crate) series: Option<&'a SeriesConfig>,
-    pub(crate) feeds: FeedsConfig,
-    pub(crate) search: SearchConfig,
-    pub(crate) publications: Option<&'a crate::config::PublicationsConfig>,
-    pub(crate) site: &'a SiteSettings,
-    pub(crate) sitemap: Option<&'a SitemapConfig>,
+    pub(crate) config: &'a SiteConfig,
     pub(crate) deployment: &'a DeploymentCatalog,
     pub(crate) licenses: &'a LicenseCatalog,
-    pub(crate) licensing: &'a LicensingConfig,
     pub(crate) markdown_renderer: &'a MarkdownRenderer,
-    pub(crate) reading_time: &'a crate::config::ReadingTimeConfig,
     pub(crate) publication: PublicationMode,
 }
 
@@ -318,22 +305,23 @@ impl Site {
             diagnostics,
             data,
             locale_data,
-            i18n,
-            collections: collection_config,
-            taxonomies: taxonomy_config,
-            series: series_config,
-            feeds: feed_config,
-            search: search_config,
-            publications: publication_config,
-            site: site_settings,
-            sitemap: sitemap_config,
+            config,
             deployment,
             licenses,
-            licensing,
             markdown_renderer,
-            reading_time,
             publication,
         } = inputs;
+        let i18n = config.i18n();
+        let collection_config = config.collections();
+        let taxonomy_config = config.taxonomies();
+        let series_config = config.series();
+        let feed_config = config.feeds();
+        let search_config = config.search();
+        let publication_config = config.publications();
+        let site_settings = config.site();
+        let sitemap_config = config.sitemap();
+        let licensing = config.licensing();
+        let reading_time = config.reading_time();
         match fs::symlink_metadata(content_root) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 return Err(Error::ContentSymlink {
@@ -403,10 +391,10 @@ impl Site {
         let locales = locales::load(locales::Inputs {
             content_root,
             diagnostics,
-            i18n: &i18n,
-            collections: &collection_config,
+            i18n,
+            collections: collection_config,
             series: series_config,
-            taxonomies: &taxonomy_config,
+            taxonomies: taxonomy_config,
             time_zone: site_settings.time_zone(),
             sitemap_enabled: sitemap_config.is_some(),
             markdown: markdown_renderer.config(),
@@ -431,8 +419,8 @@ impl Site {
                 task.latest_input = task.latest_input.max(latest_input);
             }
         }
-        let collections = collection::resolve(&pages, &collection_config)?;
-        let search_selections = search::Selections::resolve(&collections, &search_config);
+        let collections = collection::resolve(&pages, collection_config)?;
+        let search_selections = search::Selections::resolve(&collections, search_config);
         let collection_neighbors = std::sync::Arc::new(collection::resolve_neighbors(&collections));
         pagination::expand(&pages, &collections, &mut tasks);
         index::resolve_translations(&mut pages).map_err(Error::DuplicateTranslation)?;
@@ -453,9 +441,8 @@ impl Site {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        let taxonomies =
-            taxonomy::resolve(&pages, &collections, &taxonomy_config, prefixes.clone())
-                .map_err(|error| Error::Taxonomy(Box::new(error)))?;
+        let taxonomies = taxonomy::resolve(&pages, &collections, taxonomy_config, prefixes.clone())
+            .map_err(|error| Error::Taxonomy(Box::new(error)))?;
         let mut series = series::resolve(&pages, series_config, &prefixes, &localization)
             .map_err(Error::Series)?;
         let asset_sources = sources
@@ -565,7 +552,7 @@ impl Site {
         let feeds = feed::Catalog::resolve(feed::Inputs {
             pages: &pages,
             collections: &collections,
-            config: &feed_config,
+            config: feed_config,
             prefixes: &prefixes,
             urls: canonical_urls.as_ref(),
             localization: &localization,
@@ -574,10 +561,10 @@ impl Site {
         let search = search::Catalog::resolve(search::Inputs {
             pages: &mut pages,
             selections: &search_selections,
-            config: &search_config,
+            config: search_config,
             prefixes: &prefixes,
             base_path: site_settings.base_path(),
-            taxonomies: &taxonomy_config,
+            taxonomies: taxonomy_config,
         })
         .map_err(|error| Error::Search(Box::new(error)))?;
         let mut renderer_resources = group_renderer_resources(
@@ -695,7 +682,7 @@ impl Site {
             assets,
             data,
             locale_data,
-            i18n,
+            i18n: i18n.clone(),
             localization,
             output_plan,
             sitemap: sitemap.map(|(sitemap, _)| sitemap),

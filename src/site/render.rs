@@ -104,7 +104,7 @@ impl Site {
         // Every known render task produces at most one file. Reserve the
         // structural outputs too; optional generated resources grow this only
         // by a small, bounded amount.
-        let generated_capacity = usize::from(markdown_renderer.stylesheet().is_some())
+        let generated_capacity = usize::from(markdown_renderer.stylesheet_path().is_some())
             + self
                 .sitemap
                 .as_ref()

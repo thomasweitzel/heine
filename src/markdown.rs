@@ -3,26 +3,14 @@
 //! Templates may invoke the `markdown` filter, while content loading uses the
 //! same renderer to validate MathML input with its original source available.
 
-use std::{
-    collections::{BTreeMap, HashSet},
-    ops::Range,
-    path::Path,
-    sync::{Arc, OnceLock},
-};
+use std::{collections::BTreeMap, ops::Range, path::Path, sync::Arc};
 
 use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
-use pulldown_latex::{
-    Parser as LatexParser, Storage,
-    config::{DisplayMode, RenderConfig},
-    event::{Content as LatexContent, Event as LatexEvent},
-    push_mathml,
-};
-use serde::Serialize;
+use pulldown_latex::config::DisplayMode;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
-use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
 use crate::{
     asset::AssetLinks,
@@ -41,11 +29,13 @@ pub(crate) mod component;
 mod directive;
 mod highlighting;
 pub(crate) mod margin_footnotes;
+mod math;
 pub(crate) mod picture;
 pub(crate) mod rebase;
 pub(crate) mod render;
 mod renderer_request;
 mod search_text;
+mod toc;
 pub(crate) use analysis::MarkdownFacts;
 #[cfg(test)]
 pub(crate) use analysis::observe_citations;
@@ -53,6 +43,7 @@ pub(crate) use class_list::HtmlClassList;
 pub(crate) use component::ComponentPlan;
 use highlighting::Highlighter;
 pub(crate) use margin_footnotes::{MarginFootnoteDiagnostic, MarginFootnotePlan};
+use math::{render_math, validate_math};
 #[cfg(test)]
 pub(crate) use render::render;
 pub(crate) use render::render_with_links;
@@ -63,6 +54,7 @@ pub(crate) use renderer_request::{
 };
 pub(crate) use search_text::SearchTextSection;
 use search_text::raw_html_text;
+pub(crate) use toc::{TocPlan, toc_plan};
 
 /// One checked renderer replacement held outside the Markdown source until
 /// Markdown has determined the authored document structure.
@@ -326,170 +318,6 @@ pub(crate) struct Renderer {
     renderer_runtime: crate::renderer::RendererRuntime,
 }
 
-/// The one source-backed heading model shared by the template view and
-/// anchor-aware Markdown rendering.
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct TocPlan {
-    content: String,
-    #[serde(rename = "headings")]
-    view: Vec<TocHeading>,
-    #[serde(skip)]
-    anchors: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct TocHeading {
-    level: u8,
-    depth: u8,
-    text: String,
-    fragment: String,
-}
-
-impl TocPlan {
-    pub(crate) fn content(&self) -> &str {
-        &self.content
-    }
-    pub(crate) fn anchors(&self) -> &[String] {
-        &self.anchors
-    }
-
-    pub(crate) fn update_heading_texts(&mut self, texts: &[String]) {
-        let mut selected = self.view.iter_mut().peekable();
-        for (anchor, text) in self.anchors.iter().zip(texts) {
-            if selected
-                .peek()
-                .is_some_and(|heading| heading.fragment == *anchor)
-                && let Some(heading) = selected.next()
-            {
-                heading.text.clone_from(text);
-            }
-        }
-    }
-}
-
-pub(crate) fn toc_plan(
-    content: String,
-    input: &str,
-    config: &MarkdownConfig,
-    min_level: u8,
-    max_level: u8,
-) -> TocPlan {
-    let mut collector = TocCollector::new(min_level, max_level);
-    for event in Parser::new_ext(input, options(config)) {
-        collector.push(&event);
-    }
-    collector.finish(content)
-}
-
-struct TocCollector {
-    used: HashSet<String>,
-    anchors: Vec<String>,
-    view: Vec<TocHeading>,
-    heading: Option<(u8, String)>,
-    footnote_definition_depth: usize,
-    min_level: u8,
-    max_level: u8,
-}
-
-impl TocCollector {
-    fn new(min_level: u8, max_level: u8) -> Self {
-        Self {
-            used: HashSet::new(),
-            anchors: Vec::new(),
-            view: Vec::new(),
-            heading: None,
-            footnote_definition_depth: 0,
-            min_level,
-            max_level,
-        }
-    }
-
-    fn push(&mut self, event: &Event<'_>) {
-        match event {
-            Event::Start(Tag::FootnoteDefinition(_)) => self.footnote_definition_depth += 1,
-            Event::End(TagEnd::FootnoteDefinition) => self.footnote_definition_depth -= 1,
-            _ if self.footnote_definition_depth > 0 => {}
-            Event::Start(Tag::Heading { level, .. }) => {
-                self.heading = Some((*level as u8, String::new()))
-            }
-            Event::Text(text) | Event::Code(text) => {
-                if let Some((_, value)) = &mut self.heading {
-                    value.push_str(text);
-                }
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                if let Some((_, value)) = &mut self.heading
-                    && !value.ends_with(' ')
-                {
-                    value.push(' ');
-                }
-            }
-            Event::End(TagEnd::Heading(_)) => {
-                if let Some((level, text)) = self.heading.take() {
-                    let fragment = unique_fragment(&text, &mut self.used);
-                    self.anchors.push(fragment.clone());
-                    if (self.min_level..=self.max_level).contains(&level) {
-                        self.view.push(TocHeading {
-                            level,
-                            depth: level - self.min_level + 1,
-                            text,
-                            fragment,
-                        });
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn finish(self, content: String) -> TocPlan {
-        TocPlan {
-            content,
-            view: self.view,
-            anchors: self.anchors,
-        }
-    }
-}
-
-fn unique_fragment(text: &str, used: &mut HashSet<String>) -> String {
-    let base = fragment_base(text);
-    let mut candidate = base.clone();
-    let mut suffix = 2;
-    while !used.insert(candidate.clone()) {
-        candidate = format!("{base}-{suffix}");
-        suffix += 1;
-    }
-    candidate
-}
-
-fn fragment_base(text: &str) -> String {
-    let mut output = String::new();
-    let mut separator = false;
-    let mut has_base = false;
-    let mut can_mark = false;
-    for character in text.nfc().collect::<String>().to_lowercase().chars() {
-        if is_combining_mark(character) {
-            if can_mark {
-                output.push(character);
-            } else {
-                separator = !output.is_empty();
-            }
-        } else if character.is_alphanumeric() {
-            if separator && !output.is_empty() {
-                output.push('-');
-            }
-            output.push(character);
-            has_base = true;
-            can_mark = true;
-            separator = false;
-        } else {
-            separator = !output.is_empty();
-            can_mark = false;
-        }
-    }
-    if has_base { output } else { "section".into() }
-}
-
 impl Renderer {
     #[cfg(test)]
     pub(crate) fn new(config: MarkdownConfig) -> Result<Self, Box<InitializationError>> {
@@ -622,6 +450,11 @@ pub(crate) enum RenderError {
     RendererOffsets { span: Range<usize> },
     #[error("Markdown block component error: {message}")]
     Component { message: String, span: Range<usize> },
+    #[error("{kind} cannot occur in segmented Markdown")]
+    SegmentedDirective {
+        kind: &'static str,
+        span: Range<usize>,
+    },
     #[error("Markdown block directives cannot appear inside a {container} yet")]
     DirectivePlacement {
         container: &'static str,
@@ -708,6 +541,7 @@ pub(crate) struct SourceAnalysisInputs<'a> {
     pub(crate) collect_search_sections: bool,
     pub(crate) renderer_sources: &'a BTreeMap<String, crate::renderer::Source>,
     pub(crate) citations: Option<&'a mut citation::Collector>,
+    pub(crate) scan_renderer_requests: bool,
 }
 
 /// Derives page facts and validates checked transformations while the original
@@ -724,6 +558,7 @@ pub(crate) fn analyze_source_with_links(
             pages: inputs.pages,
             renderer_sources: inputs.renderer_sources,
             citations: inputs.citations,
+            scan_renderer_requests: inputs.scan_renderer_requests,
         },
         inputs.words_per_minute,
         inputs.fragments,
@@ -732,6 +567,49 @@ pub(crate) fn analyze_source_with_links(
         inputs.display_path,
     )
     .map_err(|error| Box::new(source_error(inputs.display_path, inputs.input, error)))
+}
+
+/// Analyze independently rendered segments in their authored order.
+pub(crate) fn analyze_segmented_source(
+    inputs: SourceAnalysisInputs<'_>,
+    ranges: &[Range<usize>],
+) -> Result<analysis::MarkdownAnalysis, Box<SourceError>> {
+    let mut segments = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        check_segmented_directives(inputs.display_path, inputs.input, range)?;
+        let segment = &inputs.input[range.clone()];
+        let result = analyze_source_with_links(SourceAnalysisInputs {
+            display_path: inputs.display_path,
+            input: segment,
+            renderer: inputs.renderer,
+            assets: inputs.assets,
+            pages: inputs.pages,
+            words_per_minute: None,
+            fragments: None,
+            collect_search_sections: inputs.collect_search_sections,
+            renderer_sources: inputs.renderer_sources,
+            citations: None,
+            scan_renderer_requests: false,
+        })
+        .map_err(|mut diagnostic| {
+            diagnostic.span = (
+                diagnostic.span.offset() + range.start,
+                diagnostic.span.len(),
+            )
+                .into();
+            diagnostic.source_code = crate::source_diagnostic::named_source_at_display_path(
+                inputs.display_path,
+                inputs.input,
+                "Markdown",
+            );
+            diagnostic
+        })?;
+        segments.push(result);
+    }
+    Ok(analysis::MarkdownAnalysis::combine_segments(
+        segments,
+        inputs.words_per_minute,
+    ))
 }
 
 pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError) -> SourceError {
@@ -835,6 +713,12 @@ pub(crate) fn source_error(display_path: &Path, input: &str, error: RenderError)
             "use a top-level :::component[name key = value] block with a non-empty Markdown body".into(),
             span.clone(),
         ),
+        RenderError::SegmentedDirective { kind, span } => (
+            "directive",
+            format!("{kind} in segmented Markdown"),
+            "move this directive into an unsegmented Markdown source rendered with markdown(content=\"…\")".into(),
+            span.clone(),
+        ),
         RenderError::DirectivePlacement { container, span } => (
             "directive",
             format!("block directive in a {container}"),
@@ -903,6 +787,44 @@ pub(crate) fn citation_configuration_error(
         span: span.into(),
         help: "choose a compatible local CSL style or adjust its selection".into(),
     }
+}
+
+/// Check each independently rendered segment while retaining authored spans.
+fn check_segmented_directives(
+    path: &Path,
+    source: &str,
+    range: &Range<usize>,
+) -> Result<(), Box<SourceError>> {
+    let segment = &source[range.clone()];
+    let located = |error| {
+        let mut diagnostic = source_error(path, segment, error);
+        diagnostic.span = (
+            diagnostic.span.offset() + range.start,
+            diagnostic.span.len(),
+        )
+            .into();
+        diagnostic.source_code =
+            crate::source_diagnostic::named_source_at_display_path(path, source, "Markdown");
+        Box::new(diagnostic)
+    };
+    if let Some(plan) = ComponentPlan::parse(segment).map_err(located)?
+        && let Some(call) = plan.calls().first()
+    {
+        return Err(located(RenderError::SegmentedDirective {
+            kind: "Markdown block component",
+            span: call.header_span.clone(),
+        }));
+    }
+    if let Some(request) = renderer_request::parse(segment)
+        .map_err(|error| located(RenderError::RendererRequest(error)))?
+        .first()
+    {
+        return Err(located(RenderError::SegmentedDirective {
+            kind: "renderer directive",
+            span: request.span(),
+        }));
+    }
+    Ok(())
 }
 
 fn directive_placement_help(container: &str) -> String {
@@ -981,6 +903,7 @@ pub(super) fn validate_event(
 fn unresolved_footnote_reference(
     input: &str,
     config: &MarkdownConfig,
+    events: &[(Event<'_>, Range<usize>)],
 ) -> Option<(String, Range<usize>)> {
     if !config.extensions().contains(&MarkdownExtension::Footnotes) {
         return None;
@@ -988,7 +911,7 @@ fn unresolved_footnote_reference(
     let mut scanner = UnresolvedFootnoteReferenceScanner::default();
     let mut in_code_block = false;
     let mut picture_paragraph_depth = 0usize;
-    for (event, span) in Parser::new_ext(input, options(config)).into_offset_iter() {
+    for (event, span) in events {
         if picture_paragraph_depth > 0 {
             if matches!(event, Event::End(TagEnd::Paragraph)) {
                 picture_paragraph_depth -= 1;
@@ -1004,33 +927,19 @@ fn unresolved_footnote_reference(
         }
         match event {
             Event::Start(Tag::CodeBlock(_)) => {
-                let _ = scan_unresolved_footnote_event(
-                    &mut scanner,
-                    &event,
-                    &span,
-                    input,
-                    in_code_block,
-                );
+                let _ =
+                    scan_unresolved_footnote_event(&mut scanner, event, span, input, in_code_block);
                 in_code_block = true;
             }
             Event::End(TagEnd::CodeBlock) => {
-                let _ = scan_unresolved_footnote_event(
-                    &mut scanner,
-                    &event,
-                    &span,
-                    input,
-                    in_code_block,
-                );
+                let _ =
+                    scan_unresolved_footnote_event(&mut scanner, event, span, input, in_code_block);
                 in_code_block = false;
             }
             _ => {
-                if let Some(reference) = scan_unresolved_footnote_event(
-                    &mut scanner,
-                    &event,
-                    &span,
-                    input,
-                    in_code_block,
-                ) {
+                if let Some(reference) =
+                    scan_unresolved_footnote_event(&mut scanner, event, span, input, in_code_block)
+                {
                     return Some(reference);
                 }
             }
@@ -1425,108 +1334,6 @@ fn split_link_suffix(destination: &str) -> (&str, &str) {
         .unwrap_or((destination, ""))
 }
 
-fn render_math(
-    tex: &str,
-    display_mode: DisplayMode,
-    kind: &'static str,
-    span: Range<usize>,
-) -> Result<String, RenderError> {
-    let storage = Storage::new();
-    // `push_mathml` deliberately renders parser failures as `<merror>` nodes.
-    // Heine validates user-authored input at build time instead, so collect the
-    // parser stream before handing successful events to the renderer.
-    let events = LatexParser::new(tex, &storage)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| RenderError::Math {
-            kind,
-            tex: tex.into(),
-            message: error.to_string(),
-            span: span.clone(),
-        })?;
-    // Preserve the event type so operator spacing remains the writer's job.
-    // The probe lets an upstream escaping fix take over without double escaping.
-    let escaped_functions: Vec<_> = events
-        .iter()
-        .enumerate()
-        .filter_map(|(index, event)| match event {
-            LatexEvent::Content(LatexContent::Function(value))
-                if value.contains(['&', '<', '>'])
-                    && value.chars().count() > 1
-                    && !mathml_writer_escapes_functions() =>
-            {
-                let mut escaped = String::with_capacity(value.len());
-                push_html_attribute(value, &mut escaped);
-                Some((index, escaped))
-            }
-            _ => None,
-        })
-        .collect();
-    let mut escaped_functions = escaped_functions.iter().peekable();
-    let events = events.into_iter().enumerate().map(|(index, event)| {
-        if let Some((_, value)) = escaped_functions.next_if(|(i, _)| *i == index) {
-            LatexEvent::Content(LatexContent::Function(value))
-        } else {
-            event
-        }
-    });
-    let mut output = String::new();
-    push_mathml(
-        &mut output,
-        events.map(Ok::<_, std::io::Error>),
-        RenderConfig {
-            display_mode,
-            ..RenderConfig::default()
-        },
-    )
-    .map_err(|error| RenderError::Math {
-        kind,
-        tex: tex.into(),
-        message: error.to_string(),
-        span,
-    })?;
-    // pulldown-latex writes these operator characters as raw text. Restrict
-    // the repair to its single-character MathML tokens so already escaped
-    // text and markup are left untouched. Negation adds a combining overlay.
-    for (raw, escaped) in [
-        ("><</", ">&lt;</"),
-        ("><\u{338}</", ">&lt;\u{338}</"),
-        (">&</", ">&amp;</"),
-        (">&\u{338}</", ">&amp;\u{338}</"),
-    ] {
-        if output.contains(raw) {
-            output = output.replace(raw, escaped);
-        }
-    }
-    Ok(output)
-}
-
-fn mathml_writer_escapes_functions() -> bool {
-    static ESCAPES: OnceLock<bool> = OnceLock::new();
-    *ESCAPES.get_or_init(|| {
-        let mut output = String::new();
-        let event = LatexEvent::Content(LatexContent::Function("<&>"));
-        push_mathml(
-            &mut output,
-            std::iter::once(Ok::<_, std::io::Error>(event)),
-            RenderConfig::default(),
-        )
-        .is_ok()
-            && output.contains("&lt;&amp;&gt;")
-    })
-}
-
-fn validate_math(tex: &str, kind: &'static str, span: Range<usize>) -> Result<(), RenderError> {
-    let storage = Storage::new();
-    LatexParser::new(tex, &storage)
-        .try_for_each(|event| event.map(|_| ()))
-        .map_err(|error| RenderError::Math {
-            kind,
-            tex: tex.into(),
-            message: error.to_string(),
-            span,
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1574,33 +1381,5 @@ mod tests {
         );
         scanner.clear();
         assert_eq!(scanner.push(r"A literal \[^missing].", 0), Vec::new());
-    }
-
-    #[test]
-    fn toc_fragments_preserve_unicode_and_make_collisions_unique() {
-        let plan = toc_plan(
-            "main".into(),
-            "## Überblick\n\n## Überblick\n\n## Introduction 2\n\n## Introduction\n\n## Introduction\n",
-            &MarkdownConfig::default(),
-            2,
-            3,
-        );
-
-        assert_eq!(
-            plan.anchors(),
-            [
-                "überblick",
-                "überblick-2",
-                "introduction-2",
-                "introduction",
-                "introduction-3",
-            ]
-        );
-    }
-
-    #[test]
-    fn toc_fragments_discard_standalone_marks_and_keep_attached_marks() {
-        assert_eq!(fragment_base("\u{11c3a}"), "section");
-        assert_eq!(fragment_base("a\u{11c3a}"), "a\u{11c3a}");
     }
 }

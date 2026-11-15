@@ -11,6 +11,26 @@ fn search_index_path(directory: &Path) -> PathBuf {
 }
 
 #[test]
+fn search_indexes_each_segment_using_its_own_markdown_boundaries() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[collections.posts]\norder = 'id-asc'\n[search.site]\ncollections = ['posts']\npath = 'search/site.json'\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncollections = ['posts']\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", "<!-- segment: first -->\n```text\nhidden code\n<!-- segment: second -->\nVisible segment text\n");
+    fixture.write(
+        "templates/page.tera",
+        "{{ page.content.main.second | markdown }}",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("site builds");
+    let path = search_index_path(&fixture.path().join("public/search"));
+    let index = fs::read_to_string(path).expect("search index");
+    assert!(index.contains("Visible segment text"), "{index}");
+    assert!(index.contains("hidden code"), "{index}");
+}
+
+#[test]
 fn generates_versioned_locale_local_search_documents_from_collections() {
     let fixture = Fixture::new();
     fixture.write(

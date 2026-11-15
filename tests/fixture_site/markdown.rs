@@ -2655,7 +2655,7 @@ fn ordinary_footnotes_use_generated_fragments_separate_from_headings() {
     );
     fixture.write(
         "content/en/index.md",
-        "## Audio\n\nA note.[^audio]\n\n[^audio]: An ordinary footnote.\n",
+        "## Audio\n\nA note.[^audio]\n\n[^audio]: An ordinary footnote.\n\n    ## Inside the note\n\n## After the note\n",
     );
     fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
 
@@ -2671,6 +2671,12 @@ fn ordinary_footnotes_use_generated_fragments_separate_from_headings() {
         "{output}"
     );
     assert_eq!(output.matches("id=\"audio\"").count(), 1, "{output}");
+    assert!(output.contains("<h2>Inside the note</h2>"), "{output}");
+    assert!(!output.contains("id=\"inside-the-note\""), "{output}");
+    assert!(
+        output.contains("<h2 id=\"after-the-note\">After the note</h2>"),
+        "{output}"
+    );
 }
 
 #[test]

@@ -38,14 +38,7 @@ impl Highlighter {
     }
 
     pub(super) fn render(&self, language: &str, source: &str) -> Result<String, giallo::Error> {
-        let options = HighlightOptions::new(
-            language,
-            ThemeVariant::Dual {
-                light: &self.light_theme,
-                dark: &self.dark_theme,
-            },
-        )
-        .fallback_to_plain(self.missing_language == MissingLanguage::Plain);
+        let options = self.options(language);
         let highlighted = self.registry.highlight(source, &options)?;
         Ok(HtmlRenderer {
             css_class_prefix: Some(CLASS_PREFIX.into()),
@@ -58,14 +51,19 @@ impl Highlighter {
     /// the source-validation pass. Rendering still highlights the complete
     /// block later when a template selects the Markdown input.
     pub(super) fn validate(&self, language: &str) -> Result<(), giallo::Error> {
-        let options = HighlightOptions::new(
+        self.registry
+            .highlight("", &self.options(language))
+            .map(|_| ())
+    }
+
+    fn options(&self, language: &str) -> HighlightOptions {
+        HighlightOptions::new(
             language,
             ThemeVariant::Dual {
                 light: &self.light_theme,
                 dark: &self.dark_theme,
             },
         )
-        .fallback_to_plain(self.missing_language == MissingLanguage::Plain);
-        self.registry.highlight("", &options).map(|_| ())
+        .fallback_to_plain(self.missing_language == MissingLanguage::Plain)
     }
 }

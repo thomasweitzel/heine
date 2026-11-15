@@ -195,7 +195,7 @@ fn collect_with_toc<'a>(
     min_level: u8,
     max_level: u8,
 ) -> (super::TocPlan, Result<MarginFootnotePlan, PlanError>) {
-    let mut toc = super::TocCollector::new(min_level, max_level);
+    let mut toc = super::toc::TocCollector::new(min_level, max_level);
     let mut notes = MarginFootnoteCollector::default();
     let mut error = None;
     for (event, span) in events {

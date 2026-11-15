@@ -1,6 +1,195 @@
 use super::*;
 
 #[test]
+fn segmented_markdown_remains_structured_in_templates() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", "<!-- segment: introduction -->\nIntro\n<!-- segment: items -->\nFirst\n<!-- segment: items -->\nSecond\n");
+    fixture.write("templates/page.tera", "{{ page.content.main.introduction }}|{{ page.content.main.items[0] }}|{{ page.content.main.items[1] }}");
+
+    build_at(fixture.path(), BuildMode::Full).expect("segmented Markdown builds");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("public/index.html")).expect("output"),
+        "Intro|First|Second"
+    );
+}
+
+#[test]
+fn segmented_markdown_rejects_block_components_at_their_source() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "<!-- segment: intro -->\n:::component[site.note]\nBody\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ page.content.main.intro }}");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("segmented component");
+    let report = format!("{error:?}");
+    assert!(report.contains("content/en/index.md:2"), "{report}");
+    assert!(
+        report.contains("component in segmented Markdown"),
+        "{report}"
+    );
+}
+
+#[test]
+fn segmented_markdown_rejects_renderer_directives_before_execution() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[renderers.copy]\nprotocol='stream'\nprogram='unused'\ntimeout_seconds=10\ncache_identity='test'\ninputs=['body']\nresult='html'\n[renderers.copy.block]\narguments=[]\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "<!-- segment: intro -->\n:::render[copy]\nBody\n:::\n",
+    );
+    fixture.write("templates/page.tera", "{{ page.content.main.intro }}");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("segmented renderer");
+    let report = format!("{error:?}");
+    assert!(report.contains("content/en/index.md:2"), "{report}");
+    assert!(
+        report.contains("renderer directive in segmented Markdown"),
+        "{report}"
+    );
+}
+
+#[test]
+fn segmented_markdown_keeps_directive_examples_in_code_literal() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "<!-- segment: intro -->\n```text\n:::component[site.note]\n:render[copy]`body`\n```\n",
+    );
+    fixture.write(
+        "templates/page.tera",
+        "{{ page.content.main.intro | markdown }}",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("literal examples build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains(":::component[site.note]"), "{output}");
+    assert!(output.contains(":render[copy]`body`"), "{output}");
+}
+
+#[test]
+fn segmented_directive_checks_restart_at_each_segment() {
+    for (directive, expected) in [
+        (
+            ":::render[copy]\nBody\n:::",
+            "renderer directive in segmented Markdown",
+        ),
+        (
+            ":::component[site.note]\nBody\n:::",
+            "component in segmented Markdown",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        fixture.write(
+            "content/en/index.page",
+            "template = 'page.tera'\ncontent.main = 'index.md'\n",
+        );
+        fixture.write(
+            "content/en/index.md",
+            &format!("<!-- segment: first -->\n```text\n<!-- segment: second -->\n{directive}\n"),
+        );
+        fixture.write(
+            "templates/page.tera",
+            "{{ page.content.main.second | markdown }}",
+        );
+        let error =
+            build_at(fixture.path(), BuildMode::Full).expect_err("directive in second segment");
+        let report = format!("{error:?}");
+        assert!(report.contains("content/en/index.md:4"), "{report}");
+        assert!(report.contains(expected), "{report}");
+    }
+}
+
+#[test]
+fn segmented_directive_checks_keep_independent_fenced_examples_literal() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", "<!-- segment: first -->\r\n```text\r\n<!-- segment: second -->\r\n\r\n```text\r\n:::component[site.note]\r\n:render[copy]`body`\r\n```\r\n");
+    fixture.write(
+        "templates/page.tera",
+        "{{ page.content.main.second | markdown }}",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("independent fenced examples build");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains(":::component[site.note]"), "{output}");
+    assert!(output.contains(":render[copy]`body`"), "{output}");
+}
+
+#[test]
+fn segmented_markdown_checks_links_in_their_own_segment() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "<!-- segment: first -->\n```text\n<!-- segment: second -->\n[bad](page:missing)\n",
+    );
+    fixture.write("templates/page.tera", "No segment rendered");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("broken segment link");
+    let report = format!("{error:?}");
+    assert!(report.contains("content/en/index.md:4"), "{report}");
+    assert!(report.contains("invalid page reference"), "{report}");
+}
+
+#[test]
+fn segmented_markdown_keeps_links_inside_each_segments_code_literal() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n",
+    );
+    fixture.write("content/en/index.md", "<!-- segment: first -->\n```text\n<!-- segment: second -->\n```\n[bad](page:missing)\n```\n");
+    fixture.write(
+        "templates/page.tera",
+        "{{ page.content.main.second | markdown }}",
+    );
+    build_at(fixture.path(), BuildMode::Full).expect("literal link builds");
+    let output = fs::read_to_string(fixture.path().join("public/index.html")).expect("output");
+    assert!(output.contains("[bad](page:missing)"), "{output}");
+}
+
+#[test]
+fn segmented_markdown_cannot_be_selected_for_margin_footnotes() {
+    let fixture = Fixture::new();
+    fixture.write("heine.toml", "[markdown]\nextensions=['footnotes']\n[markdown.margin_footnotes]\nmarker_message='note'\n");
+    fixture.write(
+        "content/en/index.page",
+        "template = 'page.tera'\ncontent.main = 'index.md'\n[footnotes]\ncontent = 'main'\n",
+    );
+    fixture.write(
+        "content/en/index.md",
+        "<!-- segment: intro -->\nText[^a].\n\n[^a]: Note.\n",
+    );
+    fixture.write("templates/page.tera", "{{ markdown(content='main') }}");
+    let error = build_at(fixture.path(), BuildMode::Full).expect_err("segmented footnotes");
+    assert!(
+        error.to_string().contains("unsegmented Markdown"),
+        "{error:?}"
+    );
+    let report = format!("{error:?}");
+    assert!(report.contains("content/en/index.page:4"), "{report}");
+}
+
+#[test]
 fn builds_a_site_with_pages_segments_markdown_and_versioned_assets() {
     let fixture = Fixture::new();
     fixture.write(

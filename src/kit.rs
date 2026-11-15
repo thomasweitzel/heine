@@ -610,6 +610,6 @@ pub(crate) struct ManifestDiagnostic {
     message: String,
     #[source_code]
     source_code: NamedSource<String>,
-    #[label("invalid kit manifest value")]
+    #[label("{message}")]
     span: SourceSpan,
 }

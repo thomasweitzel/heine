@@ -459,6 +459,8 @@ Segment markers are recognized before Markdown is parsed. In a segmented
 Markdown file, a line that looks like `<!-- segment: name -->` is therefore a
 marker even when it appears inside a fenced code block. Keep literal marker
 examples in an unsegmented input, or phrase them so they are not marker-shaped.
+Segmented Markdown cannot contain block components or renderer directives, or
+be selected for a table of contents, margin footnotes, or citations.
 
 For example, this declared text file begins with a segment marker, so it
 becomes structured content rather than one text value:

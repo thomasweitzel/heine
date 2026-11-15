@@ -85,9 +85,9 @@ rather than reading speed, normally determines how long they take to understand.
 
 Trusted raw HTML contributes its textual content, but not markup, attributes,
 URLs, comments, or `script`, `style`, and `template` contents. A color-scheme
-picture contributes its authored alternative text and caption. Each segmented
-Markdown input is counted once as its original source, independent of how a
-template renders its segments.
+picture contributes its authored alternative text and caption. For segmented
+Markdown, Heine parses each segment separately and adds its count to the input's
+total. This total does not depend on how a template renders the segments.
 
 Heine uses Unicode default word segmentation. This is deterministic across
 hosts, but it is not a language-specific lexical tokenizer. Scripts such as
