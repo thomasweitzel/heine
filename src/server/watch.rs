@@ -148,17 +148,42 @@ fn watch_loop(
         }
         match build_at_with_publication_in_runtime(&root, build, Some(&renderer_runtime)) {
             Ok((build, _)) => {
-                generation = next_generation(generation);
-                kit_paths.clone_from(&build.kit_paths);
-                let _ = published.send(PublishedSite::from_build(build, generation));
+                record_publication(&published, &mut generation, &mut kit_paths, build);
                 super::write_message(
                     std::io::stdout().lock(),
                     format_args!("{}", rebuild_message(Timestamp::now(), &changed_paths)),
                 );
             }
-            Err(error) => super::write_message(std::io::stderr().lock(), format_args!("{error:?}")),
+            Err(failure) => {
+                let report =
+                    record_build_failure(failure, &published, &mut generation, &mut kit_paths);
+                super::write_message(std::io::stderr().lock(), format_args!("{report:?}"));
+            }
         }
     }
+}
+
+fn record_build_failure(
+    failure: crate::BuildFailure,
+    published: &watch::Sender<PublishedSite>,
+    generation: &mut u64,
+    kit_paths: &mut Option<crate::kit::Paths>,
+) -> miette::Report {
+    if let Some(build) = failure.published {
+        record_publication(published, generation, kit_paths, *build);
+    }
+    failure.report
+}
+
+fn record_publication(
+    published: &watch::Sender<PublishedSite>,
+    generation: &mut u64,
+    kit_paths: &mut Option<crate::kit::Paths>,
+    build: crate::BuildPublication,
+) {
+    *generation = next_generation(*generation);
+    kit_paths.clone_from(&build.kit_paths);
+    let _ = published.send(PublishedSite::from_build(build, *generation));
 }
 
 fn changed_source_paths(
@@ -318,6 +343,146 @@ mod tests {
     };
 
     static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn installed_output_with_cleanup_failure_reaches_server_state() {
+        let root = tempfile::tempdir().expect("site root");
+        fs::create_dir_all(root.path().join("content/en")).expect("content");
+        fs::create_dir(root.path().join("templates")).expect("templates");
+        let config = root.path().join("heine.toml");
+        fs::write(&config, "[site]\ntime_zone='Europe/Berlin'\n[i18n]\ndefault_locale='en'\n[i18n.locales.en]\ndirection='ltr'\n").expect("config");
+        fs::write(
+            root.path().join("content/en/index.page"),
+            "template='page.tera'\n",
+        )
+        .expect("page");
+        let template = root.path().join("templates/page.tera");
+        fs::write(&template, "previous").expect("initial template");
+        let build = BuildOptions::new(crate::BuildMode::Full);
+        let (initial, runtime) =
+            crate::build_at_with_renderer_runtime(root.path(), build).expect("initial build");
+        let (published, mut receiver) = watch::channel(PublishedSite::from_build(initial, 7));
+        let mut generation = 7;
+        let mut kit_paths = None;
+
+        fs::write(&config, "[site]\ntime_zone='Europe/Berlin'\nbase_path='/new/'\n[i18n]\ndefault_locale='en'\n[i18n.locales.en]\ndirection='ltr'\n").expect("updated config");
+        fs::write(&template, "new").expect("updated template");
+        crate::output::fail_next_backup_cleanup();
+        let failure = match build_at_with_publication_in_runtime(root.path(), build, Some(&runtime))
+        {
+            Ok(_) => panic!("backup cleanup must fail"),
+            Err(failure) => failure,
+        };
+        let report = record_build_failure(failure, &published, &mut generation, &mut kit_paths);
+        assert!(
+            report.to_string().contains("could not remove"),
+            "{report:?}"
+        );
+        assert!(
+            format!("{report:?}").contains("heine-previous"),
+            "{report:?}"
+        );
+        let backups: Vec<_> = fs::read_dir(root.path())
+            .expect("site entries")
+            .map(|entry| entry.expect("site entry").path())
+            .filter(|path| {
+                path.file_name()
+                    .is_some_and(|name| name.to_string_lossy().contains("heine-previous"))
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(
+            fs::read_to_string(backups[0].join("index.html")).expect("previous output"),
+            "previous"
+        );
+        assert_eq!(
+            fs::read_to_string(root.path().join("public/index.html")).expect("published output"),
+            "new"
+        );
+        assert!(receiver.has_changed().expect("server notified"));
+        let current = receiver.borrow_and_update().clone();
+        assert_eq!(current.generation, 8);
+        assert_eq!(current.base_path.as_str(), "/new/");
+        assert_eq!(current.output_root, root.path().join("public"));
+
+        fs::write(
+            root.path().join("content/en/index.page"),
+            "template='missing.tera'\n",
+        )
+        .expect("invalid page");
+        let failure = match build_at_with_publication_in_runtime(root.path(), build, Some(&runtime))
+        {
+            Ok(_) => panic!("missing template must fail"),
+            Err(failure) => failure,
+        };
+        let _ = record_build_failure(failure, &published, &mut generation, &mut kit_paths);
+        assert_eq!(
+            fs::read_to_string(root.path().join("public/index.html")).expect("unchanged output"),
+            "new"
+        );
+        assert!(!receiver.has_changed().expect("server state remains"));
+        assert_eq!(generation, 8);
+    }
+
+    #[test]
+    fn rebuild_error_updates_server_only_when_new_output_was_published() {
+        let original = PublishedSite {
+            base_path: "/old/".try_into().expect("base path"),
+            output_root: PathBuf::from("old-output"),
+            generation: 7,
+        };
+        let (published, receiver) = watch::channel(original);
+        let mut generation = 7;
+        let old_name = crate::kit::KitName::parse("old".into()).expect("old kit name");
+        let new_name = crate::kit::KitName::parse("new".into()).expect("new kit name");
+        let mut kit_paths = Some(crate::kit::Paths::below_site_root(
+            Path::new("site"),
+            &old_name,
+        ));
+        let build = || crate::BuildPublication {
+            base_path: "/new/".try_into().expect("base path"),
+            output_root: PathBuf::from("new-output"),
+            kit_paths: Some(crate::kit::Paths::below_site_root(
+                Path::new("site"),
+                &new_name,
+            )),
+        };
+        let failure = crate::BuildFailure::output(
+            crate::output::Error::Io {
+                path: PathBuf::from("new-output"),
+                source: std::io::Error::other("write failed"),
+            },
+            build(),
+        );
+        let report = record_build_failure(failure, &published, &mut generation, &mut kit_paths);
+        assert!(report.to_string().contains("could not write output"));
+        assert_eq!(receiver.borrow().generation, 7);
+        assert_eq!(receiver.borrow().base_path.as_str(), "/old/");
+        assert_eq!(
+            kit_paths.as_ref().expect("old kit").manifest(),
+            Path::new("site/kits/old/kit.toml")
+        );
+
+        let failure = crate::BuildFailure::output(
+            crate::output::Error::PublishedWithBackup {
+                output: PathBuf::from("new-output"),
+                backup: PathBuf::from("backup"),
+                source: std::io::Error::other("cleanup failed"),
+            },
+            build(),
+        );
+        let report = record_build_failure(failure, &published, &mut generation, &mut kit_paths);
+        assert!(report.to_string().contains("could not remove"));
+        let current = receiver.borrow();
+        assert_eq!(generation, 8);
+        assert_eq!(current.generation, 8);
+        assert_eq!(current.base_path.as_str(), "/new/");
+        assert_eq!(current.output_root, PathBuf::from("new-output"));
+        assert_eq!(
+            kit_paths.as_ref().expect("new kit").manifest(),
+            Path::new("site/kits/new/kit.toml")
+        );
+    }
 
     #[test]
     fn rebuild_coordinator_survives_a_closed_stdout_pipe() {

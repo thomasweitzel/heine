@@ -35,6 +35,9 @@ guides and the [reference](../reference.md) instead.
 
 ## Exploratory records
 
+- [Dependency-aware incremental builds](incremental-builds.md): a shared
+  correctness model for the development server and CLI, with an evaluation
+  of Heine-owned state and Salsa.
 - [External asset manifests](external-asset-manifests.md): why a per-URL
   cache-busting helper is insufficient, and the boundary a future external
   asset-manifest integration would need.

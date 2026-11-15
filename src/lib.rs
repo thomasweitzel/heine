@@ -50,6 +50,32 @@ pub(crate) struct BuildPublication {
     pub(crate) kit_paths: Option<kit::Paths>,
 }
 
+/// A build can report an error after its new output has already been installed.
+pub(crate) struct BuildFailure {
+    pub(crate) report: miette::Report,
+    pub(crate) published: Option<Box<BuildPublication>>,
+}
+
+impl BuildFailure {
+    fn output(error: output::Error, publication: BuildPublication) -> Self {
+        let published = matches!(error, output::Error::PublishedWithBackup { .. })
+            .then(|| Box::new(publication));
+        Self {
+            report: miette::Report::new(error),
+            published,
+        }
+    }
+}
+
+impl From<miette::Report> for BuildFailure {
+    fn from(report: miette::Report) -> Self {
+        Self {
+            report,
+            published: None,
+        }
+    }
+}
+
 /// Options that control one site build.
 ///
 /// `clean_output` is an explicit one-time adoption step for an existing
@@ -136,7 +162,7 @@ pub(crate) fn build_at_with_renderer_runtime(
     root: &Path,
     build: BuildOptions,
 ) -> miette::Result<(BuildPublication, renderer::RendererRuntime)> {
-    build_at_with_publication_in_runtime(root, build, None)
+    build_at_with_publication_in_runtime(root, build, None).map_err(|failure| failure.report)
 }
 
 /// Builds with a caller-owned renderer workspace session when repeated builds
@@ -145,7 +171,7 @@ pub(crate) fn build_at_with_publication_in_runtime(
     root: &Path,
     build: BuildOptions,
     runtime: Option<&renderer::RendererRuntime>,
-) -> miette::Result<(BuildPublication, renderer::RendererRuntime)> {
+) -> Result<(BuildPublication, renderer::RendererRuntime), BuildFailure> {
     let paths = ProjectPaths::new(root);
     let diagnostics = source_diagnostic::DiagnosticPaths::new(paths.root());
     let config = SiteConfig::load(paths.config(), &diagnostics).map_err(miette::Report::new)?;
@@ -217,9 +243,14 @@ pub(crate) fn build_at_with_publication_in_runtime(
         )
         .map_err(miette::Report::new)?;
     let copied_files: [&dyn output::CopiedFiles; 3] = [site.assets(), &deployment, &licenses];
-    OutputWriter::new(OutputTarget::new(paths.root(), &output_dir))
-        .write(&copied_files, rendered, build.mode, build.clean_output)
-        .map_err(miette::Report::new)?;
+    if let Err(error) = OutputWriter::new(OutputTarget::new(paths.root(), &output_dir)).write(
+        &copied_files,
+        rendered,
+        build.mode,
+        build.clean_output,
+    ) {
+        return Err(BuildFailure::output(error, publication));
+    }
     Ok((publication, renderer_runtime))
 }
 

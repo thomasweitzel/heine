@@ -134,7 +134,10 @@ wider site model.
 
 The development server performs complete rebuilds before it publishes a new
 generation. It therefore gives local preview the same resolved-model behavior
-as a full build.
+as a full build. During a rebuild, if the new output is installed but backup
+cleanup fails, the running server reports the error and serves the new
+generation. If this error occurs during the initial build, the server reports
+the error and does not start.
 
 ## Where to continue
 
