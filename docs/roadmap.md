@@ -21,9 +21,10 @@ a concrete Heine use case.
 - **Collection-specific membership weights:** model a page's distinct curated
   position in more than one weight-ordered collection without overloading its
   directory sibling weight or introducing an implicit fallback.
-- **Dependency-aware incremental builds** and, if large sites justify it,
-  streaming rendering into the staging tree while preserving staged
-  publication.
+- **Dependency-aware incremental builds:** the [exploratory design](design/incremental-builds.md)
+  compares shared server and CLI state with Heine-owned and Salsa-based reuse.
+  If large sites justify it, separately consider streaming rendering into the
+  staging tree while preserving staged publication.
 
 ## Under consideration
 
