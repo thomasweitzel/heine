@@ -28,9 +28,8 @@ relationships with distinct purposes.
 
 ## Motivation
 
-A Series describes an authored reading path. It is not merely a classification
-such as a tag, and it is not a broad listing selected by a shared sort order.
-For example, one article may be the second member of a Rust-performance
+A Series describes an authored reading path with its own ordering. For example,
+one article may be the second member of a Rust-performance
 sequence and the fifth member of a backend-systems sequence. Its ordinary page
 weight or publication time cannot represent both positions.
 

@@ -1,8 +1,8 @@
 # Heine starter site
 
-This directory is a complete multilingual example rather than a required
-project layout. Build it from this directory with `heine`, or from the
-repository root with `cargo run -- --root starter-site`.
+This directory contains a complete multilingual example site. You can organize
+your site's content and presentation differently. Build it from this directory
+with `heine`, or from the repository root with `cargo run -- --root starter-site`.
 
 ## What this site demonstrates
 
@@ -30,10 +30,9 @@ rather than copying an example without understanding its limits.
 
 Some details deliberately remain site policy. The local audio player uses raw
 HTML because browser controls and preload behavior are not Markdown features.
-The search script is one dependency-free browser implementation, not a search
-engine supplied by Heine. It searches the generated index locally and can show
-context from matching Markdown. Treat the example as a working starting point,
-then keep only the parts your site needs.
+The dependency-free browser search script searches the generated index locally
+and can show context from matching Markdown. Treat the example as a working
+starting point, then keep only the parts your site needs.
 
 The search form controls its preferred excerpt context with
 `data-context-before` and `data-context-after`. The example uses 80 and 160
@@ -45,12 +44,10 @@ rather than the matching text itself. It gives
 title matches priority and adds context from matching Markdown
 when it can. Its exact ranking and excerpt choices are site policy.
 
-`kits/starter/assets/js/search.js` is the canonical source for the maintained
-starter, documentation, and Zolarwind search clients. Those independently
-deployable sites keep complete copied versions. Edit the starter-kit file
-first, then replace each copy as a whole. Its leading comment defines the
-required search-page hooks, optional controls, and semantic result classes;
-site CSS owns their appearance.
+The starter kit provides `kits/starter/assets/js/search.js` as an example search client.
+Its leading comment defines the required search-page hooks, optional controls,
+and semantic result classes. Site CSS owns their appearance, and a site may
+copy and adapt the script to its needs.
 
 ## Starter kit
 

@@ -44,9 +44,8 @@ Taxonomy pages always use the HTML `.html`
 suffix; a taxonomy is an HTML listing feature rather than a second general
 output-format mechanism.
 
-A counterpart group is taxonomy structure, not a Fluent resource or a display
-translation. Its name is a local label that Heine uses only to connect the
-literal terms that correspond across those locales.
+A counterpart group identifies corresponding literal taxonomy terms across
+locales. Its name is a local label used only for that relationship.
 
 | Field            | Meaning                                     | Constraint                              |
 |------------------|---------------------------------------------|-----------------------------------------|

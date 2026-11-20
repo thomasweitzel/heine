@@ -132,10 +132,10 @@ The model needs to distinguish:
 - **Published state:** the last successful generation, distinct from a
   candidate build and from individual renderer-cache entries.
 
-This list describes responsibilities, not a required generic graph or set of
-Rust types. A dependency is a relationship between a computation and a value it
-actually needs. A domain link between two pages is not automatically the full
-dependency set of the template that presents either page.
+These responsibilities can be modeled without prescribing a generic graph or a
+set of Rust types. A dependency is a relationship between a computation and a
+value it actually needs. A domain link between two pages is not automatically
+the full dependency set of the template that presents either page.
 
 ## Representative changes
 

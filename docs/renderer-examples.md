@@ -400,7 +400,7 @@ site's browser-support policy deliberately permits removing those fallbacks.
 
 ### Load the stylesheet only on pages that use KaTeX
 
-KaTeX's CSS is a stable package asset, not a renderer-generated dependency.
+KaTeX provides its CSS as a stable package asset.
 Until Heine has a checked renderer-to-template dependency contract, let the
 site template make that ordinary presentation choice explicit. `extra.katex`
 is a site-owned convention in this example, not a built-in Heine setting.

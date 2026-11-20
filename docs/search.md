@@ -85,8 +85,8 @@ Markdown and inline HTML keep the adjacency that the author wrote.
 
 The starter site includes a dependency-free browser example. It searches the
 generated index locally, creates its result DOM safely, and keeps the query
-and result page in the URL. It is a usable starting point, not a required
-ranking policy or a bundled Heine component.
+and result page in the URL. You can adapt or replace the client and its ranking
+policy for your site.
 
 Its search form may set `data-context-before` and `data-context-after` to the
 preferred Unicode code-point context before and after a complete match. The

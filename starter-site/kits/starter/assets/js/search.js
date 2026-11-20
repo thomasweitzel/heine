@@ -1,10 +1,7 @@
 /*
- * Canonical source: `starter-site/kits/starter/assets/js/search.js` in Heine.
- *
- * This file is intentionally copied into independently deployable sites. Edit
- * the canonical source first, then replace each maintained copy as a whole.
- * Do not add site-specific behavior to a copied version: templates provide
- * localized labels and CSS owns the visual design.
+ * Canonical source for Heine's supplied copies:
+ * `starter-site/kits/starter/assets/js/search.js` in the Heine repository.
+ * Sites own the copies they adapt.
  *
  * The script consumes Heine search-index format 3. It requires `.search-form`,
  * `input[name=q]`, `.search-status`, `.search-results`, and

@@ -228,8 +228,8 @@ the exposed fields of all N works per call. Converting one work costs time and
 output space proportional to that work's exposed fields. Keyed lookup avoids
 constructing a full view merely to select a few works. The template
 engine serializes returned values, so repeated calls repeat full-catalog
-conversion. These are complexity estimates, not measured time or memory
-guarantees.
+conversion. These complexity estimates need time and memory measurements to
+establish their practical effect.
 
 The `publication_keys_and_selected_fields_use_the_resolved_bibliography` test
 confirms source-order keys, explicit selected-key order, repeated keys, and a
@@ -247,14 +247,14 @@ Capitalism project separates [journal articles and book chapters](https://global
 Princeton mathematician Ramon van Handel lists [publications and preprints](https://web.math.princeton.edu/~rvan/)
 with links to PDFs and arXiv. Haining Wang's [research page](https://hainingwang.org/research)
 includes selected papers, preprints, code, data, and slides. These examples
-establish useful patterns, not their frequency across all academic sites.
+illustrate useful patterns; their frequency across academic sites is unknown.
 
 The [al-folio documentation](https://github.com/alshedivat/al-folio/blob/main/docs/CUSTOMIZE.md)
 describes BibTeX-backed publication pages, newest-first sorting, and fields for
 abstracts, papers, code, slides, and other resources. Academic Pages documents
 [grouping publications by type and ordering them by date](https://github.com/academicpages/academicpages.github.io/wiki/Customizing-the-content-on-your-site).
 Jekyll Scholar supports [formatted bibliographies, sorting, grouping, and selection](https://github.com/inukshuk/jekyll-scholar).
-These are evidence of distinct needs, not a list of features Heine must copy.
+These projects illustrate distinct authoring and presentation needs.
 
 The first design should account for:
 
@@ -284,8 +284,8 @@ disambiguation; a catalog must not imply that formatting is always correct.
 The local `publication_fields_survive_resolution_and_expose_conversion_boundaries`
 test uses Heine's existing resolver and `biblatex` 0.12.0 with a proceedings
 parent, conference paper, journal article, book, chapter, preprint, and
-dataset-like record. Its inputs are synthetic, informed by the examples above,
-not a claim to represent every exporter or discipline. In this sample:
+dataset-like record. Its synthetic inputs draw on the examples above. The test
+establishes the following behavior for this sample:
 
 - The resolved `biblatex` entry retains the authored `pdf`, `code`, and
   `selected` fields. It also resolves a cross-reference and an abbreviation
@@ -494,8 +494,8 @@ links = [
 ]
 ```
 
-These examples are test data, not a proposed catalog schema. Both templates
-produce the two links, call `asset()` for the PDF, and obtain labels from
+These test examples exercise two template approaches. Both produce the two
+links, call `asset()` for the PDF, and obtain labels from
 Fluent. In both cases the build succeeds when an unselected work names a
 missing PDF, then fails when the template selects that work. Both templates
 also render an invalid external URL string. The generic link-list template

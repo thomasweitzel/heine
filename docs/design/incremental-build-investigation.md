@@ -250,14 +250,14 @@ records require O(*N* + *D*) entries and retained artifacts require O(*O*)
 space. Comparing full contexts and resource values can repeat serialization
 or byte processing. Shared comparisons could reduce repeated work only when
 their complete identities, including locale and output context, match. This
-is a complexity estimate, not a measurement or evidence that the saved
+is a complexity estimate. Measurements are needed to establish whether the saved
 rendering outweighs these costs.
 
 ### Representative template observations
 
-Heine's two supplied sites illustrate what this boundary would have to cover.
-These are static traces of their current templates, not measurements or a
-complete inventory of all templates a site can author.
+Static traces of Heine's two supplied sites illustrate what this boundary
+would have to cover. Sites can author other templates, and these traces do not
+measure their costs.
 
 The generated site's [`base.tera`](../../new-site/templates/base.tera) calls
 `page()` for home, About, blog, and search navigation on every extending

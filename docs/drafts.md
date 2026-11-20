@@ -34,8 +34,8 @@ preview can include the target when the draft has an effective template.
 Removing a final active member also removes its derived taxonomy term or Series
 listing. Configured empty outputs keep their usual behavior.
 
-A future `published` value records chronology, not a release schedule. It does
-not withhold a page from a build; use `draft = true` until the page should
+A future `published` value records chronology. It does not withhold a page from
+a build; use `draft = true` until the page should
 participate in publication.
 
 `heine serve --drafts` writes the configured output directory, not a separate
