@@ -81,7 +81,8 @@ a misspelled field is reported instead of being ignored. The
 ## 2. Add a shared template and Markdown content
 
 Pages can declare named [content files](glossary.md#declared-content-file).
-They are inputs, not published files. Create a base template and a post:
+Heine reads these files as inputs and does not publish them. Create a base
+template and a post:
 
 ```tera
 {# templates/base.tera #}

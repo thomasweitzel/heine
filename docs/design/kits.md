@@ -8,8 +8,7 @@ record explains the design decisions behind it.
 
 ## Decision
 
-Heine provides **kits**, not supposedly interchangeable themes. A kit is a
-complete site design with two separate purposes:
+Heine provides **kits** as complete site designs with two separate purposes:
 
 - its runtime presentation resources supply templates, assets, and kit UI
   messages to a site that selects it;

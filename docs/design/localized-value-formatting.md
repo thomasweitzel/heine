@@ -25,10 +25,11 @@ formatting intent, and editorial time zone produce the same text. The host
 locale, host time zone, current clock, browser preferences, and network data do
 not affect the result.
 
-This feature adds a formatting boundary, not a general internationalization
-framework or an arbitrary ICU interface. Heine continues to own locale
-selection, Fluent-resource loading, root-over-kit message precedence, explicit
-default-locale fallback, template rendering, and diagnostics.
+This feature exposes the supported values and options through a formatting
+boundary. A general internationalization framework and arbitrary ICU access
+are outside its scope. Heine continues to own locale selection, Fluent-resource
+loading, root-over-kit message precedence, explicit default-locale fallback,
+template rendering, and diagnostics.
 
 [Percentage and currency formatting](percentage-and-currency-formatting.md)
 remain separate deferred proposals. They need stable ICU4X APIs and their own
@@ -61,8 +62,8 @@ describes those independent mappings.
 Heine can adopt that model without exposing the breadth of ICU number
 formatting. ICU supports currencies, percentages, units, scientific notation,
 compact notation, and more. [ICU number formatting](https://unicode-org.github.io/icu/userguide/format_parse/numbers/)
-is evidence for a common formatter domain, not a reason for a broad public
-language.
+illustrates the common formatter domain. Heine's public options remain scoped
+to the supported values.
 
 ## Canonical value model
 

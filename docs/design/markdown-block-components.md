@@ -190,8 +190,8 @@ One that may hide its body declares the flat key `"heine.body_may_hide"` with
 the literal Boolean value `true`. Any other value, including `false`, is an
 error at the directive. Regression tests verify that Tera exposes literal
 metadata on a component definition to its host. The declaration is a trusted
-statement of the component's intended presentation, not proof of what later
-site CSS does.
+statement of the component's intended presentation. Site CSS can still change
+the result.
 
 Heine keeps that declaration with the component rather than adding a
 separate manifest or naming convention. The existing kit declaration answers
@@ -217,9 +217,9 @@ bytes. If a trusted component template emits the same pair itself, the count
 check fails. This is an integrity check for Heine's own integration, not a
 security boundary against a malicious template.
 
-That check proves one preserved body serialization, not that CSS makes the
-body visible, accessible, or structurally useful. A trusted component template
-still owns those presentation choices. The feature supplies a body rendered
+That check verifies the preserved body serialization. A trusted component
+template and site CSS still determine whether the body is visible, accessible,
+and structurally useful. The feature supplies a body rendered
 as HTML, so it is suitable only where the surrounding template consumes that
 HTML. A future component contract that supplies XML or another representation
 would need its own rendering and preservation rules. Heine does not parse this

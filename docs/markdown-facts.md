@@ -44,10 +44,10 @@ policy is enabled.
 
 ## Choosing a rate
 
-A reading-time value is an estimate, not a claim about a reader. Text
-difficulty, familiarity, age, and whether someone is studying rather than
-reading all affect it. The following non-normative starting points are mean
-silent-reading rates reported by a review of the available studies. They apply
+A reading-time value is an estimate. Text difficulty, familiarity, age, and
+whether someone is reading for study or another purpose all affect it. The
+following non-normative starting points are mean silent-reading rates reported
+by a review of the available studies. They apply
 to the studies' word units and populations, not to every site or reader.
 
 | Locale | Words per minute |

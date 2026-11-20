@@ -50,7 +50,8 @@ different HTML structure.
 
 A picture profile declares `result = "picture"`, one `image/*` media type,
 and one safe filename extension. It has both light and dark placement
-variants. The variants are fixed renderer invocations, not Markdown options.
+variants. The profile fixes the renderer invocations for those variants;
+Markdown authors do not supply appearance options.
 
 ```toml
 [renderers.typst_diagram]

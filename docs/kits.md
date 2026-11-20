@@ -7,8 +7,8 @@ adaptations. Its required reference site shows the structure and conventions it
 expects.
 
 Keep an ordinary site when you want to own every template and presentation
-resource. A kit has a specific contract, rather than being a generic theme that
-Heine can swap between arbitrary sites.
+resource. Each kit defines a contract for the content and presentation resources
+that its site uses. Changing kits may require changes to the site.
 
 ## Install a kit and copy its reference site
 

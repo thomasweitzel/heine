@@ -10,9 +10,8 @@ boundary: the browser search experience remains site-owned.
 ## Decision
 
 Heine generates checked, locale-local JSON **search document indexes**
-from one or more configured collections. An index is a deterministic set of
-source-derived documents, not a JavaScript search engine and not a generated
-search page.
+from one or more configured collections. Each index is a deterministic set of
+source-derived documents.
 
 The browser fetches an index and chooses how to search it. A site may use a
 local script, MiniSearch, Fuse, FlexSearch, a hosted service, or another
@@ -305,21 +304,17 @@ its article and documentation collections. It supplies a search page in each
 of its existing locales, each resolving the current locale's
 `search(name="site")` view.
 
-The example uses a copied `search.js`, not a bundled third-party search engine.
-The starter-kit copy is the canonical source for the maintained starter,
-documentation, and Zolarwind clients; each independently deployable site keeps
-its own complete copy. The script emits semantic result markup, while each site
-owns the CSS that presents it. This demonstrates the boundary that Heine
-supplies and leaves browser policy to the site. A site needing fuzzy matching,
-stemming, or a large index can replace only this file with another client
-engine.
+The starter kit supplies `search.js` as an example client, and `heine new`
+provides a copy. The script emits semantic result markup, while each site owns
+the CSS that presents it. This demonstrates the boundary that Heine supplies
+and leaves browser policy to the site. A site needing fuzzy matching, stemming,
+or a large index can replace the script with another client engine.
 
 The generated JSON schema and `search()` view are Heine's public search
-contract. The starter script is not a second public Heine API or a compatibility
-promise: it demonstrates one browser policy. A site
-that copies and changes it owns that copy. Tests for the starter site protect
-its documented behavior and accessibility, not a claim that its scoring policy
-is universally correct or permanently frozen.
+contract. The starter script demonstrates one browser policy; its implementation
+does not carry a separate compatibility promise. A site that copies and changes
+it owns that copy. Starter-site tests protect its documented behavior and
+accessibility. Sites can choose a different scoring policy.
 
 The search page has one ordinary form, a live status region, an ordered result
 list, and result-navigation controls. Its query input uses HTML `dir="auto"`,
