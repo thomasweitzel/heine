@@ -10,7 +10,7 @@ use std::{
 
 use jiff::Timestamp;
 use miette::{Diagnostic, Report};
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, Event, EventKind, EventKindMask, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
 use tokio::sync::watch;
 
@@ -45,10 +45,20 @@ pub(crate) enum Error {
     #[diagnostic(
         code(heine::server::watch),
         help(
-            "save the file again or run a full build manually to make sure the generated site is current"
+            "source watching may be incomplete; correct the underlying problem and restart `heine serve`"
         )
     )]
     Observe {
+        path: PathBuf,
+        #[source]
+        source: notify::Error,
+    },
+    #[error("could not restore source watching below {path}")]
+    #[diagnostic(
+        code(heine::server::watch),
+        help("restart `heine serve` to restore source watching")
+    )]
+    RestoreWatch {
         path: PathBuf,
         #[source]
         source: notify::Error,
@@ -65,11 +75,14 @@ pub(crate) struct PendingWatcher {
 
 pub(crate) fn prepare(root: PathBuf) -> Result<PendingWatcher, Error> {
     let (events, receiver) = mpsc::channel();
-    let mut watcher = notify::recommended_watcher(move |event| {
-        // The receiver owns reporting and coalescing. A disconnected server
-        // simply ends the watcher thread on its next receive.
-        let _ = events.send(event);
-    })
+    let mut watcher = RecommendedWatcher::new(
+        move |event| {
+            // The receiver owns reporting and coalescing. A disconnected server
+            // simply ends the watcher thread on its next receive.
+            let _ = events.send(event);
+        },
+        Config::default().with_event_kinds(EventKindMask::CORE),
+    )
     .map_err(|source| Error::Watch {
         path: root.clone(),
         source,
@@ -115,7 +128,7 @@ impl PendingWatcher {
 
 fn watch_loop(
     root: PathBuf,
-    _watcher: impl Watcher,
+    mut watcher: impl Watcher,
     receiver: Receiver<notify::Result<Event>>,
     published: watch::Sender<PublishedSite>,
     build: BuildOptions,
@@ -142,16 +155,26 @@ fn watch_loop(
                 Err(error) => report_observation_error(&root, error),
             }
         }
+        let rescan = changed_paths.rescan;
         let changed_paths = changed_paths.finalize(&root);
-        if changed_paths.is_empty() {
+        if changed_paths.is_empty() && !rescan {
             continue;
+        }
+        if rescan && let Err(error) = restore_watch(&mut watcher, &root) {
+            super::write_message(
+                std::io::stderr().lock(),
+                format_args!("{:?}", Report::new(error)),
+            );
         }
         match build_at_with_publication_in_runtime(&root, build, Some(&renderer_runtime)) {
             Ok((build, _)) => {
                 record_publication(&published, &mut generation, &mut kit_paths, build);
                 super::write_message(
                     std::io::stdout().lock(),
-                    format_args!("{}", rebuild_message(Timestamp::now(), &changed_paths)),
+                    format_args!(
+                        "{}",
+                        rebuild_message(Timestamp::now(), &changed_paths, rescan)
+                    ),
                 );
             }
             Err(failure) => {
@@ -161,6 +184,15 @@ fn watch_loop(
             }
         }
     }
+}
+
+fn restore_watch(watcher: &mut impl Watcher, root: &Path) -> Result<(), Error> {
+    watcher
+        .watch(root, RecursiveMode::Recursive)
+        .map_err(|source| Error::RestoreWatch {
+            path: root.to_path_buf(),
+            source,
+        })
 }
 
 fn record_build_failure(
@@ -191,6 +223,12 @@ fn changed_source_paths(
     event: &Event,
     selected_kit: Option<&crate::kit::Paths>,
 ) -> SourceChanges {
+    if event.need_rescan() {
+        return SourceChanges {
+            rescan: true,
+            ..SourceChanges::default()
+        };
+    }
     let Some(change) = SourceChange::from_event_kind(&event.kind) else {
         return SourceChanges::default();
     };
@@ -239,7 +277,17 @@ fn timestamp(time: Timestamp) -> String {
     time.strftime(TIMESTAMP_FORMAT).to_string()
 }
 
-fn rebuild_message(time: Timestamp, changes: &BTreeMap<PathBuf, SourceChange>) -> String {
+fn rebuild_message(
+    time: Timestamp,
+    changes: &BTreeMap<PathBuf, SourceChange>,
+    rescan: bool,
+) -> String {
+    if rescan {
+        return format!(
+            "[{}] Rebuilt site (filesystem changes may have been missed)",
+            timestamp(time)
+        );
+    }
     format!(
         "[{}] Rebuilt site ({})",
         timestamp(time),
@@ -279,6 +327,7 @@ impl std::fmt::Display for SourceChange {
 #[derive(Debug, Default)]
 struct SourceChanges {
     events: BTreeMap<PathBuf, ChangeEvents>,
+    rescan: bool,
 }
 
 #[derive(Debug, Default)]
@@ -299,6 +348,7 @@ impl SourceChanges {
     }
 
     fn extend(&mut self, other: Self) {
+        self.rescan |= other.rescan;
         for (path, events) in other.events {
             let current = self.events.entry(path).or_default();
             current.added |= events.added;
@@ -308,7 +358,7 @@ impl SourceChanges {
     }
 
     fn is_empty(&self) -> bool {
-        self.events.is_empty()
+        self.events.is_empty() && !self.rescan
     }
 
     fn finalize(self, root: &Path) -> BTreeMap<PathBuf, SourceChange> {
@@ -620,8 +670,56 @@ mod tests {
                 .help()
                 .expect("observation error has recovery guidance")
                 .to_string()
-                .contains("full build")
+                .contains("source watching may be incomplete")
         );
+        assert!(
+            error
+                .help()
+                .expect("observation error has recovery guidance")
+                .to_string()
+                .contains("restart `heine serve`")
+        );
+    }
+
+    #[test]
+    fn failed_watch_restoration_names_the_root_and_remedy() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("missing");
+        let mut watcher = notify::recommended_watcher(|_| {}).unwrap();
+        let error =
+            restore_watch(&mut watcher, &missing).expect_err("missing root cannot be watched");
+        assert!(error.to_string().contains(&missing.display().to_string()));
+        assert!(
+            error
+                .help()
+                .unwrap()
+                .to_string()
+                .contains("restart `heine serve`")
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn restoring_recursive_watch_covers_a_directory_created_while_unwatched() {
+        let root = tempfile::tempdir().unwrap();
+        let mut pending = prepare(root.path().to_path_buf()).unwrap();
+        pending.watcher.unwatch(root.path()).unwrap();
+        let new_directory = root.path().join("new-directory");
+        fs::create_dir(&new_directory).unwrap();
+        restore_watch(&mut pending.watcher, root.path()).unwrap();
+
+        let file = new_directory.join("later-edit.txt");
+        fs::write(&file, "later edit").unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if let Ok(Ok(event)) = pending.receiver.recv_timeout(Duration::from_millis(100))
+                && event.paths.contains(&file)
+                && SourceChange::from_event_kind(&event.kind).is_some()
+            {
+                return;
+            }
+        }
+        panic!("restored recursive watch did not report the later edit");
     }
 
     #[test]
@@ -640,6 +738,49 @@ mod tests {
                 .events
                 .contains_key(Path::new("content/index.page"))
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn configured_watcher_reports_creates_renames_and_removals() {
+        let root = tempfile::tempdir().unwrap();
+        let pending = prepare(root.path().to_path_buf()).unwrap();
+        let original = root.path().join("original.txt");
+        let renamed = root.path().join("renamed.txt");
+        fs::write(&original, "content").unwrap();
+        fs::rename(&original, &renamed).unwrap();
+        fs::remove_file(&renamed).unwrap();
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut seen = [false; 3];
+        while !seen.iter().all(|value| *value) && std::time::Instant::now() < deadline {
+            if let Ok(Ok(event)) = pending.receiver.recv_timeout(Duration::from_millis(100)) {
+                assert!(!matches!(event.kind, EventKind::Access(_)));
+                match event.kind {
+                    EventKind::Create(_) => seen[0] = true,
+                    EventKind::Modify(notify::event::ModifyKind::Name(_)) => seen[1] = true,
+                    EventKind::Remove(_) => seen[2] = true,
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(seen, [true; 3], "missing create, rename, or remove event");
+    }
+
+    #[test]
+    fn event_filter_keeps_changes_and_rescan_notifications() {
+        let mask = Config::default()
+            .with_event_kinds(EventKindMask::CORE)
+            .event_kinds();
+        assert!(mask.matches(&EventKind::Create(notify::event::CreateKind::Any)));
+        assert!(
+            mask.matches(&EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::Any
+            )))
+        );
+        assert!(mask.matches(&EventKind::Remove(notify::event::RemoveKind::Any)));
+        assert!(mask.matches(&EventKind::Other));
+        assert!(!mask.matches(&EventKind::Access(notify::event::AccessKind::Read)));
     }
 
     #[test]
@@ -738,9 +879,113 @@ mod tests {
     fn rebuild_messages_are_compact_status_lines() {
         let changes = BTreeMap::from([(PathBuf::from("content/post.md"), SourceChange::Changed)]);
         assert_eq!(
-            rebuild_message(Timestamp::UNIX_EPOCH, &changes),
+            rebuild_message(Timestamp::UNIX_EPOCH, &changes, false),
             "[1970-01-01T00:00:00.000Z] Rebuilt site (changed content/post.md)"
         );
+        assert_eq!(
+            rebuild_message(Timestamp::UNIX_EPOCH, &changes, true),
+            "[1970-01-01T00:00:00.000Z] Rebuilt site (filesystem changes may have been missed)"
+        );
+    }
+
+    #[test]
+    fn rescan_is_retained_in_both_batch_orders() {
+        let root = Path::new("/site");
+        let rescan = Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
+        let change = Event::new(EventKind::Modify(notify::event::ModifyKind::Any))
+            .add_path(root.join("content/en/post.md"));
+        for (first, second) in [(&rescan, &change), (&change, &rescan)] {
+            let mut batch = changed_source_paths(root, first, None);
+            batch.extend(changed_source_paths(root, second, None));
+            assert!(batch.rescan, "rescan must survive coalescing");
+            assert!(batch.events.contains_key(Path::new("content/en/post.md")));
+        }
+    }
+
+    #[test]
+    fn rescan_rebuilds_even_without_paths_and_in_either_batch_order() {
+        struct RecordingWatcher(mpsc::Sender<(PathBuf, RecursiveMode)>);
+
+        impl Watcher for RecordingWatcher {
+            fn new<F: notify::EventHandler>(_: F, _: Config) -> notify::Result<Self> {
+                Err(notify::Error::generic("not used in this test"))
+            }
+
+            fn watch(&mut self, path: &Path, mode: RecursiveMode) -> notify::Result<()> {
+                self.0.send((path.to_path_buf(), mode)).unwrap();
+                Ok(())
+            }
+
+            fn unwatch(&mut self, _: &Path) -> notify::Result<()> {
+                Ok(())
+            }
+
+            fn kind() -> notify::WatcherKind {
+                notify::WatcherKind::NullWatcher
+            }
+        }
+
+        let root = tempfile::tempdir().expect("site root");
+        fs::create_dir_all(root.path().join("content/en")).unwrap();
+        fs::create_dir(root.path().join("templates")).unwrap();
+        fs::write(root.path().join("heine.toml"), "[site]\ntime_zone='Europe/Berlin'\n[i18n]\ndefault_locale='en'\n[i18n.locales.en]\ndirection='ltr'\n").unwrap();
+        fs::write(
+            root.path().join("content/en/index.page"),
+            "template='page.tera'\n",
+        )
+        .unwrap();
+        let template = root.path().join("templates/page.tera");
+        fs::write(&template, "initial").unwrap();
+        let build = BuildOptions::new(crate::BuildMode::Full);
+        let (initial, runtime) = crate::build_at_with_renderer_runtime(root.path(), build).unwrap();
+        let (published, receiver) = watch::channel(PublishedSite::from_build(initial, 0));
+        let (events, incoming) = mpsc::channel();
+        let (watch_calls, watched) = mpsc::channel();
+        let watcher = RecordingWatcher(watch_calls);
+        let site_root = root.path().to_path_buf();
+        let coordinator = thread::spawn(move || {
+            watch_loop(
+                site_root, watcher, incoming, published, build, None, runtime,
+            )
+        });
+
+        for (generation, text) in [(1, "first"), (2, "second"), (3, "third")] {
+            fs::write(&template, text).unwrap();
+            let rescan = || Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
+            let change = || {
+                Event::new(EventKind::Modify(notify::event::ModifyKind::Any))
+                    .add_path(template.clone())
+            };
+            match generation {
+                1 => events.send(Ok(rescan())).unwrap(),
+                2 => {
+                    events.send(Ok(rescan())).unwrap();
+                    events.send(Ok(change())).unwrap();
+                }
+                _ => {
+                    events.send(Ok(change())).unwrap();
+                    events.send(Ok(rescan())).unwrap();
+                }
+            }
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            while receiver.borrow().generation < generation {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "rescan did not rebuild"
+                );
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(
+                watched.recv_timeout(Duration::from_secs(1)).unwrap(),
+                (root.path().to_path_buf(), RecursiveMode::Recursive)
+            );
+            assert_eq!(
+                fs::read_to_string(root.path().join("public/index.html")).unwrap(),
+                text
+            );
+        }
+        drop(events);
+        coordinator.join().unwrap();
     }
 
     #[test]

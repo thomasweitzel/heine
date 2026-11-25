@@ -31,6 +31,17 @@ are corrected only to repair an error or explain a missed material migration.
 
 ## [Unreleased]
 
+### Changed
+
+- **Rust compiler.** Building Heine from source requires Rust 1.91 or later.
+  **Migration:** Update the Rust toolchain before building from source.
+
+### Fixed
+
+- **Development-server rebuilds.** When the filesystem watcher reports that it
+  may have missed changes, Heine restores recursive watching and rebuilds the
+  site. It reports an error if watching cannot be restored.
+
 ## [0.13.1] - 2026-11-15
 
 ### Changed
