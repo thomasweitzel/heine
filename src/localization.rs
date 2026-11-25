@@ -856,10 +856,10 @@ impl Localization {
                 self.collect_selector_inline(locale, expression, bindings, analysis, presentation)
             }
             Expression::Select { selector, variants } => {
-                if let InlineExpression::VariableReference { id } = selector {
-                    if let Some(variable) = resolve_binding(bindings, id.name.as_ref()) {
-                        analysis.selectors.insert(variable);
-                    }
+                if let InlineExpression::VariableReference { id } = selector
+                    && let Some(variable) = resolve_binding(bindings, id.name.as_ref())
+                {
+                    analysis.selectors.insert(variable);
                 }
                 self.collect_selector_inline(locale, selector, bindings, analysis, presentation);
                 for variant in variants {
